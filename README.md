@@ -22,6 +22,11 @@ move during the evening the plan follows you, and reminders are rescheduled.
   late-night rates, walking home when it's close, and net cafés, karaoke,
   capsule hotels and hotels nearby, compared by what you'd pay and when you'd
   get home.
+- **LastRide for Business** — organizers can create a nomikai event and share
+  a join code/link. Participants stay accountless and share only their chosen
+  display name and calculated leave-by time; organizer devices receive
+  departure alerts without gaining access to participants' home, route or
+  location.
 - Japanese and English throughout, including romanized station and line names.
 
 Times come from [駅すぱあと API](https://api-info.ekispert.com/) (real
@@ -35,7 +40,15 @@ times.
 **Layout:** `artifacts/last-ride` is the Expo (React Native) app,
 `artifacts/api-server` the Express API server, and `lib/` holds the OpenAPI spec
 plus the client and validators generated from it. See `replit.md` for how to run
-everything and which environment variables are needed.
+the existing development stack, `.env.example` for the configuration contract,
+and `docs/enterprise-deployment.md` for the production Business bring-up order.
+
+Database schema changes use committed Drizzle migrations:
+
+```bash
+pnpm --filter @workspace/db generate  # create migration after a schema change
+pnpm --filter @workspace/db migrate   # apply committed migrations to DATABASE_URL
+```
 
 ## Tests
 
