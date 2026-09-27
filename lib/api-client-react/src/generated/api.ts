@@ -32,11 +32,13 @@ import type {
   GetLastTrainParams,
   GetNearbyPlacesParams,
   GetNearbyStationsParams,
+  GetPartwayTrainTaxiParams,
   GetTaxiEstimateParams,
   GetWalkRouteParams,
   HealthStatus,
   HostDeviceRegistration,
   JoinEnterpriseEventRequest,
+  PartwayTrainTaxi,
   Place,
   SearchAddressesParams,
   SearchStationsParams,
@@ -312,6 +314,91 @@ export function useGetFirstTrain<TData = Awaited<ReturnType<typeof getFirstTrain
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetFirstTrainQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetPartwayTrainTaxiUrl = (params: GetPartwayTrainTaxiParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/trains/partway?${stringifiedParams}` : `/api/trains/partway`
+}
+
+/**
+ * After the full last-train route is gone, find the farthest station on that route that is still reachable after the user can board, then estimate a taxi from there to the final destination.
+ * @summary Train partway, then taxi
+ */
+export const getPartwayTrainTaxi = async (params: GetPartwayTrainTaxiParams, options?: Parameters<typeof customFetch>[1]): Promise<PartwayTrainTaxi> => {
+
+  return customFetch<PartwayTrainTaxi>(getGetPartwayTrainTaxiUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPartwayTrainTaxiQueryKey = (params?: GetPartwayTrainTaxiParams,) => {
+    return [
+    `/api/trains/partway`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetPartwayTrainTaxiQueryOptions = <TData = Awaited<ReturnType<typeof getPartwayTrainTaxi>>, TError = ErrorType<void>>(params: GetPartwayTrainTaxiParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPartwayTrainTaxi>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPartwayTrainTaxiQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPartwayTrainTaxi>>> = ({ signal }) => getPartwayTrainTaxi(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPartwayTrainTaxi>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPartwayTrainTaxiQueryResult = NonNullable<Awaited<ReturnType<typeof getPartwayTrainTaxi>>>
+export type GetPartwayTrainTaxiQueryError = ErrorType<void>
+
+
+/**
+ * @summary Train partway, then taxi
+ */
+
+export function useGetPartwayTrainTaxi<TData = Awaited<ReturnType<typeof getPartwayTrainTaxi>>, TError = ErrorType<void>>(
+ params: GetPartwayTrainTaxiParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPartwayTrainTaxi>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPartwayTrainTaxiQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

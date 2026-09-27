@@ -102,6 +102,21 @@ export interface TaxiEstimate {
   fareYen: number | null;
 }
 
+export interface PartwayStation {
+  name: string;
+  nameJa: string;
+  latitude: number;
+  longitude: number;
+}
+
+export interface PartwayTrainTaxi {
+  train: TrainRoute;
+  taxiFrom: PartwayStation;
+  taxi: TaxiEstimate;
+  /** @nullable */
+  totalFareYen: number | null;
+}
+
 export interface CreateEnterpriseEventRequest {
   /**
      * @minLength 1
@@ -300,6 +315,15 @@ export type ToNameParameter = string;
  */
 export type ServiceDateParameter = string;
 
+export type TaxiToLatParameter = number;
+
+export type TaxiToLonParameter = number;
+
+/**
+ * Earliest epoch millisecond at which the user can board a train
+ */
+export type EarliestBoardAtMsParameter = number;
+
 export type GetLastTrainParams = {
 fromLat: FromLatParameter;
 fromLon: FromLonParameter;
@@ -332,6 +356,29 @@ toName: ToNameParameter;
  * @pattern ^[0-9]{8}$
  */
 date: ServiceDateParameter;
+};
+
+export type GetPartwayTrainTaxiParams = {
+fromLat: FromLatParameter;
+fromLon: FromLonParameter;
+/**
+ * Japanese station name, used to pick the right station near the coordinates
+ */
+fromName: FromNameParameter;
+toLat: ToLatParameter;
+toLon: ToLonParameter;
+toName: ToNameParameter;
+taxiToLat: TaxiToLatParameter;
+taxiToLon: TaxiToLonParameter;
+/**
+ * Rail service date (YYYYMMDD); trains after midnight belong to the previous date
+ * @pattern ^[0-9]{8}$
+ */
+date: ServiceDateParameter;
+/**
+ * Earliest epoch millisecond at which the user can board a train
+ */
+earliestBoardAtMs: EarliestBoardAtMsParameter;
 };
 
 export type GetNearbyStationsParams = {

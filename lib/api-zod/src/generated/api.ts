@@ -88,6 +88,58 @@ export const GetFirstTrainResponse = zod.object({
 
 
 /**
+ * After the full last-train route is gone, find the farthest station on that route that is still reachable after the user can board, then estimate a taxi from there to the final destination.
+ * @summary Train partway, then taxi
+ */
+export const getPartwayTrainTaxiQueryDateRegExp = new RegExp('^[0-9]{8}$');
+
+
+export const GetPartwayTrainTaxiQueryParams = zod.object({
+  "fromLat": zod.coerce.number(),
+  "fromLon": zod.coerce.number(),
+  "fromName": zod.coerce.string().describe('Japanese station name, used to pick the right station near the coordinates'),
+  "toLat": zod.coerce.number(),
+  "toLon": zod.coerce.number(),
+  "toName": zod.coerce.string(),
+  "taxiToLat": zod.coerce.number(),
+  "taxiToLon": zod.coerce.number(),
+  "date": zod.coerce.string().regex(getPartwayTrainTaxiQueryDateRegExp).describe('Rail service date (YYYYMMDD); trains after midnight belong to the previous date'),
+  "earliestBoardAtMs": zod.coerce.number().describe('Earliest epoch millisecond at which the user can board a train')
+})
+
+export const GetPartwayTrainTaxiResponse = zod.object({
+  "train": zod.object({
+  "departsAt": zod.string().describe('Departure from the origin station (ISO 8601 with +09:00 offset)'),
+  "arrivesAt": zod.string().describe('Arrival at the destination station (ISO 8601 with +09:00 offset)'),
+  "transfers": zod.number().describe('Number of changes between trains'),
+  "fareYen": zod.number().nullable().describe('One-way fare including express charges, in yen; null when unknown'),
+  "legs": zod.array(zod.object({
+  "line": zod.string(),
+  "lineEn": zod.string().describe('English line name, or the Japanese name if it isn\'t recognised'),
+  "from": zod.string(),
+  "fromEn": zod.string(),
+  "to": zod.string(),
+  "toEn": zod.string(),
+  "departsAt": zod.string(),
+  "arrivesAt": zod.string()
+}))
+}),
+  "taxiFrom": zod.object({
+  "name": zod.string(),
+  "nameJa": zod.string(),
+  "latitude": zod.number(),
+  "longitude": zod.number()
+}),
+  "taxi": zod.object({
+  "distanceMeters": zod.number(),
+  "minutes": zod.number(),
+  "fareYen": zod.number().nullable().describe('Estimated fare in yen, excluding tolls; null when unavailable')
+}),
+  "totalFareYen": zod.number().nullable()
+})
+
+
+/**
  * Closest stations by walking route (accounting for station exits), nearest first.
  * @summary Stations near a point
  */

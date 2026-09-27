@@ -28,7 +28,15 @@ export type TrainLeg = {
   departsAt: string;
   arrivesAt: string;
 };
-export type TrainRoute = { departsAt: string; arrivesAt: string; transfers: number; fareYen: number | null; legs: TrainLeg[] };
+export type TrainRoute = {
+  departsAt: string;
+  arrivesAt: string;
+  transfers: number;
+  fareYen: number | null;
+  legs: TrainLeg[];
+};
+export type TrainStopRef = { code: string; name: string; nameEn: string };
+export type TrainRouteWithStops = TrainRoute & { stopRefs: TrainStopRef[] };
 
 function apiKey(): string {
   const key = process.env["EKISPERT_KEY"];
@@ -36,7 +44,10 @@ function apiKey(): string {
   return key;
 }
 
-async function call(path: string, params: Record<string, string>): Promise<Record<string, unknown>> {
+async function call(
+  path: string,
+  params: Record<string, string>,
+): Promise<Record<string, unknown>> {
   const url = new URL(`${BASE_URL}${path}`);
   url.search = new URLSearchParams({ key: apiKey(), ...params }).toString();
   recordCall("ekispert", path);
@@ -44,13 +55,20 @@ async function call(path: string, params: Record<string, string>): Promise<Recor
   try {
     response = await fetch(url, { signal: AbortSignal.timeout(15000) });
   } catch (err) {
-    throw new ProviderError(`Ekispert request failed: ${(err as Error).message}`);
+    throw new ProviderError(
+      `Ekispert request failed: ${(err as Error).message}`,
+    );
   }
-  const body = (await response.json().catch(() => null)) as { ResultSet?: Record<string, unknown> } | null;
+  const body = (await response.json().catch(() => null)) as {
+    ResultSet?: Record<string, unknown>;
+  } | null;
   const resultSet = body?.ResultSet;
   if (!response.ok || !resultSet) {
     // Never log the URL: it carries the access key.
-    logger.warn({ path, status: response.status, error: resultSet?.["Error"] }, "Ekispert error");
+    logger.warn(
+      { path, status: response.status, error: resultSet?.["Error"] },
+      "Ekispert error",
+    );
     throw new ProviderError(`Ekispert responded ${response.status}`);
   }
   return resultSet;
@@ -75,7 +93,8 @@ function trainOnlyCondition(): Promise<string> {
   })
     .then((resultSet) => {
       const condition = resultSet["Condition"];
-      if (typeof condition !== "string") throw new ProviderError("Ekispert returned no search condition");
+      if (typeof condition !== "string")
+        throw new ProviderError("Ekispert returned no search condition");
       return condition;
     })
     .catch((err) => {
@@ -94,7 +113,10 @@ function baseName(name: string) {
 }
 
 // Station codes never change; keep them for a month.
-const stationCodes = new TtlCache<string>(30 * 24 * 60 * 60 * 1000, "ekispert-stations");
+const stationCodes = new TtlCache<string>(
+  30 * 24 * 60 * 60 * 1000,
+  "ekispert-stations",
+);
 
 /**
  * Resolves a station the app found (via OpenStreetMap) to an Ekispert
@@ -112,19 +134,32 @@ async function resolveStation(station: StationRef): Promise<string> {
     type: "train",
     stationCount: "5",
   });
-  const points = list(resultSet["Point"] as Array<{ Station: { code: string; Name: string } }> | undefined);
+  const points = list(
+    resultSet["Point"] as
+      Array<{ Station: { code: string; Name: string } }> | undefined,
+  );
   // Prefer the same-named station (results are nearest first); otherwise the nearest one.
-  const match = points.find((point) => baseName(point.Station.Name) === baseName(station.name)) ?? points[0];
+  const match =
+    points.find(
+      (point) => baseName(point.Station.Name) === baseName(station.name),
+    ) ?? points[0];
   const resolved = match?.Station.code ?? station.name;
   stationCodes.set(cacheKey, resolved);
   return resolved;
 }
+
+type EkispertStop = {
+  Point?: {
+    Station?: { code?: string; Name?: string; Yomi?: string };
+  };
+};
 
 type EkispertLine = {
   Name: string;
   Type: string | { text: string };
   DepartureState?: { Datetime?: { text: string } };
   ArrivalState?: { Datetime?: { text: string } };
+  Stop?: EkispertStop | EkispertStop[];
 };
 /** Ekispert prices: "Fare" is the base ticket, "Charge" the express/reserved-seat extras. */
 type EkispertPrice = { kind?: string; Oneway?: string; selected?: string };
@@ -132,7 +167,8 @@ type EkispertPrice = { kind?: string; Oneway?: string; selected?: string };
 /** One-way total a passenger actually pays: base fare plus the selected charges. */
 function onewayFare(course: EkispertCourse): number | null {
   const prices = list(course.Price);
-  const summary = (kind: string) => Number(prices.find((price) => price.kind === kind)?.Oneway ?? NaN);
+  const summary = (kind: string) =>
+    Number(prices.find((price) => price.kind === kind)?.Oneway ?? NaN);
   const fare = summary("FareSummary");
   if (!Number.isFinite(fare)) return null;
   const charge = summary("ChargeSummary");
@@ -141,21 +177,31 @@ function onewayFare(course: EkispertCourse): number | null {
 
 type EkispertCourse = {
   Price?: EkispertPrice | EkispertPrice[];
-  Route: { transferCount?: string; Line: EkispertLine | EkispertLine[]; Point: Array<{ Station?: { Name: string; Yomi?: string }; Name?: string }> };
+  Route: {
+    transferCount?: string;
+    Line: EkispertLine | EkispertLine[];
+    Point: Array<{ Station?: { Name: string; Yomi?: string }; Name?: string }>;
+  };
 };
 
-function toTrainRoute(course: EkispertCourse): TrainRoute | null {
+function toTrainRoute(course: EkispertCourse): TrainRouteWithStops | null {
   const lines = list(course.Route.Line);
   const points = list(course.Route.Point);
   const legs: TrainLeg[] = [];
+  const stopRefs: TrainStopRef[] = [];
+  const seenStops = new Set<string>();
   lines.forEach((line, index) => {
     const type = typeof line.Type === "string" ? line.Type : line.Type.text;
     const departsAt = line.DepartureState?.Datetime?.text;
     const arrivesAt = line.ArrivalState?.Datetime?.text;
     if (type === "walk" || !departsAt || !arrivesAt) return;
-    const pointName = (point: (typeof points)[number] | undefined) => point?.Station?.Name ?? point?.Name ?? "";
+    const pointName = (point: (typeof points)[number] | undefined) =>
+      point?.Station?.Name ?? point?.Name ?? "";
     // Station readings are kana ("しぶや"), which romanize cleanly to sign-style names.
-    const pointNameEn = (point: (typeof points)[number] | undefined) => (point?.Station?.Yomi ? kanaToRomaji(point.Station.Yomi) : pointName(point));
+    const pointNameEn = (point: (typeof points)[number] | undefined) =>
+      point?.Station?.Yomi
+        ? kanaToRomaji(point.Station.Yomi)
+        : pointName(point);
     legs.push({
       line: line.Name,
       lineEn: lineNameEn(line.Name),
@@ -166,6 +212,17 @@ function toTrainRoute(course: EkispertCourse): TrainRoute | null {
       departsAt,
       arrivesAt,
     });
+    for (const stop of list(line.Stop)) {
+      const station = stop.Point?.Station;
+      if (!station?.code || !station.Name || seenStops.has(station.code))
+        continue;
+      seenStops.add(station.code);
+      stopRefs.push({
+        code: station.code,
+        name: station.Name,
+        nameEn: station.Yomi ? kanaToRomaji(station.Yomi) : station.Name,
+      });
+    }
   });
   if (legs.length === 0) return null;
   return {
@@ -174,18 +231,35 @@ function toTrainRoute(course: EkispertCourse): TrainRoute | null {
     transfers: Number(course.Route.transferCount ?? legs.length - 1),
     fareYen: onewayFare(course),
     legs,
+    stopRefs,
   };
 }
 
 // Bump the cache name when TrainRoute changes shape, so stale entries are ignored.
-const routes = new TtlCache<TrainRoute | null>(ROUTE_TTL_MS, "ekispert-routes-v3");
+const routes = new TtlCache<TrainRouteWithStops | null>(
+  ROUTE_TTL_MS,
+  "ekispert-routes-v4",
+);
+const departureRoutes = new TtlCache<TrainRouteWithStops | null>(
+  ROUTE_TTL_MS,
+  "ekispert-departure-routes-v1",
+);
 
 /**
  * Last or first train between two stations on a service date (YYYYMMDD).
  * Returns null when no rail route exists that day.
  */
-export async function searchTrain(kind: "last" | "first", from: StationRef, to: StationRef, date: string): Promise<TrainRoute | null> {
-  const [fromVia, toVia, condition] = await Promise.all([resolveStation(from), resolveStation(to), trainOnlyCondition()]);
+export async function searchTrain(
+  kind: "last" | "first",
+  from: StationRef,
+  to: StationRef,
+  date: string,
+): Promise<TrainRouteWithStops | null> {
+  const [fromVia, toVia, condition] = await Promise.all([
+    resolveStation(from),
+    resolveStation(to),
+    trainOnlyCondition(),
+  ]);
   const cacheKey = `${kind}|${fromVia}|${toVia}|${date}`;
   const cached = routes.get(cacheKey);
   if (cached !== undefined) return cached;
@@ -195,14 +269,110 @@ export async function searchTrain(kind: "last" | "first", from: StationRef, to: 
     searchType: kind === "last" ? "lastTrain" : "firstTrain",
     date,
     answerCount: "5",
+    addStop: "true",
     conditionDetail: condition,
   });
-  const candidates = list(resultSet["Course"] as EkispertCourse | EkispertCourse[] | undefined)
+  const candidates = list(
+    resultSet["Course"] as EkispertCourse | EkispertCourse[] | undefined,
+  )
     .map(toTrainRoute)
-    .filter((route): route is TrainRoute => route !== null);
+    .filter((route): route is TrainRouteWithStops => route !== null);
   // Last train: the latest departure that still gets home. First train: the earliest departure.
-  candidates.sort((first, second) => Date.parse(first.departsAt) - Date.parse(second.departsAt));
+  candidates.sort(
+    (first, second) =>
+      Date.parse(first.departsAt) - Date.parse(second.departsAt),
+  );
   const best = (kind === "last" ? candidates.at(-1) : candidates[0]) ?? null;
   routes.set(cacheKey, best);
+  return best;
+}
+
+type StationPoint = {
+  GeoPoint?: { lati_d?: string; longi_d?: string };
+  Station?: { code?: string; Name?: string; Yomi?: string };
+};
+
+const stationDetails = new TtlCache<StationRef & { code: string }>(
+  30 * 24 * 60 * 60 * 1000,
+  "ekispert-station-details",
+);
+
+export async function stationByCode(
+  stop: TrainStopRef,
+): Promise<StationRef & { code: string }> {
+  const cached = stationDetails.get(stop.code);
+  if (cached) return cached;
+  const resultSet = await call("/station", { code: stop.code });
+  const point = list(
+    resultSet["Point"] as StationPoint | StationPoint[] | undefined,
+  )[0];
+  const latitude = Number(point?.GeoPoint?.lati_d);
+  const longitude = Number(point?.GeoPoint?.longi_d);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    throw new ProviderError("Ekispert station coordinates were unavailable");
+  }
+  const station = point?.Station;
+  const resolved = {
+    code: station?.code ?? stop.code,
+    name: station?.Name ?? stop.name,
+    latitude,
+    longitude,
+  };
+  stationDetails.set(stop.code, resolved);
+  return resolved;
+}
+
+function jstSearchParts(ms: number): { date: string; time: string } {
+  const rounded = Math.ceil(ms / 60_000) * 60_000;
+  const shifted = new Date(rounded + 9 * 60 * 60 * 1000);
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return {
+    date:
+      String(shifted.getUTCFullYear()) +
+      pad(shifted.getUTCMonth() + 1) +
+      pad(shifted.getUTCDate()),
+    time: pad(shifted.getUTCHours()) + pad(shifted.getUTCMinutes()),
+  };
+}
+
+/** Earliest timetable route departing no sooner than the user can board. */
+export async function searchDepartureTrain(
+  from: StationRef,
+  to: TrainStopRef | StationRef,
+  earliestBoardAtMs: number,
+): Promise<TrainRouteWithStops | null> {
+  const [fromVia, condition] = await Promise.all([
+    resolveStation(from),
+    trainOnlyCondition(),
+  ]);
+  const toVia = "code" in to ? to.code : await resolveStation(to);
+  const { date, time } = jstSearchParts(earliestBoardAtMs);
+  const cacheKey = fromVia + "|" + toVia + "|" + date + "|" + time;
+  const cached = departureRoutes.get(cacheKey);
+  if (cached !== undefined) return cached;
+
+  const resultSet = await call("/search/course/extreme", {
+    viaList: fromVia + ":" + toVia,
+    searchType: "departure",
+    date,
+    time,
+    answerCount: "5",
+    conditionDetail: condition,
+  });
+  const candidates = list(
+    resultSet["Course"] as EkispertCourse | EkispertCourse[] | undefined,
+  )
+    .map(toTrainRoute)
+    .filter(
+      (route): route is TrainRouteWithStops =>
+        route !== null && Date.parse(route.departsAt) >= earliestBoardAtMs,
+    )
+    .sort(
+      (first, second) =>
+        Date.parse(first.departsAt) - Date.parse(second.departsAt),
+    );
+
+  const best = candidates[0] ?? null;
+  departureRoutes.set(cacheKey, best);
   return best;
 }

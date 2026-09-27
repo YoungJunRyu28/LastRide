@@ -94,6 +94,37 @@ paths:
           description: No train route between the stations on that date
         "502":
           description: Timetable provider unavailable
+  /trains/partway:
+    get:
+      operationId: getPartwayTrainTaxi
+      tags: [trains]
+      summary: Train partway, then taxi
+      description: >-
+        After the full last-train route is gone, find the farthest station on
+        that route that is still reachable after the user can board, then
+        estimate a taxi from there to the final destination.
+      parameters:
+        - $ref: "#/components/parameters/FromLat"
+        - $ref: "#/components/parameters/FromLon"
+        - $ref: "#/components/parameters/FromName"
+        - $ref: "#/components/parameters/ToLat"
+        - $ref: "#/components/parameters/ToLon"
+        - $ref: "#/components/parameters/ToName"
+        - $ref: "#/components/parameters/TaxiToLat"
+        - $ref: "#/components/parameters/TaxiToLon"
+        - $ref: "#/components/parameters/ServiceDate"
+        - $ref: "#/components/parameters/EarliestBoardAtMs"
+      responses:
+        "200":
+          description: Reachable rail segment plus remaining taxi estimate
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PartwayTrainTaxi"
+        "404":
+          description: No useful partway rail option remains
+        "502":
+          description: Timetable or routing provider unavailable
   /stations/nearby:
     get:
       operationId: getNearbyStations
@@ -473,6 +504,22 @@ components:
       required: true
       description: Rail service date (YYYYMMDD); trains after midnight belong to the previous date
       schema: { type: string, pattern: "^[0-9]{8}$" }
+    TaxiToLat:
+      name: taxiToLat
+      in: query
+      required: true
+      schema: { type: number }
+    TaxiToLon:
+      name: taxiToLon
+      in: query
+      required: true
+      schema: { type: number }
+    EarliestBoardAtMs:
+      name: earliestBoardAtMs
+      in: query
+      required: true
+      description: Earliest epoch millisecond at which the user can board a train
+      schema: { type: number }
   schemas:
     TrainRoute:
       type: object
@@ -584,6 +631,26 @@ components:
           type: [number, "null"]
           description: Estimated fare in yen, excluding tolls; null when unavailable
       required: [distanceMeters, minutes, fareYen]
+    PartwayStation:
+      type: object
+      properties:
+        name: { type: string }
+        nameJa: { type: string }
+        latitude: { type: number }
+        longitude: { type: number }
+      required: [name, nameJa, latitude, longitude]
+    PartwayTrainTaxi:
+      type: object
+      properties:
+        train:
+          $ref: "#/components/schemas/TrainRoute"
+        taxiFrom:
+          $ref: "#/components/schemas/PartwayStation"
+        taxi:
+          $ref: "#/components/schemas/TaxiEstimate"
+        totalFareYen:
+          type: [number, "null"]
+      required: [train, taxiFrom, taxi, totalFareYen]
     TrainLeg:
       type: object
       properties:
