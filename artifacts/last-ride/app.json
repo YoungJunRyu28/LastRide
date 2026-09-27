@@ -22,7 +22,9 @@
         ]
       }
     },
-    "android": {},
+    "android": {
+      "package": "com.nicholasroberts.lastride"
+    },
     "web": {
       "favicon": "./assets/images/icon.png"
     },

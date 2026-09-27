@@ -20,5 +20,10 @@ module.exports = ({ config }) => {
       bundleIdentifier:
         process.env.IOS_BUNDLE_ID || config.ios.bundleIdentifier,
     },
+    android: {
+      ...config.android,
+      package:
+        process.env.ANDROID_PACKAGE_ID || config.android?.package,
+    },
   };
 };
