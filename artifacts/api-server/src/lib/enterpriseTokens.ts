@@ -15,7 +15,7 @@ export function createCapabilityToken(bytes = 32): string {
   return randomBytes(bytes).toString("base64url");
 }
 
-export function createJoinCode(length = 6): string {
+export function createJoinCode(length = 8): string {
   let code = "";
   for (let i = 0; i < length; i += 1) {
     code += JOIN_ALPHABET[randomInt(0, JOIN_ALPHABET.length)];

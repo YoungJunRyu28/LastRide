@@ -368,6 +368,20 @@ export const UpdateEnterpriseEventResponse = zod.object({
 
 
 /**
+ * @summary Rotate the join credentials for an event
+ */
+export const CreateEnterpriseEventInviteParams = zod.object({
+  "eventId": zod.coerce.string()
+})
+
+export const CreateEnterpriseEventInviteResponse = zod.object({
+  "inviteToken": zod.string(),
+  "joinCode": zod.string(),
+  "expiresAt": zod.coerce.date()
+})
+
+
+/**
  * @summary Join a hosted event without creating a personal account
  */
 export const joinEnterpriseEventBodyInviteTokenMin = 32;

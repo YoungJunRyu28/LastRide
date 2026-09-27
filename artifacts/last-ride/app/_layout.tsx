@@ -31,6 +31,8 @@ function RootLayoutNav() {
       <Stack.Screen name="alternatives" />
       <Stack.Screen name="settings" />
       <Stack.Screen name="join" />
+      <Stack.Screen name="business" />
+      <Stack.Screen name="business-event" />
       <Stack.Screen name="privacy" />
     </Stack>
   );

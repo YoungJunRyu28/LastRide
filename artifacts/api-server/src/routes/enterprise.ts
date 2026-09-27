@@ -2,6 +2,8 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { isDatabaseConfigured } from "@workspace/db";
 import {
   CreateEnterpriseEventBody,
+  CreateEnterpriseEventInviteParams,
+  CreateEnterpriseEventInviteResponse,
   CreateEnterpriseEventResponse,
   GetEnterpriseEventParams,
   GetEnterpriseEventResponse,
@@ -18,6 +20,7 @@ import {
 } from "@workspace/api-zod";
 import { authenticateEnterpriseRequest } from "../lib/enterpriseAuth";
 import {
+  createEnterpriseEventInviteRecord,
   createEnterpriseEventRecord,
   getEnterpriseEventRecord,
   getOrganizerContext,
@@ -128,6 +131,37 @@ router.patch("/enterprise/events/:eventId", async (req, res) => {
     return;
   }
   res.json(UpdateEnterpriseEventResponse.parse(event));
+});
+
+router.post("/enterprise/events/:eventId/invite", async (req, res) => {
+  const organizer = await organizerFor(req, res);
+  if (!organizer) return;
+
+  const params = CreateEnterpriseEventInviteParams.safeParse(req.params);
+  if (!params.success || !UUID_RE.test(params.data.eventId)) {
+    res.status(400).json({ error: "Invalid event id" });
+    return;
+  }
+
+  const result = await createEnterpriseEventInviteRecord(
+    organizer.organizationId,
+    params.data.eventId,
+  );
+  if (result.kind === "not-found") {
+    res.status(404).json({ error: "Event not found" });
+    return;
+  }
+  if (result.kind === "gone") {
+    res.status(410).json({ error: "Event is closed or expired" });
+    return;
+  }
+  res.status(201).json(
+    CreateEnterpriseEventInviteResponse.parse({
+      inviteToken: result.inviteToken,
+      joinCode: result.joinCode,
+      expiresAt: result.expiresAt,
+    }),
+  );
 });
 
 router.post("/events/join", async (req, res) => {

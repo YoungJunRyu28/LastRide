@@ -16,7 +16,7 @@ describe("enterprise capability tokens", () => {
 
   it("creates human-friendly join codes without ambiguous characters", () => {
     const code = createJoinCode();
-    expect(code).toHaveLength(6);
+    expect(code).toHaveLength(8);
     expect(code).toMatch(/^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]+$/);
   });
 

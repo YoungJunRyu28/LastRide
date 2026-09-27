@@ -326,6 +326,23 @@ paths:
               schema: { $ref: "#/components/schemas/EnterpriseEvent" }
         "401": { description: Organizer authentication required }
         "404": { description: Event not found }
+  /enterprise/events/{eventId}/invite:
+    post:
+      operationId: createEnterpriseEventInvite
+      tags: [enterprise]
+      summary: Rotate the join credentials for an event
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/EventId"
+      responses:
+        "201":
+          description: New invite credentials; previous invites are revoked
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnterpriseEventInvite" }
+        "401": { description: Organizer authentication required }
+        "404": { description: Event not found }
+        "410": { description: Event is closed or expired }
   /events/join:
     post:
       operationId: joinEnterpriseEvent
@@ -611,6 +628,13 @@ components:
             inviteToken: { type: string }
             joinCode: { type: string }
           required: [inviteToken, joinCode]
+    EnterpriseEventInvite:
+      type: object
+      properties:
+        inviteToken: { type: string }
+        joinCode: { type: string }
+        expiresAt: { type: string, format: date-time }
+      required: [inviteToken, joinCode, expiresAt]
     EventParticipantHostView:
       type: object
       description: Privacy-minimal host view. No location, route, station, or destination data.

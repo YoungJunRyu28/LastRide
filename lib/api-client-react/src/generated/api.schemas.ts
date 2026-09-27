@@ -177,6 +177,12 @@ export type EnterpriseEventCreated = EnterpriseEvent & {
   joinCode: string;
 };
 
+export interface EnterpriseEventInvite {
+  inviteToken: string;
+  joinCode: string;
+  expiresAt: string;
+}
+
 export type EventParticipantHostViewStatus = typeof EventParticipantHostViewStatus[keyof typeof EventParticipantHostViewStatus];
 
 

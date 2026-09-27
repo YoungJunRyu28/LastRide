@@ -11,6 +11,7 @@ export * from './createEnterpriseEventRequest';
 export * from './enterpriseEvent';
 export * from './enterpriseEventCreated';
 export * from './enterpriseEventDetail';
+export * from './enterpriseEventInvite';
 export * from './enterpriseEventStatus';
 export * from './eventParticipantHostView';
 export * from './eventParticipantHostViewStatus';

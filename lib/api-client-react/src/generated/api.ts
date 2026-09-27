@@ -25,6 +25,7 @@ import type {
   EnterpriseEvent,
   EnterpriseEventCreated,
   EnterpriseEventDetail,
+  EnterpriseEventInvite,
   EventParticipantSelf,
   EventParticipantSession,
   GetFirstTrainParams,
@@ -1203,6 +1204,77 @@ export const useUpdateEnterpriseEvent = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getUpdateEnterpriseEventMutationOptions(options));
+    }
+
+export const getCreateEnterpriseEventInviteUrl = (eventId: string,) => {
+
+
+
+
+  return `/api/enterprise/events/${eventId}/invite`
+}
+
+/**
+ * @summary Rotate the join credentials for an event
+ */
+export const createEnterpriseEventInvite = async (eventId: string, options?: Parameters<typeof customFetch>[1]): Promise<EnterpriseEventInvite> => {
+
+  return customFetch<EnterpriseEventInvite>(getCreateEnterpriseEventInviteUrl(eventId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getCreateEnterpriseEventInviteMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createEnterpriseEventInvite>>, TError,{eventId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createEnterpriseEventInvite>>, TError,{eventId: string}, TContext> => {
+
+const mutationKey = ['createEnterpriseEventInvite'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createEnterpriseEventInvite>>, {eventId: string}> = (props) => {
+          const {eventId} = props ?? {};
+
+          return  createEnterpriseEventInvite(eventId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateEnterpriseEventInviteMutationResult = NonNullable<Awaited<ReturnType<typeof createEnterpriseEventInvite>>>
+
+    export type CreateEnterpriseEventInviteMutationError = ErrorType<void>
+
+    /**
+ * @summary Rotate the join credentials for an event
+ */
+export const useCreateEnterpriseEventInvite = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createEnterpriseEventInvite>>, TError,{eventId: string}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createEnterpriseEventInvite>>,
+        TError,
+        {eventId: string},
+        TContext
+      > => {
+      return useMutation(getCreateEnterpriseEventInviteMutationOptions(options));
     }
 
 export const getJoinEnterpriseEventUrl = () => {

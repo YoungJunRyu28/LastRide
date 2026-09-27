@@ -456,3 +456,54 @@ export async function purgeExpiredEnterpriseData(now = new Date()) {
     return ids.length;
   });
 }
+
+export async function createEnterpriseEventInviteRecord(
+  organizationId: string,
+  eventId: string,
+) {
+  const db = getDb();
+  return db.transaction(async (tx) => {
+    const [event] = await tx
+      .select()
+      .from(enterpriseEventsTable)
+      .where(
+        and(
+          eq(enterpriseEventsTable.id, eventId),
+          eq(enterpriseEventsTable.organizationId, organizationId),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    if (!event) return { kind: "not-found" as const };
+    if (event.status !== "active" || event.expiresAt.getTime() <= Date.now()) {
+      return { kind: "gone" as const };
+    }
+
+    const now = new Date();
+    await tx
+      .update(eventInvitesTable)
+      .set({ revokedAt: now })
+      .where(
+        and(
+          eq(eventInvitesTable.eventId, event.id),
+          isNull(eventInvitesTable.revokedAt),
+        ),
+      );
+
+    const inviteToken = createCapabilityToken();
+    const joinCode = createJoinCode();
+    await tx.insert(eventInvitesTable).values({
+      eventId: event.id,
+      inviteTokenHash: hashCapability(inviteToken),
+      joinCodeHash: hashCapability(joinCode),
+      expiresAt: event.expiresAt,
+    });
+
+    return {
+      kind: "created" as const,
+      inviteToken,
+      joinCode,
+      expiresAt: event.expiresAt,
+    };
+  });
+}

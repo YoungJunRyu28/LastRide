@@ -157,6 +157,13 @@ export default function SettingsScreen() {
             subtitle={ja ? '幹事のコードで出発時刻を共有' : 'Share your leave time with an organizer'}
             onPress={() => router.push('/join')}
           />
+          <View style={[styles.divider, { backgroundColor: colors.border }]} />
+          <Row
+            testID="business-mode"
+            title={ja ? '幹事モード' : 'LastRide for Business'}
+            subtitle={ja ? '法人イベントを作成・管理' : 'Create and manage organization events'}
+            onPress={() => router.push('/business')}
+          />
         </Section>
 
         <Section label={ja ? '通知とデータ' : 'NOTIFICATIONS & DATA'}>
