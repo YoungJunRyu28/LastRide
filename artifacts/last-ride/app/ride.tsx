@@ -8,7 +8,7 @@ import { useColors } from '@/hooks/useColors';
 import { Feather } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import React, { useEffect } from 'react';
-import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 function statusText(status: RideStatus, minutesLeft: number, lastTrain: string, ja: boolean) {
@@ -57,12 +57,29 @@ export default function RideScreen() {
   const statusColor = status === 'hurry' ? colors.destructive : status === 'departed' ? colors.mutedForeground : status === 'relaxed' ? colors.secondary : colors.primary;
   const statusTextColor = status === 'relaxed' ? colors.secondaryForeground : status === 'soon' || status === 'now' ? colors.primaryForeground : colors.card;
 
+  const sharePlan = async () => {
+    if (!plan) return;
+    const arrivalMs = plan.arriveHomeMs ?? plan.lastTrain.arrivesAt;
+    const arrival = arrivalMs ? formatJstTime(arrivalMs) : null;
+    const message = ja
+      ? `LastRide：${leaveBy}までに出発${arrival ? ` · 到着予定 ${arrival}` : ''}`
+      : `LastRide: leave by ${leaveBy}${arrival ? ` · ETA ${arrival}` : ''}`;
+    await Share.share({ message });
+  };
+
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
       <ScrollView contentContainerStyle={[styles.content, { paddingTop: insets.top + (Platform.OS === 'web' ? 67 : 12), paddingBottom: 28 }]} showsVerticalScrollIndicator={false}>
         <View style={styles.topbar}>
           <View style={styles.brand}><RailwayMark size={23} /><Text style={[styles.brandText, { color: colors.foreground }]}>LastRide</Text></View>
-          <Pressable onPress={() => router.push('/settings')} testID="open-settings" hitSlop={12} accessibilityRole="button" accessibilityLabel={ja ? '設定' : 'Settings'}><Feather name="sliders" color={colors.foreground} size={21} /></Pressable>
+          <View style={styles.topbarActions}>
+            {plan && (
+              <Pressable onPress={() => void sharePlan()} testID="share-plan" hitSlop={12} accessibilityRole="button" accessibilityLabel={ja ? '出発時刻を共有' : 'Share leave time'}>
+                <Feather name="share-2" color={colors.foreground} size={20} />
+              </Pressable>
+            )}
+            <Pressable onPress={() => router.push('/settings')} testID="open-settings" hitSlop={12} accessibilityRole="button" accessibilityLabel={ja ? '設定' : 'Settings'}><Feather name="sliders" color={colors.foreground} size={21} /></Pressable>
+          </View>
         </View>
 
         <View style={styles.intro}>
@@ -289,6 +306,7 @@ const styles = StyleSheet.create({
   content: { gap: 16, paddingHorizontal: 20 },
   flex: { flex: 1, gap: 2 },
   topbar: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
+  topbarActions: { alignItems: 'center', flexDirection: 'row', gap: 18 },
   brand: { alignItems: 'center', flexDirection: 'row', gap: 7 },
   brandText: { fontFamily: 'Inter_700Bold', fontSize: 17 },
   intro: { gap: 3, marginTop: 4 },
