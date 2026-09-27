@@ -1,4 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as SecureStore from "expo-secure-store";
+import { Platform } from "react-native";
 
 const SESSION_KEY = "lastride-enterprise-host-session";
 
@@ -58,15 +60,47 @@ function parseSession(payload: SupabaseSessionResponse): HostSession | null {
   };
 }
 
+async function secureStoreAvailable(): Promise<boolean> {
+  if (Platform.OS === "web") return false;
+  return SecureStore.isAvailableAsync().catch(() => false);
+}
+
+async function deleteStoredSession(): Promise<void> {
+  await Promise.all([
+    AsyncStorage.removeItem(SESSION_KEY).catch(() => undefined),
+    secureStoreAvailable().then((available) =>
+      available
+        ? SecureStore.deleteItemAsync(SESSION_KEY).catch(() => undefined)
+        : undefined,
+    ),
+  ]);
+}
+
 async function readSession(): Promise<HostSession | null> {
   try {
-    const raw = await AsyncStorage.getItem(SESSION_KEY);
+    const secure = await secureStoreAvailable();
+    let raw = secure
+      ? await SecureStore.getItemAsync(SESSION_KEY)
+      : await AsyncStorage.getItem(SESSION_KEY);
+
+    // One-time migration for builds that previously kept organizer tokens in
+    // AsyncStorage.
+    if (secure && !raw) {
+      const legacy = await AsyncStorage.getItem(SESSION_KEY);
+      if (legacy) {
+        await SecureStore.setItemAsync(SESSION_KEY, legacy);
+        await AsyncStorage.removeItem(SESSION_KEY);
+        raw = legacy;
+      }
+    }
+
     if (!raw) return null;
     const value = JSON.parse(raw) as Partial<HostSession>;
     if (
       typeof value.accessToken !== "string" ||
       typeof value.expiresAt !== "number"
     ) {
+      await deleteStoredSession();
       return null;
     }
     return {
@@ -82,7 +116,13 @@ async function readSession(): Promise<HostSession | null> {
 }
 
 async function saveSession(session: HostSession): Promise<void> {
-  await AsyncStorage.setItem(SESSION_KEY, JSON.stringify(session));
+  const serialized = JSON.stringify(session);
+  if (await secureStoreAvailable()) {
+    await SecureStore.setItemAsync(SESSION_KEY, serialized);
+    await AsyncStorage.removeItem(SESSION_KEY).catch(() => undefined);
+    return;
+  }
+  await AsyncStorage.setItem(SESSION_KEY, serialized);
 }
 
 export function enterpriseOtpConfigured(): boolean {
@@ -170,7 +210,7 @@ export async function getEnterpriseAccessToken(): Promise<string | null> {
 
   const refreshed = await refreshSession(session);
   if (!refreshed) {
-    await AsyncStorage.removeItem(SESSION_KEY);
+    await deleteStoredSession();
     return null;
   }
   return refreshed.accessToken;
@@ -206,5 +246,5 @@ export async function signOutEnterpriseHost(): Promise<void> {
       headers: { Authorization: `Bearer ${session.accessToken}` },
     }).catch(() => undefined);
   }
-  await AsyncStorage.removeItem(SESSION_KEY);
+  await deleteStoredSession();
 }

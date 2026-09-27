@@ -1,5 +1,7 @@
 import "@/lib/api";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as SecureStore from "expo-secure-store";
+import { Platform } from "react-native";
 import {
   joinEnterpriseEvent,
   leaveEnterpriseEvent,
@@ -7,6 +9,28 @@ import {
 } from "@workspace/api-client-react";
 
 const PARTICIPATION_KEY = "lastride-enterprise-participation";
+const PARTICIPATION_SECURE_OPTIONS: SecureStore.SecureStoreOptions = {
+  keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK,
+};
+
+async function secureStoreAvailable(): Promise<boolean> {
+  if (Platform.OS === "web") return false;
+  return SecureStore.isAvailableAsync().catch(() => false);
+}
+
+async function removeParticipation(): Promise<void> {
+  await Promise.all([
+    AsyncStorage.removeItem(PARTICIPATION_KEY).catch(() => undefined),
+    secureStoreAvailable().then((available) =>
+      available
+        ? SecureStore.deleteItemAsync(
+            PARTICIPATION_KEY,
+            PARTICIPATION_SECURE_OPTIONS,
+          ).catch(() => undefined)
+        : undefined,
+    ),
+  ]);
+}
 
 export type EnterpriseParticipation = {
   participantToken: string;
@@ -35,11 +59,35 @@ function isParticipation(value: unknown): value is EnterpriseParticipation {
 
 export async function readEnterpriseParticipation(): Promise<EnterpriseParticipation | null> {
   try {
-    const raw = await AsyncStorage.getItem(PARTICIPATION_KEY);
+    const secure = await secureStoreAvailable();
+    let raw = secure
+      ? await SecureStore.getItemAsync(
+          PARTICIPATION_KEY,
+          PARTICIPATION_SECURE_OPTIONS,
+        )
+      : await AsyncStorage.getItem(PARTICIPATION_KEY);
+
+    // Migrate anonymous event capability tokens from older builds once.
+    if (secure && !raw) {
+      const legacy = await AsyncStorage.getItem(PARTICIPATION_KEY);
+      if (legacy) {
+        await SecureStore.setItemAsync(
+          PARTICIPATION_KEY,
+          legacy,
+          PARTICIPATION_SECURE_OPTIONS,
+        );
+        await AsyncStorage.removeItem(PARTICIPATION_KEY);
+        raw = legacy;
+      }
+    }
+
     const parsed = raw ? JSON.parse(raw) : null;
-    if (!isParticipation(parsed)) return null;
+    if (!isParticipation(parsed)) {
+      if (raw) await removeParticipation();
+      return null;
+    }
     if (Date.parse(parsed.eventExpiresAt) <= Date.now()) {
-      await AsyncStorage.removeItem(PARTICIPATION_KEY);
+      await removeParticipation();
       return null;
     }
     return parsed;
@@ -51,7 +99,17 @@ export async function readEnterpriseParticipation(): Promise<EnterpriseParticipa
 async function writeParticipation(
   participation: EnterpriseParticipation,
 ): Promise<void> {
-  await AsyncStorage.setItem(PARTICIPATION_KEY, JSON.stringify(participation));
+  const serialized = JSON.stringify(participation);
+  if (await secureStoreAvailable()) {
+    await SecureStore.setItemAsync(
+      PARTICIPATION_KEY,
+      serialized,
+      PARTICIPATION_SECURE_OPTIONS,
+    );
+    await AsyncStorage.removeItem(PARTICIPATION_KEY).catch(() => undefined);
+    return;
+  }
+  await AsyncStorage.setItem(PARTICIPATION_KEY, serialized);
 }
 
 export async function joinEnterpriseParticipation(input: {
@@ -99,7 +157,7 @@ async function syncLeaveBy(leaveByMs: number): Promise<void> {
   } catch (error) {
     const status = (error as { status?: number }).status;
     if (status === 401 || status === 410) {
-      await AsyncStorage.removeItem(PARTICIPATION_KEY);
+      await removeParticipation();
     }
     throw error;
   }
@@ -121,10 +179,10 @@ export async function leaveCurrentEnterpriseEvent(): Promise<void> {
       headers: { "X-Participant-Token": current.participantToken },
     });
   } finally {
-    await AsyncStorage.removeItem(PARTICIPATION_KEY);
+    await removeParticipation();
   }
 }
 
 export async function clearEnterpriseParticipation(): Promise<void> {
-  await AsyncStorage.removeItem(PARTICIPATION_KEY);
+  await removeParticipation();
 }
