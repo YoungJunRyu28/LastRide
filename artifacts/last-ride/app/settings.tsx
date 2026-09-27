@@ -150,6 +150,15 @@ export default function SettingsScreen() {
           </Row>
         </Section>
 
+        <Section label={ja ? 'グループ' : 'GROUPS'}>
+          <Row
+            testID="join-group"
+            title={ja ? '飲み会に参加' : 'Join a group'}
+            subtitle={ja ? '幹事のコードで出発時刻を共有' : 'Share your leave time with an organizer'}
+            onPress={() => router.push('/join')}
+          />
+        </Section>
+
         <Section label={ja ? '通知とデータ' : 'NOTIFICATIONS & DATA'}>
           <Row testID="test-notification" title={ja ? 'テスト通知を送る' : 'Send test notification'} subtitle={ja ? '通知の見え方を確認します' : 'Check how reminders look'} onPress={() => void triggerTestNotification()}>
             <Feather name="bell" color={colors.mutedForeground} size={18} />

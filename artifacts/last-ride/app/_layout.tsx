@@ -30,6 +30,7 @@ function RootLayoutNav() {
       <Stack.Screen name="home-station" />
       <Stack.Screen name="alternatives" />
       <Stack.Screen name="settings" />
+      <Stack.Screen name="join" />
       <Stack.Screen name="privacy" />
     </Stack>
   );

@@ -5,6 +5,7 @@ import { searchStations as searchStationsApi } from '@workspace/api-client-react
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, Platform } from 'react-native';
 import { apiBaseUrl } from '@/lib/api';
+import { clearEnterpriseParticipation, leaveCurrentEnterpriseEvent, syncEnterpriseLeaveBy } from '@/lib/enterpriseParticipation';
 import { cancelAllReminders, ensureNotificationPermission, scheduleReminders, sendTestNotification } from '@/lib/notifications';
 import { buildReminderPlans, nightEndsAt, planNight, repick, rideStatus, shouldReplan, trackingEndsAt, trackingHardStopAt, type NightPlan, type RideStatus } from '@/lib/planner';
 import { DEFAULT_SETTINGS, readSettings, STORAGE_KEYS, writeHomeAddress, writePinnedStation, type HomeAddress, type Language } from '@/lib/settings';
@@ -299,6 +300,13 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
   useEffect(() => {
     void writeSavedPlan(plan);
   }, [plan]);
+
+  // Enterprise participation is deliberately privacy-minimal: only the computed
+  // leave-by timestamp is synced. Location, station, destination and route stay local.
+  useEffect(() => {
+    if (!plan) return;
+    void syncEnterpriseLeaveBy(plan.leaveByMs).catch(() => undefined);
+  }, [plan?.leaveByMs]);
 
   const clearPlan = useCallback(() => {
     setPlan(null);
@@ -609,6 +617,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     sessionRef.current += 1;
     await stopTracking();
     await cancelAllReminders();
+    await leaveCurrentEnterpriseEvent().catch(() => clearEnterpriseParticipation());
     await AsyncStorage.multiRemove(Object.values(STORAGE_KEYS));
     await clearSavedPlan();
     setLanguageState(DEFAULT_SETTINGS.language);
