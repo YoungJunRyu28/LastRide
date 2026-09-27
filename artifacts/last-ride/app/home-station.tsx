@@ -2,7 +2,7 @@ import { RailwayMark, PressableIcon } from '@/components/RideUI';
 import { searchAddresses, searchStations, StationOption, useLastRide, type HomeAddress } from '@/context/LastRideContext';
 import { useColors } from '@/hooks/useColors';
 import { Feather } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -10,19 +10,28 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 export default function HomeStationScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { language, homeStationOption, homeAddress, setHomeAddress, saveHomeStation, resetLanguage } = useLastRide();
-  const [query, setQuery] = useState(homeStationOption ? (language === 'ja' ? homeStationOption.nameJa : homeStationOption.name) : '');
+  const params = useLocalSearchParams<{ id?: string; new?: string }>();
+  const { language, homeStationOption, homeAddress, destinations, activeDestinationId, saveDestination, resetLanguage } = useLastRide();
+  const ja = language === 'ja';
+  const isNew = params.new === '1';
+  const requestedId = typeof params.id === 'string' ? params.id : null;
+  const editingId = isNew ? null : requestedId ?? activeDestinationId;
+  const editingDestination = destinations.find((destination) => destination.id === editingId) ?? null;
+  const initialSetup = destinations.length === 0 && !isNew && !requestedId;
+  const initialStation = editingDestination?.station ?? (initialSetup ? homeStationOption : null);
+  const initialAddress = editingDestination?.address ?? (initialSetup ? homeAddress : null);
+  const [label, setLabel] = useState(editingDestination?.label ?? (initialSetup ? (ja ? '自宅' : 'Home') : ''));
+  const [query, setQuery] = useState(initialStation ? (ja ? initialStation.nameJa : initialStation.name) : '');
   const [results, setResults] = useState<StationOption[]>([]);
-  const [selected, setSelected] = useState<StationOption | null>(homeStationOption);
+  const [selected, setSelected] = useState<StationOption | null>(initialStation);
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState(false);
   const searchToken = useRef(0);
-  const [addressQuery, setAddressQuery] = useState(homeAddress?.label ?? '');
+  const [addressQuery, setAddressQuery] = useState(initialAddress?.label ?? '');
   const [addressResults, setAddressResults] = useState<HomeAddress[]>([]);
-  const [selectedAddress, setSelectedAddress] = useState<HomeAddress | null>(homeAddress);
+  const [selectedAddress, setSelectedAddress] = useState<HomeAddress | null>(initialAddress);
   const [isSearchingAddress, setIsSearchingAddress] = useState(false);
   const addressToken = useRef(0);
-  const ja = language === 'ja';
 
   useEffect(() => {
     const trimmed = query.trim();
@@ -84,10 +93,13 @@ export default function HomeStationScreen() {
   };
 
   const continueToRide = () => {
-    if (!selected) return;
-    saveHomeStation(selected);
-    // The address is optional; saving null clears a previously set one.
-    setHomeAddress(selectedAddress);
+    if (!selected || !label.trim()) return;
+    saveDestination({
+      ...(editingId ? { id: editingId } : {}),
+      label: label.trim(),
+      station: selected,
+      address: selectedAddress,
+    });
     router.replace('/ride');
   };
 
@@ -98,9 +110,13 @@ export default function HomeStationScreen() {
           <PressableIcon
             icon="arrow-left"
             onPress={() => {
-              // Clear the language choice first — otherwise the welcome screen redirects right back here.
-              resetLanguage();
-              router.replace('/');
+              if (initialSetup) {
+                // Clear the language choice first — otherwise the welcome screen redirects right back here.
+                resetLanguage();
+                router.replace('/');
+              } else {
+                router.back();
+              }
             }}
             testID="back-to-language"
           />
@@ -108,17 +124,38 @@ export default function HomeStationScreen() {
           <View style={styles.placeholder} />
         </View>
         <View style={styles.heading}>
-          <Text style={[styles.kicker, { color: colors.primary }]}>{ja ? 'まずは帰る場所' : 'ONE-TIME SETUP'}</Text>
-          <Text style={[styles.title, { color: colors.foreground }]}>{ja ? '自宅の最寄り駅を\n教えてください。' : 'Where should we\nget you home to?'}</Text>
-          <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>{ja ? '駅名で検索して、正しい駅を選んでください。' : 'Search by name and pick the exact station.'}</Text>
+          <Text style={[styles.kicker, { color: colors.primary }]}>
+            {initialSetup ? (ja ? 'まずは帰る場所' : 'ONE-TIME SETUP') : isNew ? (ja ? '帰り先を追加' : 'ADD DESTINATION') : (ja ? '帰り先を編集' : 'EDIT DESTINATION')}
+          </Text>
+          <Text style={[styles.title, { color: colors.foreground }]}>
+            {initialSetup ? (ja ? '自宅の最寄り駅を\n教えてください。' : 'Where should we\nget you home to?') : isNew ? (ja ? '帰り先を\n追加します。' : 'Add somewhere\nyou might go.') : (ja ? '帰り先を\n編集します。' : 'Edit this\ndestination.')}
+          </Text>
+          <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>{ja ? '名前と最寄り駅を設定してください。' : 'Give it a name and choose the nearest station.'}</Text>
         </View>
         <View style={styles.form}>
-          <Text style={[styles.label, { color: colors.foreground }]}>{ja ? '自宅の最寄り駅' : 'Home station'}</Text>
+          <Text style={[styles.label, { color: colors.foreground }]}>{ja ? '名前' : 'Name'}</Text>
+          <View style={[styles.inputWrap, { backgroundColor: colors.card, borderColor: label.trim() ? colors.primary : colors.border }]}>
+            <Feather name="bookmark" color={colors.mutedForeground} size={19} />
+            <TextInput
+              testID="destination-label-input"
+              autoFocus={!initialSetup}
+              value={label}
+              onChangeText={setLabel}
+              maxLength={40}
+              placeholder={ja ? '例：自宅、会社、友人宅' : 'e.g. Home, Work, Nick’s place'}
+              placeholderTextColor={colors.mutedForeground}
+              style={[styles.input, { color: colors.foreground }]}
+              returnKeyType="next"
+            />
+          </View>
+        </View>
+        <View style={styles.form}>
+          <Text style={[styles.label, { color: colors.foreground }]}>{ja ? '最寄り駅' : 'Nearest station'}</Text>
           <View style={[styles.inputWrap, { backgroundColor: colors.card, borderColor: selected ? colors.primary : colors.border }]}>
             <Feather name="search" color={colors.mutedForeground} size={19} />
             <TextInput
               testID="home-station-input"
-              autoFocus
+              autoFocus={initialSetup}
               value={query}
               onChangeText={(text) => {
                 setQuery(text);
@@ -158,11 +195,11 @@ export default function HomeStationScreen() {
           {!searchError && !selected && query.trim().length >= 2 && !isSearching && results.length === 0 && (
             <Text style={[styles.helper, { color: colors.mutedForeground }]}>{ja ? '該当する駅が見つかりません。表記を変えてみてください。' : 'No matching stations. Try a different spelling.'}</Text>
           )}
-          {selected && <Text style={[styles.helper, { color: colors.mutedForeground }]}>{ja ? `「${selected.nameJa}」を自宅の最寄り駅として保存します。` : `“${selected.name}” will be saved as your home station.`}</Text>}
+          {selected && <Text style={[styles.helper, { color: colors.mutedForeground }]}>{ja ? `「${selected.nameJa}」を「${label || '帰り先'}」の最寄り駅として保存します。` : `“${selected.name}” will be saved for “${label || 'this destination'}”.`}</Text>}
         </View>
         <View style={styles.form}>
           <View style={styles.labelRow}>
-            <Text style={[styles.label, { color: colors.foreground }]}>{ja ? '自宅の住所' : 'Home address'}</Text>
+            <Text style={[styles.label, { color: colors.foreground }]}>{ja ? '住所' : 'Address'}</Text>
             <Text style={[styles.optional, { color: colors.mutedForeground }]}>{ja ? '任意' : 'optional'}</Text>
           </View>
           <View style={[styles.inputWrap, { backgroundColor: colors.card, borderColor: selectedAddress ? colors.primary : colors.border }]}>
@@ -220,13 +257,15 @@ export default function HomeStationScreen() {
           )}
           <Text style={[styles.helper, { color: colors.mutedForeground }]}>
             {ja
-              ? '住所を入れると、自宅に近いほかの駅も比較し、駅から家までの徒歩時間やタクシー料金も含めて計算します。'
-              : 'With an address, other stations near home are compared too, and the walk home and taxi fare are measured to your door.'}
+              ? '住所を入れると、到着側の駅から目的地までの徒歩時間やタクシー料金も含めて計算します。'
+              : 'With an address, LastRide can include the walk from the arrival station and estimate taxis to the exact destination.'}
           </Text>
         </View>
 
-        <Pressable testID="save-home-station" disabled={!selected} onPress={continueToRide} style={({ pressed }) => [styles.button, { backgroundColor: colors.primary, opacity: !selected ? 0.4 : pressed ? 0.8 : 1 }]}>
-          <Text style={[styles.buttonText, { color: colors.primaryForeground }]}>{ja ? 'LastRideをはじめる' : 'Start using LastRide'}</Text>
+        <Pressable testID="save-home-station" disabled={!selected || !label.trim()} onPress={continueToRide} style={({ pressed }) => [styles.button, { backgroundColor: colors.primary, opacity: !selected || !label.trim() ? 0.4 : pressed ? 0.8 : 1 }]}>
+          <Text style={[styles.buttonText, { color: colors.primaryForeground }]}>
+            {initialSetup ? (ja ? 'LastRideをはじめる' : 'Start using LastRide') : (ja ? '帰り先を保存' : 'Save destination')}
+          </Text>
           <Feather name="arrow-right" color={colors.primaryForeground} size={19} />
         </Pressable>
       </ScrollView>

@@ -8,8 +8,15 @@ import { serviceDate } from '@/lib/time';
 
 export type Language = 'ja' | 'en';
 
-/** Optional: where the user actually lives, so plans can end at their door. */
+/** Optional street-level endpoint, so plans can include the walk from the arrival station. */
 export type HomeAddress = Coordinates & { label: string };
+
+export type SavedDestination = {
+  id: string;
+  label: string;
+  station: StationOption;
+  address: HomeAddress | null;
+};
 
 export const STORAGE_KEYS = {
   language: 'lastride-language',
@@ -19,6 +26,8 @@ export const STORAGE_KEYS = {
   pinnedStation: 'lastride-pinned-station',
   missedCheckIn: 'lastride-missed-check-in',
   homeAddress: 'lastride-home-address',
+  destinations: 'lastride-destinations',
+  activeDestinationId: 'lastride-active-destination-id',
 } as const;
 
 export const REMINDER_CHOICES = [30, 15, 10, 5];
@@ -33,8 +42,11 @@ export type Settings = {
   pinnedStation: StationOption | null;
   /** Send the "missed the last train?" check-in after the last train has gone. */
   missedCheckIn: boolean;
-  /** Optional home address; when set, plans account for the walk from the arrival station. */
+  /** Optional active destination address; plans account for the walk from its arrival station. */
   homeAddress: HomeAddress | null;
+  /** All saved destinations stay on-device. */
+  destinations: SavedDestination[];
+  activeDestinationId: string | null;
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -45,6 +57,8 @@ export const DEFAULT_SETTINGS: Settings = {
   pinnedStation: null,
   missedCheckIn: true,
   homeAddress: null,
+  destinations: [],
+  activeDestinationId: null,
 };
 
 function parseHomeStation(raw: string | null): StationOption | null {
@@ -71,6 +85,35 @@ function parseHomeAddress(raw: string | null): HomeAddress | null {
 export async function writeHomeAddress(address: HomeAddress | null): Promise<void> {
   if (address) await AsyncStorage.setItem(STORAGE_KEYS.homeAddress, JSON.stringify(address));
   else await AsyncStorage.removeItem(STORAGE_KEYS.homeAddress);
+}
+
+function parseDestinations(raw: string | null): SavedDestination[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((item): item is SavedDestination => {
+      if (!item || typeof item !== 'object') return false;
+      const value = item as Partial<SavedDestination>;
+      return typeof value.id === 'string' && typeof value.label === 'string' && !!value.station && typeof value.station.name === 'string';
+    });
+  } catch {
+    return [];
+  }
+}
+
+export async function writeDestinationState(destinations: SavedDestination[], activeDestinationId: string | null): Promise<void> {
+  const active = destinations.find((destination) => destination.id === activeDestinationId) ?? destinations[0] ?? null;
+  if (destinations.length > 0) await AsyncStorage.setItem(STORAGE_KEYS.destinations, JSON.stringify(destinations));
+  else await AsyncStorage.removeItem(STORAGE_KEYS.destinations);
+  if (active) {
+    await AsyncStorage.setItem(STORAGE_KEYS.activeDestinationId, active.id);
+    // Keep the legacy active keys synchronized so older background tasks/builds degrade safely.
+    await AsyncStorage.setItem(STORAGE_KEYS.homeStation, JSON.stringify(active.station));
+    await writeHomeAddress(active.address);
+  } else {
+    await AsyncStorage.multiRemove([STORAGE_KEYS.activeDestinationId, STORAGE_KEYS.homeStation, STORAGE_KEYS.homeAddress]);
+  }
 }
 
 function parseReminders(raw: string | null): number[] {
@@ -100,7 +143,7 @@ export async function writePinnedStation(station: StationOption | null): Promise
 }
 
 export async function readSettings(): Promise<Settings> {
-  const [language, homeStation, walkingSpeed, reminders, pinnedStation, missedCheckIn, homeAddress] = await Promise.all([
+  const [language, homeStation, walkingSpeed, reminders, pinnedStation, missedCheckIn, homeAddress, destinationsRaw, activeDestinationIdRaw] = await Promise.all([
     AsyncStorage.getItem(STORAGE_KEYS.language),
     AsyncStorage.getItem(STORAGE_KEYS.homeStation),
     AsyncStorage.getItem(STORAGE_KEYS.walkingSpeed),
@@ -108,16 +151,45 @@ export async function readSettings(): Promise<Settings> {
     AsyncStorage.getItem(STORAGE_KEYS.pinnedStation),
     AsyncStorage.getItem(STORAGE_KEYS.missedCheckIn),
     AsyncStorage.getItem(STORAGE_KEYS.homeAddress),
+    AsyncStorage.getItem(STORAGE_KEYS.destinations),
+    AsyncStorage.getItem(STORAGE_KEYS.activeDestinationId),
   ]);
+
+  const legacyStation = parseHomeStation(homeStation);
+  const legacyAddress = parseHomeAddress(homeAddress);
+  let destinations = parseDestinations(destinationsRaw);
+  let activeDestinationId = activeDestinationIdRaw;
+
+  // One-time migration: the old single "home" becomes the first local destination.
+  if (destinations.length === 0 && legacyStation) {
+    const home: SavedDestination = {
+      id: 'home',
+      label: language === 'ja' ? '自宅' : 'Home',
+      station: legacyStation,
+      address: legacyAddress,
+    };
+    destinations = [home];
+    activeDestinationId = home.id;
+    await writeDestinationState(destinations, activeDestinationId);
+  }
+
+  const activeDestination = destinations.find((destination) => destination.id === activeDestinationId) ?? destinations[0] ?? null;
+  if (activeDestination && activeDestination.id !== activeDestinationId) {
+    activeDestinationId = activeDestination.id;
+    await AsyncStorage.setItem(STORAGE_KEYS.activeDestinationId, activeDestinationId);
+  }
+
   return {
     language: language === 'ja' || language === 'en' ? language : null,
-    homeStation: parseHomeStation(homeStation),
+    homeStation: activeDestination?.station ?? legacyStation,
     walkingSpeed: walkingSpeed === 'relaxed' || walkingSpeed === 'fast' ? walkingSpeed : 'normal',
     reminderIntervals: parseReminders(reminders),
     pinnedStation: parsePinnedStation(pinnedStation),
     // Absent means never changed, and the check-in is on by default.
     missedCheckIn: missedCheckIn !== 'false',
-    homeAddress: parseHomeAddress(homeAddress),
+    homeAddress: activeDestination?.address ?? legacyAddress,
+    destinations,
+    activeDestinationId,
   };
 }
 

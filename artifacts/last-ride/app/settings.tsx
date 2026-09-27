@@ -67,7 +67,7 @@ export default function SettingsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const {
-    language, homeStation, walkingSpeed, setWalkingSpeed, setLanguage,
+    language, homeStation, destination, walkingSpeed, setWalkingSpeed, setLanguage,
     reminderIntervals, toggleReminderInterval, notificationsAllowed,
     missedCheckIn, setMissedCheckIn,
     demoActive, setDemoNow, nowMs, plan, currentTime, leaveBy, triggerTestNotification, resetAll,
@@ -82,8 +82,13 @@ export default function SettingsScreen() {
         </View>
         <Text style={[styles.title, { color: colors.foreground }]}>{ja ? '設定' : 'Settings'}</Text>
 
-        <Section label={ja ? '帰宅先' : 'HOME'}>
-          <Row testID="edit-home-station" title={homeStation || (ja ? '未設定' : 'Not set')} subtitle={ja ? '自宅の最寄り駅' : 'Home station'} onPress={() => router.push('/home-station')} />
+        <Section label={ja ? '帰り先' : 'DESTINATION'}>
+          <Row
+            testID="edit-home-station"
+            title={destination || (ja ? '未設定' : 'Not set')}
+            subtitle={homeStation ? (ja ? `最寄り駅：${homeStation}` : `Nearest station: ${homeStation}`) : (ja ? '帰り先を設定' : 'Choose where you are heading')}
+            onPress={() => router.push('/destinations')}
+          />
         </Section>
 
         <Section
@@ -176,7 +181,7 @@ export default function SettingsScreen() {
           <Row
             testID="reset-all"
             title={ja ? '最初からやり直す' : 'Reset & start over'}
-            subtitle={ja ? '言語・自宅駅・設定を消去します' : 'Clears your language, home station and settings'}
+            subtitle={ja ? '言語・帰り先・設定を消去します' : 'Clears your language, destinations and settings'}
             onPress={() => void resetAll().then(() => router.replace('/'))}
             destructive
           >

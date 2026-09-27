@@ -5,9 +5,10 @@
 **LastRide (帰り時) tells people out at night in Japan when they need to start
 walking to catch the last train home — and what to do if they miss it.**
 
-Set your home station once. From then on the app finds the stations near you,
-works out the walking time to each, looks up tonight's last train home from
-each one, and shows a single leave-by time: the last train's departure minus
+Save one or more destinations — Home, Work, a friend's place, or anywhere else
+— and choose where you're heading tonight. The app finds the stations near you,
+works out the walking time to each, looks up tonight's last train to the active
+destination, and shows a single leave-by time: the last train's departure minus
 the walk minus a few minutes to get from the entrance to the platform. As you
 move during the evening the plan follows you, and reminders are rescheduled.
 

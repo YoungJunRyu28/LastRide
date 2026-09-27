@@ -45,7 +45,7 @@ function Stop({ time, label, color, labelColor, align = 'flex-start' }: { time: 
 export default function RideScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { language, plan, setPinnedStation, homeAddress, homeStationOption, homeStation, stationName, stationNameJa, destination, leaveBy, lastTrain, lastTrainSource, minutesUntilLeave, status, walkingMinutes, walkingDistanceMeters, isLocationReady, isLocating, locationError, requestLocation, currentTime, demoActive, trackingMode, startTracking, stopTracking } = useLastRide();
+  const { language, plan, setPinnedStation, homeStationOption, homeStation, stationName, stationNameJa, destination, leaveBy, lastTrain, lastTrainSource, minutesUntilLeave, status, walkingMinutes, walkingDistanceMeters, isLocationReady, isLocating, locationError, requestLocation, currentTime, demoActive, trackingMode, startTracking, stopTracking } = useLastRide();
   const ja = language === 'ja';
   const text = copy(language ?? 'en');
   const station = ja ? stationNameJa : stationName;
@@ -90,11 +90,11 @@ export default function RideScreen() {
               ? ja ? '現在地から最寄り駅を検索中…' : 'Finding your closest station…'
               : [
                   walkingMinutes ? (ja ? `${text.walk}${walkingMinutes}分` : `${walkingMinutes} min ${text.walk}`) : null,
-                  // Name the arrival station when it isn't the saved home station.
+                  // Name the arrival station when the exact destination is reached via another station.
                   plan && homeStationOption && !sameStation(plan.destination, homeStationOption) && destination
                     ? ja
-                      ? `${plan.destination.nameJa} 経由で${homeAddress ? '自宅' : destination}へ`
-                      : `to ${homeAddress ? 'home' : destination} via ${plan.destination.name}`
+                      ? `${plan.destination.nameJa} 経由で${destination}へ`
+                      : `to ${destination} via ${plan.destination.name}`
                     : destination ? (ja ? `${destination}へ` : `to ${destination}`) : null,
                 ].filter(Boolean).join(' · ')}
           </Text>
@@ -151,7 +151,7 @@ export default function RideScreen() {
               time={plan?.arriveHomeMs ? formatJstTime(plan.arriveHomeMs) : plan?.lastTrain.arrivesAt ? formatJstTime(plan.lastTrain.arrivesAt) : '--:--'}
               label={
                 plan?.arriveHomeMs
-                  ? ja ? `自宅着（徒歩${plan.walkHomeMinutes ?? 0}分）` : `home (${plan.walkHomeMinutes ?? 0} min walk)`
+                  ? ja ? `${destination}着（徒歩${plan.walkHomeMinutes ?? 0}分）` : `${destination} (${plan.walkHomeMinutes ?? 0} min walk)`
                   : ja ? `${destination}着` : `${destination} arr.`
               }
               color={colors.card}
@@ -236,7 +236,7 @@ export default function RideScreen() {
 
         {/* Where you're heading, and how far you have to walk */}
         <View style={[styles.factsCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <Pressable style={styles.fact} onPress={() => router.push('/home-station')} testID="edit-destination" accessibilityRole="button">
+          <Pressable style={styles.fact} onPress={() => router.push('/destinations')} testID="edit-destination" accessibilityRole="button">
             <Text style={[styles.factLabel, { color: colors.mutedForeground }]}>{ja ? '行き先' : 'Destination'}</Text>
             <View style={styles.factValueRow}>
               <Text style={[styles.factValue, { color: colors.foreground }]} numberOfLines={1}>{destination || '—'}</Text>

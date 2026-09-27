@@ -28,6 +28,7 @@ function RootLayoutNav() {
       <Stack.Screen name="index" />
       <Stack.Screen name="ride" />
       <Stack.Screen name="home-station" />
+      <Stack.Screen name="destinations" />
       <Stack.Screen name="alternatives" />
       <Stack.Screen name="settings" />
       <Stack.Screen name="join" />

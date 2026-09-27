@@ -13,7 +13,7 @@ temporary event participation. This policy explains what data each mode uses.
 | What                                               | Why                                                     | Where it goes                                                       |
 | -------------------------------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------- |
 | **Your location** (GPS coordinates)                | Find nearby stations and calculate walking time         | Our API server and transit/routing providers                        |
-| **Your home station** (and home address, if added) | Last-train, walking and taxi calculations               | Stored on your phone; coordinates are sent when needed for a lookup |
+| **Your saved destinations** (nearest stations and optional addresses) | Last-train, walking and taxi calculations | Stored on your phone; coordinates are sent when needed for a lookup |
 | **Your settings**                                  | Language, walking pace, reminders and other preferences | Stored on your phone                                                |
 
 Personal mode does not require your name, email address, phone number, contacts,
@@ -69,8 +69,8 @@ lookup, not the Business participant display name.
 
 ## How long data is kept
 
-- **Personal data on your phone:** settings, home station and the latest plan stay
-  until you use **Reset & start over** or uninstall the app.
+- **Personal data on your phone:** settings, saved destinations and the latest
+  plan stay until you use **Reset & start over** or uninstall the app.
 - **Transit-query cache:** server responses may be cached for up to 24 hours,
   keyed by an approximate location (roughly a 100-metre grid), not by a user.
 - **Business participants:** your display name, leave-by time and event

@@ -217,7 +217,7 @@ export default function AlternativesScreen() {
   }, [userCoordinates, homeStationOption, homeHasCoordinates, taxiTarget?.latitude, taxiTarget?.longitude, walkingSpeed, retryCount]);
 
   const station = ja ? stationNameJa : stationName;
-  const homeLabel = destination || (ja ? '自宅の駅' : 'your home station');
+  const homeLabel = destination || (ja ? '帰り先' : 'your destination');
   const trainFare = firstTrainRoute?.fareYen ?? null;
   const homeByTrain = firstTrainRoute?.arrivesAt ?? null;
   const homeByTaxi = taxi ? nowMs + taxi.durationMinutes * MINUTE_MS : null;
@@ -258,7 +258,7 @@ export default function AlternativesScreen() {
       ? [{
           key: 'walk' as const,
           icon: 'navigation' as const,
-          label: ja ? '歩いて帰る' : 'Walk home',
+          label: ja ? '歩いて向かう' : 'Walk there',
           detail: ja ? `徒歩${walkHome.walkingMinutes}分 · ${(walkHome.distanceMeters / 1000).toFixed(1)} km` : `${walkHome.walkingMinutes} min · ${(walkHome.distanceMeters / 1000).toFixed(1)} km`,
           homeBy: homeByWalk,
           cost: 0,
@@ -292,7 +292,7 @@ export default function AlternativesScreen() {
           <Text style={[styles.kicker, { color: status === 'departed' ? colors.destructive : colors.primary }]}>
             {status === 'departed' ? (ja ? '終電が発車しました' : 'THE LAST TRAIN HAS LEFT') : ja ? '乗れなかったときは' : 'IF YOU MISS IT'}
           </Text>
-          <Text style={[styles.title, { color: colors.foreground }]}>{ja ? `${homeLabel}へ帰る方法` : `Ways home to ${homeLabel}`}</Text>
+          <Text style={[styles.title, { color: colors.foreground }]}>{ja ? `${homeLabel}へ行く方法` : `Ways to ${homeLabel}`}</Text>
         </View>
 
         {/* Pick an option; only its details are shown below */}
@@ -317,7 +317,7 @@ export default function AlternativesScreen() {
                 <View style={styles.optionCopy}>
                   <Text style={[styles.optionLabel, { color: isSelected ? colors.card : colors.foreground }]}>{option.label}</Text>
                   <Text style={[styles.optionDetail, { color: isSelected ? colors.muted : colors.mutedForeground }]}>
-                    {option.homeBy ? (ja ? `${formatJstTime(option.homeBy)}に到着 · ` : `home ~${formatJstTime(option.homeBy)} · `) : ''}
+                    {option.homeBy ? (ja ? `${formatJstTime(option.homeBy)}に到着 · ` : `arrives ~${formatJstTime(option.homeBy)} · `) : ''}
                     {option.detail}
                   </Text>
                 </View>
@@ -459,9 +459,9 @@ export default function AlternativesScreen() {
                       ? [
                           ja ? `約${taxi.durationMinutes}分 · ${taxi.distanceKm.toFixed(1)} km` : `~${taxi.durationMinutes} min · ${taxi.distanceKm.toFixed(1)} km`,
                           taxi.lateNight ? (ja ? '深夜料金込み' : 'incl. late-night rate') : null,
-                          homeByTaxi ? (ja ? `${formatJstTime(homeByTaxi)}着` : `home ~${formatJstTime(homeByTaxi)}`) : null,
+                          homeByTaxi ? (ja ? `${formatJstTime(homeByTaxi)}着` : `arrives ~${formatJstTime(homeByTaxi)}`) : null,
                         ].filter(Boolean).join(' · ')
-                      : ja ? '現在地と自宅駅が必要です。' : 'Needs your location and home station.'}
+                      : ja ? '現在地と帰り先が必要です。' : 'Needs your location and destination.'}
                 </Text>
               </View>
             </View>
@@ -492,7 +492,7 @@ export default function AlternativesScreen() {
                 <Text style={[styles.panelTitle, { color: colors.foreground }]}>{ja ? `${homeLabel} まで歩く` : `Walk to ${homeLabel}`}</Text>
                 <Text style={[styles.note, { color: colors.mutedForeground }]}>
                   {`${(walkHome.distanceMeters / 1000).toFixed(1)} km`}
-                  {homeByWalk ? (ja ? ` · ${formatJstTime(homeByWalk)}着` : ` · home ~${formatJstTime(homeByWalk)}`) : ''}
+                  {homeByWalk ? (ja ? ` · ${formatJstTime(homeByWalk)}着` : ` · arrives ~${formatJstTime(homeByWalk)}`) : ''}
                 </Text>
               </View>
             </View>
