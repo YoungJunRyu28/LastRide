@@ -1,9 +1,11 @@
 import {
+  index,
   pgEnum,
   pgTable,
   timestamp,
   uniqueIndex,
   uuid,
+  varchar,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { eventParticipantsTable } from "./eventParticipants";
@@ -29,12 +31,19 @@ export const notificationDeliveriesTable = pgTable(
       .defaultNow()
       .notNull(),
     sentAt: timestamp("sent_at", { withTimezone: true }),
+    expoTicketId: varchar("expo_ticket_id", { length: 128 }),
+    receiptCheckedAt: timestamp("receipt_checked_at", { withTimezone: true }),
+    receiptError: varchar("receipt_error", { length: 64 }),
   },
   (table) => [
     uniqueIndex("notification_deliveries_once_idx").on(
       table.participantId,
       table.hostDeviceId,
       table.kind,
+    ),
+    index("notification_deliveries_receipt_pending_idx").on(
+      table.receiptCheckedAt,
+      table.createdAt,
     ),
   ],
 );

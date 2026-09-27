@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { notificationKindFor } from "../src/lib/enterpriseNotifications";
+import {
+  expoReceiptError,
+  notificationKindFor,
+} from "../src/lib/enterpriseNotifications";
 
 const MINUTE = 60_000;
 const NOW = Date.UTC(2026, 8, 27, 12, 0, 0);
@@ -23,5 +26,27 @@ describe("enterprise departure alert timing", () => {
 
   it("does not alert long after the departure time", () => {
     expect(notificationKindFor(NOW - 11 * MINUTE, 10, NOW)).toBeNull();
+  });
+});
+
+describe("Expo receipt handling", () => {
+  it("treats successful receipts as delivered", () => {
+    expect(expoReceiptError({ status: "ok" })).toBeNull();
+  });
+
+  it("extracts permanent device-registration errors", () => {
+    expect(
+      expoReceiptError({
+        status: "error",
+        message: "The device is not registered",
+        details: { error: "DeviceNotRegistered" },
+      }),
+    ).toBe("DeviceNotRegistered");
+  });
+
+  it("falls back to the receipt message for other errors", () => {
+    expect(
+      expoReceiptError({ status: "error", message: "MessageTooBig" }),
+    ).toBe("MessageTooBig");
   });
 });

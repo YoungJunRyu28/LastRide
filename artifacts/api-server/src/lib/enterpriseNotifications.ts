@@ -1,4 +1,4 @@
-import { and, eq, gt, gte, isNotNull, lte } from "drizzle-orm";
+import { and, eq, gt, gte, isNotNull, isNull, lte } from "drizzle-orm";
 import {
   enterpriseEventsTable,
   eventParticipantsTable,
@@ -14,6 +14,23 @@ export type EnterpriseNotificationKind = "leaving_soon" | "leave_now";
 const MINUTE_MS = 60_000;
 const MAX_ALERT_WINDOW_MS = 120 * MINUTE_MS;
 const LEAVE_NOW_GRACE_MS = 10 * MINUTE_MS;
+const RECEIPT_DELAY_MS = 15 * MINUTE_MS;
+const RECEIPT_BATCH_SIZE = 100;
+
+type ExpoPushSendResult =
+  | { accepted: true; ticketId: string }
+  | { accepted: false; error: string | null };
+
+type ExpoPushReceipt = {
+  status?: "ok" | "error";
+  message?: string;
+  details?: { error?: string };
+};
+
+export function expoReceiptError(receipt: ExpoPushReceipt): string | null {
+  if (receipt.status !== "error") return null;
+  return receipt.details?.error || receipt.message || "UnknownPushError";
+}
 
 export function notificationKindFor(
   leaveByMs: number,
@@ -45,7 +62,7 @@ async function sendExpoPush(input: {
   leaveBy: Date;
   kind: EnterpriseNotificationKind;
   eventId: string;
-}): Promise<boolean> {
+}): Promise<ExpoPushSendResult> {
   const time = formatJstTime(input.leaveBy);
   const title =
     input.kind === "leave_now"
@@ -76,15 +93,35 @@ async function sendExpoPush(input: {
       }),
       signal: AbortSignal.timeout(8_000),
     });
-    if (!response.ok) return false;
+    if (!response.ok) {
+      return { accepted: false, error: `HTTP ${response.status}` };
+    }
     const payload = (await response.json()) as {
-      data?: { status?: string } | Array<{ status?: string }>;
+      data?:
+        | {
+            status?: string;
+            id?: string;
+            message?: string;
+            details?: { error?: string };
+          }
+        | Array<{
+            status?: string;
+            id?: string;
+            message?: string;
+            details?: { error?: string };
+          }>;
     };
     const ticket = Array.isArray(payload.data) ? payload.data[0] : payload.data;
-    return ticket?.status === "ok";
+    if (ticket?.status === "ok" && typeof ticket.id === "string") {
+      return { accepted: true, ticketId: ticket.id };
+    }
+    return {
+      accepted: false,
+      error: ticket?.details?.error || ticket?.message || null,
+    };
   } catch (err) {
     logger.warn({ err }, "Enterprise push request failed");
-    return false;
+    return { accepted: false, error: null };
   }
 }
 
@@ -153,7 +190,7 @@ export async function dispatchEnterpriseDepartureAlerts(
       .returning({ id: notificationDeliveriesTable.id });
     if (!reservation) continue;
 
-    const delivered = await sendExpoPush({
+    const delivery = await sendExpoPush({
       token: candidate.expoPushToken,
       displayName: candidate.displayName,
       leaveBy: candidate.leaveBy,
@@ -161,13 +198,22 @@ export async function dispatchEnterpriseDepartureAlerts(
       eventId: candidate.eventId,
     });
 
-    if (delivered) {
+    if (delivery.accepted) {
       await db
         .update(notificationDeliveriesTable)
-        .set({ sentAt: new Date() })
+        .set({
+          sentAt: new Date(),
+          expoTicketId: delivery.ticketId,
+        })
         .where(eq(notificationDeliveriesTable.id, reservation.id));
       sent += 1;
+    } else if (delivery.error === "DeviceNotRegistered") {
+      await db
+        .delete(hostDevicesTable)
+        .where(eq(hostDevicesTable.id, candidate.hostDeviceId));
     } else {
+      // No ticket means the push was not accepted. Remove the reservation so
+      // the next worker pass can retry transient failures.
       await db
         .delete(notificationDeliveriesTable)
         .where(eq(notificationDeliveriesTable.id, reservation.id));
@@ -175,4 +221,77 @@ export async function dispatchEnterpriseDepartureAlerts(
   }
 
   return sent;
+}
+
+export async function reconcileEnterprisePushReceipts(
+  now = new Date(),
+): Promise<{ checked: number; invalidDevices: number }> {
+  const db = getDb();
+  const cutoff = new Date(now.getTime() - RECEIPT_DELAY_MS);
+  const pending = await db
+    .select({
+      deliveryId: notificationDeliveriesTable.id,
+      hostDeviceId: notificationDeliveriesTable.hostDeviceId,
+      expoTicketId: notificationDeliveriesTable.expoTicketId,
+    })
+    .from(notificationDeliveriesTable)
+    .where(
+      and(
+        isNotNull(notificationDeliveriesTable.sentAt),
+        isNotNull(notificationDeliveriesTable.expoTicketId),
+        isNull(notificationDeliveriesTable.receiptCheckedAt),
+        lte(notificationDeliveriesTable.sentAt, cutoff),
+      ),
+    )
+    .limit(RECEIPT_BATCH_SIZE);
+
+  const ids = pending
+    .map(({ expoTicketId }) => expoTicketId)
+    .filter((id): id is string => Boolean(id));
+  if (ids.length === 0) return { checked: 0, invalidDevices: 0 };
+
+  const response = await fetch("https://exp.host/--/api/v2/push/getReceipts", {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ ids }),
+    signal: AbortSignal.timeout(8_000),
+  });
+  if (!response.ok) {
+    throw new Error(`Expo receipt request failed with HTTP ${response.status}`);
+  }
+
+  const payload = (await response.json()) as {
+    data?: Record<string, ExpoPushReceipt>;
+  };
+  let checked = 0;
+  let invalidDevices = 0;
+  for (const row of pending) {
+    if (!row.expoTicketId) continue;
+    const receipt = payload.data?.[row.expoTicketId];
+    if (!receipt) continue;
+
+    const error = expoReceiptError(receipt);
+    if (error === "DeviceNotRegistered") {
+      await db
+        .delete(hostDevicesTable)
+        .where(eq(hostDevicesTable.id, row.hostDeviceId));
+      checked += 1;
+      invalidDevices += 1;
+      continue;
+    }
+
+    await db
+      .update(notificationDeliveriesTable)
+      .set({
+        receiptCheckedAt: now,
+        receiptError: error,
+      })
+      .where(eq(notificationDeliveriesTable.id, row.deliveryId));
+    checked += 1;
+  }
+
+  return { checked, invalidDevices };
 }

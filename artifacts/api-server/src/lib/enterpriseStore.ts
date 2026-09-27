@@ -413,20 +413,19 @@ export async function leaveEnterpriseEventRecord(
   participantToken: string,
 ): Promise<boolean> {
   const db = getDb();
-  const [updated] = await db
-    .update(eventParticipantsTable)
-    .set({ status: "left", updatedAt: new Date() })
+  // Explicitly leaving is a deletion request, not a historical status change.
+  // This immediately removes the participant name, leave time and capability
+  // token. Notification delivery rows disappear through ON DELETE CASCADE.
+  const [deleted] = await db
+    .delete(eventParticipantsTable)
     .where(
-      and(
-        eq(
-          eventParticipantsTable.participantTokenHash,
-          hashCapability(participantToken),
-        ),
-        eq(eventParticipantsTable.status, "active"),
+      eq(
+        eventParticipantsTable.participantTokenHash,
+        hashCapability(participantToken),
       ),
     )
     .returning({ id: eventParticipantsTable.id });
-  return Boolean(updated);
+  return Boolean(deleted);
 }
 
 export async function purgeExpiredEnterpriseData(now = new Date()) {

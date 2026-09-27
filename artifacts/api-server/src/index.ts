@@ -1,6 +1,9 @@
 import app from "./app";
 import { isDatabaseConfigured } from "@workspace/db";
-import { dispatchEnterpriseDepartureAlerts } from "./lib/enterpriseNotifications";
+import {
+  dispatchEnterpriseDepartureAlerts,
+  reconcileEnterprisePushReceipts,
+} from "./lib/enterpriseNotifications";
 import { purgeExpiredEnterpriseData } from "./lib/enterpriseStore";
 import { logger } from "./lib/logger";
 
@@ -36,11 +39,23 @@ if (isDatabaseConfigured()) {
       logger.error({ err }, "Enterprise departure alert worker failed");
     }
   };
+  const checkPushReceipts = async () => {
+    try {
+      const result = await reconcileEnterprisePushReceipts();
+      if (result.checked > 0) {
+        logger.info(result, "Checked enterprise push receipts");
+      }
+    } catch (err) {
+      logger.error({ err }, "Enterprise push receipt worker failed");
+    }
+  };
 
   void cleanup();
   void sendDepartureAlerts();
+  void checkPushReceipts();
   setInterval(cleanup, 5 * 60_000).unref();
   setInterval(sendDepartureAlerts, 60_000).unref();
+  setInterval(checkPushReceipts, 5 * 60_000).unref();
 }
 
 app.listen(port, (err) => {

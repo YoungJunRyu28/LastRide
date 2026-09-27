@@ -1,71 +1,97 @@
 # LastRide Privacy Policy
 
-_Last updated: 23 September 2026_
+_Last updated: 27 September 2026_
 
-LastRide (帰り時) helps you catch the last train home. To do that it needs to
-know where you are and where you are going. This policy explains exactly what
-that means, in plain terms.
+LastRide (帰り時) helps you catch the last train home. Personal LastRide works
+without an account. LastRide for Business adds optional organizer accounts and
+temporary event participation. This policy explains what data each mode uses.
 
-**We do not ask you to create an account, and we do not sell your data or use it
-for advertising.**
+**We do not sell personal data or use it for advertising.**
 
-## What the app collects
+## Personal LastRide
 
-| What | Why | Where it goes |
-| --- | --- | --- |
-| **Your location** (GPS coordinates) | To find the stations near you and how long it takes to walk to them | Sent to our API server, and from there to our transit data providers |
-| **Your home station** (and home address, if you add one) | To look up the last train that takes you home, and to estimate a taxi fare | Stored on your phone; the coordinates are sent with timetable and taxi lookups |
-| **Your settings** — language, walking pace, reminder times | To make the plan match how you actually travel | Stored on your phone only |
+| What                                               | Why                                                     | Where it goes                                                       |
+| -------------------------------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------- |
+| **Your location** (GPS coordinates)                | Find nearby stations and calculate walking time         | Our API server and transit/routing providers                        |
+| **Your home station** (and home address, if added) | Last-train, walking and taxi calculations               | Stored on your phone; coordinates are sent when needed for a lookup |
+| **Your settings**                                  | Language, walking pace, reminders and other preferences | Stored on your phone                                                |
 
-The app does **not** collect your name, email address, phone number, contacts,
-photos or payment details, because it never asks for them.
+Personal mode does not require your name, email address, phone number, contacts,
+photos or a LastRide account.
 
-## When your location is used
+## LastRide for Business
 
-- **While the app is open**, to work out your leave-by time.
-- **While "night-out tracking" is on**, also in the background, so your plan and
-  reminders keep up as you move. Tracking is off unless you switch it on, and it
-  switches itself off automatically once the night's last reminder has been sent
-  (by 04:00 at the latest).
+Business participation is optional and is separate from your personal travel
+profile.
 
-You can revoke location access at any time in your phone's settings. The app
-still works, but it can no longer work out which station you are near.
+**Participants:** when you join an organizer's event, our server stores only
+your chosen display name, the event you joined, your current calculated
+leave-by time, and a random capability token used by your device to update or
+leave that event. The organizer can see your display name and leave-by time.
 
-## Who else sees it
+The Business event record does **not** store your GPS location, home address,
+home station, walking pace, route, destination or personal LastRide settings.
 
-To provide train times and nearby places, coordinates and station names are sent
+**Organizers:** organizer sign-in uses a work email address. Authentication is
+handled by Supabase when configured. We store the organizer's authentication
+user ID, organization membership and registered push-notification device token.
+Organizer push notifications are sent through Expo's Push Service and the
+underlying Apple or Google push service.
+
+## When location is used
+
+- **While the app is open**, to calculate your leave-by time.
+- **While night-out tracking is on**, also in the background, so your plan and
+  reminders stay current as you move.
+
+Tracking is off unless you switch it on. It switches itself off once the
+night's reminders are finished (by 04:00 at the latest). You can revoke
+location access at any time in your phone's settings.
+
+If you joined a Business event, a re-plan sends **only the resulting leave-by
+timestamp** to the Business event. It does not send the underlying location,
+station, route or destination to the organizer.
+
+## Service providers
+
+To provide core LastRide features, information needed for a query may be sent
 to:
 
 - **駅すぱあと API (Val Laboratory Co., Ltd.)** — train timetables, fares and routes.
 - **NAVITIME JAPAN Co., Ltd.** (via RapidAPI) — nearby stations, walking and
-  driving routes, and places such as cafés and hotels.
-- **OpenStreetMap services** — used only as a fallback when the above are
-  unavailable.
+  driving routes, and nearby places.
+- **OpenStreetMap services** — fallback station/geocoding data.
+- **Supabase** — organizer authentication for LastRide for Business, when enabled.
+- **Expo / Apple / Google push services** — organizer departure alerts.
 
-They receive location data needed to answer a query. They do not receive your
-identity, because the app has none to give.
+Transit/routing providers receive the location or station data required for the
+lookup, not the Business participant display name.
 
-## How long it is kept
+## How long data is kept
 
-- **On your phone:** your settings, home station and most recent plan stay until
-  you delete them with **Reset & start over** in Settings, or uninstall the app.
-- **On our server:** answers to queries are cached for up to 24 hours to avoid
-  repeating paid lookups. Cached entries are keyed by an approximate location
-  (rounded to roughly a 100-metre grid), never by a user, and there are no user
-  accounts to link them to. We also keep a count of how many requests were made
-  to each provider, which contains no location data.
-- **Server logs** record which endpoint was called and the response status. They
-  do not record query strings, so they do not contain coordinates or API keys.
+- **Personal data on your phone:** settings, home station and the latest plan stay
+  until you use **Reset & start over** or uninstall the app.
+- **Transit-query cache:** server responses may be cached for up to 24 hours,
+  keyed by an approximate location (roughly a 100-metre grid), not by a user.
+- **Business participants:** your display name, leave-by time and event
+  capability are deleted immediately when you leave the event. Otherwise they
+  are automatically deleted when that event expires. Events created for a
+  night out currently expire at 08:00 Japan time the following morning.
+- **Organizer accounts:** organization membership remains until the Business
+  account is deprovisioned. A registered push token is removed when the device
+  signs out successfully or when it is identified as no longer registered.
+- **Server logs:** record endpoint and response status but omit query strings, so
+  coordinates and API keys are not written to ordinary request logs.
 
 ## Your choices
 
-- **Reset & start over** (Settings) erases your language, home station and
-  settings from the phone.
-- **Uninstalling** the app removes everything stored on the phone.
-- **Turning off location permission** stops all location use.
-
-Because there is no account, there is nothing to identify you by, so we cannot
-look up or delete "your" server-side data — there is none that is tied to you.
+- Use Personal LastRide without creating an account.
+- Leave a Business event at any time to delete that participant record.
+- Use **Reset & start over** to erase LastRide's local settings and leave the
+  current Business event.
+- Turn off location permission to stop location access.
+- Organizer account deletion/deprovisioning requests can be made through the
+  contact below.
 
 ## Children
 
@@ -79,4 +105,5 @@ date at the top.
 
 ## Contact
 
-Questions about this policy: **[add your contact email]**
+Questions, privacy requests or organizer-account deletion requests:
+**[add your contact email before public release]**
