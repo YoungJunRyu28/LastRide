@@ -19,8 +19,12 @@ android/
 .DS_Store
 
 # env / secrets
-.env
-.env*.local
+# .env* on its own (was previously just ".env" and ".env*.local") — that left
+# .env.production, .env.staging, etc. untracked by this pattern and therefore
+# NOT excluded from git, which is exactly the kind of file meant to hold real
+# secrets. If a committed example file is ever needed, name it .env.example
+# and add a matching negation (!.env.example) below.
+.env*
 *.p8
 *.p12
 *.key
