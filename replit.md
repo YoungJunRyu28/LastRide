@@ -4,7 +4,7 @@ LastRide (Japanese subtitle: 帰り時) helps people enjoying a night out in Jap
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
+- `pnpm --filter @workspace/api-server run dev` — run the API server (defaults to port 8080)
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
@@ -18,7 +18,7 @@ LastRide (Japanese subtitle: 帰り時) helps people enjoying a night out in Jap
 - pnpm workspaces, Node.js 24, TypeScript 5.9
 - API: Express 5
 - DB: PostgreSQL + Drizzle ORM
-- Validation: Zod (`zod/v4`), `drizzle-zod`
+- Validation: Zod 3, `drizzle-zod`
 - API codegen: Orval (from OpenAPI spec)
 - Build: esbuild (CJS bundle)
 
@@ -30,7 +30,17 @@ LastRide (Japanese subtitle: 帰り時) helps people enjoying a night out in Jap
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- Personal LastRide stays accountless; Business organizers authenticate, while
+  participants join an event through a narrow anonymous capability token.
+- Enterprise participant records deliberately contain only display name and
+  leave-by time — never GPS coordinates, home, destination or route.
+- Provider keys remain server-side. Mobile clients consume the generated
+  OpenAPI client and fall back safely where supported.
+- PostgreSQL schema changes use committed Drizzle migrations; production
+  deployments apply migrations as a separate release step.
+- Organizer and participant capability/session tokens use native SecureStore
+  (Keychain/Keystore) with a web fallback only where secure native storage does
+  not exist.
 
 ## Product
 

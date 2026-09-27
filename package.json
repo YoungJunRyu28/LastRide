@@ -7,7 +7,8 @@
     "build": "pnpm run typecheck && pnpm -r --if-present run build",
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck",
-    "test": "pnpm -r --if-present run test"
+    "verify:migrations": "pnpm --filter @workspace/db run generate && git diff --exit-code -- lib/db/drizzle",
+    "test": "pnpm run verify:migrations && pnpm -r --if-present run test"
   },
   "private": true,
   "dependencies": {
