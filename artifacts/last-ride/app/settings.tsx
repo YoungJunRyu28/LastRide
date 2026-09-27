@@ -172,6 +172,13 @@ export default function SettingsScreen() {
         </Section>
 
         <Section label={ja ? '通知とデータ' : 'NOTIFICATIONS & DATA'}>
+          <Row
+            testID="open-night-history"
+            title={ja ? '夜の履歴' : 'Night history'}
+            subtitle={ja ? 'この端末に保存された過去のプラン' : 'Past plans stored only on this device'}
+            onPress={() => router.push('/history')}
+          />
+          <View style={[styles.divider, { backgroundColor: colors.border }]} />
           <Row testID="test-notification" title={ja ? 'テスト通知を送る' : 'Send test notification'} subtitle={ja ? '通知の見え方を確認します' : 'Check how reminders look'} onPress={() => void triggerTestNotification()}>
             <Feather name="bell" color={colors.mutedForeground} size={18} />
           </Row>

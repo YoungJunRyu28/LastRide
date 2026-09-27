@@ -69,8 +69,10 @@ lookup, not the Business participant display name.
 
 ## How long data is kept
 
-- **Personal data on your phone:** settings, saved destinations and the latest
-  plan stay until you use **Reset & start over** or uninstall the app.
+- **Personal data on your phone:** settings, saved destinations, the latest
+  plan and local night history stay until you clear them, use **Reset & start
+  over**, or uninstall the app. Night history contains plan times and station /
+  destination labels, not a GPS trail.
 - **Transit-query cache:** server responses may be cached for up to 24 hours,
   keyed by an approximate location (roughly a 100-metre grid), not by a user.
 - **Business participants:** your display name, leave-by time and event

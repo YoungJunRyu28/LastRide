@@ -16,7 +16,7 @@ function copy(ja: boolean) {
         sections: [
           {
             heading: "通常のLastRide",
-            body: "現在地、保存した帰り先の最寄り駅（設定した場合は住所も）、言語・歩くペース・リマインダーなどを使って移動プランを計算します。帰り先と個人設定は端末内に保存されます。",
+            body: "現在地、保存した帰り先の最寄り駅（設定した場合は住所も）、言語・歩くペース・リマインダーなどを使って移動プランを計算します。帰り先と個人設定、夜ごとのプラン時刻の履歴は端末内に保存されます。履歴はGPSの移動軌跡ではありません。",
           },
           {
             heading: "飲み会に参加するとき",
@@ -44,7 +44,7 @@ function copy(ja: boolean) {
         sections: [
           {
             heading: "Personal LastRide",
-            body: "Your location, saved destinations and their nearest stations (plus an address if you add one), language, walking pace and reminder settings are used to calculate your trip. Destinations and personal settings stay on your device.",
+            body: "Your location, saved destinations and their nearest stations (plus an address if you add one), language, walking pace and reminder settings are used to calculate your trip. Destinations, personal settings and a per-night summary of plan times stay on your device. History is not a GPS trail.",
           },
           {
             heading: "When you join a group",

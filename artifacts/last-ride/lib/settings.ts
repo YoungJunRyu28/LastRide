@@ -28,6 +28,7 @@ export const STORAGE_KEYS = {
   homeAddress: 'lastride-home-address',
   destinations: 'lastride-destinations',
   activeDestinationId: 'lastride-active-destination-id',
+  nightHistory: 'lastride-night-history',
 } as const;
 
 export const REMINDER_CHOICES = [30, 15, 10, 5];

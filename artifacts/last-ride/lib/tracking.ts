@@ -14,6 +14,7 @@ import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import { Platform } from 'react-native';
 import { syncEnterpriseLeaveBy } from '@/lib/enterpriseParticipation';
+import { recordNightPlan } from '@/lib/nightHistory';
 import { scheduleReminders } from '@/lib/notifications';
 import { buildReminderPlans, planNight, shouldReplan, trackingEndsAt, trackingHardStopAt, type NightPlan } from '@/lib/planner';
 import { hasCoordinates, readSettings } from '@/lib/settings';
@@ -57,6 +58,16 @@ async function recomputeFromLocation(coordinates: Coordinates): Promise<void> {
   const plan = await planNight(coordinates, settings.homeStation, settings.walkingSpeed, now, { pinned: settings.pinnedStation, homeAddress: settings.homeAddress });
   if (!(await isTrackingFlagOn())) return; // stopped while we were computing
   await AsyncStorage.setItem(SNAPSHOT_KEY, JSON.stringify(plan));
+  const activeDestination =
+    settings.destinations.find(
+      (destination) => destination.id === settings.activeDestinationId,
+    ) ?? settings.destinations[0];
+  if (activeDestination) {
+    await recordNightPlan(plan, {
+      id: activeDestination.id,
+      label: activeDestination.label,
+    }).catch(() => undefined);
+  }
   const language = settings.language ?? 'en';
   await scheduleReminders(buildReminderPlans(plan, settings.reminderIntervals, now, { missedCheckIn: settings.missedCheckIn }), {
     leaveBy: formatJstTime(plan.leaveByMs),

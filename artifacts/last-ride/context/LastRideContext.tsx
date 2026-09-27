@@ -7,6 +7,7 @@ import { AppState, Platform } from 'react-native';
 import { apiBaseUrl } from '@/lib/api';
 import { clearEnterpriseParticipation, leaveCurrentEnterpriseEvent, syncEnterpriseLeaveBy } from '@/lib/enterpriseParticipation';
 import { cancelAllReminders, ensureNotificationPermission, scheduleReminders, sendTestNotification } from '@/lib/notifications';
+import { recordNightPlan } from '@/lib/nightHistory';
 import { buildReminderPlans, nightEndsAt, planNight, repick, rideStatus, shouldReplan, trackingEndsAt, trackingHardStopAt, type NightPlan, type RideStatus } from '@/lib/planner';
 import { DEFAULT_SETTINGS, readSettings, STORAGE_KEYS, writeDestinationState, writeHomeAddress, writePinnedStation, type HomeAddress, type Language, type SavedDestination } from '@/lib/settings';
 import { clearSavedPlan, readSavedPlan, writeSavedPlan } from '@/lib/savedPlan';
@@ -313,6 +314,17 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
   useEffect(() => {
     void writeSavedPlan(plan);
   }, [plan]);
+
+  useEffect(() => {
+    if (!plan) return;
+    const active =
+      destinations.find((destination) => destination.id === activeDestinationId) ??
+      destinations[0];
+    if (!active) return;
+    void recordNightPlan(plan, { id: active.id, label: active.label }).catch(
+      () => undefined,
+    );
+  }, [plan?.computedAt, destinations, activeDestinationId]);
 
   // Enterprise participation is deliberately privacy-minimal: only the computed
   // leave-by timestamp is synced. Location, station, destination and route stay local.
