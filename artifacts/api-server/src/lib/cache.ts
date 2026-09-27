@@ -1,73 +1,71 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import path from "node:path";
+/**
+ * `TtlCache<T>` is used by six route modules (stations, trains, walk, places,
+ * taxi, addresses) exactly as before: `new TtlCache(ttlMs, name)`, then
+ * `await cache.get(key)` / `await cache.set(key, value)`. Only the body
+ * changed — from a JSON file on local disk to a shared table in Postgres.
+ *
+ * That is the actual fix, not just a relocation:
+ *   - A file lives on the one machine running it. Lambda, ECS, or any
+ *     redeploy gives you a fresh disk, so the cache — and the point of
+ *     having one — disappears with it.
+ *   - Two instances of the server each had their own file, so a cache hit in
+ *     one process was a cache miss in the other, doubling calls to paid
+ *     upstream providers for no reason. A shared table fixes that too.
+ *
+ * `get`/`set` are async now (they weren't before): every existing call site
+ * already sat inside an `async` function, so this only meant adding `await`,
+ * not restructuring anything.
+ */
+import { and, eq, gt, sql } from "drizzle-orm";
+import { db, kvCacheTable } from "@workspace/db";
 import { logger } from "./logger";
 
-/** Where caches and usage counts are saved, so a server restart doesn't re-spend API calls. */
-export const DATA_DIR = process.env["CACHE_DIR"] ?? path.resolve(process.cwd(), ".cache");
-const SAVE_DELAY_MS = 2000;
-
-/** Reads a JSON file from the data directory, or undefined if it is missing or unreadable. */
-export function readDataFile<T>(name: string): T | undefined {
-  try {
-    return JSON.parse(readFileSync(path.join(DATA_DIR, `${name}.json`), "utf8")) as T;
-  } catch {
-    return undefined;
-  }
-}
-
-const pendingSaves = new Map<string, ReturnType<typeof setTimeout>>();
-
-/** Writes a JSON file to the data directory, batching rapid successive writes. */
-export function writeDataFileSoon(name: string, getData: () => unknown) {
-  if (pendingSaves.has(name)) return;
-  pendingSaves.set(
-    name,
-    setTimeout(() => {
-      pendingSaves.delete(name);
-      try {
-        mkdirSync(DATA_DIR, { recursive: true });
-        writeFileSync(path.join(DATA_DIR, `${name}.json`), JSON.stringify(getData()));
-      } catch (err) {
-        logger.warn({ err, name }, "Could not save cache file");
-      }
-    }, SAVE_DELAY_MS).unref(),
-  );
-}
-
-type Entry<T> = { value: T; expiresAt: number };
-
-/**
- * In-memory cache with a fixed time-to-live. Given a name, it is also saved to
- * disk and reloaded on startup.
- */
 export class TtlCache<T> {
-  private entries = new Map<string, Entry<T>>();
-
   constructor(
     private ttlMs: number,
-    private name?: string,
-  ) {
-    if (!name) return;
-    const saved = readDataFile<Array<[string, Entry<T>]>>(`cache-${name}`) ?? [];
-    const now = Date.now();
-    for (const [key, entry] of saved) {
-      if (entry.expiresAt > now) this.entries.set(key, entry);
+    private name: string,
+  ) {}
+
+  async get(key: string): Promise<T | undefined> {
+    try {
+      const [row] = await db
+        .select({ value: kvCacheTable.value })
+        .from(kvCacheTable)
+        .where(
+          and(
+            eq(kvCacheTable.cacheName, this.name),
+            eq(kvCacheTable.cacheKey, key),
+            gt(kvCacheTable.expiresAt, sql`now()`),
+          ),
+        )
+        .limit(1);
+      return row?.value as T | undefined;
+    } catch (err) {
+      // A cache outage should degrade to "always fetch fresh", not take the
+      // whole route down with it.
+      logger.warn({ err, cache: this.name, key }, "Cache read failed, treating as a miss");
+      return undefined;
     }
   }
 
-  get(key: string): T | undefined {
-    const entry = this.entries.get(key);
-    if (!entry || entry.expiresAt < Date.now()) return undefined;
-    return entry.value;
-  }
-
-  set(key: string, value: T) {
-    this.entries.set(key, { value, expiresAt: Date.now() + this.ttlMs });
-    if (this.name) {
-      writeDataFileSoon(`cache-${this.name}`, () => {
-        const now = Date.now();
-        return [...this.entries].filter(([, entry]) => entry.expiresAt > now);
-      });
+  async set(key: string, value: T): Promise<void> {
+    try {
+      await db
+        .insert(kvCacheTable)
+        .values({
+          cacheName: this.name,
+          cacheKey: key,
+          value: value as unknown,
+          expiresAt: new Date(Date.now() + this.ttlMs),
+        })
+        .onConflictDoUpdate({
+          target: [kvCacheTable.cacheName, kvCacheTable.cacheKey],
+          set: { value: value as unknown, expiresAt: new Date(Date.now() + this.ttlMs) },
+        });
+    } catch (err) {
+      // Worth logging, but a failed cache write should not fail the request
+      // that already has its answer — it just means the next request re-fetches.
+      logger.warn({ err, cache: this.name, key }, "Cache write failed");
     }
   }
 }

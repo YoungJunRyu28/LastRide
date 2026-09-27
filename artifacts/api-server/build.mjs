@@ -15,7 +15,11 @@ async function buildAll() {
   await rm(distDir, { recursive: true, force: true });
 
   await esbuild({
-    entryPoints: [path.resolve(artifactDir, "src/index.ts")],
+    // Two entry points, one output directory: index.ts (app.listen, for a
+    // long-lived host or local dev) and lambda.ts (the same app, wrapped for
+    // API Gateway). esbuild names each output after its entry point, so both
+    // land as dist/index.mjs and dist/lambda.mjs without colliding.
+    entryPoints: [path.resolve(artifactDir, "src/index.ts"), path.resolve(artifactDir, "src/lambda.ts")],
     platform: "node",
     bundle: true,
     format: "esm",

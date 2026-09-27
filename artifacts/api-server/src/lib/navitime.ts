@@ -43,7 +43,8 @@ async function call<T>(host: string, path: string, params: Record<string, string
   if (!key) throw new ProviderError("RAPIDAPI_KEY is not configured");
   const url = new URL(`https://${host}${path}`);
   url.search = new URLSearchParams(params).toString();
-  recordCall(host.split(".")[0] as Provider, path);
+  // See the comment in ekispert.ts: intentionally not awaited.
+  void recordCall(host.split(".")[0] as Provider, path);
   let response: Response;
   try {
     response = await fetch(url, {
@@ -90,7 +91,7 @@ const nearbyCache = new TtlCache<Station[]>(DAY_MS, "navitime-nearby");
 /** Closest stations by actual walking route (NAVITIME accounts for station exits), nearest first. */
 export async function nearbyStations(latitude: number, longitude: number, pace: Pace, limit: number): Promise<Station[]> {
   const cacheKey = `${latitude.toFixed(3)}|${longitude.toFixed(3)}|${pace}|${limit}`;
-  const cached = nearbyCache.get(cacheKey);
+  const cached = await nearbyCache.get(cacheKey);
   if (cached) return cached;
   const body = await call<{ items?: TransportNode[] }>(HOSTS.transport, "/transport_node/around", {
     coord: `${latitude},${longitude}`,
@@ -100,7 +101,7 @@ export async function nearbyStations(latitude: number, longitude: number, pace: 
     limit: String(limit),
   });
   const stations = (body.items ?? []).map(toStation);
-  nearbyCache.set(cacheKey, stations);
+  await nearbyCache.set(cacheKey, stations);
   return stations;
 }
 
@@ -109,7 +110,7 @@ const searchCache = new TtlCache<Station[]>(7 * DAY_MS, "navitime-search");
 /** Stations whose name matches `word` (Japanese or kana). */
 export async function searchStations(word: string): Promise<Station[]> {
   const cacheKey = word.trim();
-  const cached = searchCache.get(cacheKey);
+  const cached = await searchCache.get(cacheKey);
   if (cached) return cached;
   const body = await call<{ items?: TransportNode[] }>(HOSTS.transport, "/transport_node", {
     word: cacheKey,
@@ -117,7 +118,7 @@ export async function searchStations(word: string): Promise<Station[]> {
     limit: "8",
   });
   const stations = (body.items ?? []).map(toStation);
-  searchCache.set(cacheKey, stations);
+  await searchCache.set(cacheKey, stations);
   return stations;
 }
 
@@ -129,7 +130,7 @@ const taxiCache = new TtlCache<TaxiEstimate | null>(DAY_MS, "navitime-taxi");
 export async function taxiEstimate(from: { latitude: number; longitude: number }, to: { latitude: number; longitude: number }, startTime: string): Promise<TaxiEstimate | null> {
   // The fare depends on the hour (late-night surcharge), so the hour is part of the key.
   const cacheKey = `${from.latitude.toFixed(3)}|${from.longitude.toFixed(3)}|${to.latitude.toFixed(3)}|${to.longitude.toFixed(3)}|${startTime.slice(0, 13)}`;
-  const cached = taxiCache.get(cacheKey);
+  const cached = await taxiCache.get(cacheKey);
   if (cached !== undefined) return cached;
   const body = await call<CarRoute>(HOSTS.car, "/route_car", {
     start: `${from.latitude},${from.longitude}`,
@@ -141,7 +142,7 @@ export async function taxiEstimate(from: { latitude: number; longitude: number }
     move?.distance !== undefined && move.time !== undefined
       ? { distanceMeters: move.distance, minutes: move.time, fareYen: move.other_fare?.taxi ?? null }
       : null;
-  taxiCache.set(cacheKey, estimate);
+  await taxiCache.set(cacheKey, estimate);
   return estimate;
 }
 
@@ -193,7 +194,7 @@ export async function nearbyPlaces(latitude: number, longitude: number): Promise
   const gridLat = (Math.round(latitude * 500) / 500).toFixed(3);
   const gridLon = (Math.round(longitude * 500) / 500).toFixed(3);
   const cacheKey = `${gridLat}|${gridLon}`;
-  const cached = placesCache.get(cacheKey);
+  const cached = await placesCache.get(cacheKey);
   if (cached) return cached;
   const body = await call<{ items?: Spot[] }>(HOSTS.spot, "/spot/category_code", {
     category: [...new Set(PLACE_CATEGORIES.map(([prefix]) => prefix.slice(0, 7)))].join("."),
@@ -216,7 +217,7 @@ export async function nearbyPlaces(latitude: number, longitude: number): Promise
       open24h: spot.opening_hours?.open24h,
     });
   }
-  placesCache.set(cacheKey, places);
+  await placesCache.set(cacheKey, places);
   return places;
 }
 
@@ -231,7 +232,7 @@ export async function walkRoute(
   pace: Pace,
 ): Promise<WalkRoute | null> {
   const cacheKey = `${from.latitude.toFixed(3)}|${from.longitude.toFixed(3)}|${to.latitude.toFixed(4)}|${to.longitude.toFixed(4)}|${pace}`;
-  const cached = walkCache.get(cacheKey);
+  const cached = await walkCache.get(cacheKey);
   if (cached !== undefined) return cached;
   const body = await call<WalkRouteResponse>(HOSTS.walk, "/route_walk", {
     start: `${from.latitude},${from.longitude}`,
@@ -240,7 +241,7 @@ export async function walkRoute(
   });
   const move = body.items?.[0]?.summary?.move;
   const route = move?.distance !== undefined && move.time !== undefined ? { distanceMeters: move.distance, minutes: move.time } : null;
-  walkCache.set(cacheKey, route);
+  await walkCache.set(cacheKey, route);
   return route;
 }
 
@@ -251,7 +252,7 @@ const addressCache = new TtlCache<Address[]>(30 * DAY_MS, "navitime-address");
 /** Japanese addresses matching `word`, most relevant first. */
 export async function geocodeAddress(word: string): Promise<Address[]> {
   const cacheKey = word.trim();
-  const cached = addressCache.get(cacheKey);
+  const cached = await addressCache.get(cacheKey);
   if (cached) return cached;
   const body = await call<{ items?: AddressItem[] }>(HOSTS.geocoding, "/address", { word: cacheKey, limit: "8" });
   const addresses = (body.items ?? []).map((item) => ({
@@ -260,6 +261,6 @@ export async function geocodeAddress(word: string): Promise<Address[]> {
     latitude: item.coord.lat,
     longitude: item.coord.lon,
   }));
-  addressCache.set(cacheKey, addresses);
+  await addressCache.set(cacheKey, addresses);
   return addresses;
 }

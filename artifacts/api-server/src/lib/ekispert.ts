@@ -39,7 +39,10 @@ function apiKey(): string {
 async function call(path: string, params: Record<string, string>): Promise<Record<string, unknown>> {
   const url = new URL(`${BASE_URL}${path}`);
   url.search = new URLSearchParams({ key: apiKey(), ...params }).toString();
-  recordCall("ekispert", path);
+  // Not awaited: recording usage should never add a database round-trip to
+  // the critical path of an upstream call, and recordCall handles its own
+  // errors internally, so nothing here goes unhandled.
+  void recordCall("ekispert", path);
   let response: Response;
   try {
     response = await fetch(url, { signal: AbortSignal.timeout(15000) });
@@ -104,7 +107,7 @@ async function resolveStation(station: StationRef): Promise<string> {
   const hasCoordinates = station.latitude !== 0 || station.longitude !== 0;
   if (!hasCoordinates) return station.name;
   const cacheKey = `${station.name}|${station.latitude.toFixed(4)}|${station.longitude.toFixed(4)}`;
-  const cached = stationCodes.get(cacheKey);
+  const cached = await stationCodes.get(cacheKey);
   if (cached) return cached;
 
   const resultSet = await call("/geo/station", {
@@ -116,7 +119,7 @@ async function resolveStation(station: StationRef): Promise<string> {
   // Prefer the same-named station (results are nearest first); otherwise the nearest one.
   const match = points.find((point) => baseName(point.Station.Name) === baseName(station.name)) ?? points[0];
   const resolved = match?.Station.code ?? station.name;
-  stationCodes.set(cacheKey, resolved);
+  await stationCodes.set(cacheKey, resolved);
   return resolved;
 }
 
@@ -187,7 +190,7 @@ const routes = new TtlCache<TrainRoute | null>(ROUTE_TTL_MS, "ekispert-routes-v3
 export async function searchTrain(kind: "last" | "first", from: StationRef, to: StationRef, date: string): Promise<TrainRoute | null> {
   const [fromVia, toVia, condition] = await Promise.all([resolveStation(from), resolveStation(to), trainOnlyCondition()]);
   const cacheKey = `${kind}|${fromVia}|${toVia}|${date}`;
-  const cached = routes.get(cacheKey);
+  const cached = await routes.get(cacheKey);
   if (cached !== undefined) return cached;
 
   const resultSet = await call("/search/course/extreme", {
@@ -203,6 +206,6 @@ export async function searchTrain(kind: "last" | "first", from: StationRef, to: 
   // Last train: the latest departure that still gets home. First train: the earliest departure.
   candidates.sort((first, second) => Date.parse(first.departsAt) - Date.parse(second.departsAt));
   const best = (kind === "last" ? candidates.at(-1) : candidates[0]) ?? null;
-  routes.set(cacheKey, best);
+  await routes.set(cacheKey, best);
   return best;
 }

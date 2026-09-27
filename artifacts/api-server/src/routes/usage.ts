@@ -4,8 +4,8 @@ import { usageReport } from "../lib/usage";
 
 const router: IRouter = Router();
 
-router.get("/usage", (_req, res) => {
-  res.json(GetUsageResponse.parse(usageReport()));
+router.get("/usage", async (_req, res) => {
+  res.json(GetUsageResponse.parse(await usageReport()));
 });
 
 export default router;
