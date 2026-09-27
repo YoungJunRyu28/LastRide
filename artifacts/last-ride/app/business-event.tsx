@@ -10,6 +10,7 @@ import { enterpriseRequestOptions } from "@/lib/enterpriseHostAuth";
 import { Feather } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import QRCode from "react-native-qrcode-svg";
 import {
   ActivityIndicator,
   Pressable,
@@ -268,6 +269,15 @@ export default function BusinessEventScreen() {
 
             {invite ? (
               <>
+                <View style={styles.qrWrap}>
+                  <QRCode
+                    value={joinLink(invite.token)}
+                    size={180}
+                    quietZone={8}
+                    backgroundColor="#FFFFFF"
+                    color="#000000"
+                  />
+                </View>
                 <Text style={[styles.code, { color: colors.foreground }]}>
                   {invite.code}
                 </Text>
@@ -477,6 +487,7 @@ const styles = StyleSheet.create({
   meta: { flex: 1, fontFamily: "Inter_400Regular", fontSize: 13 },
   status: { fontFamily: "Inter_700Bold", fontSize: 10, letterSpacing: 0.6 },
   inviteCard: { borderRadius: 20, borderWidth: 1, padding: 18, gap: 13 },
+  qrWrap: { alignItems: "center", paddingVertical: 4 },
   inviteHeader: { flexDirection: "row", gap: 12, alignItems: "flex-start" },
   inviteCopy: { flex: 1, gap: 4 },
   cardTitle: { fontFamily: "Inter_700Bold", fontSize: 17 },

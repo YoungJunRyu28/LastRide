@@ -5,7 +5,6 @@ import {
   getDb,
   hostDevicesTable,
   notificationDeliveriesTable,
-  organizationMembersTable,
 } from "@workspace/db";
 import { logger } from "./logger";
 
@@ -148,15 +147,11 @@ export async function dispatchEnterpriseDepartureAlerts(
       eq(eventParticipantsTable.eventId, enterpriseEventsTable.id),
     )
     .innerJoin(
-      organizationMembersTable,
-      eq(
-        organizationMembersTable.organizationId,
-        enterpriseEventsTable.organizationId,
-      ),
-    )
-    .innerJoin(
       hostDevicesTable,
-      eq(hostDevicesTable.organizationMemberId, organizationMembersTable.id),
+      eq(
+        hostDevicesTable.organizationMemberId,
+        enterpriseEventsTable.createdByMemberId,
+      ),
     )
     .where(
       and(
