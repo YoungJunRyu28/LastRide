@@ -343,6 +343,33 @@ paths:
         "401": { description: Organizer authentication required }
         "404": { description: Event not found }
         "410": { description: Event is closed or expired }
+  /enterprise/devices:
+    post:
+      operationId: registerEnterpriseHostDevice
+      tags: [enterprise]
+      summary: Register an organizer device for departure alerts
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/HostDeviceRegistration" }
+      responses:
+        "204": { description: Device registered }
+        "401": { description: Organizer authentication required }
+    delete:
+      operationId: unregisterEnterpriseHostDevice
+      tags: [enterprise]
+      summary: Stop departure alerts on an organizer device
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/HostDeviceRegistration" }
+      responses:
+        "204": { description: Device unregistered }
+        "401": { description: Organizer authentication required }
   /events/join:
     post:
       operationId: joinEnterpriseEvent
@@ -628,6 +655,12 @@ components:
             inviteToken: { type: string }
             joinCode: { type: string }
           required: [inviteToken, joinCode]
+    HostDeviceRegistration:
+      type: object
+      properties:
+        expoPushToken: { type: string, minLength: 20, maxLength: 255 }
+        platform: { type: string, enum: [ios, android] }
+      required: [expoPushToken, platform]
     EnterpriseEventInvite:
       type: object
       properties:

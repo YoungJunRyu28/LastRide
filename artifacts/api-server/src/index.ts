@@ -1,5 +1,6 @@
 import app from "./app";
 import { isDatabaseConfigured } from "@workspace/db";
+import { dispatchEnterpriseDepartureAlerts } from "./lib/enterpriseNotifications";
 import { purgeExpiredEnterpriseData } from "./lib/enterpriseStore";
 import { logger } from "./lib/logger";
 
@@ -27,8 +28,19 @@ if (isDatabaseConfigured()) {
       logger.error({ err }, "Enterprise expiry cleanup failed");
     }
   };
+  const sendDepartureAlerts = async () => {
+    try {
+      const sent = await dispatchEnterpriseDepartureAlerts();
+      if (sent > 0) logger.info({ sent }, "Sent enterprise departure alerts");
+    } catch (err) {
+      logger.error({ err }, "Enterprise departure alert worker failed");
+    }
+  };
+
   void cleanup();
+  void sendDepartureAlerts();
   setInterval(cleanup, 5 * 60_000).unref();
+  setInterval(sendDepartureAlerts, 60_000).unref();
 }
 
 app.listen(port, (err) => {

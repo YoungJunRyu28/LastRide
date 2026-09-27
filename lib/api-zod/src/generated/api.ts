@@ -382,6 +382,38 @@ export const CreateEnterpriseEventInviteResponse = zod.object({
 
 
 /**
+ * @summary Register an organizer device for departure alerts
+ */
+export const registerEnterpriseHostDeviceBodyExpoPushTokenMin = 20;
+export const registerEnterpriseHostDeviceBodyExpoPushTokenMax = 255;
+
+
+
+export const RegisterEnterpriseHostDeviceBody = zod.object({
+  "expoPushToken": zod.string().min(registerEnterpriseHostDeviceBodyExpoPushTokenMin).max(registerEnterpriseHostDeviceBodyExpoPushTokenMax),
+  "platform": zod.enum(['ios', 'android'])
+})
+
+export const RegisterEnterpriseHostDeviceResponse = zod.void()
+
+
+/**
+ * @summary Stop departure alerts on an organizer device
+ */
+export const unregisterEnterpriseHostDeviceBodyExpoPushTokenMin = 20;
+export const unregisterEnterpriseHostDeviceBodyExpoPushTokenMax = 255;
+
+
+
+export const UnregisterEnterpriseHostDeviceBody = zod.object({
+  "expoPushToken": zod.string().min(unregisterEnterpriseHostDeviceBodyExpoPushTokenMin).max(unregisterEnterpriseHostDeviceBodyExpoPushTokenMax),
+  "platform": zod.enum(['ios', 'android'])
+})
+
+export const UnregisterEnterpriseHostDeviceResponse = zod.void()
+
+
+/**
  * @summary Join a hosted event without creating a personal account
  */
 export const joinEnterpriseEventBodyInviteTokenMin = 32;

@@ -177,6 +177,23 @@ export type EnterpriseEventCreated = EnterpriseEvent & {
   joinCode: string;
 };
 
+export type HostDeviceRegistrationPlatform = typeof HostDeviceRegistrationPlatform[keyof typeof HostDeviceRegistrationPlatform];
+
+
+export const HostDeviceRegistrationPlatform = {
+  ios: 'ios',
+  android: 'android',
+} as const;
+
+export interface HostDeviceRegistration {
+  /**
+     * @minLength 20
+     * @maxLength 255
+     */
+  expoPushToken: string;
+  platform: HostDeviceRegistrationPlatform;
+}
+
 export interface EnterpriseEventInvite {
   inviteToken: string;
   joinCode: string;

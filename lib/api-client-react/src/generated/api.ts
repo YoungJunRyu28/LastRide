@@ -35,6 +35,7 @@ import type {
   GetTaxiEstimateParams,
   GetWalkRouteParams,
   HealthStatus,
+  HostDeviceRegistration,
   JoinEnterpriseEventRequest,
   Place,
   SearchAddressesParams,
@@ -1275,6 +1276,148 @@ export const useCreateEnterpriseEventInvite = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getCreateEnterpriseEventInviteMutationOptions(options));
+    }
+
+export const getRegisterEnterpriseHostDeviceUrl = () => {
+
+
+
+
+  return `/api/enterprise/devices`
+}
+
+/**
+ * @summary Register an organizer device for departure alerts
+ */
+export const registerEnterpriseHostDevice = async (hostDeviceRegistration: HostDeviceRegistration, options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+
+  return customFetch<void>(getRegisterEnterpriseHostDeviceUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(hostDeviceRegistration)
+  }
+);}
+
+
+
+
+
+export const getRegisterEnterpriseHostDeviceMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof registerEnterpriseHostDevice>>, TError,{data: BodyType<HostDeviceRegistration>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof registerEnterpriseHostDevice>>, TError,{data: BodyType<HostDeviceRegistration>}, TContext> => {
+
+const mutationKey = ['registerEnterpriseHostDevice'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof registerEnterpriseHostDevice>>, {data: BodyType<HostDeviceRegistration>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  registerEnterpriseHostDevice(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RegisterEnterpriseHostDeviceMutationResult = NonNullable<Awaited<ReturnType<typeof registerEnterpriseHostDevice>>>
+    export type RegisterEnterpriseHostDeviceMutationBody = BodyType<HostDeviceRegistration>
+    export type RegisterEnterpriseHostDeviceMutationError = ErrorType<void>
+
+    /**
+ * @summary Register an organizer device for departure alerts
+ */
+export const useRegisterEnterpriseHostDevice = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof registerEnterpriseHostDevice>>, TError,{data: BodyType<HostDeviceRegistration>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof registerEnterpriseHostDevice>>,
+        TError,
+        {data: BodyType<HostDeviceRegistration>},
+        TContext
+      > => {
+      return useMutation(getRegisterEnterpriseHostDeviceMutationOptions(options));
+    }
+
+export const getUnregisterEnterpriseHostDeviceUrl = () => {
+
+
+
+
+  return `/api/enterprise/devices`
+}
+
+/**
+ * @summary Stop departure alerts on an organizer device
+ */
+export const unregisterEnterpriseHostDevice = async (hostDeviceRegistration: HostDeviceRegistration, options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+
+  return customFetch<void>(getUnregisterEnterpriseHostDeviceUrl(),
+  {
+    ...options,
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(hostDeviceRegistration)
+  }
+);}
+
+
+
+
+
+export const getUnregisterEnterpriseHostDeviceMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof unregisterEnterpriseHostDevice>>, TError,{data: BodyType<HostDeviceRegistration>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof unregisterEnterpriseHostDevice>>, TError,{data: BodyType<HostDeviceRegistration>}, TContext> => {
+
+const mutationKey = ['unregisterEnterpriseHostDevice'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof unregisterEnterpriseHostDevice>>, {data: BodyType<HostDeviceRegistration>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  unregisterEnterpriseHostDevice(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UnregisterEnterpriseHostDeviceMutationResult = NonNullable<Awaited<ReturnType<typeof unregisterEnterpriseHostDevice>>>
+    export type UnregisterEnterpriseHostDeviceMutationBody = BodyType<HostDeviceRegistration>
+    export type UnregisterEnterpriseHostDeviceMutationError = ErrorType<void>
+
+    /**
+ * @summary Stop departure alerts on an organizer device
+ */
+export const useUnregisterEnterpriseHostDevice = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof unregisterEnterpriseHostDevice>>, TError,{data: BodyType<HostDeviceRegistration>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof unregisterEnterpriseHostDevice>>,
+        TError,
+        {data: BodyType<HostDeviceRegistration>},
+        TContext
+      > => {
+      return useMutation(getUnregisterEnterpriseHostDeviceMutationOptions(options));
     }
 
 export const getJoinEnterpriseEventUrl = () => {

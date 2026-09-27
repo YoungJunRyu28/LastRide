@@ -9,11 +9,13 @@ import {
   GetEnterpriseEventResponse,
   JoinEnterpriseEventBody,
   JoinEnterpriseEventResponse,
+  RegisterEnterpriseHostDeviceBody,
   LeaveEnterpriseEventHeader,
   ListEnterpriseEventsResponse,
   UpdateEnterpriseEventBody,
   UpdateEnterpriseEventParams,
   UpdateEnterpriseEventResponse,
+  UnregisterEnterpriseHostDeviceBody,
   UpdateEventParticipantBody,
   UpdateEventParticipantHeader,
   UpdateEventParticipantResponse,
@@ -27,6 +29,8 @@ import {
   joinEnterpriseEventRecord,
   leaveEnterpriseEventRecord,
   listEnterpriseEventRecords,
+  registerEnterpriseHostDeviceRecord,
+  unregisterEnterpriseHostDeviceRecord,
   updateEnterpriseEventRecord,
   updateEventParticipantRecord,
 } from "../lib/enterpriseStore";
@@ -162,6 +166,37 @@ router.post("/enterprise/events/:eventId/invite", async (req, res) => {
       expiresAt: result.expiresAt,
     }),
   );
+});
+
+router.post("/enterprise/devices", async (req, res) => {
+  const organizer = await organizerFor(req, res);
+  if (!organizer) return;
+  const parsed = RegisterEnterpriseHostDeviceBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid push device", issues: parsed.error.issues });
+    return;
+  }
+  await registerEnterpriseHostDeviceRecord(
+    organizer.memberId,
+    parsed.data.expoPushToken,
+    parsed.data.platform,
+  );
+  res.status(204).end();
+});
+
+router.delete("/enterprise/devices", async (req, res) => {
+  const organizer = await organizerFor(req, res);
+  if (!organizer) return;
+  const parsed = UnregisterEnterpriseHostDeviceBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid push device", issues: parsed.error.issues });
+    return;
+  }
+  await unregisterEnterpriseHostDeviceRecord(
+    organizer.memberId,
+    parsed.data.expoPushToken,
+  );
+  res.status(204).end();
 });
 
 router.post("/events/join", async (req, res) => {

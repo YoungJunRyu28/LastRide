@@ -30,6 +30,8 @@ export * from './getTaxiEstimateParams';
 export * from './getWalkRoutePace';
 export * from './getWalkRouteParams';
 export * from './healthStatus';
+export * from './hostDeviceRegistration';
+export * from './hostDeviceRegistrationPlatform';
 export * from './joinEnterpriseEventRequest';
 export * from './participantEventSummary';
 export * from './participantTokenParameter';

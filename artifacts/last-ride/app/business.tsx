@@ -16,6 +16,10 @@ import {
 import { useLastRide } from "@/context/LastRideContext";
 import { useColors } from "@/hooks/useColors";
 import { Feather } from "@expo/vector-icons";
+import {
+  registerEnterprisePushDevice,
+  unregisterEnterprisePushDevice,
+} from "@/lib/enterprisePush";
 import { router } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
 import {
@@ -94,7 +98,10 @@ export default function BusinessScreen() {
   useEffect(() => {
     void getEnterpriseAccessToken().then((token) => {
       setSignedIn(Boolean(token));
-      if (token) void refreshEvents();
+      if (token) {
+        void refreshEvents();
+        void registerEnterprisePushDevice();
+      }
     });
   }, [refreshEvents]);
 
@@ -125,6 +132,7 @@ export default function BusinessScreen() {
       setSignedIn(true);
       setOtp("");
       await refreshEvents();
+      void registerEnterprisePushDevice();
     } catch {
       setError(
         ja
@@ -143,6 +151,7 @@ export default function BusinessScreen() {
       await signInEnterpriseDev();
       setSignedIn(true);
       await refreshEvents();
+      void registerEnterprisePushDevice();
     } catch {
       setError("Development organizer sign-in failed.");
     } finally {
@@ -215,6 +224,7 @@ export default function BusinessScreen() {
 
   const signOut = async () => {
     setBusy(true);
+    await unregisterEnterprisePushDevice().catch(() => undefined);
     await signOutEnterpriseHost();
     setEvents([]);
     setSignedIn(false);

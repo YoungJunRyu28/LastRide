@@ -15,6 +15,7 @@ import {
   enterpriseEventsTable,
   eventInvitesTable,
   eventParticipantsTable,
+  hostDevicesTable,
   organizationMembersTable,
   organizationsTable,
 } from "@workspace/db";
@@ -506,4 +507,40 @@ export async function createEnterpriseEventInviteRecord(
       expiresAt: event.expiresAt,
     };
   });
+}
+
+export async function registerEnterpriseHostDeviceRecord(
+  organizationMemberId: string,
+  expoPushToken: string,
+  platform: "ios" | "android",
+): Promise<void> {
+  const db = getDb();
+  const now = new Date();
+  await db
+    .insert(hostDevicesTable)
+    .values({
+      organizationMemberId,
+      expoPushToken,
+      platform,
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: hostDevicesTable.expoPushToken,
+      set: { organizationMemberId, platform, updatedAt: now },
+    });
+}
+
+export async function unregisterEnterpriseHostDeviceRecord(
+  organizationMemberId: string,
+  expoPushToken: string,
+): Promise<void> {
+  const db = getDb();
+  await db
+    .delete(hostDevicesTable)
+    .where(
+      and(
+        eq(hostDevicesTable.organizationMemberId, organizationMemberId),
+        eq(hostDevicesTable.expoPushToken, expoPushToken),
+      ),
+    );
 }
