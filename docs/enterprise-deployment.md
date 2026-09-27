@@ -111,7 +111,6 @@ the reliable native-app path.
 9. Verify a real organizer push notification and its Expo receipt.
 10. Replace the placeholder privacy contact email before public release.
 
-
 ## 7. Generic container deployment
 
 The API has a host-agnostic Docker target:
@@ -131,3 +130,14 @@ DATABASE_URL=... pnpm --filter @workspace/db migrate
 The container exposes `/api/healthz` as its health check. The image itself does
 not run migrations automatically, which avoids multiple replicas racing to
 perform schema changes during a rolling deploy.
+
+## 8. Reverse proxy and rate limiting
+
+Anonymous event join/update endpoints have an in-process first-line rate limit.
+When the API runs behind a trusted hosting/load-balancer proxy, set
+`TRUST_PROXY_HOPS` to the number of trusted hops (commonly `1`). LastRide
+then uses Express's validated `req.ip` resolution for per-client limits rather
+than trusting a raw `X-Forwarded-For` header.
+
+For a multi-replica/high-volume deployment, replace the in-process limiter with
+a shared Redis-backed limiter so limits are coordinated across instances.
