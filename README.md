@@ -51,6 +51,10 @@ pnpm --filter @workspace/db generate  # create migration after a schema change
 pnpm --filter @workspace/db migrate   # apply committed migrations to DATABASE_URL
 ```
 
+The production API can be built on any Docker-capable host with
+`Dockerfile.api`; run migrations as a separate release step before deploying
+a new image.
+
 ## Tests
 
 ```bash

@@ -110,3 +110,24 @@ the reliable native-app path.
 8. Verify event expiry purges remaining participant records.
 9. Verify a real organizer push notification and its Expo receipt.
 10. Replace the placeholder privacy contact email before public release.
+
+
+## 7. Generic container deployment
+
+The API has a host-agnostic Docker target:
+
+```bash
+docker build -f Dockerfile.api -t lastride-api .
+docker run --rm -p 8080:8080 --env-file .env lastride-api
+```
+
+Apply database migrations as a release/pre-deploy step before starting the new
+API image:
+
+```bash
+DATABASE_URL=... pnpm --filter @workspace/db migrate
+```
+
+The container exposes `/api/healthz` as its health check. The image itself does
+not run migrations automatically, which avoids multiple replicas racing to
+perform schema changes during a rolling deploy.
