@@ -21,6 +21,8 @@ import {
   UpdateEventParticipantResponse,
 } from "@workspace/api-zod";
 import { authenticateEnterpriseRequest } from "../lib/enterpriseAuth";
+import { rateLimitMiddleware, requestAddress } from "../lib/rateLimit";
+import { hashCapability } from "../lib/enterpriseTokens";
 import {
   createEnterpriseEventInviteRecord,
   createEnterpriseEventRecord,
@@ -47,6 +49,23 @@ router.use((_req, res, next) => {
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+const joinLimiter = rateLimitMiddleware({
+  limit: 20,
+  windowMs: 60_000,
+  key: (req) => `enterprise-join:${requestAddress(req)}`,
+});
+
+const participantLimiter = rateLimitMiddleware({
+  limit: 120,
+  windowMs: 60_000,
+  key: (req) => {
+    const token = req.header("x-participant-token");
+    return token
+      ? `enterprise-participant:${hashCapability(token)}`
+      : `enterprise-participant-missing:${requestAddress(req)}`;
+  },
+});
 
 async function organizerFor(req: Request, res: Response) {
   const principal = await authenticateEnterpriseRequest(req);
@@ -173,7 +192,9 @@ router.post("/enterprise/devices", async (req, res) => {
   if (!organizer) return;
   const parsed = RegisterEnterpriseHostDeviceBody.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: "Invalid push device", issues: parsed.error.issues });
+    res
+      .status(400)
+      .json({ error: "Invalid push device", issues: parsed.error.issues });
     return;
   }
   await registerEnterpriseHostDeviceRecord(
@@ -189,7 +210,9 @@ router.delete("/enterprise/devices", async (req, res) => {
   if (!organizer) return;
   const parsed = UnregisterEnterpriseHostDeviceBody.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: "Invalid push device", issues: parsed.error.issues });
+    res
+      .status(400)
+      .json({ error: "Invalid push device", issues: parsed.error.issues });
     return;
   }
   await unregisterEnterpriseHostDeviceRecord(
@@ -199,7 +222,7 @@ router.delete("/enterprise/devices", async (req, res) => {
   res.status(204).end();
 });
 
-router.post("/events/join", async (req, res) => {
+router.post("/events/join", joinLimiter, async (req, res) => {
   const parsed = JoinEnterpriseEventBody.safeParse(req.body);
   if (!parsed.success) {
     res
@@ -232,7 +255,7 @@ router.post("/events/join", async (req, res) => {
   );
 });
 
-router.patch("/events/participant", async (req, res) => {
+router.patch("/events/participant", participantLimiter, async (req, res) => {
   const header = UpdateEventParticipantHeader.safeParse(participantHeader(req));
   const body = UpdateEventParticipantBody.safeParse(req.body);
   if (!header.success || !body.success) {
@@ -255,7 +278,7 @@ router.patch("/events/participant", async (req, res) => {
   res.json(UpdateEventParticipantResponse.parse(result.participant));
 });
 
-router.delete("/events/participant", async (req, res) => {
+router.delete("/events/participant", participantLimiter, async (req, res) => {
   const header = LeaveEnterpriseEventHeader.safeParse(participantHeader(req));
   if (!header.success) {
     res.status(401).json({ error: "Invalid participant token" });
