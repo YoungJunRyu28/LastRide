@@ -34,6 +34,7 @@ import type {
   GetNearbyStationsParams,
   GetPartwayTrainTaxiParams,
   GetTaxiEstimateParams,
+  GetTrainDisruptionsParams,
   GetWalkRouteParams,
   HealthStatus,
   HostDeviceRegistration,
@@ -44,6 +45,7 @@ import type {
   SearchStationsParams,
   Station,
   TaxiEstimate,
+  TrainDisruption,
   TrainRoute,
   UpdateEnterpriseEventRequest,
   UpdateEventParticipantRequest,
@@ -399,6 +401,91 @@ export function useGetPartwayTrainTaxi<TData = Awaited<ReturnType<typeof getPart
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetPartwayTrainTaxiQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetTrainDisruptionsUrl = (params: GetTrainDisruptionsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/trains/disruptions?${stringifiedParams}` : `/api/trains/disruptions`
+}
+
+/**
+ * Returns RescueNow disruption information matching the supplied rail line names. Returns an empty list when the optional provider product is unavailable so core planning remains unaffected.
+ * @summary Live disruption information for route lines
+ */
+export const getTrainDisruptions = async (params: GetTrainDisruptionsParams, options?: Parameters<typeof customFetch>[1]): Promise<TrainDisruption[]> => {
+
+  return customFetch<TrainDisruption[]>(getGetTrainDisruptionsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetTrainDisruptionsQueryKey = (params?: GetTrainDisruptionsParams,) => {
+    return [
+    `/api/trains/disruptions`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetTrainDisruptionsQueryOptions = <TData = Awaited<ReturnType<typeof getTrainDisruptions>>, TError = ErrorType<unknown>>(params: GetTrainDisruptionsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTrainDisruptions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetTrainDisruptionsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getTrainDisruptions>>> = ({ signal }) => getTrainDisruptions(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getTrainDisruptions>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetTrainDisruptionsQueryResult = NonNullable<Awaited<ReturnType<typeof getTrainDisruptions>>>
+export type GetTrainDisruptionsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Live disruption information for route lines
+ */
+
+export function useGetTrainDisruptions<TData = Awaited<ReturnType<typeof getTrainDisruptions>>, TError = ErrorType<unknown>>(
+ params: GetTrainDisruptionsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTrainDisruptions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetTrainDisruptionsQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

@@ -125,6 +125,29 @@ paths:
           description: No useful partway rail option remains
         "502":
           description: Timetable or routing provider unavailable
+  /trains/disruptions:
+    get:
+      operationId: getTrainDisruptions
+      tags: [trains]
+      summary: Live disruption information for route lines
+      description: >-
+        Returns RescueNow disruption information matching the supplied rail
+        line names. Returns an empty list when the optional provider product is
+        unavailable so core planning remains unaffected.
+      parameters:
+        - name: lines
+          in: query
+          required: true
+          description: Colon-separated Japanese line names from the current route
+          schema: { type: string, minLength: 1, maxLength: 600 }
+      responses:
+        "200":
+          description: Matching current disruptions
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/TrainDisruption" }
   /stations/nearby:
     get:
       operationId: getNearbyStations
@@ -651,6 +674,16 @@ components:
         totalFareYen:
           type: [number, "null"]
       required: [train, taxiFrom, taxi, totalFareYen]
+    TrainDisruption:
+      type: object
+      properties:
+        line: { type: string }
+        lineCode: { type: [string, "null"] }
+        status: { type: string }
+        title: { type: string }
+        comment: { type: [string, "null"] }
+        updatedAt: { type: [string, "null"], format: date-time }
+      required: [line, lineCode, status, title, comment, updatedAt]
     TrainLeg:
       type: object
       properties:

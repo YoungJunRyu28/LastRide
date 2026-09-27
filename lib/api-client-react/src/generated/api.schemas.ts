@@ -117,6 +117,18 @@ export interface PartwayTrainTaxi {
   totalFareYen: number | null;
 }
 
+export interface TrainDisruption {
+  line: string;
+  /** @nullable */
+  lineCode: string | null;
+  status: string;
+  title: string;
+  /** @nullable */
+  comment: string | null;
+  /** @nullable */
+  updatedAt: string | null;
+}
+
 export interface CreateEnterpriseEventRequest {
   /**
      * @minLength 1
@@ -379,6 +391,15 @@ date: ServiceDateParameter;
  * Earliest epoch millisecond at which the user can board a train
  */
 earliestBoardAtMs: EarliestBoardAtMsParameter;
+};
+
+export type GetTrainDisruptionsParams = {
+/**
+ * Colon-separated Japanese line names from the current route
+ * @minLength 1
+ * @maxLength 600
+ */
+lines: string;
 };
 
 export type GetNearbyStationsParams = {

@@ -140,6 +140,29 @@ export const GetPartwayTrainTaxiResponse = zod.object({
 
 
 /**
+ * Returns RescueNow disruption information matching the supplied rail line names. Returns an empty list when the optional provider product is unavailable so core planning remains unaffected.
+ * @summary Live disruption information for route lines
+ */
+export const getTrainDisruptionsQueryLinesMax = 600;
+
+
+
+export const GetTrainDisruptionsQueryParams = zod.object({
+  "lines": zod.coerce.string().min(1).max(getTrainDisruptionsQueryLinesMax).describe('Colon-separated Japanese line names from the current route')
+})
+
+export const GetTrainDisruptionsResponseItem = zod.object({
+  "line": zod.string(),
+  "lineCode": zod.string().nullable(),
+  "status": zod.string(),
+  "title": zod.string(),
+  "comment": zod.string().nullable(),
+  "updatedAt": zod.coerce.date().nullable()
+})
+export const GetTrainDisruptionsResponse = zod.array(GetTrainDisruptionsResponseItem)
+
+
+/**
  * Closest stations by walking route (accounting for station exits), nearest first.
  * @summary Stations near a point
  */

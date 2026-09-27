@@ -376,3 +376,90 @@ export async function searchDepartureTrain(
   departureRoutes.set(cacheKey, best);
   return best;
 }
+
+export type TrainDisruption = {
+  line: string;
+  lineCode: string | null;
+  status: string;
+  title: string;
+  comment: string | null;
+  updatedAt: string | null;
+};
+
+type EkispertServiceInformation = {
+  status?: string;
+  Line?: { code?: string; Name?: string };
+  Title?: string;
+  Comment?:
+    | { text?: string; status?: string }
+    | Array<{ text?: string; status?: string }>;
+  Datetime?: string;
+};
+
+const disruptionCache = new TtlCache<TrainDisruption[]>(
+  60 * 1000,
+  "ekispert-disruptions-v1",
+);
+
+export function normalizeRailLineName(name: string): string {
+  return name
+    .split("・")[0]
+    .replace(/[\s　]/g, "")
+    .replace(/[（(][^）)]*[）)]/g, "")
+    .replace(/(外回り|内回り)$/u, "")
+    .toLowerCase();
+}
+
+export function disruptionMatchesLine(
+  disruptionLine: string,
+  requestedLine: string,
+): boolean {
+  const disruption = normalizeRailLineName(disruptionLine);
+  const requested = normalizeRailLineName(requestedLine);
+  return (
+    disruption === requested ||
+    disruption.includes(requested) ||
+    requested.includes(disruption)
+  );
+}
+
+export async function trainDisruptionsForLines(
+  lineNames: string[],
+): Promise<TrainDisruption[]> {
+  if (lineNames.length === 0) return [];
+  let all = disruptionCache.get("all");
+  if (all === undefined) {
+    const resultSet = await call(
+      "/operationLine/service/rescuenow/information",
+      {},
+    );
+    all = list(
+      resultSet["Information"] as
+        EkispertServiceInformation | EkispertServiceInformation[] | undefined,
+    )
+      .map((info): TrainDisruption | null => {
+        const line = info.Line?.Name;
+        const status = info.status;
+        const title = info.Title;
+        if (!line || !status || !title) return null;
+        const comments = list(info.Comment);
+        const short =
+          comments.find((comment) => comment.status === "short")?.text ??
+          comments.find((comment) => typeof comment.text === "string")?.text ??
+          null;
+        return {
+          line,
+          lineCode: info.Line?.code ?? null,
+          status,
+          title,
+          comment: short,
+          updatedAt: info.Datetime ?? null,
+        };
+      })
+      .filter((item): item is TrainDisruption => item !== null);
+    disruptionCache.set("all", all);
+  }
+  return all.filter((incident) =>
+    lineNames.some((line) => disruptionMatchesLine(incident.line, line)),
+  );
+}

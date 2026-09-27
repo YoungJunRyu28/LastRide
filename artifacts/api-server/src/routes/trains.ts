@@ -5,9 +5,11 @@ import {
   GetLastTrainResponse,
   GetPartwayTrainTaxiQueryParams,
   GetPartwayTrainTaxiResponse,
+  GetTrainDisruptionsQueryParams,
+  GetTrainDisruptionsResponse,
 } from "@workspace/api-zod";
 import { ProviderError } from "../lib/cache";
-import { searchTrain } from "../lib/ekispert";
+import { searchTrain, trainDisruptionsForLines } from "../lib/ekispert";
 import { findPartwayTrainTaxi } from "../lib/partway";
 
 const router: IRouter = Router();
@@ -37,11 +39,9 @@ function trainHandler(
         query.date,
       );
       if (!route) {
-        res
-          .status(404)
-          .json({
-            error: "No train route between these stations on that date",
-          });
+        res.status(404).json({
+          error: "No train route between these stations on that date",
+        });
         return;
       }
       res.json(GetLastTrainResponse.parse(route));
@@ -102,3 +102,31 @@ router.get("/trains/partway", async (req, res) => {
 });
 
 export default router;
+
+router.get("/trains/disruptions", async (req, res) => {
+  const parsed = GetTrainDisruptionsQueryParams.safeParse(req.query);
+  if (!parsed.success) {
+    res
+      .status(400)
+      .json({ error: "Invalid query", issues: parsed.error.issues });
+    return;
+  }
+  try {
+    const lines = parsed.data.lines
+      .split(":")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .slice(0, 12);
+    const incidents = await trainDisruptionsForLines(lines);
+    res.json(GetTrainDisruptionsResponse.parse(incidents));
+  } catch (err) {
+    if (!(err instanceof ProviderError)) throw err;
+    // Operation information is an optional Ekispert product. A key without
+    // that entitlement must never break the core last-train experience.
+    req.log.info(
+      { err: err.message },
+      "Train disruption information unavailable",
+    );
+    res.json([]);
+  }
+});
