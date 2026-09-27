@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
-import { db, kvCacheTable } from "@workspace/db";
+import { getDb, kvCacheTable } from "@workspace/db";
 import { TtlCache } from "../src/lib/cache";
 
 /**
@@ -16,7 +16,7 @@ import { TtlCache } from "../src/lib/cache";
 const TEST_CACHE = "test-cache";
 
 async function clearTestCache() {
-  await db.delete(kvCacheTable).where(eq(kvCacheTable.cacheName, TEST_CACHE));
+  await getDb().delete(kvCacheTable).where(eq(kvCacheTable.cacheName, TEST_CACHE));
 }
 
 beforeEach(clearTestCache);
@@ -40,7 +40,7 @@ describe("TtlCache", () => {
     await cache.set("key", "second");
     expect(await cache.get("key")).toBe("second");
 
-    const rows = await db.select().from(kvCacheTable).where(eq(kvCacheTable.cacheName, TEST_CACHE));
+    const rows = await getDb().select().from(kvCacheTable).where(eq(kvCacheTable.cacheName, TEST_CACHE));
     expect(rows).toHaveLength(1);
   });
 
@@ -60,7 +60,7 @@ describe("TtlCache", () => {
     expect(await a.get("shared-key")).toBe("from-a");
     expect(await b.get("shared-key")).toBe("from-b");
 
-    await db.delete(kvCacheTable).where(eq(kvCacheTable.cacheName, "test-cache-other"));
+    await getDb().delete(kvCacheTable).where(eq(kvCacheTable.cacheName, "test-cache-other"));
   });
 
   it("a second TtlCache instance for the same name sees what the first wrote", async () => {

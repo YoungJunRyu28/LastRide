@@ -1,0 +1,545 @@
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  gt,
+  inArray,
+  isNull,
+  lte,
+  or,
+} from "drizzle-orm";
+import {
+  getDb,
+  enterpriseEventsTable,
+  eventInvitesTable,
+  eventParticipantsTable,
+  hostDevicesTable,
+  organizationMembersTable,
+  organizationsTable,
+} from "@workspace/db";
+import type { EnterprisePrincipal } from "./enterpriseAuth";
+import {
+  createCapabilityToken,
+  createJoinCode,
+  hashCapability,
+  normalizeJoinCode,
+} from "./enterpriseTokens";
+
+export type OrganizerContext = {
+  memberId: string;
+  organizationId: string;
+};
+
+function bootstrapEmails(): Set<string> {
+  return new Set(
+    (process.env.ENTERPRISE_BOOTSTRAP_EMAILS || "")
+      .split(",")
+      .map((email) => email.trim().toLowerCase())
+      .filter(Boolean),
+  );
+}
+
+export async function getOrganizerContext(
+  principal: EnterprisePrincipal,
+): Promise<OrganizerContext | null> {
+  const db = getDb();
+  const existing = await db
+    .select({
+      memberId: organizationMembersTable.id,
+      organizationId: organizationMembersTable.organizationId,
+    })
+    .from(organizationMembersTable)
+    .where(eq(organizationMembersTable.authUserId, principal.authUserId))
+    .limit(1);
+  if (existing[0]) return existing[0];
+
+  const devBootstrap =
+    process.env.NODE_ENV !== "production" &&
+    principal.authUserId ===
+      (process.env.ENTERPRISE_DEV_AUTH_USER_ID || "dev-organizer");
+  const emailBootstrap =
+    principal.email !== null &&
+    bootstrapEmails().has(principal.email.toLowerCase());
+  if (!devBootstrap && !emailBootstrap) return null;
+
+  return db.transaction(async (tx) => {
+    const [organization] = await tx
+      .insert(organizationsTable)
+      .values({
+        name:
+          process.env.ENTERPRISE_BOOTSTRAP_ORGANIZATION_NAME ||
+          "LastRide Business",
+      })
+      .returning({ id: organizationsTable.id });
+    const [member] = await tx
+      .insert(organizationMembersTable)
+      .values({
+        organizationId: organization.id,
+        authUserId: principal.authUserId,
+        displayName: principal.email,
+        role: "owner",
+      })
+      .returning({
+        memberId: organizationMembersTable.id,
+        organizationId: organizationMembersTable.organizationId,
+      });
+    return member;
+  });
+}
+
+function eventShape(
+  event: typeof enterpriseEventsTable.$inferSelect,
+  participantCount: number,
+) {
+  return {
+    id: event.id,
+    organizationId: event.organizationId,
+    title: event.title,
+    startsAt: event.startsAt,
+    expiresAt: event.expiresAt,
+    status: event.status,
+    alertLeadMinutes: event.alertLeadMinutes,
+    participantLimit: event.participantLimit,
+    participantCount,
+  };
+}
+
+export async function createEnterpriseEventRecord(
+  organizer: OrganizerContext,
+  input: {
+    title: string;
+    startsAt: Date;
+    expiresAt: Date;
+    alertLeadMinutes: number;
+    participantLimit: number;
+  },
+) {
+  const db = getDb();
+  const inviteToken = createCapabilityToken();
+  const joinCode = createJoinCode();
+
+  const event = await db.transaction(async (tx) => {
+    const [created] = await tx
+      .insert(enterpriseEventsTable)
+      .values({
+        organizationId: organizer.organizationId,
+        createdByMemberId: organizer.memberId,
+        title: input.title.trim(),
+        startsAt: input.startsAt,
+        expiresAt: input.expiresAt,
+        alertLeadMinutes: input.alertLeadMinutes,
+        participantLimit: input.participantLimit,
+        status: "active",
+      })
+      .returning();
+
+    await tx.insert(eventInvitesTable).values({
+      eventId: created.id,
+      inviteTokenHash: hashCapability(inviteToken),
+      joinCodeHash: hashCapability(joinCode),
+      expiresAt: input.expiresAt,
+    });
+    return created;
+  });
+
+  return { ...eventShape(event, 0), inviteToken, joinCode };
+}
+
+export async function listEnterpriseEventRecords(organizationId: string) {
+  const db = getDb();
+  const rows = await db
+    .select({
+      event: enterpriseEventsTable,
+      participantCount: count(eventParticipantsTable.id),
+    })
+    .from(enterpriseEventsTable)
+    .leftJoin(
+      eventParticipantsTable,
+      and(
+        eq(eventParticipantsTable.eventId, enterpriseEventsTable.id),
+        eq(eventParticipantsTable.status, "active"),
+      ),
+    )
+    .where(eq(enterpriseEventsTable.organizationId, organizationId))
+    .groupBy(enterpriseEventsTable.id)
+    .orderBy(desc(enterpriseEventsTable.startsAt));
+
+  return rows.map(({ event, participantCount }) =>
+    eventShape(event, participantCount),
+  );
+}
+
+export async function getEnterpriseEventRecord(
+  organizationId: string,
+  eventId: string,
+) {
+  const db = getDb();
+  const [event] = await db
+    .select()
+    .from(enterpriseEventsTable)
+    .where(
+      and(
+        eq(enterpriseEventsTable.id, eventId),
+        eq(enterpriseEventsTable.organizationId, organizationId),
+      ),
+    )
+    .limit(1);
+  if (!event) return null;
+
+  const [counter] = await db
+    .select({ value: count(eventParticipantsTable.id) })
+    .from(eventParticipantsTable)
+    .where(
+      and(
+        eq(eventParticipantsTable.eventId, eventId),
+        eq(eventParticipantsTable.status, "active"),
+      ),
+    );
+
+  const participants = await db
+    .select({
+      id: eventParticipantsTable.id,
+      displayName: eventParticipantsTable.displayName,
+      leaveBy: eventParticipantsTable.leaveBy,
+      status: eventParticipantsTable.status,
+      updatedAt: eventParticipantsTable.updatedAt,
+    })
+    .from(eventParticipantsTable)
+    .where(eq(eventParticipantsTable.eventId, eventId))
+    .orderBy(
+      asc(eventParticipantsTable.leaveBy),
+      asc(eventParticipantsTable.displayName),
+    );
+
+  return {
+    ...eventShape(event, counter?.value ?? 0),
+    participants,
+  };
+}
+
+export async function updateEnterpriseEventRecord(
+  organizationId: string,
+  eventId: string,
+  patch: {
+    title?: string;
+    alertLeadMinutes?: number;
+    participantLimit?: number;
+    status?: "active" | "closed";
+  },
+) {
+  const db = getDb();
+  const updates: Partial<typeof enterpriseEventsTable.$inferInsert> = {
+    updatedAt: new Date(),
+  };
+  if (patch.title !== undefined) updates.title = patch.title.trim();
+  if (patch.alertLeadMinutes !== undefined) {
+    updates.alertLeadMinutes = patch.alertLeadMinutes;
+  }
+  if (patch.participantLimit !== undefined) {
+    updates.participantLimit = patch.participantLimit;
+  }
+  if (patch.status !== undefined) updates.status = patch.status;
+
+  const [updated] = await db
+    .update(enterpriseEventsTable)
+    .set(updates)
+    .where(
+      and(
+        eq(enterpriseEventsTable.id, eventId),
+        eq(enterpriseEventsTable.organizationId, organizationId),
+      ),
+    )
+    .returning();
+  if (!updated) return null;
+
+  const [counter] = await db
+    .select({ value: count(eventParticipantsTable.id) })
+    .from(eventParticipantsTable)
+    .where(
+      and(
+        eq(eventParticipantsTable.eventId, eventId),
+        eq(eventParticipantsTable.status, "active"),
+      ),
+    );
+  return eventShape(updated, counter?.value ?? 0);
+}
+
+type JoinInput = {
+  inviteToken?: string;
+  joinCode?: string;
+  displayName: string;
+};
+
+export async function joinEnterpriseEventRecord(input: JoinInput) {
+  const db = getDb();
+  const credential = input.inviteToken
+    ? hashCapability(input.inviteToken)
+    : input.joinCode
+      ? hashCapability(normalizeJoinCode(input.joinCode))
+      : null;
+  if (!credential) return { kind: "invalid" as const };
+
+  const now = new Date();
+  const inviteCondition = input.inviteToken
+    ? eq(eventInvitesTable.inviteTokenHash, credential)
+    : eq(eventInvitesTable.joinCodeHash, credential);
+
+  const [resolved] = await db
+    .select({ invite: eventInvitesTable, event: enterpriseEventsTable })
+    .from(eventInvitesTable)
+    .innerJoin(
+      enterpriseEventsTable,
+      eq(eventInvitesTable.eventId, enterpriseEventsTable.id),
+    )
+    .where(
+      and(
+        inviteCondition,
+        isNull(eventInvitesTable.revokedAt),
+        gt(eventInvitesTable.expiresAt, now),
+        gt(enterpriseEventsTable.expiresAt, now),
+        eq(enterpriseEventsTable.status, "active"),
+      ),
+    )
+    .limit(1);
+  if (!resolved) return { kind: "invalid" as const };
+
+  return db.transaction(async (tx) => {
+    const [event] = await tx
+      .select()
+      .from(enterpriseEventsTable)
+      .where(eq(enterpriseEventsTable.id, resolved.event.id))
+      .for("update")
+      .limit(1);
+    if (
+      !event ||
+      event.status !== "active" ||
+      event.expiresAt.getTime() <= Date.now()
+    ) {
+      return { kind: "invalid" as const };
+    }
+
+    const [counter] = await tx
+      .select({ value: count(eventParticipantsTable.id) })
+      .from(eventParticipantsTable)
+      .where(
+        and(
+          eq(eventParticipantsTable.eventId, event.id),
+          eq(eventParticipantsTable.status, "active"),
+        ),
+      );
+    if ((counter?.value ?? 0) >= event.participantLimit) {
+      return { kind: "full" as const };
+    }
+
+    const participantToken = createCapabilityToken();
+
+    const [participant] = await tx
+      .insert(eventParticipantsTable)
+      .values({
+        eventId: event.id,
+        displayName: input.displayName.trim(),
+        participantTokenHash: hashCapability(participantToken),
+      })
+      .returning({
+        id: eventParticipantsTable.id,
+        displayName: eventParticipantsTable.displayName,
+        leaveBy: eventParticipantsTable.leaveBy,
+        status: eventParticipantsTable.status,
+      });
+
+    return {
+      kind: "joined" as const,
+      participantToken,
+      participant,
+      event: {
+        id: event.id,
+        title: event.title,
+        expiresAt: event.expiresAt,
+      },
+    };
+  });
+}
+
+export async function updateEventParticipantRecord(
+  participantToken: string,
+  leaveBy: Date,
+) {
+  const db = getDb();
+  const tokenHash = hashCapability(participantToken);
+  const [current] = await db
+    .select({
+      participant: eventParticipantsTable,
+      event: enterpriseEventsTable,
+    })
+    .from(eventParticipantsTable)
+    .innerJoin(
+      enterpriseEventsTable,
+      eq(eventParticipantsTable.eventId, enterpriseEventsTable.id),
+    )
+    .where(eq(eventParticipantsTable.participantTokenHash, tokenHash))
+    .limit(1);
+
+  if (!current) return { kind: "unauthorized" as const };
+
+  if (
+    current.participant.status !== "active" ||
+    current.event.status !== "active" ||
+    current.event.expiresAt.getTime() <= Date.now()
+  ) {
+    return { kind: "gone" as const };
+  }
+
+  const now = new Date();
+  const [updated] = await db
+    .update(eventParticipantsTable)
+    .set({
+      leaveBy,
+      lastSyncedAt: now,
+      updatedAt: now,
+    })
+    .where(eq(eventParticipantsTable.id, current.participant.id))
+    .returning({
+      id: eventParticipantsTable.id,
+      displayName: eventParticipantsTable.displayName,
+      leaveBy: eventParticipantsTable.leaveBy,
+      status: eventParticipantsTable.status,
+    });
+  return { kind: "updated" as const, participant: updated };
+}
+
+export async function leaveEnterpriseEventRecord(
+  participantToken: string,
+): Promise<boolean> {
+  const db = getDb();
+  // Explicitly leaving is a deletion request, not a historical status change.
+  // This immediately removes the participant name, leave time and capability
+  // token. Notification delivery rows disappear through ON DELETE CASCADE.
+  const [deleted] = await db
+    .delete(eventParticipantsTable)
+    .where(
+      eq(
+        eventParticipantsTable.participantTokenHash,
+        hashCapability(participantToken),
+      ),
+    )
+    .returning({ id: eventParticipantsTable.id });
+  return Boolean(deleted);
+}
+
+export async function purgeExpiredEnterpriseData(now = new Date()) {
+  const db = getDb();
+  return db.transaction(async (tx) => {
+    const expired = await tx
+      .update(enterpriseEventsTable)
+      .set({ status: "expired", updatedAt: now })
+      .where(
+        and(
+          lte(enterpriseEventsTable.expiresAt, now),
+          or(
+            eq(enterpriseEventsTable.status, "active"),
+            eq(enterpriseEventsTable.status, "draft"),
+          ),
+        ),
+      )
+      .returning({ id: enterpriseEventsTable.id });
+
+    const ids = expired.map(({ id }) => id);
+    if (ids.length === 0) return 0;
+    await tx
+      .delete(eventParticipantsTable)
+      .where(inArray(eventParticipantsTable.eventId, ids));
+    await tx
+      .delete(eventInvitesTable)
+      .where(inArray(eventInvitesTable.eventId, ids));
+    return ids.length;
+  });
+}
+
+export async function createEnterpriseEventInviteRecord(
+  organizationId: string,
+  eventId: string,
+) {
+  const db = getDb();
+  return db.transaction(async (tx) => {
+    const [event] = await tx
+      .select()
+      .from(enterpriseEventsTable)
+      .where(
+        and(
+          eq(enterpriseEventsTable.id, eventId),
+          eq(enterpriseEventsTable.organizationId, organizationId),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    if (!event) return { kind: "not-found" as const };
+    if (event.status !== "active" || event.expiresAt.getTime() <= Date.now()) {
+      return { kind: "gone" as const };
+    }
+
+    const now = new Date();
+    await tx
+      .update(eventInvitesTable)
+      .set({ revokedAt: now })
+      .where(
+        and(
+          eq(eventInvitesTable.eventId, event.id),
+          isNull(eventInvitesTable.revokedAt),
+        ),
+      );
+
+    const inviteToken = createCapabilityToken();
+    const joinCode = createJoinCode();
+    await tx.insert(eventInvitesTable).values({
+      eventId: event.id,
+      inviteTokenHash: hashCapability(inviteToken),
+      joinCodeHash: hashCapability(joinCode),
+      expiresAt: event.expiresAt,
+    });
+
+    return {
+      kind: "created" as const,
+      inviteToken,
+      joinCode,
+      expiresAt: event.expiresAt,
+    };
+  });
+}
+
+export async function registerEnterpriseHostDeviceRecord(
+  organizationMemberId: string,
+  expoPushToken: string,
+  platform: "ios" | "android",
+): Promise<void> {
+  const db = getDb();
+  const now = new Date();
+  await db
+    .insert(hostDevicesTable)
+    .values({
+      organizationMemberId,
+      expoPushToken,
+      platform,
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: hostDevicesTable.expoPushToken,
+      set: { organizationMemberId, platform, updatedAt: now },
+    });
+}
+
+export async function unregisterEnterpriseHostDeviceRecord(
+  organizationMemberId: string,
+  expoPushToken: string,
+): Promise<void> {
+  const db = getDb();
+  await db
+    .delete(hostDevicesTable)
+    .where(
+      and(
+        eq(hostDevicesTable.organizationMemberId, organizationMemberId),
+        eq(hostDevicesTable.expoPushToken, expoPushToken),
+      ),
+    );
+}

@@ -5,9 +5,11 @@ import { searchStations as searchStationsApi } from '@workspace/api-client-react
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, Platform } from 'react-native';
 import { apiBaseUrl } from '@/lib/api';
+import { clearEnterpriseParticipation, leaveCurrentEnterpriseEvent, syncEnterpriseLeaveBy } from '@/lib/enterpriseParticipation';
 import { cancelAllReminders, ensureNotificationPermission, scheduleReminders, sendTestNotification } from '@/lib/notifications';
+import { recordNightPlan } from '@/lib/nightHistory';
 import { buildReminderPlans, nightEndsAt, planNight, repick, rideStatus, shouldReplan, trackingEndsAt, trackingHardStopAt, type NightPlan, type RideStatus } from '@/lib/planner';
-import { DEFAULT_SETTINGS, readSettings, STORAGE_KEYS, writeHomeAddress, writePinnedStation, type HomeAddress, type Language } from '@/lib/settings';
+import { DEFAULT_SETTINGS, readSettings, STORAGE_KEYS, writeDestinationState, writeHomeAddress, writePinnedStation, type HomeAddress, type Language, type SavedDestination } from '@/lib/settings';
 import { clearSavedPlan, readSavedPlan, writeSavedPlan } from '@/lib/savedPlan';
 import { searchAddresses as searchAddressesApi } from '@workspace/api-client-react';
 import { LocationError, type Coordinates, type StationOption, type WalkingSpeed } from '@/lib/stations';
@@ -15,7 +17,7 @@ import { formatJstTime, MINUTE_MS, minutesUntil, serviceDate } from '@/lib/time'
 import { getFirstTrain, type TrainTime } from '@/lib/timetable';
 import { clearTrackingSnapshot, isTrackingFlagOn, markTrackingStarted, readTrackingSnapshot, readTrackingStartedAt, startBackgroundTracking, stopBackgroundTracking } from '@/lib/tracking';
 
-export type { HomeAddress, Language } from '@/lib/settings';
+export type { HomeAddress, Language, SavedDestination } from '@/lib/settings';
 export type { StationOption } from '@/lib/stations';
 export { REMINDER_CHOICES } from '@/lib/settings';
 export type LocationErrorCode = LocationError['code'];
@@ -25,9 +27,14 @@ type RideContextValue = {
   isHydrated: boolean;
   homeStation: string;
   homeStationOption: StationOption | null;
-  /** Optional: where the user lives, so plans can end at their door. */
+  /** Optional active destination address, so plans can end at its door. */
   homeAddress: HomeAddress | null;
   setHomeAddress: (address: HomeAddress | null) => void;
+  destinations: SavedDestination[];
+  activeDestinationId: string | null;
+  saveDestination: (destination: { id?: string; label: string; station: StationOption; address: HomeAddress | null }) => void;
+  selectDestination: (id: string) => void;
+  deleteDestination: (id: string) => void;
   walkingSpeed: WalkingSpeed;
   plan: NightPlan | null;
   stationName: string;
@@ -81,6 +88,10 @@ const LastRideContext = createContext<RideContextValue | null>(null);
 
 /** Demo clock speed: one demo minute per real second. */
 const DEMO_SPEED = 60;
+
+function newDestinationId(): string {
+  return `destination-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
 
 async function getCurrentCoordinates(): Promise<Coordinates> {
   if (Platform.OS === 'web') {
@@ -183,6 +194,8 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
   const [language, setLanguageState] = useState<Language | null>(DEFAULT_SETTINGS.language);
   const [homeStationOption, setHomeStationOption] = useState<StationOption | null>(DEFAULT_SETTINGS.homeStation);
   const [homeAddress, setHomeAddressState] = useState<HomeAddress | null>(DEFAULT_SETTINGS.homeAddress);
+  const [destinations, setDestinations] = useState<SavedDestination[]>(DEFAULT_SETTINGS.destinations);
+  const [activeDestinationId, setActiveDestinationId] = useState<string | null>(DEFAULT_SETTINGS.activeDestinationId);
   const [walkingSpeed, setWalkingSpeedState] = useState<WalkingSpeed>(DEFAULT_SETTINGS.walkingSpeed);
   const [reminderIntervals, setReminderIntervals] = useState<number[]>(DEFAULT_SETTINGS.reminderIntervals);
   const [missedCheckIn, setMissedCheckInState] = useState(DEFAULT_SETTINGS.missedCheckIn);
@@ -223,6 +236,8 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
         setPinnedStationState(saved.pinnedStation);
         setMissedCheckInState(saved.missedCheckIn);
         setHomeAddressState(saved.homeAddress);
+        setDestinations(saved.destinations);
+        setActiveDestinationId(saved.activeDestinationId);
       })
       .catch(() => undefined) // unreadable storage: start fresh rather than hang on a blank screen
       .finally(() => setIsHydrated(true));
@@ -300,6 +315,24 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     void writeSavedPlan(plan);
   }, [plan]);
 
+  useEffect(() => {
+    if (!plan) return;
+    const active =
+      destinations.find((destination) => destination.id === activeDestinationId) ??
+      destinations[0];
+    if (!active) return;
+    void recordNightPlan(plan, { id: active.id, label: active.label }).catch(
+      () => undefined,
+    );
+  }, [plan?.computedAt, destinations, activeDestinationId]);
+
+  // Enterprise participation is deliberately privacy-minimal: only the computed
+  // leave-by timestamp is synced. Location, station, destination and route stay local.
+  useEffect(() => {
+    if (!plan) return;
+    void syncEnterpriseLeaveBy(plan.leaveByMs).catch(() => undefined);
+  }, [plan?.leaveByMs]);
+
   const clearPlan = useCallback(() => {
     setPlan(null);
     setLocationError(null);
@@ -334,14 +367,65 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     }
   }, [pinnedStation, plan]);
 
+  const applyDestinationState = useCallback((next: SavedDestination[], requestedActiveId: string | null) => {
+    const active = next.find((destination) => destination.id === requestedActiveId) ?? next[0] ?? null;
+    setDestinations(next);
+    setActiveDestinationId(active?.id ?? null);
+    setHomeStationOption(active?.station ?? null);
+    setHomeAddressState(active?.address ?? null);
+    setPinnedStationState(null); // station pins belong to the previous destination
+    void writePinnedStation(null);
+    void writeDestinationState(next, active?.id ?? null);
+    clearPlan();
+  }, [clearPlan]);
+
+  const saveDestination = useCallback((input: { id?: string; label: string; station: StationOption; address: HomeAddress | null }) => {
+    const id = input.id ?? newDestinationId();
+    const item: SavedDestination = {
+      id,
+      label: input.label.trim() || input.station.name,
+      station: input.station,
+      address: input.address,
+    };
+    const exists = destinations.some((destination) => destination.id === id);
+    const next = exists
+      ? destinations.map((destination) => (destination.id === id ? item : destination))
+      : [...destinations, item];
+    applyDestinationState(next, id);
+    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  }, [destinations, applyDestinationState]);
+
+  const selectDestination = useCallback((id: string) => {
+    if (id === activeDestinationId || !destinations.some((destination) => destination.id === id)) return;
+    applyDestinationState(destinations, id);
+    void Haptics.selectionAsync();
+  }, [activeDestinationId, destinations, applyDestinationState]);
+
+  const deleteDestination = useCallback((id: string) => {
+    const next = destinations.filter((destination) => destination.id !== id);
+    if (next.length === destinations.length) return;
+    if (id === activeDestinationId) {
+      applyDestinationState(next, next[0]?.id ?? null);
+    } else {
+      setDestinations(next);
+      void writeDestinationState(next, activeDestinationId);
+    }
+    void Haptics.selectionAsync();
+  }, [activeDestinationId, destinations, applyDestinationState]);
+
   const saveHomeStation = useCallback((station: StationOption) => {
+    const current = destinations.find((destination) => destination.id === activeDestinationId);
+    if (current) {
+      saveDestination({ ...current, station });
+      return;
+    }
     setHomeStationOption(station);
     void AsyncStorage.setItem(STORAGE_KEYS.homeStation, JSON.stringify(station));
-    setPinnedStationState(null); // a pin chosen for the old home no longer applies
+    setPinnedStationState(null);
     void writePinnedStation(null);
     clearPlan();
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  }, [clearPlan]);
+  }, [activeDestinationId, destinations, saveDestination, clearPlan]);
 
   const toggleReminderInterval = useCallback((minutes: number) => {
     setReminderIntervals((current) => {
@@ -353,11 +437,16 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
   }, []);
 
   const setHomeAddress = useCallback((address: HomeAddress | null) => {
+    const current = destinations.find((destination) => destination.id === activeDestinationId);
+    if (current) {
+      saveDestination({ ...current, address });
+      return;
+    }
     setHomeAddressState(address);
     void writeHomeAddress(address);
     clearPlan(); // arrival stations are chosen around the address, so re-plan
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  }, [clearPlan]);
+  }, [activeDestinationId, destinations, saveDestination, clearPlan]);
 
   const setMissedCheckIn = useCallback((enabled: boolean) => {
     setMissedCheckInState(enabled);
@@ -609,6 +698,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     sessionRef.current += 1;
     await stopTracking();
     await cancelAllReminders();
+    await leaveCurrentEnterpriseEvent().catch(() => clearEnterpriseParticipation());
     await AsyncStorage.multiRemove(Object.values(STORAGE_KEYS));
     await clearSavedPlan();
     setLanguageState(DEFAULT_SETTINGS.language);
@@ -617,6 +707,8 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     setReminderIntervals(DEFAULT_SETTINGS.reminderIntervals);
     setPinnedStationState(null);
     setHomeAddressState(null);
+    setDestinations(DEFAULT_SETTINGS.destinations);
+    setActiveDestinationId(DEFAULT_SETTINGS.activeDestinationId);
     setPlan(null);
     setUserCoordinates(null);
     setIsLocating(false);
@@ -626,6 +718,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
   }, [stopTracking]);
 
   const homeStation = homeStationOption ? (language === 'ja' ? homeStationOption.nameJa : homeStationOption.name) : '';
+  const activeDestination = destinations.find((destination) => destination.id === activeDestinationId) ?? destinations[0] ?? null;
 
   const value = useMemo<RideContextValue>(
     () => ({
@@ -635,11 +728,16 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       homeStationOption,
       homeAddress,
       setHomeAddress,
+      destinations,
+      activeDestinationId,
+      saveDestination,
+      selectDestination,
+      deleteDestination,
       walkingSpeed,
       plan,
       stationName: plan?.station.name ?? (language === 'ja' ? '最寄り駅を検索中' : 'Finding nearby station'),
       stationNameJa: plan?.station.nameJa ?? '最寄り駅を検索中',
-      destination: homeStation,
+      destination: activeDestination?.label ?? homeStation,
       leaveBy: plan ? formatJstTime(plan.leaveByMs) : '--:--',
       lastTrain: plan ? formatJstTime(plan.lastTrain.departsAt) : '--:--',
       lastTrainSource: plan?.lastTrain.source ?? null,
@@ -675,7 +773,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       startTracking,
       stopTracking,
     }),
-    [demoActive, firstTrain, homeAddress, setHomeAddress, homeStation, missedCheckIn, setMissedCheckIn, homeStationOption, isHydrated, isLocating, language, locationError, notificationsAllowed, nowMs, plan, reminderIntervals, requestLocation, resetAll, resetLanguage, saveHomeStation, setDemoNow, setPinnedStation, setLanguage, setWalkingSpeed, startTracking, stopTracking, toggleReminderInterval, trackingMode, triggerTestNotification, userCoordinates, walkingSpeed],
+    [activeDestinationId, deleteDestination, demoActive, destinations, firstTrain, homeAddress, setHomeAddress, homeStation, missedCheckIn, setMissedCheckIn, homeStationOption, isHydrated, isLocating, language, locationError, notificationsAllowed, nowMs, plan, reminderIntervals, requestLocation, resetAll, resetLanguage, saveDestination, saveHomeStation, selectDestination, setDemoNow, setPinnedStation, setLanguage, setWalkingSpeed, startTracking, stopTracking, toggleReminderInterval, trackingMode, triggerTestNotification, userCoordinates, walkingSpeed],
   );
 
   return <LastRideContext.Provider value={value}>{children}</LastRideContext.Provider>;

@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
-import { db, apiUsageTable } from "@workspace/db";
+import { getDb, apiUsageTable } from "@workspace/db";
 import { recordCall, usageReport, MONTHLY_LIMITS, type Provider } from "../src/lib/usage";
 
 /**
@@ -13,7 +13,7 @@ import { recordCall, usageReport, MONTHLY_LIMITS, type Provider } from "../src/l
 const TEST_PROVIDER = "navitime-transport" as Provider;
 
 async function clearTestUsage() {
-  await db.delete(apiUsageTable).where(eq(apiUsageTable.provider, TEST_PROVIDER));
+  await getDb().delete(apiUsageTable).where(eq(apiUsageTable.provider, TEST_PROVIDER));
 }
 
 beforeEach(clearTestUsage);

@@ -102,9 +102,210 @@ export interface TaxiEstimate {
   fareYen: number | null;
 }
 
+export interface PartwayStation {
+  name: string;
+  nameJa: string;
+  latitude: number;
+  longitude: number;
+}
+
+export interface PartwayTrainTaxi {
+  train: TrainRoute;
+  taxiFrom: PartwayStation;
+  taxi: TaxiEstimate;
+  /** @nullable */
+  totalFareYen: number | null;
+}
+
+export interface TrainDisruption {
+  line: string;
+  /** @nullable */
+  lineCode: string | null;
+  status: string;
+  title: string;
+  /** @nullable */
+  comment: string | null;
+  /** @nullable */
+  updatedAt: string | null;
+}
+
+export interface CreateEnterpriseEventRequest {
+  /**
+     * @minLength 1
+     * @maxLength 160
+     */
+  title: string;
+  startsAt: string;
+  expiresAt: string;
+  /**
+     * @minimum 1
+     * @maximum 120
+     */
+  alertLeadMinutes?: number;
+  /**
+     * @minimum 1
+     * @maximum 500
+     */
+  participantLimit?: number;
+}
+
+export type UpdateEnterpriseEventRequestStatus = typeof UpdateEnterpriseEventRequestStatus[keyof typeof UpdateEnterpriseEventRequestStatus];
+
+
+export const UpdateEnterpriseEventRequestStatus = {
+  active: 'active',
+  closed: 'closed',
+} as const;
+
+export interface UpdateEnterpriseEventRequest {
+  /**
+     * @minLength 1
+     * @maxLength 160
+     */
+  title?: string;
+  /**
+     * @minimum 1
+     * @maximum 120
+     */
+  alertLeadMinutes?: number;
+  /**
+     * @minimum 1
+     * @maximum 500
+     */
+  participantLimit?: number;
+  status?: UpdateEnterpriseEventRequestStatus;
+}
+
+export type EnterpriseEventStatus = typeof EnterpriseEventStatus[keyof typeof EnterpriseEventStatus];
+
+
+export const EnterpriseEventStatus = {
+  draft: 'draft',
+  active: 'active',
+  closed: 'closed',
+  expired: 'expired',
+} as const;
+
+export interface EnterpriseEvent {
+  id: string;
+  organizationId: string;
+  title: string;
+  startsAt: string;
+  expiresAt: string;
+  status: EnterpriseEventStatus;
+  alertLeadMinutes: number;
+  participantLimit: number;
+  /** @minimum 0 */
+  participantCount: number;
+}
+
+export type EnterpriseEventCreated = EnterpriseEvent & {
+  inviteToken: string;
+  joinCode: string;
+};
+
+export type HostDeviceRegistrationPlatform = typeof HostDeviceRegistrationPlatform[keyof typeof HostDeviceRegistrationPlatform];
+
+
+export const HostDeviceRegistrationPlatform = {
+  ios: 'ios',
+  android: 'android',
+} as const;
+
+export interface HostDeviceRegistration {
+  /**
+     * @minLength 20
+     * @maxLength 255
+     */
+  expoPushToken: string;
+  platform: HostDeviceRegistrationPlatform;
+}
+
+export interface EnterpriseEventInvite {
+  inviteToken: string;
+  joinCode: string;
+  expiresAt: string;
+}
+
+export type EventParticipantHostViewStatus = typeof EventParticipantHostViewStatus[keyof typeof EventParticipantHostViewStatus];
+
+
+export const EventParticipantHostViewStatus = {
+  active: 'active',
+  left: 'left',
+} as const;
+
+/**
+ * Privacy-minimal host view. No location, route, station, or destination data.
+ */
+export interface EventParticipantHostView {
+  id: string;
+  displayName: string;
+  /** @nullable */
+  leaveBy: string | null;
+  status: EventParticipantHostViewStatus;
+  updatedAt: string;
+}
+
+export type EnterpriseEventDetail = EnterpriseEvent & {
+  participants: EventParticipantHostView[];
+};
+
+export interface JoinEnterpriseEventRequest {
+  /**
+     * @minLength 32
+     * @maxLength 256
+     */
+  inviteToken?: string;
+  /**
+     * @minLength 4
+     * @maxLength 12
+     */
+  joinCode?: string;
+  /**
+     * @minLength 1
+     * @maxLength 80
+     */
+  displayName: string;
+}
+
+export type EventParticipantSelfStatus = typeof EventParticipantSelfStatus[keyof typeof EventParticipantSelfStatus];
+
+
+export const EventParticipantSelfStatus = {
+  active: 'active',
+  left: 'left',
+} as const;
+
+export interface EventParticipantSelf {
+  id: string;
+  displayName: string;
+  /** @nullable */
+  leaveBy: string | null;
+  status: EventParticipantSelfStatus;
+}
+
+export interface ParticipantEventSummary {
+  id: string;
+  title: string;
+  expiresAt: string;
+}
+
+export interface EventParticipantSession {
+  participantToken: string;
+  participant: EventParticipantSelf;
+  event: ParticipantEventSummary;
+}
+
+export interface UpdateEventParticipantRequest {
+  leaveBy: string;
+}
+
 export interface HealthStatus {
   status: string;
 }
+
+export type ParticipantTokenParameter = string;
 
 export type FromLatParameter = number;
 
@@ -125,6 +326,15 @@ export type ToNameParameter = string;
  * Rail service date (YYYYMMDD); trains after midnight belong to the previous date
  */
 export type ServiceDateParameter = string;
+
+export type TaxiToLatParameter = number;
+
+export type TaxiToLonParameter = number;
+
+/**
+ * Earliest epoch millisecond at which the user can board a train
+ */
+export type EarliestBoardAtMsParameter = number;
 
 export type GetLastTrainParams = {
 fromLat: FromLatParameter;
@@ -158,6 +368,38 @@ toName: ToNameParameter;
  * @pattern ^[0-9]{8}$
  */
 date: ServiceDateParameter;
+};
+
+export type GetPartwayTrainTaxiParams = {
+fromLat: FromLatParameter;
+fromLon: FromLonParameter;
+/**
+ * Japanese station name, used to pick the right station near the coordinates
+ */
+fromName: FromNameParameter;
+toLat: ToLatParameter;
+toLon: ToLonParameter;
+toName: ToNameParameter;
+taxiToLat: TaxiToLatParameter;
+taxiToLon: TaxiToLonParameter;
+/**
+ * Rail service date (YYYYMMDD); trains after midnight belong to the previous date
+ * @pattern ^[0-9]{8}$
+ */
+date: ServiceDateParameter;
+/**
+ * Earliest epoch millisecond at which the user can board a train
+ */
+earliestBoardAtMs: EarliestBoardAtMsParameter;
+};
+
+export type GetTrainDisruptionsParams = {
+/**
+ * Colon-separated Japanese line names from the current route
+ * @minLength 1
+ * @maxLength 600
+ */
+lines: string;
 };
 
 export type GetNearbyStationsParams = {

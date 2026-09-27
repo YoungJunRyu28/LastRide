@@ -75,7 +75,7 @@ export async function ensureNotificationPermission(): Promise<boolean> {
 }
 
 /** Screen to open when a notification is tapped; read by NotificationRouter. */
-export type NotificationTarget = '/ride' | '/alternatives';
+export type NotificationTarget = '/ride' | '/alternatives' | '/business-event';
 
 async function present(title: string, body: string, fireAt: number | null, target: NotificationTarget = '/ride') {
   const delayMs = fireAt === null ? 0 : Math.max(0, fireAt - Date.now());

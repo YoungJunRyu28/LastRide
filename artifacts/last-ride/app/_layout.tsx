@@ -28,8 +28,13 @@ function RootLayoutNav() {
       <Stack.Screen name="index" />
       <Stack.Screen name="ride" />
       <Stack.Screen name="home-station" />
+      <Stack.Screen name="destinations" />
+      <Stack.Screen name="history" />
       <Stack.Screen name="alternatives" />
       <Stack.Screen name="settings" />
+      <Stack.Screen name="join" />
+      <Stack.Screen name="business" />
+      <Stack.Screen name="business-event" />
       <Stack.Screen name="privacy" />
     </Stack>
   );

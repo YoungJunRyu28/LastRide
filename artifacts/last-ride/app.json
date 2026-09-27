@@ -16,13 +16,16 @@
     "ios": {
       "bundleIdentifier": "com.nicholasroberts.lastride",
       "supportsTablet": false,
+      "config": {
+        "usesNonExemptEncryption": false
+      },
       "infoPlist": {
-        "UIBackgroundModes": [
-          "location"
-        ]
+        "UIBackgroundModes": ["location"]
       }
     },
-    "android": {},
+    "android": {
+      "package": "com.nicholasroberts.lastride"
+    },
     "web": {
       "favicon": "./assets/images/icon.png"
     },
@@ -36,6 +39,7 @@
         }
       ],
       "expo-font",
+      "expo-secure-store",
       [
         "expo-location",
         {

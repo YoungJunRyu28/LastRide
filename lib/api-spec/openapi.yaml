@@ -24,6 +24,10 @@ tags:
     description: Places to wait for the first train
   - name: usage
     description: Paid API usage
+  - name: enterprise
+    description: LastRide for Business organizer and event operations
+  - name: event-participants
+    description: Anonymous event participant operations
 paths:
   /healthz:
     get:
@@ -90,6 +94,60 @@ paths:
           description: No train route between the stations on that date
         "502":
           description: Timetable provider unavailable
+  /trains/partway:
+    get:
+      operationId: getPartwayTrainTaxi
+      tags: [trains]
+      summary: Train partway, then taxi
+      description: >-
+        After the full last-train route is gone, find the farthest station on
+        that route that is still reachable after the user can board, then
+        estimate a taxi from there to the final destination.
+      parameters:
+        - $ref: "#/components/parameters/FromLat"
+        - $ref: "#/components/parameters/FromLon"
+        - $ref: "#/components/parameters/FromName"
+        - $ref: "#/components/parameters/ToLat"
+        - $ref: "#/components/parameters/ToLon"
+        - $ref: "#/components/parameters/ToName"
+        - $ref: "#/components/parameters/TaxiToLat"
+        - $ref: "#/components/parameters/TaxiToLon"
+        - $ref: "#/components/parameters/ServiceDate"
+        - $ref: "#/components/parameters/EarliestBoardAtMs"
+      responses:
+        "200":
+          description: Reachable rail segment plus remaining taxi estimate
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PartwayTrainTaxi"
+        "404":
+          description: No useful partway rail option remains
+        "502":
+          description: Timetable or routing provider unavailable
+  /trains/disruptions:
+    get:
+      operationId: getTrainDisruptions
+      tags: [trains]
+      summary: Live disruption information for route lines
+      description: >-
+        Returns RescueNow disruption information matching the supplied rail
+        line names. Returns an empty list when the optional provider product is
+        unavailable so core planning remains unaffected.
+      parameters:
+        - name: lines
+          in: query
+          required: true
+          description: Colon-separated Japanese line names from the current route
+          schema: { type: string, minLength: 1, maxLength: 600 }
+      responses:
+        "200":
+          description: Matching current disruptions
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/TrainDisruption" }
   /stations/nearby:
     get:
       operationId: getNearbyStations
@@ -155,7 +213,11 @@ paths:
           in: query
           required: true
           description: Departure time in Japan (YYYY-MM-DDThh:mm:ss)
-          schema: { type: string, pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}$" }
+          schema:
+            {
+              type: string,
+              pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}$",
+            }
       responses:
         "200":
           description: Taxi estimate
@@ -248,8 +310,186 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/UsageReport"
+  /enterprise/events:
+    post:
+      operationId: createEnterpriseEvent
+      tags: [enterprise]
+      summary: Create a hosted event
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              { $ref: "#/components/schemas/CreateEnterpriseEventRequest" }
+      responses:
+        "201":
+          description: Event created with its initial invite
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnterpriseEventCreated" }
+        "401": { description: Organizer authentication required }
+    get:
+      operationId: listEnterpriseEvents
+      tags: [enterprise]
+      summary: List events visible to the organizer
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Enterprise events
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/EnterpriseEvent" }
+        "401": { description: Organizer authentication required }
+  /enterprise/events/{eventId}:
+    get:
+      operationId: getEnterpriseEvent
+      tags: [enterprise]
+      summary: Get an event and its private host roster
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/EventId"
+      responses:
+        "200":
+          description: Event details
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnterpriseEventDetail" }
+        "401": { description: Organizer authentication required }
+        "404": { description: Event not found }
+    patch:
+      operationId: updateEnterpriseEvent
+      tags: [enterprise]
+      summary: Update or close an event
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/EventId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              { $ref: "#/components/schemas/UpdateEnterpriseEventRequest" }
+      responses:
+        "200":
+          description: Updated event
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnterpriseEvent" }
+        "401": { description: Organizer authentication required }
+        "404": { description: Event not found }
+  /enterprise/events/{eventId}/invite:
+    post:
+      operationId: createEnterpriseEventInvite
+      tags: [enterprise]
+      summary: Rotate the join credentials for an event
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/EventId"
+      responses:
+        "201":
+          description: New invite credentials; previous invites are revoked
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnterpriseEventInvite" }
+        "401": { description: Organizer authentication required }
+        "404": { description: Event not found }
+        "410": { description: Event is closed or expired }
+  /enterprise/devices:
+    post:
+      operationId: registerEnterpriseHostDevice
+      tags: [enterprise]
+      summary: Register an organizer device for departure alerts
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/HostDeviceRegistration" }
+      responses:
+        "204": { description: Device registered }
+        "401": { description: Organizer authentication required }
+    delete:
+      operationId: unregisterEnterpriseHostDevice
+      tags: [enterprise]
+      summary: Stop departure alerts on an organizer device
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/HostDeviceRegistration" }
+      responses:
+        "204": { description: Device unregistered }
+        "401": { description: Organizer authentication required }
+  /events/join:
+    post:
+      operationId: joinEnterpriseEvent
+      tags: [event-participants]
+      summary: Join a hosted event without creating a personal account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/JoinEnterpriseEventRequest" }
+      responses:
+        "201":
+          description: Anonymous event membership
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EventParticipantSession" }
+        "400": { description: Invalid or expired invite }
+        "404": { description: Event not found }
+        "409": { description: Event participant limit reached }
+  /events/participant:
+    patch:
+      operationId: updateEventParticipant
+      tags: [event-participants]
+      summary: Update the current anonymous participant leave time
+      parameters:
+        - $ref: "#/components/parameters/ParticipantToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              { $ref: "#/components/schemas/UpdateEventParticipantRequest" }
+      responses:
+        "200":
+          description: Participant updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EventParticipantSelf" }
+        "401": { description: Invalid participant token }
+        "410": { description: Event expired or closed }
+    delete:
+      operationId: leaveEnterpriseEvent
+      tags: [event-participants]
+      summary: Leave the current hosted event
+      parameters:
+        - $ref: "#/components/parameters/ParticipantToken"
+      responses:
+        "204": { description: Participant removed from active roster }
+        "401": { description: Invalid participant token }
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
   parameters:
+    EventId:
+      name: eventId
+      in: path
+      required: true
+      schema: { type: string }
+    ParticipantToken:
+      name: X-Participant-Token
+      in: header
+      required: true
+      schema: { type: string, minLength: 32, maxLength: 256 }
     FromLat:
       name: fromLat
       in: query
@@ -287,6 +527,22 @@ components:
       required: true
       description: Rail service date (YYYYMMDD); trains after midnight belong to the previous date
       schema: { type: string, pattern: "^[0-9]{8}$" }
+    TaxiToLat:
+      name: taxiToLat
+      in: query
+      required: true
+      schema: { type: number }
+    TaxiToLon:
+      name: taxiToLon
+      in: query
+      required: true
+      schema: { type: number }
+    EarliestBoardAtMs:
+      name: earliestBoardAtMs
+      in: query
+      required: true
+      description: Earliest epoch millisecond at which the user can board a train
+      schema: { type: number }
   schemas:
     TrainRoute:
       type: object
@@ -398,6 +654,36 @@ components:
           type: [number, "null"]
           description: Estimated fare in yen, excluding tolls; null when unavailable
       required: [distanceMeters, minutes, fareYen]
+    PartwayStation:
+      type: object
+      properties:
+        name: { type: string }
+        nameJa: { type: string }
+        latitude: { type: number }
+        longitude: { type: number }
+      required: [name, nameJa, latitude, longitude]
+    PartwayTrainTaxi:
+      type: object
+      properties:
+        train:
+          $ref: "#/components/schemas/TrainRoute"
+        taxiFrom:
+          $ref: "#/components/schemas/PartwayStation"
+        taxi:
+          $ref: "#/components/schemas/TaxiEstimate"
+        totalFareYen:
+          type: [number, "null"]
+      required: [train, taxiFrom, taxi, totalFareYen]
+    TrainDisruption:
+      type: object
+      properties:
+        line: { type: string }
+        lineCode: { type: [string, "null"] }
+        status: { type: string }
+        title: { type: string }
+        comment: { type: [string, "null"] }
+        updatedAt: { type: [string, "null"], format: date-time }
+      required: [line, lineCode, status, title, comment, updatedAt]
     TrainLeg:
       type: object
       properties:
@@ -419,6 +705,124 @@ components:
         arrivesAt:
           type: string
       required: [line, lineEn, from, fromEn, to, toEn, departsAt, arrivesAt]
+    CreateEnterpriseEventRequest:
+      type: object
+      properties:
+        title: { type: string, minLength: 1, maxLength: 160 }
+        startsAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
+        alertLeadMinutes:
+          { type: number, minimum: 1, maximum: 120, default: 10 }
+        participantLimit:
+          { type: number, minimum: 1, maximum: 500, default: 30 }
+      required: [title, startsAt, expiresAt]
+    UpdateEnterpriseEventRequest:
+      type: object
+      properties:
+        title: { type: string, minLength: 1, maxLength: 160 }
+        alertLeadMinutes: { type: number, minimum: 1, maximum: 120 }
+        participantLimit: { type: number, minimum: 1, maximum: 500 }
+        status: { type: string, enum: [active, closed] }
+    EnterpriseEvent:
+      type: object
+      properties:
+        id: { type: string }
+        organizationId: { type: string }
+        title: { type: string }
+        startsAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
+        status: { type: string, enum: [draft, active, closed, expired] }
+        alertLeadMinutes: { type: number }
+        participantLimit: { type: number }
+        participantCount: { type: number, minimum: 0 }
+      required:
+        [
+          id,
+          organizationId,
+          title,
+          startsAt,
+          expiresAt,
+          status,
+          alertLeadMinutes,
+          participantLimit,
+          participantCount,
+        ]
+    EnterpriseEventCreated:
+      allOf:
+        - $ref: "#/components/schemas/EnterpriseEvent"
+        - type: object
+          properties:
+            inviteToken: { type: string }
+            joinCode: { type: string }
+          required: [inviteToken, joinCode]
+    HostDeviceRegistration:
+      type: object
+      properties:
+        expoPushToken: { type: string, minLength: 20, maxLength: 255 }
+        platform: { type: string, enum: [ios, android] }
+      required: [expoPushToken, platform]
+    EnterpriseEventInvite:
+      type: object
+      properties:
+        inviteToken: { type: string }
+        joinCode: { type: string }
+        expiresAt: { type: string, format: date-time }
+      required: [inviteToken, joinCode, expiresAt]
+    EventParticipantHostView:
+      type: object
+      description: Privacy-minimal host view. No location, route, station, or destination data.
+      properties:
+        id: { type: string }
+        displayName: { type: string }
+        leaveBy: { type: [string, "null"], format: date-time }
+        status: { type: string, enum: [active, left] }
+        updatedAt: { type: string, format: date-time }
+      required: [id, displayName, leaveBy, status, updatedAt]
+    EnterpriseEventDetail:
+      allOf:
+        - $ref: "#/components/schemas/EnterpriseEvent"
+        - type: object
+          properties:
+            participants:
+              type: array
+              items: { $ref: "#/components/schemas/EventParticipantHostView" }
+          required: [participants]
+    JoinEnterpriseEventRequest:
+      type: object
+      properties:
+        inviteToken: { type: string, minLength: 32, maxLength: 256 }
+        joinCode: { type: string, minLength: 4, maxLength: 12 }
+        displayName: { type: string, minLength: 1, maxLength: 80 }
+      required: [displayName]
+    EventParticipantSession:
+      type: object
+      properties:
+        participantToken: { type: string }
+        participant:
+          $ref: "#/components/schemas/EventParticipantSelf"
+        event:
+          $ref: "#/components/schemas/ParticipantEventSummary"
+      required: [participantToken, participant, event]
+    EventParticipantSelf:
+      type: object
+      properties:
+        id: { type: string }
+        displayName: { type: string }
+        leaveBy: { type: [string, "null"], format: date-time }
+        status: { type: string, enum: [active, left] }
+      required: [id, displayName, leaveBy, status]
+    ParticipantEventSummary:
+      type: object
+      properties:
+        id: { type: string }
+        title: { type: string }
+        expiresAt: { type: string, format: date-time }
+      required: [id, title, expiresAt]
+    UpdateEventParticipantRequest:
+      type: object
+      properties:
+        leaveBy: { type: string, format: date-time }
+      required: [leaveBy]
     HealthStatus:
       type: object
       properties:
@@ -426,4 +830,3 @@ components:
           type: string
       required:
         - status
-

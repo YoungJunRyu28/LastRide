@@ -15,11 +15,18 @@ async function buildAll() {
   await rm(distDir, { recursive: true, force: true });
 
   await esbuild({
-    // Two entry points, one output directory: index.ts (app.listen, for a
-    // long-lived host or local dev) and lambda.ts (the same app, wrapped for
-    // API Gateway). esbuild names each output after its entry point, so both
-    // land as dist/index.mjs and dist/lambda.mjs without colliding.
-    entryPoints: [path.resolve(artifactDir, "src/index.ts"), path.resolve(artifactDir, "src/lambda.ts")],
+    // Three entry points, one output directory: index.ts (app.listen, for a
+    // long-lived host or local dev — its own setInterval loop handles the
+    // three periodic jobs there), lambda.ts (the same app, wrapped for API
+    // Gateway), and scheduled.ts (the same three jobs, invoked by EventBridge
+    // instead of setInterval, for the Lambda deployment). esbuild names each
+    // output after its entry point, so all three land in dist/ without
+    // colliding.
+    entryPoints: [
+      path.resolve(artifactDir, "src/index.ts"),
+      path.resolve(artifactDir, "src/lambda.ts"),
+      path.resolve(artifactDir, "src/scheduled.ts"),
+    ],
     platform: "node",
     bundle: true,
     format: "esm",

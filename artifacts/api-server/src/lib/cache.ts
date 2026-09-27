@@ -17,7 +17,7 @@
  * not restructuring anything.
  */
 import { and, eq, gt, sql } from "drizzle-orm";
-import { db, kvCacheTable } from "@workspace/db";
+import { getDb, kvCacheTable } from "@workspace/db";
 import { logger } from "./logger";
 
 export class TtlCache<T> {
@@ -28,7 +28,7 @@ export class TtlCache<T> {
 
   async get(key: string): Promise<T | undefined> {
     try {
-      const [row] = await db
+      const [row] = await getDb()
         .select({ value: kvCacheTable.value })
         .from(kvCacheTable)
         .where(
@@ -50,7 +50,7 @@ export class TtlCache<T> {
 
   async set(key: string, value: T): Promise<void> {
     try {
-      await db
+      await getDb()
         .insert(kvCacheTable)
         .values({
           cacheName: this.name,

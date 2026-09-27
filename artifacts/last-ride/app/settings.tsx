@@ -67,7 +67,7 @@ export default function SettingsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const {
-    language, homeStation, walkingSpeed, setWalkingSpeed, setLanguage,
+    language, homeStation, destination, walkingSpeed, setWalkingSpeed, setLanguage,
     reminderIntervals, toggleReminderInterval, notificationsAllowed,
     missedCheckIn, setMissedCheckIn,
     demoActive, setDemoNow, nowMs, plan, currentTime, leaveBy, triggerTestNotification, resetAll,
@@ -82,8 +82,13 @@ export default function SettingsScreen() {
         </View>
         <Text style={[styles.title, { color: colors.foreground }]}>{ja ? '設定' : 'Settings'}</Text>
 
-        <Section label={ja ? '帰宅先' : 'HOME'}>
-          <Row testID="edit-home-station" title={homeStation || (ja ? '未設定' : 'Not set')} subtitle={ja ? '自宅の最寄り駅' : 'Home station'} onPress={() => router.push('/home-station')} />
+        <Section label={ja ? '帰り先' : 'DESTINATION'}>
+          <Row
+            testID="edit-home-station"
+            title={destination || (ja ? '未設定' : 'Not set')}
+            subtitle={homeStation ? (ja ? `最寄り駅：${homeStation}` : `Nearest station: ${homeStation}`) : (ja ? '帰り先を設定' : 'Choose where you are heading')}
+            onPress={() => router.push('/destinations')}
+          />
         </Section>
 
         <Section
@@ -150,7 +155,30 @@ export default function SettingsScreen() {
           </Row>
         </Section>
 
+        <Section label={ja ? 'グループ' : 'GROUPS'}>
+          <Row
+            testID="join-group"
+            title={ja ? '飲み会に参加' : 'Join a group'}
+            subtitle={ja ? '幹事のコードで出発時刻を共有' : 'Share your leave time with an organizer'}
+            onPress={() => router.push('/join')}
+          />
+          <View style={[styles.divider, { backgroundColor: colors.border }]} />
+          <Row
+            testID="business-mode"
+            title={ja ? '幹事モード' : 'LastRide for Business'}
+            subtitle={ja ? '法人イベントを作成・管理' : 'Create and manage organization events'}
+            onPress={() => router.push('/business')}
+          />
+        </Section>
+
         <Section label={ja ? '通知とデータ' : 'NOTIFICATIONS & DATA'}>
+          <Row
+            testID="open-night-history"
+            title={ja ? '夜の履歴' : 'Night history'}
+            subtitle={ja ? 'この端末に保存された過去のプラン' : 'Past plans stored only on this device'}
+            onPress={() => router.push('/history')}
+          />
+          <View style={[styles.divider, { backgroundColor: colors.border }]} />
           <Row testID="test-notification" title={ja ? 'テスト通知を送る' : 'Send test notification'} subtitle={ja ? '通知の見え方を確認します' : 'Check how reminders look'} onPress={() => void triggerTestNotification()}>
             <Feather name="bell" color={colors.mutedForeground} size={18} />
           </Row>
@@ -160,7 +188,7 @@ export default function SettingsScreen() {
           <Row
             testID="reset-all"
             title={ja ? '最初からやり直す' : 'Reset & start over'}
-            subtitle={ja ? '言語・自宅駅・設定を消去します' : 'Clears your language, home station and settings'}
+            subtitle={ja ? '言語・帰り先・設定を消去します' : 'Clears your language, destinations and settings'}
             onPress={() => void resetAll().then(() => router.replace('/'))}
             destructive
           >

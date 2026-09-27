@@ -8,7 +8,7 @@
  * calls at once — the thing a file on local disk cannot do).
  */
 import { sql } from "drizzle-orm";
-import { db, apiUsageTable } from "@workspace/db";
+import { getDb, apiUsageTable } from "@workspace/db";
 import { logger } from "./logger";
 
 export type Provider = "ekispert" | "navitime-transport" | "navitime-route-car" | "navitime-route-walk" | "navitime-spot" | "navitime-geocoding";
@@ -38,7 +38,7 @@ export async function recordCall(provider: Provider, endpoint: string): Promise<
 
   let todayCount: number;
   try {
-    const [row] = await db
+    const [row] = await getDb()
       .insert(apiUsageTable)
       .values({ provider, day, count: 1 })
       .onConflictDoUpdate({
@@ -66,7 +66,7 @@ export async function recordCall(provider: Provider, endpoint: string): Promise<
 }
 
 async function monthlyCount(provider: Provider, month: string): Promise<number> {
-  const [row] = await db
+  const [row] = await getDb()
     .select({ total: sql<number>`coalesce(sum(${apiUsageTable.count}), 0)::int` })
     .from(apiUsageTable)
     .where(sql`${apiUsageTable.provider} = ${provider} and to_char(${apiUsageTable.day}, 'YYYY-MM') = ${month}`);
@@ -77,7 +77,7 @@ export async function usageReport() {
   const day = jstDate();
   const month = day.slice(0, 7);
 
-  const rows = await db
+  const rows = await getDb()
     .select({ provider: apiUsageTable.provider, day: apiUsageTable.day, count: apiUsageTable.count })
     .from(apiUsageTable)
     .where(sql`to_char(${apiUsageTable.day}, 'YYYY-MM') = ${month}`);
