@@ -234,3 +234,210 @@ export const GetUsageResponse = zod.object({
 })
 
 
+/**
+ * @summary Create a hosted event
+ */
+export const createEnterpriseEventBodyTitleMax = 160;
+
+export const createEnterpriseEventBodyAlertLeadMinutesDefault = 10;
+export const createEnterpriseEventBodyAlertLeadMinutesMax = 120;
+
+export const createEnterpriseEventBodyParticipantLimitDefault = 30;
+export const createEnterpriseEventBodyParticipantLimitMax = 500;
+
+
+
+export const CreateEnterpriseEventBody = zod.object({
+  "title": zod.string().min(1).max(createEnterpriseEventBodyTitleMax),
+  "startsAt": zod.coerce.date(),
+  "expiresAt": zod.coerce.date(),
+  "alertLeadMinutes": zod.number().min(1).max(createEnterpriseEventBodyAlertLeadMinutesMax).default(createEnterpriseEventBodyAlertLeadMinutesDefault),
+  "participantLimit": zod.number().min(1).max(createEnterpriseEventBodyParticipantLimitMax).default(createEnterpriseEventBodyParticipantLimitDefault)
+})
+
+export const createEnterpriseEventResponseOneParticipantCountMin = 0;
+
+
+
+export const CreateEnterpriseEventResponse = zod.object({
+  "id": zod.string(),
+  "organizationId": zod.string(),
+  "title": zod.string(),
+  "startsAt": zod.coerce.date(),
+  "expiresAt": zod.coerce.date(),
+  "status": zod.enum(['draft', 'active', 'closed', 'expired']),
+  "alertLeadMinutes": zod.number(),
+  "participantLimit": zod.number(),
+  "participantCount": zod.number().min(createEnterpriseEventResponseOneParticipantCountMin)
+}).and(zod.object({
+  "inviteToken": zod.string(),
+  "joinCode": zod.string()
+}))
+
+
+/**
+ * @summary List events visible to the organizer
+ */
+export const listEnterpriseEventsResponseParticipantCountMin = 0;
+
+
+
+export const ListEnterpriseEventsResponseItem = zod.object({
+  "id": zod.string(),
+  "organizationId": zod.string(),
+  "title": zod.string(),
+  "startsAt": zod.coerce.date(),
+  "expiresAt": zod.coerce.date(),
+  "status": zod.enum(['draft', 'active', 'closed', 'expired']),
+  "alertLeadMinutes": zod.number(),
+  "participantLimit": zod.number(),
+  "participantCount": zod.number().min(listEnterpriseEventsResponseParticipantCountMin)
+})
+export const ListEnterpriseEventsResponse = zod.array(ListEnterpriseEventsResponseItem)
+
+
+/**
+ * @summary Get an event and its private host roster
+ */
+export const GetEnterpriseEventParams = zod.object({
+  "eventId": zod.coerce.string()
+})
+
+export const getEnterpriseEventResponseOneParticipantCountMin = 0;
+
+
+
+export const GetEnterpriseEventResponse = zod.object({
+  "id": zod.string(),
+  "organizationId": zod.string(),
+  "title": zod.string(),
+  "startsAt": zod.coerce.date(),
+  "expiresAt": zod.coerce.date(),
+  "status": zod.enum(['draft', 'active', 'closed', 'expired']),
+  "alertLeadMinutes": zod.number(),
+  "participantLimit": zod.number(),
+  "participantCount": zod.number().min(getEnterpriseEventResponseOneParticipantCountMin)
+}).and(zod.object({
+  "participants": zod.array(zod.object({
+  "id": zod.string(),
+  "displayName": zod.string(),
+  "leaveBy": zod.coerce.date().nullable(),
+  "status": zod.enum(['active', 'left']),
+  "updatedAt": zod.coerce.date()
+}).describe('Privacy-minimal host view. No location, route, station, or destination data.'))
+}))
+
+
+/**
+ * @summary Update or close an event
+ */
+export const UpdateEnterpriseEventParams = zod.object({
+  "eventId": zod.coerce.string()
+})
+
+export const updateEnterpriseEventBodyTitleMax = 160;
+
+export const updateEnterpriseEventBodyAlertLeadMinutesMax = 120;
+
+export const updateEnterpriseEventBodyParticipantLimitMax = 500;
+
+
+
+export const UpdateEnterpriseEventBody = zod.object({
+  "title": zod.string().min(1).max(updateEnterpriseEventBodyTitleMax).optional(),
+  "alertLeadMinutes": zod.number().min(1).max(updateEnterpriseEventBodyAlertLeadMinutesMax).optional(),
+  "participantLimit": zod.number().min(1).max(updateEnterpriseEventBodyParticipantLimitMax).optional(),
+  "status": zod.enum(['active', 'closed']).optional()
+})
+
+export const updateEnterpriseEventResponseParticipantCountMin = 0;
+
+
+
+export const UpdateEnterpriseEventResponse = zod.object({
+  "id": zod.string(),
+  "organizationId": zod.string(),
+  "title": zod.string(),
+  "startsAt": zod.coerce.date(),
+  "expiresAt": zod.coerce.date(),
+  "status": zod.enum(['draft', 'active', 'closed', 'expired']),
+  "alertLeadMinutes": zod.number(),
+  "participantLimit": zod.number(),
+  "participantCount": zod.number().min(updateEnterpriseEventResponseParticipantCountMin)
+})
+
+
+/**
+ * @summary Join a hosted event without creating a personal account
+ */
+export const joinEnterpriseEventBodyInviteTokenMin = 32;
+export const joinEnterpriseEventBodyInviteTokenMax = 256;
+
+export const joinEnterpriseEventBodyJoinCodeMin = 4;
+export const joinEnterpriseEventBodyJoinCodeMax = 12;
+
+export const joinEnterpriseEventBodyDisplayNameMax = 80;
+
+
+
+export const JoinEnterpriseEventBody = zod.object({
+  "inviteToken": zod.string().min(joinEnterpriseEventBodyInviteTokenMin).max(joinEnterpriseEventBodyInviteTokenMax).optional(),
+  "joinCode": zod.string().min(joinEnterpriseEventBodyJoinCodeMin).max(joinEnterpriseEventBodyJoinCodeMax).optional(),
+  "displayName": zod.string().min(1).max(joinEnterpriseEventBodyDisplayNameMax)
+})
+
+export const JoinEnterpriseEventResponse = zod.object({
+  "participantToken": zod.string(),
+  "participant": zod.object({
+  "id": zod.string(),
+  "displayName": zod.string(),
+  "leaveBy": zod.coerce.date().nullable(),
+  "status": zod.enum(['active', 'left'])
+}),
+  "event": zod.object({
+  "id": zod.string(),
+  "title": zod.string(),
+  "expiresAt": zod.coerce.date()
+})
+})
+
+
+/**
+ * @summary Update the current anonymous participant leave time
+ */
+export const updateEventParticipantHeaderXParticipantTokenMin = 32;
+export const updateEventParticipantHeaderXParticipantTokenMax = 256;
+
+
+
+export const UpdateEventParticipantHeader = zod.object({
+  "X-Participant-Token": zod.string().min(updateEventParticipantHeaderXParticipantTokenMin).max(updateEventParticipantHeaderXParticipantTokenMax)
+})
+
+export const UpdateEventParticipantBody = zod.object({
+  "leaveBy": zod.coerce.date()
+})
+
+export const UpdateEventParticipantResponse = zod.object({
+  "id": zod.string(),
+  "displayName": zod.string(),
+  "leaveBy": zod.coerce.date().nullable(),
+  "status": zod.enum(['active', 'left'])
+})
+
+
+/**
+ * @summary Leave the current hosted event
+ */
+export const leaveEnterpriseEventHeaderXParticipantTokenMin = 32;
+export const leaveEnterpriseEventHeaderXParticipantTokenMax = 256;
+
+
+
+export const LeaveEnterpriseEventHeader = zod.object({
+  "X-Participant-Token": zod.string().min(leaveEnterpriseEventHeaderXParticipantTokenMin).max(leaveEnterpriseEventHeaderXParticipantTokenMax)
+})
+
+export const LeaveEnterpriseEventResponse = zod.void()
+
+

@@ -7,6 +7,16 @@
  */
 
 export * from './address';
+export * from './createEnterpriseEventRequest';
+export * from './enterpriseEvent';
+export * from './enterpriseEventCreated';
+export * from './enterpriseEventDetail';
+export * from './enterpriseEventStatus';
+export * from './eventParticipantHostView';
+export * from './eventParticipantHostViewStatus';
+export * from './eventParticipantSelf';
+export * from './eventParticipantSelfStatus';
+export * from './eventParticipantSession';
 export * from './fromLatParameter';
 export * from './fromLonParameter';
 export * from './fromNameParameter';
@@ -19,6 +29,9 @@ export * from './getTaxiEstimateParams';
 export * from './getWalkRoutePace';
 export * from './getWalkRouteParams';
 export * from './healthStatus';
+export * from './joinEnterpriseEventRequest';
+export * from './participantEventSummary';
+export * from './participantTokenParameter';
 export * from './place';
 export * from './placeKind';
 export * from './searchAddressesParams';
@@ -31,6 +44,9 @@ export * from './toLonParameter';
 export * from './toNameParameter';
 export * from './trainLeg';
 export * from './trainRoute';
+export * from './updateEnterpriseEventRequest';
+export * from './updateEnterpriseEventRequestStatus';
+export * from './updateEventParticipantRequest';
 export * from './usageReport';
 export * from './usageReportMonthlyLimits';
 export * from './usageReportThisMonth';

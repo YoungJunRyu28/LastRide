@@ -6,17 +6,27 @@
  * OpenAPI spec version: 0.1.0
  */
 import {
+  useMutation,
   useQuery
 } from '@tanstack/react-query';
 import type {
+  MutationFunction,
   QueryFunction,
   QueryKey,
+  UseMutationOptions,
+  UseMutationResult,
   UseQueryOptions,
   UseQueryResult
 } from '@tanstack/react-query';
 
 import type {
   Address,
+  CreateEnterpriseEventRequest,
+  EnterpriseEvent,
+  EnterpriseEventCreated,
+  EnterpriseEventDetail,
+  EventParticipantSelf,
+  EventParticipantSession,
   GetFirstTrainParams,
   GetLastTrainParams,
   GetNearbyPlacesParams,
@@ -24,18 +34,21 @@ import type {
   GetTaxiEstimateParams,
   GetWalkRouteParams,
   HealthStatus,
+  JoinEnterpriseEventRequest,
   Place,
   SearchAddressesParams,
   SearchStationsParams,
   Station,
   TaxiEstimate,
   TrainRoute,
+  UpdateEnterpriseEventRequest,
+  UpdateEventParticipantRequest,
   UsageReport,
   WalkRoute
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
-import type { ErrorType } from '../custom-fetch';
+import type { ErrorType , BodyType } from '../custom-fetch';
 
 type AwaitedInput<T> = PromiseLike<T> | T;
 
@@ -894,4 +907,514 @@ export function useGetUsage<TData = Awaited<ReturnType<typeof getUsage>>, TError
 
 
 
+
+export const getCreateEnterpriseEventUrl = () => {
+
+
+
+
+  return `/api/enterprise/events`
+}
+
+/**
+ * @summary Create a hosted event
+ */
+export const createEnterpriseEvent = async (createEnterpriseEventRequest: CreateEnterpriseEventRequest, options?: Parameters<typeof customFetch>[1]): Promise<EnterpriseEventCreated> => {
+
+  return customFetch<EnterpriseEventCreated>(getCreateEnterpriseEventUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(createEnterpriseEventRequest)
+  }
+);}
+
+
+
+
+
+export const getCreateEnterpriseEventMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createEnterpriseEvent>>, TError,{data: BodyType<CreateEnterpriseEventRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createEnterpriseEvent>>, TError,{data: BodyType<CreateEnterpriseEventRequest>}, TContext> => {
+
+const mutationKey = ['createEnterpriseEvent'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createEnterpriseEvent>>, {data: BodyType<CreateEnterpriseEventRequest>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createEnterpriseEvent(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateEnterpriseEventMutationResult = NonNullable<Awaited<ReturnType<typeof createEnterpriseEvent>>>
+    export type CreateEnterpriseEventMutationBody = BodyType<CreateEnterpriseEventRequest>
+    export type CreateEnterpriseEventMutationError = ErrorType<void>
+
+    /**
+ * @summary Create a hosted event
+ */
+export const useCreateEnterpriseEvent = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createEnterpriseEvent>>, TError,{data: BodyType<CreateEnterpriseEventRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createEnterpriseEvent>>,
+        TError,
+        {data: BodyType<CreateEnterpriseEventRequest>},
+        TContext
+      > => {
+      return useMutation(getCreateEnterpriseEventMutationOptions(options));
+    }
+
+export const getListEnterpriseEventsUrl = () => {
+
+
+
+
+  return `/api/enterprise/events`
+}
+
+/**
+ * @summary List events visible to the organizer
+ */
+export const listEnterpriseEvents = async ( options?: Parameters<typeof customFetch>[1]): Promise<EnterpriseEvent[]> => {
+
+  return customFetch<EnterpriseEvent[]>(getListEnterpriseEventsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListEnterpriseEventsQueryKey = () => {
+    return [
+    `/api/enterprise/events`
+    ] as const;
+    }
+
+
+export const getListEnterpriseEventsQueryOptions = <TData = Awaited<ReturnType<typeof listEnterpriseEvents>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listEnterpriseEvents>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListEnterpriseEventsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listEnterpriseEvents>>> = ({ signal }) => listEnterpriseEvents({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listEnterpriseEvents>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListEnterpriseEventsQueryResult = NonNullable<Awaited<ReturnType<typeof listEnterpriseEvents>>>
+export type ListEnterpriseEventsQueryError = ErrorType<void>
+
+
+/**
+ * @summary List events visible to the organizer
+ */
+
+export function useListEnterpriseEvents<TData = Awaited<ReturnType<typeof listEnterpriseEvents>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listEnterpriseEvents>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListEnterpriseEventsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetEnterpriseEventUrl = (eventId: string,) => {
+
+
+
+
+  return `/api/enterprise/events/${eventId}`
+}
+
+/**
+ * @summary Get an event and its private host roster
+ */
+export const getEnterpriseEvent = async (eventId: string, options?: Parameters<typeof customFetch>[1]): Promise<EnterpriseEventDetail> => {
+
+  return customFetch<EnterpriseEventDetail>(getGetEnterpriseEventUrl(eventId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetEnterpriseEventQueryKey = (eventId: string,) => {
+    return [
+    `/api/enterprise/events/${eventId}`
+    ] as const;
+    }
+
+
+export const getGetEnterpriseEventQueryOptions = <TData = Awaited<ReturnType<typeof getEnterpriseEvent>>, TError = ErrorType<void>>(eventId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getEnterpriseEvent>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetEnterpriseEventQueryKey(eventId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getEnterpriseEvent>>> = ({ signal }) => getEnterpriseEvent(eventId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: eventId !== null && eventId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getEnterpriseEvent>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetEnterpriseEventQueryResult = NonNullable<Awaited<ReturnType<typeof getEnterpriseEvent>>>
+export type GetEnterpriseEventQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get an event and its private host roster
+ */
+
+export function useGetEnterpriseEvent<TData = Awaited<ReturnType<typeof getEnterpriseEvent>>, TError = ErrorType<void>>(
+ eventId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getEnterpriseEvent>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetEnterpriseEventQueryOptions(eventId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateEnterpriseEventUrl = (eventId: string,) => {
+
+
+
+
+  return `/api/enterprise/events/${eventId}`
+}
+
+/**
+ * @summary Update or close an event
+ */
+export const updateEnterpriseEvent = async (eventId: string,
+    updateEnterpriseEventRequest: UpdateEnterpriseEventRequest, options?: Parameters<typeof customFetch>[1]): Promise<EnterpriseEvent> => {
+
+  return customFetch<EnterpriseEvent>(getUpdateEnterpriseEventUrl(eventId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateEnterpriseEventRequest)
+  }
+);}
+
+
+
+
+
+export const getUpdateEnterpriseEventMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateEnterpriseEvent>>, TError,{eventId: string;data: BodyType<UpdateEnterpriseEventRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateEnterpriseEvent>>, TError,{eventId: string;data: BodyType<UpdateEnterpriseEventRequest>}, TContext> => {
+
+const mutationKey = ['updateEnterpriseEvent'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateEnterpriseEvent>>, {eventId: string;data: BodyType<UpdateEnterpriseEventRequest>}> = (props) => {
+          const {eventId,data} = props ?? {};
+
+          return  updateEnterpriseEvent(eventId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateEnterpriseEventMutationResult = NonNullable<Awaited<ReturnType<typeof updateEnterpriseEvent>>>
+    export type UpdateEnterpriseEventMutationBody = BodyType<UpdateEnterpriseEventRequest>
+    export type UpdateEnterpriseEventMutationError = ErrorType<void>
+
+    /**
+ * @summary Update or close an event
+ */
+export const useUpdateEnterpriseEvent = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateEnterpriseEvent>>, TError,{eventId: string;data: BodyType<UpdateEnterpriseEventRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateEnterpriseEvent>>,
+        TError,
+        {eventId: string;data: BodyType<UpdateEnterpriseEventRequest>},
+        TContext
+      > => {
+      return useMutation(getUpdateEnterpriseEventMutationOptions(options));
+    }
+
+export const getJoinEnterpriseEventUrl = () => {
+
+
+
+
+  return `/api/events/join`
+}
+
+/**
+ * @summary Join a hosted event without creating a personal account
+ */
+export const joinEnterpriseEvent = async (joinEnterpriseEventRequest: JoinEnterpriseEventRequest, options?: Parameters<typeof customFetch>[1]): Promise<EventParticipantSession> => {
+
+  return customFetch<EventParticipantSession>(getJoinEnterpriseEventUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(joinEnterpriseEventRequest)
+  }
+);}
+
+
+
+
+
+export const getJoinEnterpriseEventMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof joinEnterpriseEvent>>, TError,{data: BodyType<JoinEnterpriseEventRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof joinEnterpriseEvent>>, TError,{data: BodyType<JoinEnterpriseEventRequest>}, TContext> => {
+
+const mutationKey = ['joinEnterpriseEvent'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof joinEnterpriseEvent>>, {data: BodyType<JoinEnterpriseEventRequest>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  joinEnterpriseEvent(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type JoinEnterpriseEventMutationResult = NonNullable<Awaited<ReturnType<typeof joinEnterpriseEvent>>>
+    export type JoinEnterpriseEventMutationBody = BodyType<JoinEnterpriseEventRequest>
+    export type JoinEnterpriseEventMutationError = ErrorType<void>
+
+    /**
+ * @summary Join a hosted event without creating a personal account
+ */
+export const useJoinEnterpriseEvent = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof joinEnterpriseEvent>>, TError,{data: BodyType<JoinEnterpriseEventRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof joinEnterpriseEvent>>,
+        TError,
+        {data: BodyType<JoinEnterpriseEventRequest>},
+        TContext
+      > => {
+      return useMutation(getJoinEnterpriseEventMutationOptions(options));
+    }
+
+export const getUpdateEventParticipantUrl = () => {
+
+
+
+
+  return `/api/events/participant`
+}
+
+/**
+ * @summary Update the current anonymous participant leave time
+ */
+export const updateEventParticipant = async (updateEventParticipantRequest: UpdateEventParticipantRequest, options?: Parameters<typeof customFetch>[1]): Promise<EventParticipantSelf> => {
+
+  return customFetch<EventParticipantSelf>(getUpdateEventParticipantUrl(),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(updateEventParticipantRequest)
+  }
+);}
+
+
+
+
+
+export const getUpdateEventParticipantMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateEventParticipant>>, TError,{data: BodyType<UpdateEventParticipantRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateEventParticipant>>, TError,{data: BodyType<UpdateEventParticipantRequest>}, TContext> => {
+
+const mutationKey = ['updateEventParticipant'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateEventParticipant>>, {data: BodyType<UpdateEventParticipantRequest>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  updateEventParticipant(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateEventParticipantMutationResult = NonNullable<Awaited<ReturnType<typeof updateEventParticipant>>>
+    export type UpdateEventParticipantMutationBody = BodyType<UpdateEventParticipantRequest>
+    export type UpdateEventParticipantMutationError = ErrorType<void>
+
+    /**
+ * @summary Update the current anonymous participant leave time
+ */
+export const useUpdateEventParticipant = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateEventParticipant>>, TError,{data: BodyType<UpdateEventParticipantRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateEventParticipant>>,
+        TError,
+        {data: BodyType<UpdateEventParticipantRequest>},
+        TContext
+      > => {
+      return useMutation(getUpdateEventParticipantMutationOptions(options));
+    }
+
+export const getLeaveEnterpriseEventUrl = () => {
+
+
+
+
+  return `/api/events/participant`
+}
+
+/**
+ * @summary Leave the current hosted event
+ */
+export const leaveEnterpriseEvent = async ( options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+
+  return customFetch<void>(getLeaveEnterpriseEventUrl(),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getLeaveEnterpriseEventMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof leaveEnterpriseEvent>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof leaveEnterpriseEvent>>, TError,void, TContext> => {
+
+const mutationKey = ['leaveEnterpriseEvent'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof leaveEnterpriseEvent>>, void> = () => {
+
+
+          return  leaveEnterpriseEvent(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type LeaveEnterpriseEventMutationResult = NonNullable<Awaited<ReturnType<typeof leaveEnterpriseEvent>>>
+
+    export type LeaveEnterpriseEventMutationError = ErrorType<void>
+
+    /**
+ * @summary Leave the current hosted event
+ */
+export const useLeaveEnterpriseEvent = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof leaveEnterpriseEvent>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof leaveEnterpriseEvent>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getLeaveEnterpriseEventMutationOptions(options));
+    }
 
