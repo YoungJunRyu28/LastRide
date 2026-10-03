@@ -33,16 +33,18 @@ move during the evening the plan follows you, and reminders are rescheduled.
 Times come from [駅すぱあと API](https://api-info.ekispert.com/) (real
 timetables, including weekends and holidays) and stations, walking routes, taxi
 estimates and places from [NAVITIME](https://api-sdk.navitime.co.jp/api/) via
-RapidAPI. Both are called by the API server in this repo, never by the app, so
-the keys stay off people's phones and answers are cached. Without a server the
-app falls back to free OpenStreetMap services and clearly-labelled sample train
-times.
+RapidAPI. Both are called by the API server in this repo, so provider keys stay off
+people's phones and answers are cached. Production builds require an HTTPS API
+origin and keep public OpenStreetMap/Photon community fallbacks disabled by
+default; those fallbacks remain available only for development or explicitly
+opted-in test builds.
 
 **Layout:** `artifacts/last-ride` is the Expo (React Native) app,
 `artifacts/api-server` the Express API server, and `lib/` holds the OpenAPI spec
 plus the client and validators generated from it. See `replit.md` for how to run
 the existing development stack, `.env.example` for the configuration contract,
-and `docs/enterprise-deployment.md` for the production Business bring-up order.
+`docs/enterprise-deployment.md` for Business bring-up, and `infra/README.md`
+for the staged/production AWS release workflow.
 
 Database schema changes use committed Drizzle migrations:
 

@@ -10,7 +10,7 @@
  * unchanged; only how they get invoked changes, from an in-process timer to
  * three separate EventBridge Scheduler rules calling this Lambda with a
  * different `task` each time, at the same rates the original loop used
- * (5 min, 1 min, 5 min — see deploy-lambda.sh).
+ * (5 min, 1 min, 5 min — see infra/template.yaml).
  */
 import { isDatabaseConfigured } from "@workspace/db";
 import {
@@ -28,7 +28,10 @@ type ScheduledEvent = { task: ScheduledTask };
 
 export async function handler(event: ScheduledEvent) {
   if (!isDatabaseConfigured()) {
-    logger.warn({ task: event.task }, "Skipped scheduled task: no database configured");
+    logger.warn(
+      { task: event.task },
+      "Skipped scheduled task: no database configured",
+    );
     return;
   }
 
@@ -55,7 +58,8 @@ export async function handler(event: ScheduledEvent) {
     }
     case "pushReceipts": {
       const result = await reconcileEnterprisePushReceipts();
-      if (result.checked > 0) logger.info(result, "Checked enterprise push receipts");
+      if (result.checked > 0)
+        logger.info(result, "Checked enterprise push receipts");
       return;
     }
     default: {

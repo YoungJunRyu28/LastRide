@@ -1,5 +1,8 @@
 name: CI
 
+permissions:
+  contents: read
+
 on:
   push:
     branches: [main]
@@ -63,7 +66,15 @@ jobs:
       - name: Unit and integration tests
         run: pnpm run test
 
+      - name: Validate release infrastructure
+        run: |
+          python3 -m pip install --disable-pip-version-check --quiet cfn-lint==1.57.1
+          cfn-lint infra/template.yaml
+          bash -n infra/deploy.sh infra/rollback.sh artifacts/api-server/scripts/deploy-lambda.sh
+          python3 -m py_compile infra/hooks/post_traffic.py
+
       - name: Build production artifacts
         run: pnpm run build:ci
         env:
           EXPO_PUBLIC_API_URL: https://api.invalid.example
+          EXPO_PUBLIC_APP_JOIN_BASE_URL: https://lastride.example

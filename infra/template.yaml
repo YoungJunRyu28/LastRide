@@ -1,0 +1,295 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: LastRide production/staging API and scheduled workers
+
+Parameters:
+  Stage:
+    Type: String
+    AllowedValues: [staging, production]
+    Default: staging
+  AppSecretName:
+    Type: String
+    Description: Secrets Manager JSON secret containing LastRide runtime credentials.
+  EnableCanary:
+    Type: String
+    AllowedValues: ["true", "false"]
+    Default: "false"
+  CorsAllowedOrigins:
+    Type: String
+    Default: ""
+  AlarmEmail:
+    Type: String
+    Default: ""
+  EkispertMonthlyLimit:
+    Type: Number
+    Default: 500
+  NavitimeTransportMonthlyLimit:
+    Type: Number
+    Default: 500
+  NavitimeWalkMonthlyLimit:
+    Type: Number
+    Default: 500
+  NavitimeCarMonthlyLimit:
+    Type: Number
+    Default: 500
+  NavitimeSpotMonthlyLimit:
+    Type: Number
+    Default: 500
+  NavitimeGeocodingMonthlyLimit:
+    Type: Number
+    Default: 500
+
+Conditions:
+  UseCanary: !Equals [!Ref EnableCanary, "true"]
+  HasAlarmEmail: !Not [!Equals [!Ref AlarmEmail, ""]]
+
+Globals:
+  Function:
+    Runtime: nodejs24.x
+    Architectures: [arm64]
+    MemorySize: 512
+    Tracing: Active
+    LoggingConfig:
+      LogFormat: JSON
+      ApplicationLogLevel: INFO
+      SystemLogLevel: WARN
+
+Resources:
+  OperationsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub "lastride-${Stage}-operations"
+
+  OperationsEmailSubscription:
+    Type: AWS::SNS::Subscription
+    Condition: HasAlarmEmail
+    Properties:
+      Protocol: email
+      Endpoint: !Ref AlarmEmail
+      TopicArn: !Ref OperationsTopic
+
+  HttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: $default
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 100
+        ThrottlingRateLimit: 50
+
+  PostTrafficHook:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "lastride-${Stage}-post-traffic"
+      Runtime: python3.13
+      Architectures: [arm64]
+      CodeUri: hooks/
+      Handler: post_traffic.handler
+      Timeout: 15
+      MemorySize: 128
+      Environment:
+        Variables:
+          API_URL: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}"
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - codedeploy:PutLifecycleEventHookExecutionStatus
+              Resource: "*"
+
+  ApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "lastride-${Stage}-api"
+      CodeUri: ../artifacts/api-server/dist/
+      Handler: lambda.handler
+      Timeout: 15
+      ReservedConcurrentExecutions: 50
+      AutoPublishAlias: live
+      Environment:
+        Variables:
+          NODE_ENV: production
+          LOG_LEVEL: info
+          DB_POOL_MAX: "2"
+          DB_CONNECTION_TIMEOUT_MS: "5000"
+          DB_IDLE_TIMEOUT_MS: "10000"
+          PROVIDER_TIMEOUT_MS: "5000"
+          REQUIRE_USAGE_ACCOUNTING: "true"
+          CORS_ALLOWED_ORIGINS: !Ref CorsAllowedOrigins
+          EKISPERT_MONTHLY_LIMIT: !Ref EkispertMonthlyLimit
+          NAVITIME_TRANSPORT_MONTHLY_LIMIT: !Ref NavitimeTransportMonthlyLimit
+          NAVITIME_ROUTE_WALK_MONTHLY_LIMIT: !Ref NavitimeWalkMonthlyLimit
+          NAVITIME_ROUTE_CAR_MONTHLY_LIMIT: !Ref NavitimeCarMonthlyLimit
+          NAVITIME_SPOT_MONTHLY_LIMIT: !Ref NavitimeSpotMonthlyLimit
+          NAVITIME_GEOCODING_MONTHLY_LIMIT: !Ref NavitimeGeocodingMonthlyLimit
+          DATABASE_URL: !Sub "{{resolve:secretsmanager:${AppSecretName}:SecretString:DATABASE_URL}}"
+          RAPIDAPI_KEY: !Sub "{{resolve:secretsmanager:${AppSecretName}:SecretString:RAPIDAPI_KEY}}"
+          EKISPERT_KEY: !Sub "{{resolve:secretsmanager:${AppSecretName}:SecretString:EKISPERT_KEY}}"
+          SUPABASE_URL: !Sub "{{resolve:secretsmanager:${AppSecretName}:SecretString:SUPABASE_URL}}"
+          SUPABASE_ANON_KEY: !Sub "{{resolve:secretsmanager:${AppSecretName}:SecretString:SUPABASE_ANON_KEY}}"
+          USAGE_ADMIN_TOKEN: !Sub "{{resolve:secretsmanager:${AppSecretName}:SecretString:USAGE_ADMIN_TOKEN}}"
+          ENTERPRISE_BOOTSTRAP_EMAILS: ""
+          ENTERPRISE_BOOTSTRAP_ORGANIZATION_NAME: LastRide Business
+          ENTERPRISE_PUSH_INCLUDE_NAME: "false"
+      DeploymentPreference:
+        Enabled: !If [UseCanary, true, false]
+        Type: Canary10Percent5Minutes
+        Alarms:
+          - !Ref ApiErrorsAlarm
+        Hooks:
+          PostTraffic: !Ref PostTrafficHook
+      Events:
+        Root:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /
+            Method: ANY
+        Proxy:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: /{proxy+}
+            Method: ANY
+
+  ScheduledFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "lastride-${Stage}-scheduled"
+      CodeUri: ../artifacts/api-server/dist/
+      Handler: scheduled.handler
+      Timeout: 45
+      ReservedConcurrentExecutions: 5
+      AutoPublishAlias: live
+      Environment:
+        Variables:
+          NODE_ENV: production
+          LOG_LEVEL: info
+          DB_POOL_MAX: "2"
+          DB_CONNECTION_TIMEOUT_MS: "5000"
+          DB_IDLE_TIMEOUT_MS: "10000"
+          PROVIDER_TIMEOUT_MS: "5000"
+          REQUIRE_USAGE_ACCOUNTING: "true"
+          CORS_ALLOWED_ORIGINS: !Ref CorsAllowedOrigins
+          EKISPERT_MONTHLY_LIMIT: !Ref EkispertMonthlyLimit
+          NAVITIME_TRANSPORT_MONTHLY_LIMIT: !Ref NavitimeTransportMonthlyLimit
+          NAVITIME_ROUTE_WALK_MONTHLY_LIMIT: !Ref NavitimeWalkMonthlyLimit
+          NAVITIME_ROUTE_CAR_MONTHLY_LIMIT: !Ref NavitimeCarMonthlyLimit
+          NAVITIME_SPOT_MONTHLY_LIMIT: !Ref NavitimeSpotMonthlyLimit
+          NAVITIME_GEOCODING_MONTHLY_LIMIT: !Ref NavitimeGeocodingMonthlyLimit
+          DATABASE_URL: !Sub "{{resolve:secretsmanager:${AppSecretName}:SecretString:DATABASE_URL}}"
+          RAPIDAPI_KEY: !Sub "{{resolve:secretsmanager:${AppSecretName}:SecretString:RAPIDAPI_KEY}}"
+          EKISPERT_KEY: !Sub "{{resolve:secretsmanager:${AppSecretName}:SecretString:EKISPERT_KEY}}"
+          SUPABASE_URL: !Sub "{{resolve:secretsmanager:${AppSecretName}:SecretString:SUPABASE_URL}}"
+          SUPABASE_ANON_KEY: !Sub "{{resolve:secretsmanager:${AppSecretName}:SecretString:SUPABASE_ANON_KEY}}"
+          USAGE_ADMIN_TOKEN: !Sub "{{resolve:secretsmanager:${AppSecretName}:SecretString:USAGE_ADMIN_TOKEN}}"
+          ENTERPRISE_BOOTSTRAP_EMAILS: ""
+          ENTERPRISE_BOOTSTRAP_ORGANIZATION_NAME: LastRide Business
+          ENTERPRISE_PUSH_INCLUDE_NAME: "false"
+      Events:
+        Cleanup:
+          Type: ScheduleV2
+          Properties:
+            OmitName: true
+            ScheduleExpression: rate(5 minutes)
+            Input: '{"task":"cleanup"}'
+            FlexibleTimeWindow:
+              Mode: "OFF"
+            RetryPolicy:
+              MaximumRetryAttempts: 3
+              MaximumEventAgeInSeconds: 300
+            DeadLetterConfig:
+              Type: SQS
+              QueueLogicalId: CleanupScheduleDlq
+        DepartureAlerts:
+          Type: ScheduleV2
+          Properties:
+            OmitName: true
+            ScheduleExpression: rate(1 minute)
+            Input: '{"task":"departureAlerts"}'
+            FlexibleTimeWindow:
+              Mode: "OFF"
+            RetryPolicy:
+              MaximumRetryAttempts: 3
+              MaximumEventAgeInSeconds: 300
+            DeadLetterConfig:
+              Type: SQS
+              QueueLogicalId: DepartureAlertsScheduleDlq
+        PushReceipts:
+          Type: ScheduleV2
+          Properties:
+            OmitName: true
+            ScheduleExpression: rate(5 minutes)
+            Input: '{"task":"pushReceipts"}'
+            FlexibleTimeWindow:
+              Mode: "OFF"
+            RetryPolicy:
+              MaximumRetryAttempts: 3
+              MaximumEventAgeInSeconds: 300
+            DeadLetterConfig:
+              Type: SQS
+              QueueLogicalId: PushReceiptsScheduleDlq
+
+  ApiErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: LastRide API Lambda errors
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref ApiFunction
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref OperationsTopic]
+
+  ApiThrottlesAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: LastRide API Lambda throttles
+      Namespace: AWS/Lambda
+      MetricName: Throttles
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref ApiFunction
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref OperationsTopic]
+
+  ScheduledErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: LastRide scheduled worker errors
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref ScheduledFunction
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref OperationsTopic]
+
+Outputs:
+  ApiUrl:
+    Description: LastRide API base URL
+    Value: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}"
+  ApiFunctionName:
+    Value: !Ref ApiFunction
+  ScheduledFunctionName:
+    Value: !Ref ScheduledFunction
+  OperationsTopicArn:
+    Value: !Ref OperationsTopic
