@@ -20,6 +20,9 @@ updates:
       - dependency-name: "react-native-*"
       - dependency-name: "@types/react"
       - dependency-name: "@types/react-dom"
+      # Versioned with the SDK, and its beta tags (19.0.0-beta-<hash>-<date>)
+      # don't sort by date, so Dependabot "upgrades" it to older builds.
+      - dependency-name: "babel-plugin-react-compiler"
       # The SDK also pins TypeScript (~5.9 for SDK 54); patches are fine.
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major", "version-update:semver-minor"]
