@@ -1,12 +1,13 @@
 /**
  * Train timetable lookups. This is the only place the app gets last/first
  * train times from. Real times come from the LastRide API server (駅すぱあと API);
- * when no server is configured it falls back to fixed sample times flagged
- * `source: 'sample'`, which the UI labels so they are never mistaken for a
- * real schedule.
+ * in development builds with no server it falls back to fixed sample times
+ * flagged `source: 'sample'`, which the UI labels so they are never mistaken
+ * for a real schedule. Production builds never use sample times: without a
+ * server, lookups fail and the UI reports train times as unavailable.
  */
 import { getFirstTrain as fetchFirstTrain, getLastTrain as fetchLastTrain, type GetLastTrainParams, type TrainRoute } from '@workspace/api-client-react';
-import { apiBaseUrl } from '@/lib/api';
+import { apiBaseUrl, isDevelopment } from '@/lib/api';
 import type { StationOption } from '@/lib/stations';
 import { nextOccurrence, serviceDate, serviceDayStart, serviceTimeToMs } from '@/lib/time';
 
@@ -60,6 +61,11 @@ function toTrainTime(route: TrainRoute): TrainTime {
   };
 }
 
+/** Production builds without a server: fail rather than show sample times. */
+function requireServer(): void {
+  if (!isDevelopment) throw new Error('Train times are unavailable: no API server is configured.');
+}
+
 /** Runs a lookup; a 404 means "no train route that day" and becomes null. */
 async function lookup(request: () => Promise<TrainRoute>): Promise<TrainTime | null> {
   try {
@@ -72,13 +78,19 @@ async function lookup(request: () => Promise<TrainRoute>): Promise<TrainTime | n
 
 /** The last departure from `from` tonight that still reaches `to`, or null if no train goes there. */
 export async function getLastTrain(from: StationOption, to: StationOption, nowMs: number): Promise<TrainTime | null> {
-  if (!apiBaseUrl) return { departsAt: serviceTimeToMs(SAMPLE_LAST_TRAIN, nowMs), source: 'sample' };
+  if (!apiBaseUrl) {
+    requireServer();
+    return { departsAt: serviceTimeToMs(SAMPLE_LAST_TRAIN, nowMs), source: 'sample' };
+  }
   return lookup(() => fetchLastTrain(toParams(from, to, nowMs)));
 }
 
 /** The next first train from `from` toward `to` after `nowMs`, or null if no train goes there. */
 export async function getFirstTrain(from: StationOption, to: StationOption, nowMs: number): Promise<TrainTime | null> {
-  if (!apiBaseUrl) return { departsAt: nextOccurrence(SAMPLE_FIRST_TRAIN, nowMs), source: 'sample' };
+  if (!apiBaseUrl) {
+    requireServer();
+    return { departsAt: nextOccurrence(SAMPLE_FIRST_TRAIN, nowMs), source: 'sample' };
+  }
   // Usually today's first train has already left, so this is the next service day's.
   const today = await lookup(() => fetchFirstTrain(toParams(from, to, nowMs)));
   if (today && today.departsAt > nowMs) return today;

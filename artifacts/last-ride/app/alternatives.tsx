@@ -3,6 +3,7 @@ import { RailwayMark } from "@/components/RideUI";
 import { useLastRide } from "@/context/LastRideContext";
 import { useColors } from "@/hooks/useColors";
 import { apiBaseUrl, communityFallbacksEnabled } from "@/lib/api";
+import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
 import { STATION_BUFFER_MINUTES } from "@/lib/planner";
 import {
   distanceBetween,
@@ -183,9 +184,9 @@ async function fetchTaxiEstimate(
     }
   }
   if (!communityFallbacksEnabled) return null;
-  const response = await fetch(
+  const response = await fetchWithTimeout(
     `https://routing.openstreetmap.de/routed-car/route/v1/driving/${from.longitude},${from.latitude};${to.longitude},${to.latitude}?overview=false&alternatives=false&steps=false`,
-    { signal: AbortSignal.timeout(8_000) },
+    8_000,
   ).catch(() => null);
   if (!response?.ok) return null;
   const payload = (await response.json()) as {

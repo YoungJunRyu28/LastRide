@@ -42,6 +42,7 @@ Parameters:
 Conditions:
   UseCanary: !Equals [!Ref EnableCanary, "true"]
   HasAlarmEmail: !Not [!Equals [!Ref AlarmEmail, ""]]
+  IsProduction: !Equals [!Ref Stage, production]
 
 Globals:
   Function:
@@ -76,16 +77,43 @@ Resources:
         ThrottlingBurstLimit: 100
         ThrottlingRateLimit: 50
 
+  # Explicit log groups so logs expire. Names are built from Stage, not
+  # !Ref <Function>, so there is no function <-> log group cycle, and the
+  # functions point at them via LoggingConfig.LogGroup, so CloudFormation
+  # creates each group before its function and Lambda never auto-creates an
+  # unmanaged (never-expiring) one with the same name.
+  PostTrafficHookLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/CodeDeployHook_lastride-${Stage}-post-traffic"
+      RetentionInDays: 30
+
+  ApiLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/lastride-${Stage}-api"
+      RetentionInDays: 30
+
+  ScheduledLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/lastride-${Stage}-scheduled"
+      RetentionInDays: 30
+
   PostTrafficHook:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub "lastride-${Stage}-post-traffic"
+      # The SAM-generated CodeDeploy role (AWSCodeDeployRoleForLambda) may
+      # only invoke hook functions whose names start with CodeDeployHook_.
+      FunctionName: !Sub "CodeDeployHook_lastride-${Stage}-post-traffic"
       Runtime: python3.13
       Architectures: [arm64]
       CodeUri: hooks/
       Handler: post_traffic.handler
       Timeout: 15
       MemorySize: 128
+      LoggingConfig:
+        LogGroup: !Ref PostTrafficHookLogGroup
       Environment:
         Variables:
           API_URL: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}"
@@ -105,6 +133,8 @@ Resources:
       Timeout: 15
       ReservedConcurrentExecutions: 50
       AutoPublishAlias: live
+      LoggingConfig:
+        LogGroup: !Ref ApiLogGroup
       Environment:
         Variables:
           NODE_ENV: production
@@ -161,6 +191,8 @@ Resources:
       Timeout: 45
       ReservedConcurrentExecutions: 5
       AutoPublishAlias: live
+      LoggingConfig:
+        LogGroup: !Ref ScheduledLogGroup
       Environment:
         Variables:
           NODE_ENV: production
@@ -187,12 +219,13 @@ Resources:
           ENTERPRISE_BOOTSTRAP_EMAILS: ""
           ENTERPRISE_BOOTSTRAP_ORGANIZATION_NAME: LastRide Business
           ENTERPRISE_PUSH_INCLUDE_NAME: "false"
+      # Staging runs the jobs rarely so a scale-to-zero Postgres can sleep.
       Events:
         Cleanup:
           Type: ScheduleV2
           Properties:
             OmitName: true
-            ScheduleExpression: rate(5 minutes)
+            ScheduleExpression: !If [IsProduction, rate(5 minutes), rate(30 minutes)]
             Input: '{"task":"cleanup"}'
             FlexibleTimeWindow:
               Mode: "OFF"
@@ -206,7 +239,7 @@ Resources:
           Type: ScheduleV2
           Properties:
             OmitName: true
-            ScheduleExpression: rate(1 minute)
+            ScheduleExpression: !If [IsProduction, rate(1 minute), rate(15 minutes)]
             Input: '{"task":"departureAlerts"}'
             FlexibleTimeWindow:
               Mode: "OFF"
@@ -220,7 +253,7 @@ Resources:
           Type: ScheduleV2
           Properties:
             OmitName: true
-            ScheduleExpression: rate(5 minutes)
+            ScheduleExpression: !If [IsProduction, rate(5 minutes), rate(30 minutes)]
             Input: '{"task":"pushReceipts"}'
             FlexibleTimeWindow:
               Mode: "OFF"
@@ -234,6 +267,8 @@ Resources:
   ApiErrorsAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
+      # Sustained errors only (>=5/min for 2 consecutive minutes): the API fans
+      # out to third-party providers, and this alarm gates canary deployments.
       AlarmDescription: LastRide API Lambda errors
       Namespace: AWS/Lambda
       MetricName: Errors
@@ -242,9 +277,9 @@ Resources:
           Value: !Ref ApiFunction
       Statistic: Sum
       Period: 60
-      EvaluationPeriods: 1
-      DatapointsToAlarm: 1
-      Threshold: 1
+      EvaluationPeriods: 2
+      DatapointsToAlarm: 2
+      Threshold: 5
       ComparisonOperator: GreaterThanOrEqualToThreshold
       TreatMissingData: notBreaching
       AlarmActions: [!Ref OperationsTopic]
@@ -260,9 +295,9 @@ Resources:
           Value: !Ref ApiFunction
       Statistic: Sum
       Period: 60
-      EvaluationPeriods: 1
-      DatapointsToAlarm: 1
-      Threshold: 1
+      EvaluationPeriods: 2
+      DatapointsToAlarm: 2
+      Threshold: 5
       ComparisonOperator: GreaterThanOrEqualToThreshold
       TreatMissingData: notBreaching
       AlarmActions: [!Ref OperationsTopic]
@@ -270,6 +305,7 @@ Resources:
   ScheduledErrorsAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
+      # Repeated failures across two 5-minute windows, not a single retry.
       AlarmDescription: LastRide scheduled worker errors
       Namespace: AWS/Lambda
       MetricName: Errors
@@ -277,10 +313,10 @@ Resources:
         - Name: FunctionName
           Value: !Ref ScheduledFunction
       Statistic: Sum
-      Period: 60
-      EvaluationPeriods: 1
-      DatapointsToAlarm: 1
-      Threshold: 1
+      Period: 300
+      EvaluationPeriods: 2
+      DatapointsToAlarm: 2
+      Threshold: 3
       ComparisonOperator: GreaterThanOrEqualToThreshold
       TreatMissingData: notBreaching
       AlarmActions: [!Ref OperationsTopic]

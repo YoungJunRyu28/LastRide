@@ -162,6 +162,44 @@ describe("enterprise store integrity", () => {
     expect(result.kind).toBe("invalid-leave-by");
   });
 
+  it("a participant update racing an event close reports gone, not an error", async () => {
+    const { created } = await eventForTest();
+    const joined = await joinEnterpriseEventRecord({
+      inviteToken: created.inviteToken,
+      displayName: "Participant",
+    });
+    if (joined.kind !== "joined") throw new Error("join failed");
+
+    let releaseClose!: () => void;
+    let closeLocked!: () => void;
+    const locked = new Promise<void>((resolve) => (closeLocked = resolve));
+    const close = getDb().transaction(async (tx) => {
+      await tx
+        .select({ id: enterpriseEventsTable.id })
+        .from(enterpriseEventsTable)
+        .where(eq(enterpriseEventsTable.id, created.id))
+        .for("update");
+      await tx
+        .update(enterpriseEventsTable)
+        .set({ status: "closed" })
+        .where(eq(enterpriseEventsTable.id, created.id));
+      closeLocked();
+      await new Promise<void>((resolve) => (releaseClose = resolve));
+    });
+    await locked;
+
+    // The update reads the participant while the close is still uncommitted.
+    const update = updateEventParticipantRecord(
+      joined.participantToken,
+      new Date(created.expiresAt.getTime() - 60_000),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    releaseClose();
+    await close;
+
+    expect((await update).kind).toBe("gone");
+  });
+
   it("enforces the maximum event retention window in PostgreSQL", async () => {
     const owner = await organizer();
     const start = new Date();

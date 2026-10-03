@@ -89,15 +89,30 @@ Create separate staging and production Secrets Manager secrets and follow
 
 ```bash
 ./infra/deploy.sh staging last-ride/staging
-./infra/deploy.sh production last-ride/production
+./infra/deploy.sh production last-ride/production --confirm
 ```
 
-The workflow validates the repository, applies committed migrations, builds the
+Production requires `--confirm`, a clean working tree and `HEAD` equal to
+`origin/main`.
+
+**First production deploy (cut-over):** the hand-made legacy resources
+(`lastride-api`, `lastride-api-scheduled`, their HTTP API, schedules and IAM
+roles) keep running until removed. After the new stack is live and the app's
+`EXPO_PUBLIC_API_URL` points at its `ApiUrl`, run
+`./infra/decommission-legacy.sh` (dry run) and then `--confirm`, rotate every
+secret from the old `.env.production`, update Secrets Manager and redeploy.
+Follow the "Cut-over from the legacy deployment" section of
+`infra/README.md`.
+
+The workflow validates the repository, runs the migration data preflight,
+applies committed migrations, builds the
 SAM artifact, deploys versioned Lambda aliases, and smoke-tests liveness and
 readiness. Existing production stacks use a canary deployment and a post-traffic
 readiness hook. CloudWatch errors can trigger rollback.
 
-The three periodic jobs run in the scheduled Lambda:
+The three periodic jobs run in the scheduled Lambda (production rates;
+staging runs departure alerts every 15 minutes and the others every 30
+minutes so its database can scale to zero):
 
 - cleanup every 5 minutes;
 - departure alerts every 1 minute;

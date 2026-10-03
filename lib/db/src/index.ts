@@ -36,6 +36,10 @@ export function getPool(): pg.Pool {
         5_000,
       ),
       idleTimeoutMillis: positiveIntEnv("DB_IDLE_TIMEOUT_MS", 10_000),
+      // Client-side bound on every query so a slow or wedged database cannot
+      // hold a Lambda invocation open. Client-side (rather than a
+      // statement_timeout startup parameter) so it works through PgBouncer.
+      query_timeout: positiveIntEnv("DB_QUERY_TIMEOUT_MS", 5_000),
     });
   }
   return poolInstance;

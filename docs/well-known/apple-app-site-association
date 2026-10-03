@@ -1,0 +1,16 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["<APPLE_TEAM_ID>.<IOS_BUNDLE_ID>"],
+        "components": [
+          {
+            "/": "/join",
+            "?": { "token": "?*" },
+            "comment": "Business event invite links: /join?token=..."
+          }
+        ]
+      }
+    ]
+  }
+}

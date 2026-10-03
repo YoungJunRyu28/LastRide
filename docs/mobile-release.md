@@ -33,6 +33,11 @@ The Android production profile produces the default AAB suitable for Google
 Play. The configured submit profile targets Google Play's internal testing
 track first.
 
+The `production` and `preview` profiles refuse to build unless
+`EXPO_PUBLIC_API_URL` is an `https:` URL. Release builds never fall back to
+sample train times; without a reachable API they report train times as
+unavailable.
+
 ## Background location
 
 LastRide uses background location only while night-out tracking is explicitly
@@ -61,8 +66,28 @@ entitlement-stripping plugin.
 ## Join links
 
 The custom scheme `last-ride://join?token=...` works without a web domain.
-Before using HTTPS join links publicly, configure the associated-domain/app-link
-files for the domain in `EXPO_PUBLIC_APP_JOIN_BASE_URL`.
+Setting `EXPO_PUBLIC_APP_JOIN_BASE_URL` (an `https:` origin, e.g.
+`https://join.example.com`) makes invites use `https://<join-domain>/join?token=...`
+instead; the build fails if it is not HTTPS.
+
+Opening those links in the app (iOS Universal Links / Android App Links) is a
+separate opt-in, `ENABLE_UNIVERSAL_LINKS=true`, because it adds the iOS
+associated-domains entitlement, which free (Personal Team) signing rejects.
+Before enabling it, fill in the templates in `docs/well-known/` and serve them
+from the join domain:
+
+- `https://<join-domain>/.well-known/apple-app-site-association` — from
+  `docs/well-known/apple-app-site-association` with your Apple Team ID and
+  bundle ID. Serve it with `Content-Type: application/json`, over HTTPS, with
+  no redirect.
+- `https://<join-domain>/.well-known/assetlinks.json` — from
+  `docs/well-known/assetlinks.json` with the Android package name and the
+  SHA-256 fingerprint of the signing certificate (for Play App Signing, the
+  one shown in Play Console, not the upload key).
+
+Verify both URLs before building. On Android 12 and later, if `autoVerify`
+verification fails, the system will not open the app for these links at all;
+they open in the browser instead.
 
 ## Before store submission
 

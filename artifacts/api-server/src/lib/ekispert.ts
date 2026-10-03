@@ -6,6 +6,7 @@
  * repeated plans (and background tracking) rarely reach the paid API.
  */
 import { ProviderError, TtlCache } from "./cache";
+import { CircuitBreaker, ProviderOutageError } from "./circuitBreaker";
 import { lineNameEn } from "./lineNames";
 import { logger } from "./logger";
 import { kanaToRomaji } from "./romaji";
@@ -45,34 +46,41 @@ function apiKey(): string {
   return key;
 }
 
+const breaker = new CircuitBreaker("ekispert");
+
 async function call(
   path: string,
   params: Record<string, string>,
 ): Promise<Record<string, unknown>> {
   const url = new URL(`${BASE_URL}${path}`);
   url.search = new URLSearchParams({ key: apiKey(), ...params }).toString();
-  await recordCall("ekispert", path);
-  let response: Response;
-  try {
-    response = await fetch(url, { signal: AbortSignal.timeout(providerTimeoutMs()) });
-  } catch (err) {
-    throw new ProviderError(
-      `Ekispert request failed: ${(err as Error).message}`,
-    );
-  }
-  const body = (await response.json().catch(() => null)) as {
-    ResultSet?: Record<string, unknown>;
-  } | null;
-  const resultSet = body?.ResultSet;
-  if (!response.ok || !resultSet) {
-    // Never log the URL: it carries the access key.
-    logger.warn(
-      { path, status: response.status, error: resultSet?.["Error"] },
-      "Ekispert error",
-    );
-    throw new ProviderError(`Ekispert responded ${response.status}`);
-  }
-  return resultSet;
+  // The breaker runs before quota reservation, so an open circuit costs nothing.
+  return breaker.run(async () => {
+    await recordCall("ekispert", path);
+    let response: Response;
+    try {
+      response = await fetch(url, { signal: AbortSignal.timeout(providerTimeoutMs()) });
+    } catch (err) {
+      throw new ProviderOutageError(
+        `Ekispert request failed: ${(err as Error).message}`,
+      );
+    }
+    const body = (await response.json().catch(() => null)) as {
+      ResultSet?: Record<string, unknown>;
+    } | null;
+    const resultSet = body?.ResultSet;
+    if (!response.ok || !resultSet) {
+      // Never log the URL: it carries the access key.
+      logger.warn(
+        { path, status: response.status, error: resultSet?.["Error"] },
+        "Ekispert error",
+      );
+      const ErrorType =
+        response.status >= 500 ? ProviderOutageError : ProviderError;
+      throw new ErrorType(`Ekispert responded ${response.status}`);
+    }
+    return resultSet;
+  });
 }
 
 /** Ekispert returns a bare object when there is one result and an array when there are several. */
@@ -113,10 +121,13 @@ function baseName(name: string) {
   return name.replace(/[（(〈<].*[）)〉>]$/, "").trim();
 }
 
-// Station codes never change; keep them for a month.
+// Station codes never change; keep them for a month. Keys are a station's
+// own name and coordinates, not a person's location, so the 24-hour
+// personal-data cap does not apply.
 const stationCodes = new TtlCache<string>(
   30 * 24 * 60 * 60 * 1000,
   "ekispert-stations",
+  { containsPersonalData: false },
 );
 
 /**
@@ -293,9 +304,11 @@ type StationPoint = {
   Station?: { code?: string; Name?: string; Yomi?: string };
 };
 
+// Keyed by Ekispert station code: public station metadata only.
 const stationDetails = new TtlCache<StationRef & { code: string }>(
   30 * 24 * 60 * 60 * 1000,
   "ekispert-station-details",
+  { containsPersonalData: false },
 );
 
 export async function stationByCode(

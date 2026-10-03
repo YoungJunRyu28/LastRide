@@ -24,10 +24,17 @@ export class TtlCache<T> {
   constructor(
     ttlMs: number,
     private readonly name: string,
+    options: { containsPersonalData?: boolean } = {},
   ) {
     // Enforce the privacy retention boundary centrally so a future caller
-    // cannot accidentally retain provider-query material for weeks.
-    this.ttlMs = Math.min(Math.max(1, ttlMs), MAX_CACHE_TTL_MS);
+    // cannot accidentally retain provider-query material for weeks. Only a
+    // cache that explicitly declares it holds no personal data (e.g. station
+    // metadata keyed by station) may keep entries longer.
+    const capMs =
+      options.containsPersonalData === false
+        ? Number.MAX_SAFE_INTEGER
+        : MAX_CACHE_TTL_MS;
+    this.ttlMs = Math.min(Math.max(1, ttlMs), capMs);
   }
 
   async get(key: string): Promise<T | undefined> {
