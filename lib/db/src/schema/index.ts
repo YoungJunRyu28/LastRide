@@ -1,5 +1,6 @@
 export * from "./cache";
 export * from "./usage";
+export * from "./rateLimits";
 export * from "./organizations";
 export * from "./events";
 export * from "./eventInvites";

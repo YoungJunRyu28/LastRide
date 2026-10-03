@@ -10,11 +10,11 @@ temporary event participation. This policy explains what data each mode uses.
 
 ## Personal LastRide
 
-| What                                               | Why                                                     | Where it goes                                                       |
-| -------------------------------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------- |
-| **Your location** (GPS coordinates)                | Find nearby stations and calculate walking time         | Our API server and transit/routing providers                        |
-| **Your saved destinations** (nearest stations and optional addresses) | Last-train, walking and taxi calculations | Stored on your phone; coordinates are sent when needed for a lookup |
-| **Your settings**                                  | Language, walking pace, reminders and other preferences | Stored on your phone                                                |
+| What                                                                  | Why                                                     | Where it goes                                                       |
+| --------------------------------------------------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------- |
+| **Your location** (GPS coordinates)                                   | Find nearby stations and calculate walking time         | Our API server and transit/routing providers                        |
+| **Your saved destinations** (nearest stations and optional addresses) | Last-train, walking and taxi calculations               | Stored on your phone; coordinates are sent when needed for a lookup |
+| **Your settings**                                                     | Language, walking pace, reminders and other preferences | Stored on your phone                                                |
 
 Personal mode does not require your name, email address, phone number, contacts,
 photos or a LastRide account.
@@ -44,9 +44,11 @@ underlying Apple or Google push service.
 - **While night-out tracking is on**, also in the background, so your plan and
   reminders stay current as you move.
 
-Tracking is off unless you switch it on. It switches itself off once the
-night's reminders are finished (by 04:00 at the latest). You can revoke
-location access at any time in your phone's settings.
+Tracking is off unless you switch it on. LastRide is configured to end a
+night's tracking once its reminders are finished and uses 04:00 as a hard
+stop. Mobile operating systems do not guarantee an exact background wake at
+04:00, so the app enforces that stop on the first location wake at or after the
+deadline. You can stop tracking or revoke location access at any time.
 
 If you joined a Business event, a re-plan sends **only the resulting leave-by
 timestamp** to the Business event. It does not send the underlying location,
@@ -60,7 +62,9 @@ to:
 - **駅すぱあと API (Val Laboratory Co., Ltd.)** — train timetables, fares and routes.
 - **NAVITIME JAPAN Co., Ltd.** (via RapidAPI) — nearby stations, walking and
   driving routes, and nearby places.
-- **OpenStreetMap services** — fallback station/geocoding data.
+- **OpenStreetMap-based community services** — fallback station/geocoding or
+  routing data only in development or explicitly opted-in test builds; ordinary
+  production builds keep these public fallbacks disabled.
 - **Supabase** — organizer authentication for LastRide for Business, when enabled.
 - **Expo / Apple / Google push services** — organizer departure alerts.
 
@@ -73,17 +77,25 @@ lookup, not the Business participant display name.
   plan and local night history stay until you clear them, use **Reset & start
   over**, or uninstall the app. Night history contains plan times and station /
   destination labels, not a GPS trail.
-- **Transit-query cache:** server responses may be cached for up to 24 hours,
-  keyed by an approximate location (roughly a 100-metre grid), not by a user.
+- **Provider-query cache:** server responses may be cached for no more than
+  24 hours and are never keyed by a user account. Cache lookup keys are stored
+  only as one-way SHA-256 digests, so raw coordinate, station-name and address
+  query keys are not persisted. Cached payloads may contain the public
+  station/place/address candidates returned by a provider. Expired cache rows
+  are physically deleted by the server maintenance job.
 - **Business participants:** your display name, leave-by time and event
-  capability are deleted immediately when you leave the event. Otherwise they
-  are automatically deleted when that event expires. Events created for a
-  night out currently expire at 08:00 Japan time the following morning.
+  capability are deleted immediately after a successful leave request or when
+  the organizer closes the event. If a leave request cannot reach the server,
+  the app retains the anonymous capability locally so deletion can be retried;
+  otherwise remaining participant data is deleted when the event expires.
+  Events created for a night out currently expire at 08:00 Japan time the
+  following morning.
 - **Organizer accounts:** organization membership remains until the Business
   account is deprovisioned. A registered push token is removed when the device
   signs out successfully or when it is identified as no longer registered.
-- **Server logs:** record endpoint and response status but omit query strings, so
-  coordinates and API keys are not written to ordinary request logs.
+- **Server logs:** record endpoint and response status but omit query strings.
+  Cache errors also omit raw cache keys, so coordinates, address queries and API
+  keys are not written to ordinary application logs.
 
 ## Your choices
 
@@ -108,4 +120,8 @@ date at the top.
 ## Contact
 
 Questions, privacy requests or organizer-account deletion requests:
-**[add your contact email before public release]**
+Repository contact: https://github.com/nicknr100/LastRide
+
+Do not include sensitive personal information in a public GitHub issue. If a
+request requires account or identity details, first ask the maintainers for a
+private follow-up channel.

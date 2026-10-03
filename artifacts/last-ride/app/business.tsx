@@ -223,12 +223,26 @@ export default function BusinessScreen() {
   };
 
   const signOut = async () => {
+    if (busy) return;
     setBusy(true);
-    await unregisterEnterprisePushDevice().catch(() => undefined);
-    await signOutEnterpriseHost();
-    setEvents([]);
-    setSignedIn(false);
-    setBusy(false);
+    setError(null);
+    try {
+      // Do not discard the organizer session if device unregistering failed:
+      // keeping the session and local push token means the user can retry and
+      // prevents a signed-out device from silently remaining registered.
+      await unregisterEnterprisePushDevice();
+      await signOutEnterpriseHost();
+      setEvents([]);
+      setSignedIn(false);
+    } catch {
+      setError(
+        ja
+          ? "通知端末の解除に失敗しました。通信状況を確認してもう一度サインアウトしてください。"
+          : "Couldn’t unregister this device. Check your connection and try signing out again.",
+      );
+    } finally {
+      setBusy(false);
+    }
   };
 
   if (signedIn === null) {

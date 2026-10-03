@@ -8,7 +8,15 @@
 import type { GetNearbyStationsPace } from './getNearbyStationsPace';
 
 export type GetNearbyStationsParams = {
+/**
+ * @minimum -90
+ * @maximum 90
+ */
 lat: number;
+/**
+ * @minimum -180
+ * @maximum 180
+ */
 lon: number;
 pace: GetNearbyStationsPace;
 /**

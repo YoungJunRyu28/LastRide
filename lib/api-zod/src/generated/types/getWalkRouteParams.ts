@@ -12,9 +12,25 @@ import type { ToLatParameter } from './toLatParameter';
 import type { ToLonParameter } from './toLonParameter';
 
 export type GetWalkRouteParams = {
+/**
+ * @minimum -90
+ * @maximum 90
+ */
 fromLat: FromLatParameter;
+/**
+ * @minimum -180
+ * @maximum 180
+ */
 fromLon: FromLonParameter;
+/**
+ * @minimum -90
+ * @maximum 90
+ */
 toLat: ToLatParameter;
+/**
+ * @minimum -180
+ * @maximum 180
+ */
 toLon: ToLonParameter;
 pace: GetWalkRoutePace;
 };

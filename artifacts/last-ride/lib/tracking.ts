@@ -99,7 +99,6 @@ export async function startBackgroundTracking(): Promise<boolean> {
   try {
     const background = await Location.requestBackgroundPermissionsAsync();
     if (!background.granted) return false;
-    await AsyncStorage.setItem(TRACKING_ACTIVE_KEY, 'true');
     await Location.startLocationUpdatesAsync(LOCATION_TASK, {
       accuracy: Location.Accuracy.Balanced,
       distanceInterval: 200, // meters moved before an update
@@ -111,8 +110,12 @@ export async function startBackgroundTracking(): Promise<boolean> {
         notificationBody: 'Tracking your nearest station for tonight.',
       },
     });
+    // Only publish the durable active flag after the native task is confirmed.
+    // Otherwise a failed start can leave the app believing background tracking is active.
+    await AsyncStorage.setItem(TRACKING_ACTIVE_KEY, 'true');
     return true;
   } catch {
+    await AsyncStorage.setItem(TRACKING_ACTIVE_KEY, 'false').catch(() => undefined);
     // Expo Go and unsupported environments land here — caller falls back to foreground tracking.
     return false;
   }

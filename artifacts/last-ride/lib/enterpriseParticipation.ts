@@ -178,11 +178,16 @@ export async function leaveCurrentEnterpriseEvent(): Promise<void> {
     await leaveEnterpriseEvent({
       headers: { "X-Participant-Token": current.participantToken },
     });
-  } finally {
-    await removeParticipation();
+  } catch (error) {
+    const status = (error as { status?: number }).status;
+    // 401/410 mean the server no longer accepts this capability, so there is
+    // nothing useful to retry. Transient failures deliberately retain the
+    // token so a later leave attempt can still delete the server-side row.
+    if (status === 401 || status === 410) {
+      await removeParticipation();
+      return;
+    }
+    throw error;
   }
-}
-
-export async function clearEnterpriseParticipation(): Promise<void> {
   await removeParticipation();
 }

@@ -11,9 +11,25 @@ import type { ToLatParameter } from './toLatParameter';
 import type { ToLonParameter } from './toLonParameter';
 
 export type GetTaxiEstimateParams = {
+/**
+ * @minimum -90
+ * @maximum 90
+ */
 fromLat: FromLatParameter;
+/**
+ * @minimum -180
+ * @maximum 180
+ */
 fromLon: FromLonParameter;
+/**
+ * @minimum -90
+ * @maximum 90
+ */
 toLat: ToLatParameter;
+/**
+ * @minimum -180
+ * @maximum 180
+ */
 toLon: ToLonParameter;
 /**
  * Departure time in Japan (YYYY-MM-DDThh:mm:ss)

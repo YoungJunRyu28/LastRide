@@ -9,7 +9,7 @@ import {
 } from "./ekispert";
 import { taxiEstimate, type TaxiEstimate } from "./navitime";
 
-const MAX_STOP_ATTEMPTS = 6;
+const MAX_STOP_ATTEMPTS = 4;
 
 export type PartwayTrainTaxi = {
   train: TrainRoute;
@@ -60,6 +60,48 @@ function formatJstDateTime(ms: number): string {
   );
 }
 
+async function evaluateCandidate(
+  candidate: TrainStopRef,
+  input: {
+    from: StationRef;
+    taxiTo: { latitude: number; longitude: number };
+    earliestBoardAtMs: number;
+  },
+): Promise<PartwayTrainTaxi | null> {
+  const train = await searchDepartureTrain(
+    input.from,
+    candidate,
+    input.earliestBoardAtMs,
+  );
+  if (!train) return null;
+
+  const station = await stationByCode(candidate);
+  const trainArrivalMs = Date.parse(train.arrivesAt);
+  if (!Number.isFinite(trainArrivalMs)) return null;
+
+  const taxi = await taxiEstimate(
+    station,
+    input.taxiTo,
+    formatJstDateTime(trainArrivalMs),
+  );
+  if (!taxi) return null;
+
+  return {
+    train,
+    taxiFrom: {
+      name: candidate.nameEn,
+      nameJa: candidate.name,
+      latitude: station.latitude,
+      longitude: station.longitude,
+    },
+    taxi,
+    totalFareYen:
+      train.fareYen !== null && taxi.fareYen !== null
+        ? train.fareYen + taxi.fareYen
+        : null,
+  };
+}
+
 export async function findPartwayTrainTaxi(input: {
   from: StationRef;
   to: StationRef;
@@ -90,42 +132,11 @@ export async function findPartwayTrainTaxi(input: {
     input.to.name,
   );
 
-  for (const candidate of candidates) {
-    const train = await searchDepartureTrain(
-      input.from,
-      candidate,
-      input.earliestBoardAtMs,
-    );
-    if (!train) continue;
-
-    const station = await stationByCode(candidate);
-    const trainArrivalMs = Date.parse(train.arrivesAt);
-    if (!Number.isFinite(trainArrivalMs)) continue;
-
-    const taxi = await taxiEstimate(
-      station,
-      input.taxiTo,
-      formatJstDateTime(trainArrivalMs),
-    );
-    if (!taxi) continue;
-
-    const totalFareYen =
-      train.fareYen !== null && taxi.fareYen !== null
-        ? train.fareYen + taxi.fareYen
-        : null;
-
-    return {
-      train,
-      taxiFrom: {
-        name: candidate.nameEn,
-        nameJa: candidate.name,
-        latitude: station.latitude,
-        longitude: station.longitude,
-      },
-      taxi,
-      totalFareYen,
-    };
-  }
-
-  return null;
+  // Candidate order is farthest-first. Evaluate the bounded set concurrently
+  // so one slow/unreachable intermediate station cannot multiply request
+  // latency by the number of attempts; Promise.all preserves input order.
+  const evaluated = await Promise.all(
+    candidates.map((candidate) => evaluateCandidate(candidate, input)),
+  );
+  return evaluated.find((option) => option !== null) ?? null;
 }

@@ -31,3 +31,7 @@ android/
 *.p12
 *.key
 *.mobileprovision
+
+# Python tooling
+__pycache__/
+*.pyc

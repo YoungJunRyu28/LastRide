@@ -50,13 +50,12 @@ export async function unregisterEnterprisePushDevice(): Promise<void> {
   );
   if (!token || (Platform.OS !== "ios" && Platform.OS !== "android")) return;
 
-  try {
-    const options = await enterpriseRequestOptions();
-    await unregisterEnterpriseHostDevice(
-      { expoPushToken: token, platform: Platform.OS },
-      options,
-    );
-  } finally {
-    await AsyncStorage.removeItem(HOST_PUSH_TOKEN_KEY).catch(() => undefined);
-  }
+  const options = await enterpriseRequestOptions();
+  await unregisterEnterpriseHostDevice(
+    { expoPushToken: token, platform: Platform.OS },
+    options,
+  );
+  // Only forget the token once the backend confirmed unregistering it. If the
+  // request fails, retaining this handle lets sign-out retry safely.
+  await AsyncStorage.removeItem(HOST_PUSH_TOKEN_KEY).catch(() => undefined);
 }

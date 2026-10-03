@@ -10,13 +10,15 @@
  * unchanged; only how they get invoked changes, from an in-process timer to
  * three separate EventBridge Scheduler rules calling this Lambda with a
  * different `task` each time, at the same rates the original loop used
- * (5 min, 1 min, 5 min — see deploy-lambda.sh).
+ * (5 min, 1 min, 5 min — see infra/template.yaml).
  */
 import { isDatabaseConfigured } from "@workspace/db";
 import {
   dispatchEnterpriseDepartureAlerts,
   reconcileEnterprisePushReceipts,
 } from "./lib/enterpriseNotifications";
+import { purgeExpiredCacheEntries } from "./lib/cache";
+import { purgeExpiredRateLimits } from "./lib/rateLimit";
 import { purgeExpiredEnterpriseData } from "./lib/enterpriseStore";
 import { logger } from "./lib/logger";
 
@@ -26,14 +28,27 @@ type ScheduledEvent = { task: ScheduledTask };
 
 export async function handler(event: ScheduledEvent) {
   if (!isDatabaseConfigured()) {
-    logger.warn({ task: event.task }, "Skipped scheduled task: no database configured");
+    logger.warn(
+      { task: event.task },
+      "Skipped scheduled task: no database configured",
+    );
     return;
   }
 
   switch (event.task) {
     case "cleanup": {
-      const purged = await purgeExpiredEnterpriseData();
-      if (purged > 0) logger.info({ purged }, "Purged expired enterprise event data");
+      const [eventsPurged, cacheRowsPurged, rateLimitRowsPurged] =
+        await Promise.all([
+          purgeExpiredEnterpriseData(),
+          purgeExpiredCacheEntries(),
+          purgeExpiredRateLimits(),
+        ]);
+      if (eventsPurged > 0 || cacheRowsPurged > 0 || rateLimitRowsPurged > 0) {
+        logger.info(
+          { eventsPurged, cacheRowsPurged, rateLimitRowsPurged },
+          "Purged expired application data",
+        );
+      }
       return;
     }
     case "departureAlerts": {
@@ -43,7 +58,8 @@ export async function handler(event: ScheduledEvent) {
     }
     case "pushReceipts": {
       const result = await reconcileEnterprisePushReceipts();
-      if (result.checked > 0) logger.info(result, "Checked enterprise push receipts");
+      if (result.checked > 0)
+        logger.info(result, "Checked enterprise push receipts");
       return;
     }
     default: {

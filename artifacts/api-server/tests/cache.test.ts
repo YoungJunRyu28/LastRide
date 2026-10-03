@@ -1,7 +1,12 @@
+import { createHash } from "node:crypto";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { getDb, kvCacheTable } from "@workspace/db";
-import { TtlCache } from "../src/lib/cache";
+import {
+  MAX_CACHE_TTL_MS,
+  TtlCache,
+  purgeExpiredCacheEntries,
+} from "../src/lib/cache";
 
 /**
  * Runs against a real Postgres (DATABASE_URL) rather than a mock — the whole
@@ -71,5 +76,83 @@ describe("TtlCache", () => {
 
     await writer.set("shared", "written-by-writer");
     expect(await reader.get("shared")).toBe("written-by-writer");
+  });
+
+  it("stores a one-way digest instead of the raw caller key", async () => {
+    const rawKey = "35.6580|139.7010|private-address-query";
+    const cache = new TtlCache<string>(60_000, TEST_CACHE);
+    await cache.set(rawKey, "value");
+
+    const [row] = await getDb()
+      .select()
+      .from(kvCacheTable)
+      .where(eq(kvCacheTable.cacheName, TEST_CACHE))
+      .limit(1);
+
+    const expected = createHash("sha256")
+      .update(TEST_CACHE, "utf8")
+      .update("\0")
+      .update(rawKey, "utf8")
+      .digest("hex");
+    expect(row.cacheKey).toBe(expected);
+    expect(row.cacheKey).not.toContain("35.658");
+    expect(row.cacheKey).not.toContain("private-address-query");
+  });
+
+  it("caps retention at 24 hours even when a caller asks for longer", async () => {
+    const before = Date.now();
+    const cache = new TtlCache<string>(30 * 24 * 60 * 60 * 1000, TEST_CACHE);
+    await cache.set("long-lived", "value");
+
+    const [row] = await getDb()
+      .select({ expiresAt: kvCacheTable.expiresAt })
+      .from(kvCacheTable)
+      .where(eq(kvCacheTable.cacheName, TEST_CACHE))
+      .limit(1);
+
+    expect(row.expiresAt.getTime()).toBeGreaterThan(before + MAX_CACHE_TTL_MS - 2_000);
+    expect(row.expiresAt.getTime()).toBeLessThanOrEqual(before + MAX_CACHE_TTL_MS + 2_000);
+  });
+
+  it("physically purges expired rows while retaining live rows", async () => {
+    const now = new Date();
+    await getDb().insert(kvCacheTable).values([
+      {
+        cacheName: TEST_CACHE,
+        cacheKey: "expired-manual",
+        value: "expired",
+        expiresAt: new Date(now.getTime() - 1_000),
+      },
+      {
+        cacheName: TEST_CACHE,
+        cacheKey: "live-manual",
+        value: "live",
+        expiresAt: new Date(now.getTime() + 60_000),
+      },
+    ]);
+
+    const purged = await purgeExpiredCacheEntries(now);
+    expect(purged).toBeGreaterThanOrEqual(1);
+
+    const expired = await getDb()
+      .select()
+      .from(kvCacheTable)
+      .where(
+        and(
+          eq(kvCacheTable.cacheName, TEST_CACHE),
+          eq(kvCacheTable.cacheKey, "expired-manual"),
+        ),
+      );
+    const live = await getDb()
+      .select()
+      .from(kvCacheTable)
+      .where(
+        and(
+          eq(kvCacheTable.cacheName, TEST_CACHE),
+          eq(kvCacheTable.cacheKey, "live-manual"),
+        ),
+      );
+    expect(expired).toHaveLength(0);
+    expect(live).toHaveLength(1);
   });
 });

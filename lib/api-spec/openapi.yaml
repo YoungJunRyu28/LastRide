@@ -42,6 +42,25 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /readyz:
+    get:
+      operationId: readinessCheck
+      tags: [health]
+      summary: Readiness check
+      description: Verifies required server configuration and database connectivity.
+      responses:
+        "200":
+          description: Ready to serve production traffic
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+        "503":
+          description: Required configuration or database connectivity is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
   /trains/last:
     get:
       operationId: getLastTrain
@@ -155,8 +174,8 @@ paths:
       summary: Stations near a point
       description: Closest stations by walking route (accounting for station exits), nearest first.
       parameters:
-        - { name: lat, in: query, required: true, schema: { type: number } }
-        - { name: lon, in: query, required: true, schema: { type: number } }
+        - { name: lat, in: query, required: true, schema: { type: number, minimum: -90, maximum: 90 } }
+        - { name: lon, in: query, required: true, schema: { type: number, minimum: -180, maximum: 180 } }
         - name: pace
           in: query
           required: true
@@ -284,8 +303,8 @@ paths:
       summary: Places to stay near a point
       description: Net cafés, karaoke, capsule hotels and hotels within walking distance, nearest first.
       parameters:
-        - { name: lat, in: query, required: true, schema: { type: number } }
-        - { name: lon, in: query, required: true, schema: { type: number } }
+        - { name: lat, in: query, required: true, schema: { type: number, minimum: -90, maximum: 90 } }
+        - { name: lon, in: query, required: true, schema: { type: number, minimum: -180, maximum: 180 } }
       responses:
         "200":
           description: Nearby places
@@ -302,7 +321,8 @@ paths:
       operationId: getUsage
       tags: [usage]
       summary: Paid API usage
-      description: Real (uncached) calls to each paid provider today and this month, in Japan time.
+      description: Real (uncached) calls to each paid provider today and this month, in Japan time. Administrator-only in production.
+      security: [{ usageAdminBearer: [] }]
       responses:
         "200":
           description: Usage report
@@ -328,7 +348,9 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/EnterpriseEventCreated" }
+        "400": { description: Invalid event window or body }
         "401": { description: Organizer authentication required }
+        "503": { description: Organizer authentication unavailable }
     get:
       operationId: listEnterpriseEvents
       tags: [enterprise]
@@ -343,6 +365,7 @@ paths:
                 type: array
                 items: { $ref: "#/components/schemas/EnterpriseEvent" }
         "401": { description: Organizer authentication required }
+        "503": { description: Organizer authentication unavailable }
   /enterprise/events/{eventId}:
     get:
       operationId: getEnterpriseEvent
@@ -359,6 +382,7 @@ paths:
               schema: { $ref: "#/components/schemas/EnterpriseEventDetail" }
         "401": { description: Organizer authentication required }
         "404": { description: Event not found }
+        "503": { description: Organizer authentication unavailable }
     patch:
       operationId: updateEnterpriseEvent
       tags: [enterprise]
@@ -380,6 +404,8 @@ paths:
               schema: { $ref: "#/components/schemas/EnterpriseEvent" }
         "401": { description: Organizer authentication required }
         "404": { description: Event not found }
+        "409": { description: Participant limit is below the active roster }
+        "503": { description: Organizer authentication unavailable }
   /enterprise/events/{eventId}/invite:
     post:
       operationId: createEnterpriseEventInvite
@@ -397,6 +423,7 @@ paths:
         "401": { description: Organizer authentication required }
         "404": { description: Event not found }
         "410": { description: Event is closed or expired }
+        "503": { description: Organizer authentication unavailable }
   /enterprise/devices:
     post:
       operationId: registerEnterpriseHostDevice
@@ -411,6 +438,7 @@ paths:
       responses:
         "204": { description: Device registered }
         "401": { description: Organizer authentication required }
+        "503": { description: Organizer authentication unavailable }
     delete:
       operationId: unregisterEnterpriseHostDevice
       tags: [enterprise]
@@ -424,6 +452,7 @@ paths:
       responses:
         "204": { description: Device unregistered }
         "401": { description: Organizer authentication required }
+        "503": { description: Organizer authentication unavailable }
   /events/join:
     post:
       operationId: joinEnterpriseEvent
@@ -462,6 +491,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/EventParticipantSelf" }
+        "400": { description: Leave-by time is outside the event window }
         "401": { description: Invalid participant token }
         "410": { description: Event expired or closed }
     delete:
@@ -479,6 +509,10 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
+    usageAdminBearer:
+      type: http
+      scheme: bearer
+      description: Server-configured administrator token for the private usage report.
   parameters:
     EventId:
       name: eventId
@@ -494,12 +528,12 @@ components:
       name: fromLat
       in: query
       required: true
-      schema: { type: number }
+      schema: { type: number, minimum: -90, maximum: 90 }
     FromLon:
       name: fromLon
       in: query
       required: true
-      schema: { type: number }
+      schema: { type: number, minimum: -180, maximum: 180 }
     FromName:
       name: fromName
       in: query
@@ -510,12 +544,12 @@ components:
       name: toLat
       in: query
       required: true
-      schema: { type: number }
+      schema: { type: number, minimum: -90, maximum: 90 }
     ToLon:
       name: toLon
       in: query
       required: true
-      schema: { type: number }
+      schema: { type: number, minimum: -180, maximum: 180 }
     ToName:
       name: toName
       in: query

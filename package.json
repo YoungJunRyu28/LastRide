@@ -1,14 +1,15 @@
 {
   "name": "workspace",
   "version": "0.0.0",
-  "license": "MIT",
   "scripts": {
     "preinstall": "sh -c 'rm -f package-lock.json yarn.lock; case \"$npm_config_user_agent\" in pnpm/*) ;; *) echo \"Use pnpm instead\" >&2; exit 1 ;; esac'",
     "build": "pnpm run typecheck && pnpm -r --if-present run build",
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck",
     "verify:migrations": "pnpm --filter @workspace/db run generate && git diff --exit-code -- lib/db/drizzle",
-    "test": "pnpm run verify:migrations && pnpm -r --if-present run test"
+    "test": "pnpm run verify:migrations && pnpm -r --if-present run test",
+    "verify:codegen": "pnpm --filter @workspace/api-spec run codegen && git diff --exit-code -- lib/api-client-react/src/generated lib/api-zod/src/generated",
+    "build:ci": "pnpm --filter @workspace/api-server run build && pnpm --filter @workspace/last-ride run bundle:ci"
   },
   "private": true,
   "dependencies": {
@@ -17,5 +18,10 @@
   "devDependencies": {
     "prettier": "^3.9.6",
     "typescript": "~5.9.3"
+  },
+  "packageManager": "pnpm@10.34.6",
+  "engines": {
+    "node": ">=24 <25",
+    "pnpm": ">=10 <11"
   }
 }

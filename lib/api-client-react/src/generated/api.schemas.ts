@@ -337,13 +337,29 @@ export type TaxiToLonParameter = number;
 export type EarliestBoardAtMsParameter = number;
 
 export type GetLastTrainParams = {
+/**
+ * @minimum -90
+ * @maximum 90
+ */
 fromLat: FromLatParameter;
+/**
+ * @minimum -180
+ * @maximum 180
+ */
 fromLon: FromLonParameter;
 /**
  * Japanese station name, used to pick the right station near the coordinates
  */
 fromName: FromNameParameter;
+/**
+ * @minimum -90
+ * @maximum 90
+ */
 toLat: ToLatParameter;
+/**
+ * @minimum -180
+ * @maximum 180
+ */
 toLon: ToLonParameter;
 toName: ToNameParameter;
 /**
@@ -354,13 +370,29 @@ date: ServiceDateParameter;
 };
 
 export type GetFirstTrainParams = {
+/**
+ * @minimum -90
+ * @maximum 90
+ */
 fromLat: FromLatParameter;
+/**
+ * @minimum -180
+ * @maximum 180
+ */
 fromLon: FromLonParameter;
 /**
  * Japanese station name, used to pick the right station near the coordinates
  */
 fromName: FromNameParameter;
+/**
+ * @minimum -90
+ * @maximum 90
+ */
 toLat: ToLatParameter;
+/**
+ * @minimum -180
+ * @maximum 180
+ */
 toLon: ToLonParameter;
 toName: ToNameParameter;
 /**
@@ -371,13 +403,29 @@ date: ServiceDateParameter;
 };
 
 export type GetPartwayTrainTaxiParams = {
+/**
+ * @minimum -90
+ * @maximum 90
+ */
 fromLat: FromLatParameter;
+/**
+ * @minimum -180
+ * @maximum 180
+ */
 fromLon: FromLonParameter;
 /**
  * Japanese station name, used to pick the right station near the coordinates
  */
 fromName: FromNameParameter;
+/**
+ * @minimum -90
+ * @maximum 90
+ */
 toLat: ToLatParameter;
+/**
+ * @minimum -180
+ * @maximum 180
+ */
 toLon: ToLonParameter;
 toName: ToNameParameter;
 taxiToLat: TaxiToLatParameter;
@@ -403,7 +451,15 @@ lines: string;
 };
 
 export type GetNearbyStationsParams = {
+/**
+ * @minimum -90
+ * @maximum 90
+ */
 lat: number;
+/**
+ * @minimum -180
+ * @maximum 180
+ */
 lon: number;
 pace: GetNearbyStationsPace;
 /**
@@ -432,9 +488,25 @@ q: string;
 };
 
 export type GetTaxiEstimateParams = {
+/**
+ * @minimum -90
+ * @maximum 90
+ */
 fromLat: FromLatParameter;
+/**
+ * @minimum -180
+ * @maximum 180
+ */
 fromLon: FromLonParameter;
+/**
+ * @minimum -90
+ * @maximum 90
+ */
 toLat: ToLatParameter;
+/**
+ * @minimum -180
+ * @maximum 180
+ */
 toLon: ToLonParameter;
 /**
  * Departure time in Japan (YYYY-MM-DDThh:mm:ss)
@@ -444,9 +516,25 @@ startTime: string;
 };
 
 export type GetWalkRouteParams = {
+/**
+ * @minimum -90
+ * @maximum 90
+ */
 fromLat: FromLatParameter;
+/**
+ * @minimum -180
+ * @maximum 180
+ */
 fromLon: FromLonParameter;
+/**
+ * @minimum -90
+ * @maximum 90
+ */
 toLat: ToLatParameter;
+/**
+ * @minimum -180
+ * @maximum 180
+ */
 toLon: ToLonParameter;
 pace: GetWalkRoutePace;
 };
@@ -470,7 +558,15 @@ q: string;
 };
 
 export type GetNearbyPlacesParams = {
+/**
+ * @minimum -90
+ * @maximum 90
+ */
 lat: number;
+/**
+ * @minimum -180
+ * @maximum 180
+ */
 lon: number;
 };
 

@@ -18,18 +18,39 @@ export const HealthCheckResponse = zod.object({
 
 
 /**
+ * Verifies required server configuration and database connectivity.
+ * @summary Readiness check
+ */
+export const ReadinessCheckResponse = zod.object({
+  "status": zod.string()
+})
+
+
+/**
  * The last departure from the origin station on the given service date that still reaches the destination station.
  * @summary Last train tonight
  */
+export const getLastTrainQueryFromLatMin = -90;
+export const getLastTrainQueryFromLatMax = 90;
+
+export const getLastTrainQueryFromLonMin = -180;
+export const getLastTrainQueryFromLonMax = 180;
+
+export const getLastTrainQueryToLatMin = -90;
+export const getLastTrainQueryToLatMax = 90;
+
+export const getLastTrainQueryToLonMin = -180;
+export const getLastTrainQueryToLonMax = 180;
+
 export const getLastTrainQueryDateRegExp = new RegExp('^[0-9]{8}$');
 
 
 export const GetLastTrainQueryParams = zod.object({
-  "fromLat": zod.coerce.number(),
-  "fromLon": zod.coerce.number(),
+  "fromLat": zod.coerce.number().min(getLastTrainQueryFromLatMin).max(getLastTrainQueryFromLatMax),
+  "fromLon": zod.coerce.number().min(getLastTrainQueryFromLonMin).max(getLastTrainQueryFromLonMax),
   "fromName": zod.coerce.string().describe('Japanese station name, used to pick the right station near the coordinates'),
-  "toLat": zod.coerce.number(),
-  "toLon": zod.coerce.number(),
+  "toLat": zod.coerce.number().min(getLastTrainQueryToLatMin).max(getLastTrainQueryToLatMax),
+  "toLon": zod.coerce.number().min(getLastTrainQueryToLonMin).max(getLastTrainQueryToLonMax),
   "toName": zod.coerce.string(),
   "date": zod.coerce.string().regex(getLastTrainQueryDateRegExp).describe('Rail service date (YYYYMMDD); trains after midnight belong to the previous date')
 })
@@ -56,15 +77,27 @@ export const GetLastTrainResponse = zod.object({
  * The first departure from the origin station on the given service date toward the destination.
  * @summary First train of the service day
  */
+export const getFirstTrainQueryFromLatMin = -90;
+export const getFirstTrainQueryFromLatMax = 90;
+
+export const getFirstTrainQueryFromLonMin = -180;
+export const getFirstTrainQueryFromLonMax = 180;
+
+export const getFirstTrainQueryToLatMin = -90;
+export const getFirstTrainQueryToLatMax = 90;
+
+export const getFirstTrainQueryToLonMin = -180;
+export const getFirstTrainQueryToLonMax = 180;
+
 export const getFirstTrainQueryDateRegExp = new RegExp('^[0-9]{8}$');
 
 
 export const GetFirstTrainQueryParams = zod.object({
-  "fromLat": zod.coerce.number(),
-  "fromLon": zod.coerce.number(),
+  "fromLat": zod.coerce.number().min(getFirstTrainQueryFromLatMin).max(getFirstTrainQueryFromLatMax),
+  "fromLon": zod.coerce.number().min(getFirstTrainQueryFromLonMin).max(getFirstTrainQueryFromLonMax),
   "fromName": zod.coerce.string().describe('Japanese station name, used to pick the right station near the coordinates'),
-  "toLat": zod.coerce.number(),
-  "toLon": zod.coerce.number(),
+  "toLat": zod.coerce.number().min(getFirstTrainQueryToLatMin).max(getFirstTrainQueryToLatMax),
+  "toLon": zod.coerce.number().min(getFirstTrainQueryToLonMin).max(getFirstTrainQueryToLonMax),
   "toName": zod.coerce.string(),
   "date": zod.coerce.string().regex(getFirstTrainQueryDateRegExp).describe('Rail service date (YYYYMMDD); trains after midnight belong to the previous date')
 })
@@ -91,15 +124,27 @@ export const GetFirstTrainResponse = zod.object({
  * After the full last-train route is gone, find the farthest station on that route that is still reachable after the user can board, then estimate a taxi from there to the final destination.
  * @summary Train partway, then taxi
  */
+export const getPartwayTrainTaxiQueryFromLatMin = -90;
+export const getPartwayTrainTaxiQueryFromLatMax = 90;
+
+export const getPartwayTrainTaxiQueryFromLonMin = -180;
+export const getPartwayTrainTaxiQueryFromLonMax = 180;
+
+export const getPartwayTrainTaxiQueryToLatMin = -90;
+export const getPartwayTrainTaxiQueryToLatMax = 90;
+
+export const getPartwayTrainTaxiQueryToLonMin = -180;
+export const getPartwayTrainTaxiQueryToLonMax = 180;
+
 export const getPartwayTrainTaxiQueryDateRegExp = new RegExp('^[0-9]{8}$');
 
 
 export const GetPartwayTrainTaxiQueryParams = zod.object({
-  "fromLat": zod.coerce.number(),
-  "fromLon": zod.coerce.number(),
+  "fromLat": zod.coerce.number().min(getPartwayTrainTaxiQueryFromLatMin).max(getPartwayTrainTaxiQueryFromLatMax),
+  "fromLon": zod.coerce.number().min(getPartwayTrainTaxiQueryFromLonMin).max(getPartwayTrainTaxiQueryFromLonMax),
   "fromName": zod.coerce.string().describe('Japanese station name, used to pick the right station near the coordinates'),
-  "toLat": zod.coerce.number(),
-  "toLon": zod.coerce.number(),
+  "toLat": zod.coerce.number().min(getPartwayTrainTaxiQueryToLatMin).max(getPartwayTrainTaxiQueryToLatMax),
+  "toLon": zod.coerce.number().min(getPartwayTrainTaxiQueryToLonMin).max(getPartwayTrainTaxiQueryToLonMax),
   "toName": zod.coerce.string(),
   "taxiToLat": zod.coerce.number(),
   "taxiToLon": zod.coerce.number(),
@@ -166,14 +211,20 @@ export const GetTrainDisruptionsResponse = zod.array(GetTrainDisruptionsResponse
  * Closest stations by walking route (accounting for station exits), nearest first.
  * @summary Stations near a point
  */
+export const getNearbyStationsQueryLatMin = -90;
+export const getNearbyStationsQueryLatMax = 90;
+
+export const getNearbyStationsQueryLonMin = -180;
+export const getNearbyStationsQueryLonMax = 180;
+
 export const getNearbyStationsQueryLimitDefault = 5;
 export const getNearbyStationsQueryLimitMax = 10;
 
 
 
 export const GetNearbyStationsQueryParams = zod.object({
-  "lat": zod.coerce.number(),
-  "lon": zod.coerce.number(),
+  "lat": zod.coerce.number().min(getNearbyStationsQueryLatMin).max(getNearbyStationsQueryLatMax),
+  "lon": zod.coerce.number().min(getNearbyStationsQueryLonMin).max(getNearbyStationsQueryLonMax),
   "pace": zod.enum(['relaxed', 'normal', 'fast']),
   "limit": zod.coerce.number().min(1).max(getNearbyStationsQueryLimitMax).default(getNearbyStationsQueryLimitDefault)
 })
@@ -219,14 +270,26 @@ export const SearchStationsResponse = zod.array(SearchStationsResponseItem)
  * Driving distance and time, with a fare estimate using regional rates and the late-night surcharge.
  * @summary Taxi time and fare estimate
  */
+export const getTaxiEstimateQueryFromLatMin = -90;
+export const getTaxiEstimateQueryFromLatMax = 90;
+
+export const getTaxiEstimateQueryFromLonMin = -180;
+export const getTaxiEstimateQueryFromLonMax = 180;
+
+export const getTaxiEstimateQueryToLatMin = -90;
+export const getTaxiEstimateQueryToLatMax = 90;
+
+export const getTaxiEstimateQueryToLonMin = -180;
+export const getTaxiEstimateQueryToLonMax = 180;
+
 export const getTaxiEstimateQueryStartTimeRegExp = new RegExp('^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}$');
 
 
 export const GetTaxiEstimateQueryParams = zod.object({
-  "fromLat": zod.coerce.number(),
-  "fromLon": zod.coerce.number(),
-  "toLat": zod.coerce.number(),
-  "toLon": zod.coerce.number(),
+  "fromLat": zod.coerce.number().min(getTaxiEstimateQueryFromLatMin).max(getTaxiEstimateQueryFromLatMax),
+  "fromLon": zod.coerce.number().min(getTaxiEstimateQueryFromLonMin).max(getTaxiEstimateQueryFromLonMax),
+  "toLat": zod.coerce.number().min(getTaxiEstimateQueryToLatMin).max(getTaxiEstimateQueryToLatMax),
+  "toLon": zod.coerce.number().min(getTaxiEstimateQueryToLonMin).max(getTaxiEstimateQueryToLonMax),
   "startTime": zod.coerce.string().regex(getTaxiEstimateQueryStartTimeRegExp).describe('Departure time in Japan (YYYY-MM-DDThh:mm:ss)')
 })
 
@@ -241,11 +304,25 @@ export const GetTaxiEstimateResponse = zod.object({
  * Walking distance and time along the pedestrian network, at the given pace.
  * @summary Walking route
  */
+export const getWalkRouteQueryFromLatMin = -90;
+export const getWalkRouteQueryFromLatMax = 90;
+
+export const getWalkRouteQueryFromLonMin = -180;
+export const getWalkRouteQueryFromLonMax = 180;
+
+export const getWalkRouteQueryToLatMin = -90;
+export const getWalkRouteQueryToLatMax = 90;
+
+export const getWalkRouteQueryToLonMin = -180;
+export const getWalkRouteQueryToLonMax = 180;
+
+
+
 export const GetWalkRouteQueryParams = zod.object({
-  "fromLat": zod.coerce.number(),
-  "fromLon": zod.coerce.number(),
-  "toLat": zod.coerce.number(),
-  "toLon": zod.coerce.number(),
+  "fromLat": zod.coerce.number().min(getWalkRouteQueryFromLatMin).max(getWalkRouteQueryFromLatMax),
+  "fromLon": zod.coerce.number().min(getWalkRouteQueryFromLonMin).max(getWalkRouteQueryFromLonMax),
+  "toLat": zod.coerce.number().min(getWalkRouteQueryToLatMin).max(getWalkRouteQueryToLatMax),
+  "toLon": zod.coerce.number().min(getWalkRouteQueryToLonMin).max(getWalkRouteQueryToLonMax),
   "pace": zod.enum(['relaxed', 'normal', 'fast'])
 })
 
@@ -279,9 +356,17 @@ export const SearchAddressesResponse = zod.array(SearchAddressesResponseItem)
  * Net cafés, karaoke, capsule hotels and hotels within walking distance, nearest first.
  * @summary Places to stay near a point
  */
+export const getNearbyPlacesQueryLatMin = -90;
+export const getNearbyPlacesQueryLatMax = 90;
+
+export const getNearbyPlacesQueryLonMin = -180;
+export const getNearbyPlacesQueryLonMax = 180;
+
+
+
 export const GetNearbyPlacesQueryParams = zod.object({
-  "lat": zod.coerce.number(),
-  "lon": zod.coerce.number()
+  "lat": zod.coerce.number().min(getNearbyPlacesQueryLatMin).max(getNearbyPlacesQueryLatMax),
+  "lon": zod.coerce.number().min(getNearbyPlacesQueryLonMin).max(getNearbyPlacesQueryLonMax)
 })
 
 export const GetNearbyPlacesResponseItem = zod.object({
@@ -297,7 +382,7 @@ export const GetNearbyPlacesResponse = zod.array(GetNearbyPlacesResponseItem)
 
 
 /**
- * Real (uncached) calls to each paid provider today and this month, in Japan time.
+ * Real (uncached) calls to each paid provider today and this month, in Japan time. Administrator-only in production.
  * @summary Paid API usage
  */
 export const GetUsageResponse = zod.object({

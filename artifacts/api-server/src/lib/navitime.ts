@@ -7,6 +7,7 @@ import { ProviderError, TtlCache } from "./cache";
 import { logger } from "./logger";
 import { kanaToRomaji } from "./romaji";
 import { recordCall, type Provider } from "./usage";
+import { providerTimeoutMs } from "./runtimeConfig";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const HOSTS = {
@@ -43,13 +44,12 @@ async function call<T>(host: string, path: string, params: Record<string, string
   if (!key) throw new ProviderError("RAPIDAPI_KEY is not configured");
   const url = new URL(`https://${host}${path}`);
   url.search = new URLSearchParams(params).toString();
-  // See the comment in ekispert.ts: intentionally not awaited.
-  void recordCall(host.split(".")[0] as Provider, path);
+  await recordCall(host.split(".")[0] as Provider, path);
   let response: Response;
   try {
     response = await fetch(url, {
       headers: { "x-rapidapi-key": key, "x-rapidapi-host": host },
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(providerTimeoutMs()),
     });
   } catch (err) {
     throw new ProviderError(`NAVITIME request failed: ${(err as Error).message}`);

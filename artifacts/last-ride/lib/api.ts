@@ -3,32 +3,76 @@
  * that call the server, so both the app and the headless background task are
  * configured.
  */
-import { setBaseUrl } from '@workspace/api-client-react';
-import Constants from 'expo-constants';
-import { NativeModules, Platform } from 'react-native';
+import { setBaseUrl } from "@workspace/api-client-react";
+import Constants from "expo-constants";
+import { NativeModules, Platform } from "react-native";
 
 const API_PORT = 8080;
+const isDevelopment =
+  typeof __DEV__ !== "undefined"
+    ? __DEV__
+    : process.env.NODE_ENV !== "production";
 
 /** Host of the machine running Metro — the API server runs next to it in development. */
 function devMachineHost(): string | null {
-  if (Platform.OS === 'web') return typeof window !== 'undefined' ? window.location.hostname : null;
-  // The URL this JS bundle was loaded from, e.g. http://192.168.0.12:8081/index.bundle?…
-  // Present in every debug build (Expo Go, dev client, `expo run:ios`), unlike `hostUri`.
-  const sourceCode = NativeModules.SourceCode as { scriptURL?: string; getConstants?: () => { scriptURL?: string } } | undefined;
-  const scriptURL = sourceCode?.getConstants?.().scriptURL ?? sourceCode?.scriptURL;
+  if (Platform.OS === "web") {
+    return typeof window !== "undefined" ? window.location.hostname : null;
+  }
+  const sourceCode = NativeModules.SourceCode as
+    | {
+        scriptURL?: string;
+        getConstants?: () => { scriptURL?: string };
+      }
+    | undefined;
+  const scriptURL =
+    sourceCode?.getConstants?.().scriptURL ?? sourceCode?.scriptURL;
   const fromBundle = scriptURL?.match(/^https?:\/\/([^/:]+)/)?.[1];
-  return fromBundle ?? Constants.expoConfig?.hostUri?.split(':')[0] ?? null;
+  return fromBundle ?? Constants.expoConfig?.hostUri?.split(":")[0] ?? null;
+}
+
+function validatedConfiguredUrl(value: string): string {
+  const trimmed = value.trim().replace(/\/+$/, "");
+  let parsed: URL;
+  try {
+    parsed = new URL(trimmed);
+  } catch {
+    throw new Error("EXPO_PUBLIC_API_URL must be an absolute URL.");
+  }
+  if (!isDevelopment && parsed.protocol !== "https:") {
+    throw new Error("Production LastRide builds require an HTTPS API URL.");
+  }
+  return trimmed;
 }
 
 function resolveApiBaseUrl(): string | null {
   const configured = process.env.EXPO_PUBLIC_API_URL;
-  if (configured) return configured;
-  if (!__DEV__) return null;
+  if (configured?.trim()) return validatedConfiguredUrl(configured);
+
+  if (!isDevelopment) {
+    throw new Error(
+      "EXPO_PUBLIC_API_URL is required in production; refusing to use sample timetable data.",
+    );
+  }
+
   const host = devMachineHost();
   return host ? `http://${host}:${API_PORT}` : null;
 }
 
 export const apiBaseUrl = resolveApiBaseUrl();
+
+/**
+ * Public community OSM/Photon endpoints are useful during local development,
+ * but production traffic must stay on contracted/provider-backed services.
+ * An explicit build-time opt-in exists only for controlled testing.
+ */
+export const communityFallbacksEnabled =
+  isDevelopment ||
+  process.env.EXPO_PUBLIC_ENABLE_COMMUNITY_FALLBACKS === "true";
+
 setBaseUrl(apiBaseUrl);
 
-if (__DEV__) console.log(`[LastRide] API server: ${apiBaseUrl ?? 'none — using sample train times'}`);
+if (isDevelopment) {
+  console.log(
+    `[LastRide] API server: ${apiBaseUrl ?? "none — using sample train times"}`,
+  );
+}

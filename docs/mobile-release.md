@@ -66,7 +66,7 @@ files for the domain in `EXPO_PUBLIC_APP_JOIN_BASE_URL`.
 
 ## Before store submission
 
-- Replace the privacy-policy contact placeholder.
+- Confirm the privacy-policy repository contact is replaced with the production support/privacy channel if one is available.
 - Use licensed production Ekispert credentials.
 - Confirm the chosen replacement/contract for NAVITIME-backed routing.
 - Apply production DB migrations.

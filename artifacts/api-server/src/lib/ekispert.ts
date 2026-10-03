@@ -1,15 +1,16 @@
 /**
  * 駅すぱあと API (Ekispert) client for last/first train searches.
  *
- * Results are cached in memory: station codes never change, and a timetable
- * answer for a station pair only changes by service date, so repeated plans
- * (and background tracking) rarely reach the paid API.
+ * Results are cached in the shared bounded Postgres cache: station metadata
+ * changes rarely, and timetable answers are stable for a service date, so
+ * repeated plans (and background tracking) rarely reach the paid API.
  */
 import { ProviderError, TtlCache } from "./cache";
 import { lineNameEn } from "./lineNames";
 import { logger } from "./logger";
 import { kanaToRomaji } from "./romaji";
 import { recordCall } from "./usage";
+import { providerTimeoutMs } from "./runtimeConfig";
 
 const BASE_URL = "https://api.ekispert.jp/v1/json";
 const ROUTE_TTL_MS = 6 * 60 * 60 * 1000;
@@ -50,13 +51,10 @@ async function call(
 ): Promise<Record<string, unknown>> {
   const url = new URL(`${BASE_URL}${path}`);
   url.search = new URLSearchParams({ key: apiKey(), ...params }).toString();
-  // Not awaited: recording usage should never add a database round-trip to
-  // the critical path of an upstream call, and recordCall handles its own
-  // errors internally, so nothing here goes unhandled.
-  void recordCall("ekispert", path);
+  await recordCall("ekispert", path);
   let response: Response;
   try {
-    response = await fetch(url, { signal: AbortSignal.timeout(15000) });
+    response = await fetch(url, { signal: AbortSignal.timeout(providerTimeoutMs()) });
   } catch (err) {
     throw new ProviderError(
       `Ekispert request failed: ${(err as Error).message}`,

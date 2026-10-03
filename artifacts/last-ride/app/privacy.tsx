@@ -32,7 +32,7 @@ function copy(ja: boolean) {
           },
           {
             heading: "位置情報と外部サービス",
-            body: "経路計算に必要な位置・駅情報は駅すぱあと API、NAVITIME JAPAN（RapidAPI経由）、補助的にOpenStreetMapのサービスへ送信されます。法人イベント参加者の表示名がこれらの交通・地図サービスへ送られることはありません。",
+            body: "経路計算に必要な位置・駅情報は駅すぱあと API、NAVITIME JAPAN（RapidAPI経由）へ送信されます。開発・明示的なテストビルドでは補助的にOpenStreetMap系サービスを利用する場合があります。法人イベント参加者の表示名がこれらの交通・地図サービスへ送られることはありません。",
           },
         ],
         more: "詳細はリポジトリの PRIVACY.md をご覧ください。",
@@ -60,7 +60,7 @@ function copy(ja: boolean) {
           },
           {
             heading: "Location and providers",
-            body: "Location and station data needed for routing can be sent to 駅すぱあと API, NAVITIME JAPAN (via RapidAPI), and OpenStreetMap fallback services. Your Business display name is not sent to those transit or mapping providers.",
+            body: "Location and station data needed for routing can be sent to 駅すぱあと API and NAVITIME JAPAN (via RapidAPI). Development or explicitly opted-in test builds may also use OpenStreetMap-based fallback services. Your Business display name is not sent to those transit or mapping providers.",
           },
         ],
         more: "The full policy is in PRIVACY.md in the project repository.",

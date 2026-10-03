@@ -63,6 +63,10 @@ export const enterpriseEventsTable = pgTable(
       "enterprise_events_expiry_after_start_check",
       sql`${table.expiresAt} > ${table.startsAt}`,
     ),
+    check(
+      "enterprise_events_max_duration_check",
+      sql`${table.expiresAt} <= ${table.startsAt} + interval '36 hours'`,
+    ),
   ],
 );
 

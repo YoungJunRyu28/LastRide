@@ -13,6 +13,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import QRCode from "react-native-qrcode-svg";
 import {
   ActivityIndicator,
+  AppState,
   Pressable,
   ScrollView,
   Share,
@@ -96,9 +97,28 @@ export default function BusinessEventScreen() {
   );
 
   useEffect(() => {
+    let timer: ReturnType<typeof setInterval> | null = null;
+
+    const stopPolling = () => {
+      if (timer) clearInterval(timer);
+      timer = null;
+    };
+    const startPolling = () => {
+      stopPolling();
+      void refresh(true);
+      timer = setInterval(() => void refresh(true), 15_000);
+    };
+
     void refresh();
-    const timer = setInterval(() => void refresh(true), 15_000);
-    return () => clearInterval(timer);
+    if (AppState.currentState === "active") startPolling();
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") startPolling();
+      else stopPolling();
+    });
+    return () => {
+      stopPolling();
+      subscription.remove();
+    };
   }, [refresh]);
 
   const activeParticipants = useMemo(
