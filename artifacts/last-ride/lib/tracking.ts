@@ -15,6 +15,7 @@ import * as TaskManager from 'expo-task-manager';
 import { Platform } from 'react-native';
 import { syncEnterpriseLeaveBy } from '@/lib/enterpriseParticipation';
 import { recordNightPlan } from '@/lib/nightHistory';
+import { endLiveActivity, syncLiveActivity } from '@/lib/liveActivity';
 import { scheduleReminders } from '@/lib/notifications';
 import { buildReminderPlans, planNight, shouldReplan, trackingEndsAt, trackingHardStopAt, type NightPlan } from '@/lib/planner';
 import { hasCoordinates, readSettings } from '@/lib/settings';
@@ -74,6 +75,7 @@ async function recomputeFromLocation(coordinates: Coordinates): Promise<void> {
     station: language === 'ja' ? plan.station.nameJa : plan.station.name,
     language,
   });
+  await syncLiveActivity(plan, language, now).catch(() => undefined);
   await syncEnterpriseLeaveBy(plan.leaveByMs).catch(() => undefined);
 }
 
@@ -123,6 +125,7 @@ export async function startBackgroundTracking(): Promise<boolean> {
 
 export async function stopBackgroundTracking(): Promise<void> {
   await AsyncStorage.setItem(TRACKING_ACTIVE_KEY, 'false').catch(() => undefined);
+  await endLiveActivity().catch(() => undefined);
   if (Platform.OS === 'web') return;
   try {
     const started = await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK);

@@ -137,7 +137,7 @@ function reminderText({ leaveBy, station, language }: ReminderText, { minutesBef
       : { title: 'LastRide — leave now', body: `Start walking to ${station} now to make the last train.` };
   }
   return language === 'ja'
-    ? { title: `LastRide — あと${minutesBefore}分`, body: `${leaveBy} に${station}へ出発。そろそろ支度を。` }
+    ? { title: `LastRide — あと${minutesBefore}分`, body: `${leaveBy}に${station}へ出発。そろそろ支度を。` }
     : { title: `LastRide — ${minutesBefore} min to go`, body: `Leave for ${station} by ${leaveBy}. Time to wrap up.` };
 }
 

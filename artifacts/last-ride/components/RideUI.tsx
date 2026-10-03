@@ -6,10 +6,13 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 export function PressableIcon({
   icon,
+  label,
   onPress,
   testID,
 }: {
   icon: React.ComponentProps<typeof Feather>['name'];
+  /** Spoken by screen readers; the button shows only an icon. */
+  label: string;
   onPress: () => void;
   testID?: string;
 }) {
@@ -21,6 +24,8 @@ export function PressableIcon({
         onPress();
       }}
       testID={testID}
+      accessibilityRole="button"
+      accessibilityLabel={label}
       hitSlop={12}
       style={({ pressed }) => [styles.iconButton, { opacity: pressed ? 0.55 : 1 }]}
     >

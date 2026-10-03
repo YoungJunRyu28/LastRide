@@ -236,7 +236,10 @@ export default function RideScreen() {
             {currentTime} · {text.greeting}
             {demoActive ? (ja ? " · デモ時刻" : " · demo clock") : ""}
           </Text>
-          <Text style={[styles.station, { color: colors.foreground }]}>
+          <Text
+            maxFontSizeMultiplier={1.5}
+            style={[styles.station, { color: colors.foreground }]}
+          >
             {station}
           </Text>
           <Text style={[styles.nearby, { color: colors.mutedForeground }]}>
@@ -365,7 +368,10 @@ export default function RideScreen() {
               </View>
             )}
           </View>
-          <Text style={[styles.leaveTime, { color: colors.card }]}>
+          <Text
+            maxFontSizeMultiplier={1.3}
+            style={[styles.leaveTime, { color: colors.card }]}
+          >
             {leaveBy}
           </Text>
           <View
@@ -593,7 +599,7 @@ export default function RideScreen() {
             </View>
             <Text style={[styles.note, { color: colors.mutedForeground }]}>
               {ja
-                ? "タップでその駅に切り替えます。自動では10分以上早く出られる場合のみ遠い駅を選びます。"
+                ? "タップでその駅に切り替えます。自動では、10分以上遅く出られる場合のみ遠い駅を選びます。"
                 : "Tap to switch. On automatic, a farther station is only chosen if it gives you 10+ more minutes."}
             </Text>
           </View>

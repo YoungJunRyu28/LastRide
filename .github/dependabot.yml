@@ -23,12 +23,17 @@ updates:
       # Versioned with the SDK, and its beta tags (19.0.0-beta-<hash>-<date>)
       # don't sort by date, so Dependabot "upgrades" it to older builds.
       - dependency-name: "babel-plugin-react-compiler"
-      # The SDK also pins TypeScript (~5.9 for SDK 54); patches are fine.
+      # The SDK also pins TypeScript (~6.0 for SDK 57); patches are fine.
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major", "version-update:semver-minor"]
     # Routine minor/patch updates are batched; major versions arrive as their
     # own PRs so one breaking upgrade can't hold back the rest.
+    # A dependency joins the first group that matches it.
     groups:
+      # pino-http's major versions require the matching pino major (and the
+      # transports follow pino), so they must move together, majors included.
+      pino:
+        patterns: ["pino", "pino-*", "esbuild-plugin-pino"]
       production:
         dependency-type: production
         update-types: ["minor", "patch"]

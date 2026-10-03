@@ -1,6 +1,6 @@
 # LastRide Privacy Policy
 
-_Last updated: 27 September 2026_
+_Last updated: 4 October 2026_
 
 LastRide (帰り時) helps you catch the last train home. Personal LastRide works
 without an account. LastRide for Business adds optional organizer accounts and
@@ -67,6 +67,11 @@ to:
   production builds keep these public fallbacks disabled.
 - **Supabase** — organizer authentication for LastRide for Business, when enabled.
 - **Expo / Apple / Google push services** — organizer departure alerts.
+- **Sentry (Functional Software, Inc.)** — crash and error reports, when
+  enabled in the build. A report contains the error and stack trace, the app
+  version and the device/OS model. It does not include your location,
+  destinations, stations, searches, Business display name or join links:
+  query strings are removed from URLs and console output is not collected.
 
 Transit/routing providers receive the location or station data required for the
 lookup, not the Business participant display name.
@@ -94,6 +99,7 @@ lookup, not the Business participant display name.
 - **Organizer accounts:** organization membership remains until the Business
   account is deprovisioned. A registered push token is removed when the device
   signs out successfully or when it is identified as no longer registered.
+- **Crash reports:** kept by Sentry for up to 90 days, then deleted.
 - **Server logs:** record endpoint and response status but omit query strings.
   Cache errors also omit raw cache keys, so coordinates, address queries and API
   keys are not written to ordinary application logs.

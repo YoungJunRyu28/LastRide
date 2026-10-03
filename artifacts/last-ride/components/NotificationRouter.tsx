@@ -2,6 +2,7 @@ import * as Notifications from "expo-notifications";
 import { router, usePathname } from "expo-router";
 import { useEffect, useRef } from "react";
 import { useLastRide } from "@/context/LastRideContext";
+import { businessEnabled } from "@/lib/features";
 import type { NotificationTarget } from "@/lib/notifications";
 
 const TARGETS: NotificationTarget[] = [
@@ -25,6 +26,7 @@ export function NotificationRouter() {
     const data = response.notification.request.content.data;
     const target = data?.target;
     const isBusinessTarget = target === "/business-event";
+    if (isBusinessTarget && !businessEnabled) return;
     if (!isBusinessTarget && !homeStation) return;
     if (!isBusinessTarget && (pathname === "/" || pathname === "/home-station"))
       return;

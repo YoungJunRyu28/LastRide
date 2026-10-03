@@ -109,6 +109,7 @@ export default function HomeStationScreen() {
         <View style={styles.topbar}>
           <PressableIcon
             icon="arrow-left"
+            label={ja ? '戻る' : 'Back'}
             onPress={() => {
               if (initialSetup) {
                 // Clear the language choice first — otherwise the welcome screen redirects right back here.
@@ -127,7 +128,7 @@ export default function HomeStationScreen() {
           <Text style={[styles.kicker, { color: colors.primary }]}>
             {initialSetup ? (ja ? 'まずは帰る場所' : 'ONE-TIME SETUP') : isNew ? (ja ? '帰り先を追加' : 'ADD DESTINATION') : (ja ? '帰り先を編集' : 'EDIT DESTINATION')}
           </Text>
-          <Text style={[styles.title, { color: colors.foreground }]}>
+          <Text maxFontSizeMultiplier={1.5} style={[styles.title, { color: colors.foreground }]}>
             {initialSetup ? (ja ? '自宅の最寄り駅を\n教えてください。' : 'Where should we\nget you home to?') : isNew ? (ja ? '帰り先を\n追加します。' : 'Add somewhere\nyou might go.') : (ja ? '帰り先を\n編集します。' : 'Edit this\ndestination.')}
           </Text>
           <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>{ja ? '名前と最寄り駅を設定してください。' : 'Give it a name and choose the nearest station.'}</Text>
@@ -137,6 +138,7 @@ export default function HomeStationScreen() {
           <View style={[styles.inputWrap, { backgroundColor: colors.card, borderColor: label.trim() ? colors.primary : colors.border }]}>
             <Feather name="bookmark" color={colors.mutedForeground} size={19} />
             <TextInput
+              accessibilityLabel={ja ? '名前' : 'Name'}
               testID="destination-label-input"
               autoFocus={!initialSetup}
               value={label}
@@ -154,6 +156,7 @@ export default function HomeStationScreen() {
           <View style={[styles.inputWrap, { backgroundColor: colors.card, borderColor: selected ? colors.primary : colors.border }]}>
             <Feather name="search" color={colors.mutedForeground} size={19} />
             <TextInput
+              accessibilityLabel={ja ? '最寄り駅' : 'Nearest station'}
               testID="home-station-input"
               autoFocus={initialSetup}
               value={query}
@@ -171,7 +174,7 @@ export default function HomeStationScreen() {
           {results.length > 0 && (
             <View style={[styles.resultBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
               {results.map((station, index) => (
-                <Pressable
+                <Pressable accessibilityRole="button"
                   key={`${station.nameJa}-${station.latitude}-${station.longitude}`}
                   testID={`station-result-${index}`}
                   onPress={() => pickStation(station)}
@@ -205,6 +208,7 @@ export default function HomeStationScreen() {
           <View style={[styles.inputWrap, { backgroundColor: colors.card, borderColor: selectedAddress ? colors.primary : colors.border }]}>
             <Feather name="home" color={colors.mutedForeground} size={19} />
             <TextInput
+              accessibilityLabel={ja ? '住所（任意）' : 'Address (optional)'}
               testID="home-address-input"
               value={addressQuery}
               onChangeText={(value) => {
@@ -236,7 +240,7 @@ export default function HomeStationScreen() {
           {addressResults.length > 0 && (
             <View style={[styles.resultBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
               {addressResults.map((address, index) => (
-                <Pressable
+                <Pressable accessibilityRole="button"
                   key={`${address.label}-${address.latitude}`}
                   testID={`address-result-${index}`}
                   onPress={() => {
@@ -262,7 +266,7 @@ export default function HomeStationScreen() {
           </Text>
         </View>
 
-        <Pressable testID="save-home-station" disabled={!selected || !label.trim()} onPress={continueToRide} style={({ pressed }) => [styles.button, { backgroundColor: colors.primary, opacity: !selected || !label.trim() ? 0.4 : pressed ? 0.8 : 1 }]}>
+        <Pressable accessibilityRole="button" testID="save-home-station" disabled={!selected || !label.trim()} onPress={continueToRide} style={({ pressed }) => [styles.button, { backgroundColor: colors.primary, opacity: !selected || !label.trim() ? 0.4 : pressed ? 0.8 : 1 }]}>
           <Text style={[styles.buttonText, { color: colors.primaryForeground }]}>
             {initialSetup ? (ja ? 'LastRideをはじめる' : 'Start using LastRide') : (ja ? '帰り先を保存' : 'Save destination')}
           </Text>

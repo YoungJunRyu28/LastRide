@@ -78,6 +78,7 @@ export function ErrorFallback({ error, resetError }: ErrorFallbackProps) {
 
         <Pressable
           onPress={handleRestart}
+          accessibilityRole="button"
           style={({ pressed }) => [
             styles.button,
             {

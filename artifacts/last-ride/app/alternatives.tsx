@@ -812,7 +812,7 @@ export default function AlternativesScreen() {
 
             <Text style={[styles.note, { color: colors.mutedForeground }]}>
               {ja
-                ? "終電ルート上で今から到達できる最も先の候補を使います。時刻は現在地から駅まで歩く時間も考慮しています。"
+                ? "終電ルート上で、今から間に合う最も先の駅まで電車で向かいます。時刻には現在地から駅までの徒歩時間も含まれます。"
                 : "Uses the farthest useful stop from the original last-train path that you can still reach, including your walk to the boarding station."}
             </Text>
           </View>
@@ -897,6 +897,8 @@ export default function AlternativesScreen() {
             <View style={styles.chipRow}>
               <Pressable
                 testID="filter-all"
+                accessibilityRole="button"
+                accessibilityState={{ selected: kindFilter === null }}
                 onPress={() => setKindFilter(null)}
                 style={[
                   styles.chip,
@@ -924,6 +926,8 @@ export default function AlternativesScreen() {
                 <Pressable
                   key={kind}
                   testID={`filter-${kind}`}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: kind === kindFilter }}
                   onPress={() =>
                     setKindFilter(kind === kindFilter ? null : kind)
                   }
@@ -952,6 +956,21 @@ export default function AlternativesScreen() {
               ))}
               <Pressable
                 testID="sort-toggle"
+                accessibilityRole="button"
+                accessibilityLabel={
+                  sortBy === "distance"
+                    ? ja
+                      ? "並び順：近い順"
+                      : "Sort: nearest first"
+                    : ja
+                      ? "並び順：安い順"
+                      : "Sort: cheapest first"
+                }
+                accessibilityHint={
+                  ja
+                    ? "タップで並び順を切り替えます"
+                    : "Switches the sort order"
+                }
                 onPress={() =>
                   setSortBy(sortBy === "distance" ? "price" : "distance")
                 }
@@ -986,6 +1005,7 @@ export default function AlternativesScreen() {
             ) : staysError ? (
               <Pressable
                 testID="retry-stays"
+                accessibilityRole="button"
                 onPress={() => setRetryCount((count) => count + 1)}
                 style={styles.loadingRow}
               >
@@ -1106,6 +1126,7 @@ export default function AlternativesScreen() {
                 {filteredCount > PREVIEW_STAYS && (
                   <Pressable
                     testID="show-more-stays"
+                    accessibilityRole="button"
                     onPress={() => setShowAllStays(!showAllStays)}
                     style={styles.moreButton}
                   >
@@ -1155,7 +1176,7 @@ export default function AlternativesScreen() {
               </Text>
               <View style={styles.panelHeadCopy}>
                 <Text style={[styles.panelTitle, { color: colors.foreground }]}>
-                  {ja ? `${homeLabel} まで` : `To ${homeLabel}`}
+                  {ja ? `${homeLabel}まで` : `To ${homeLabel}`}
                 </Text>
                 <Text style={[styles.note, { color: colors.mutedForeground }]}>
                   {isLoadingTaxi
@@ -1262,7 +1283,7 @@ export default function AlternativesScreen() {
               </Text>
               <View style={styles.panelHeadCopy}>
                 <Text style={[styles.panelTitle, { color: colors.foreground }]}>
-                  {ja ? `${homeLabel} まで歩く` : `Walk to ${homeLabel}`}
+                  {ja ? `${homeLabel}まで歩く` : `Walk to ${homeLabel}`}
                 </Text>
                 <Text style={[styles.note, { color: colors.mutedForeground }]}>
                   {`${(walkHome.distanceMeters / 1000).toFixed(1)} km`}
@@ -1304,6 +1325,7 @@ export default function AlternativesScreen() {
         {!userCoordinates && (
           <Pressable
             testID="alternatives-use-location"
+            accessibilityRole="button"
             onPress={() => void requestLocation()}
             style={({ pressed }) => [
               styles.locationPrompt,

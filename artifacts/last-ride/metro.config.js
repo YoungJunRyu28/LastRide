@@ -1,3 +1,4 @@
-const { getDefaultConfig } = require('expo/metro-config');
+// Sentry's wrapper adds the debug IDs that tie crash stack traces to source maps.
+const { getSentryExpoConfig } = require('@sentry/react-native/metro');
 
-module.exports = getDefaultConfig(__dirname);
+module.exports = getSentryExpoConfig(__dirname);

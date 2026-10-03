@@ -31,15 +31,15 @@ export default function WelcomeScreen() {
         <Text style={[styles.appNameJa, { color: colors.mutedForeground }]}>帰り時</Text>
       </View>
       <View style={styles.copy}>
-        <Text style={[styles.headline, { color: colors.foreground }]}>Enjoy the night.{'\n'}We’ll watch the clock.</Text>
+        <Text maxFontSizeMultiplier={1.5} style={[styles.headline, { color: colors.foreground }]}>Enjoy the night.{'\n'}We’ll watch the clock.</Text>
         <Text style={[styles.subhead, { color: colors.mutedForeground }]}>夜を楽しんで。帰りの時間は、まかせて。</Text>
       </View>
       <View style={styles.actions}>
-        <Pressable testID="choose-japanese" onPress={() => chooseLanguage('ja')} style={({ pressed }) => [styles.primaryButton, { backgroundColor: colors.primary, opacity: pressed ? 0.82 : 1 }]}>
+        <Pressable accessibilityRole="button" testID="choose-japanese" onPress={() => chooseLanguage('ja')} style={({ pressed }) => [styles.primaryButton, { backgroundColor: colors.primary, opacity: pressed ? 0.82 : 1 }]}>
           <Text style={[styles.primaryJa, { color: colors.primaryForeground }]}>日本語で始める</Text>
           <Text style={[styles.primaryEn, { color: colors.primaryForeground }]}>Japanese</Text>
         </Pressable>
-        <Pressable testID="choose-english" onPress={() => chooseLanguage('en')} style={({ pressed }) => [styles.secondaryButton, { borderColor: colors.border, opacity: pressed ? 0.7 : 1 }]}>
+        <Pressable accessibilityRole="button" testID="choose-english" onPress={() => chooseLanguage('en')} style={({ pressed }) => [styles.secondaryButton, { borderColor: colors.border, opacity: pressed ? 0.7 : 1 }]}>
           <Text style={[styles.secondaryText, { color: colors.foreground }]}>Continue in English</Text>
         </Pressable>
       </View>

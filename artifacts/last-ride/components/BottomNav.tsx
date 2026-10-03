@@ -15,11 +15,11 @@ export function BottomNav({ language }: { language: 'ja' | 'en' | null }) {
   const colors = useColors();
   const pathname = usePathname();
   return (
-    <View style={[styles.shell, { backgroundColor: colors.card, borderColor: colors.border }]}>
+    <View accessibilityRole="tablist" style={[styles.shell, { backgroundColor: colors.card, borderColor: colors.border }]}>
       {items.map((item) => {
         const active = pathname === item.route;
         return (
-          <Pressable key={item.route} testID={`tab-${item.label.toLowerCase().replace(' ', '-')}`} onPress={() => router.replace(item.route)} style={({ pressed }) => [styles.item, { opacity: pressed ? 0.62 : 1 }]}>
+          <Pressable key={item.route} testID={`tab-${item.label.toLowerCase().replace(' ', '-')}`} onPress={() => router.replace(item.route)} accessibilityRole="tab" accessibilityLabel={language === 'ja' ? item.labelJa : item.label} accessibilityState={{ selected: active }} style={({ pressed }) => [styles.item, { opacity: pressed ? 0.62 : 1 }]}>
             <Feather name={item.icon} size={20} color={active ? colors.primary : colors.mutedForeground} />
             <Text style={[styles.label, { color: active ? colors.foreground : colors.mutedForeground }]}>{language === 'ja' ? item.labelJa : item.label}</Text>
           </Pressable>

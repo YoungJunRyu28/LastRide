@@ -63,6 +63,7 @@ import {
   serviceDate,
 } from "@/lib/time";
 import { getFirstTrain, type TrainTime } from "@/lib/timetable";
+import { endLiveActivity, syncLiveActivity } from "@/lib/liveActivity";
 import {
   clearTrackingSnapshot,
   isTrackingFlagOn,
@@ -462,6 +463,17 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     language,
     demoActive,
   ]);
+
+  // The lock-screen countdown follows night-out tracking. Re-synced when the plan
+  // changes and when the night moves on (leave-by passes, the last train goes).
+  const liveStatus = plan && !demoActive ? rideStatus(plan, nowMs) : null;
+  useEffect(() => {
+    if (!trackingMode || !plan || demoActive) {
+      void endLiveActivity();
+      return;
+    }
+    void syncLiveActivity(plan, language ?? "en").catch(() => undefined);
+  }, [trackingMode, plan, language, liveStatus, demoActive]);
 
   // First train from the chosen station, for the "if missed" screen. Keyed on the
   // station and night rather than the plan, so re-plans that keep them don't refetch.
@@ -1155,8 +1167,8 @@ export function locationErrorText(
         : "No station was found nearby.";
     case "no-route":
       return ja
-        ? "近くの駅から自宅の最寄り駅へ行ける電車が見つかりませんでした。"
-        : "No train from the stations near you reaches your home station.";
+        ? "近くの駅から帰り先の最寄り駅へ行ける電車が見つかりませんでした。"
+        : "No train from the stations near you reaches your destination's station.";
     case "unavailable":
       return ja
         ? "駅の検索に失敗しました。通信状況を確認して再試行してください。"

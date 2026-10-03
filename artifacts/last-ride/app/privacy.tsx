@@ -34,6 +34,10 @@ function copy(ja: boolean) {
             heading: "位置情報と外部サービス",
             body: "経路計算に必要な位置・駅情報は駅すぱあと API、NAVITIME JAPAN（RapidAPI経由）へ送信されます。開発・明示的なテストビルドでは補助的にOpenStreetMap系サービスを利用する場合があります。法人イベント参加者の表示名がこれらの交通・地図サービスへ送られることはありません。",
           },
+          {
+            heading: "クラッシュレポート",
+            body: "アプリの不具合を直すため、エラー内容・アプリのバージョン・端末とOSの機種をSentryに送信することがあります。位置情報、帰り先、駅、検索内容、表示名、参加リンクは含まれません。",
+          },
         ],
         more: "詳細はリポジトリの PRIVACY.md をご覧ください。",
       }
@@ -62,6 +66,10 @@ function copy(ja: boolean) {
             heading: "Location and providers",
             body: "Location and station data needed for routing can be sent to 駅すぱあと API and NAVITIME JAPAN (via RapidAPI). Development or explicitly opted-in test builds may also use OpenStreetMap-based fallback services. Your Business display name is not sent to those transit or mapping providers.",
           },
+          {
+            heading: "Crash reports",
+            body: "To fix bugs, the app may send the error, app version and device/OS model to Sentry. Reports never include your location, destinations, stations, searches, display name or join links.",
+          },
         ],
         more: "The full policy is in PRIVACY.md in the project repository.",
       };
@@ -88,6 +96,7 @@ export default function PrivacyScreen() {
         <View style={styles.topbar}>
           <PressableIcon
             icon="arrow-left"
+            label={language === "ja" ? "戻る" : "Back"}
             onPress={() => router.back()}
             testID="privacy-back"
           />

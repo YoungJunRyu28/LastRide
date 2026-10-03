@@ -15,12 +15,13 @@ import {
 } from "@/lib/enterpriseHostAuth";
 import { useLastRide } from "@/context/LastRideContext";
 import { useColors } from "@/hooks/useColors";
+import { businessEnabled } from "@/lib/features";
 import { Feather } from "@expo/vector-icons";
 import {
   registerEnterprisePushDevice,
   unregisterEnterprisePushDevice,
 } from "@/lib/enterprisePush";
-import { router } from "expo-router";
+import { Redirect, router } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -55,7 +56,7 @@ function formatEventTime(iso: string, ja: boolean): string {
   }).format(new Date(iso));
 }
 
-export default function BusinessScreen() {
+function BusinessScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { language } = useLastRide();
@@ -336,6 +337,7 @@ export default function BusinessScreen() {
                   {ja ? "法人メール" : "Work email"}
                 </Text>
                 <TextInput
+                  accessibilityLabel={ja ? "法人メール" : "Work email"}
                   value={email}
                   onChangeText={setEmail}
                   keyboardType="email-address"
@@ -363,6 +365,7 @@ export default function BusinessScreen() {
                       {ja ? "6桁コード" : "Email code"}
                     </Text>
                     <TextInput
+                      accessibilityLabel={ja ? "6桁コード" : "Email code"}
                       value={otp}
                       onChangeText={setOtp}
                       keyboardType="number-pad"
@@ -381,6 +384,7 @@ export default function BusinessScreen() {
                   </>
                 )}
                 <Pressable
+                  accessibilityRole="button"
                   disabled={busy}
                   onPress={() => void (otpSent ? verifyOtp() : sendOtp())}
                   style={[
@@ -415,6 +419,7 @@ export default function BusinessScreen() {
 
             {enterpriseDevAuthAvailable() && (
               <Pressable
+                accessibilityRole="button"
                 disabled={busy}
                 onPress={() => void devSignIn()}
                 style={[styles.devButton, { borderColor: colors.border }]}
@@ -439,6 +444,7 @@ export default function BusinessScreen() {
                 {ja ? "今夜の飲み会を作成" : "Create tonight’s event"}
               </Text>
               <TextInput
+                accessibilityLabel={ja ? "イベント名" : "Event name"}
                 value={title}
                 onChangeText={setTitle}
                 maxLength={160}
@@ -466,6 +472,9 @@ export default function BusinessScreen() {
                     {ja ? "通知（分前）" : "Alert (min)"}
                   </Text>
                   <TextInput
+                    accessibilityLabel={
+                      ja ? "通知（分前）" : "Alert (minutes before)"
+                    }
                     value={alertLead}
                     onChangeText={setAlertLead}
                     keyboardType="number-pad"
@@ -489,6 +498,7 @@ export default function BusinessScreen() {
                     {ja ? "参加上限" : "Participant cap"}
                   </Text>
                   <TextInput
+                    accessibilityLabel={ja ? "参加上限" : "Participant cap"}
                     value={participantLimit}
                     onChangeText={setParticipantLimit}
                     keyboardType="number-pad"
@@ -509,6 +519,7 @@ export default function BusinessScreen() {
                   : "Participant data automatically expires at 8:00 AM Japan time."}
               </Text>
               <Pressable
+                accessibilityRole="button"
                 disabled={busy}
                 onPress={() => void createTonightEvent()}
                 style={[
@@ -534,6 +545,8 @@ export default function BusinessScreen() {
               <Pressable
                 onPress={() => void refreshEvents()}
                 disabled={loadingEvents}
+                accessibilityRole="button"
+                accessibilityLabel={ja ? "イベントを更新" : "Refresh events"}
               >
                 <Feather
                   name="refresh-cw"
@@ -552,6 +565,7 @@ export default function BusinessScreen() {
             ) : (
               events.map((event) => (
                 <Pressable
+                  accessibilityRole="button"
                   key={event.id}
                   onPress={() =>
                     router.push({
@@ -607,6 +621,7 @@ export default function BusinessScreen() {
             )}
 
             <Pressable
+              accessibilityRole="button"
               disabled={busy}
               onPress={() => void signOut()}
               style={[styles.signOut, { borderColor: colors.border }]}
@@ -716,3 +731,9 @@ const styles = StyleSheet.create({
   signOutText: { fontFamily: "Inter_600SemiBold", fontSize: 13 },
   error: { fontFamily: "Inter_500Medium", fontSize: 13, lineHeight: 19 },
 });
+
+/** Business can be switched off per build (lib/features.ts); links then land on home. */
+export default function BusinessScreenRoute() {
+  if (!businessEnabled) return <Redirect href="/" />;
+  return <BusinessScreen />;
+}

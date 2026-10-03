@@ -36,14 +36,14 @@ const colors = {
 
     // Muted / subdued elements (dividers, timestamps, placeholders)
     muted: '#E8EFEC',
-    mutedForeground: '#60716F',
+    mutedForeground: '#586766',
 
     // Accent highlights (badges, selected items, focus rings)
     accent: '#DCEBE8',
     accentForeground: '#163C42',
 
     // Destructive actions (delete, error states)
-    destructive: '#C85252',
+    destructive: '#B84B4B',
     destructiveForeground: '#FFFFFF',
 
     // Borders and input outlines

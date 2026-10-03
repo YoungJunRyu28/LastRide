@@ -77,4 +77,48 @@ describe("app.config.js", () => {
       { scheme: "https", host: "join.example", pathPrefix: "/join" },
     ]);
   });
+
+  it("enables over-the-air updates only with an EAS project", () => {
+    const local = resolveWith({ EAS_PROJECT_ID: undefined });
+    expect(local.updates).toEqual({ enabled: false });
+    expect(local.runtimeVersion).toEqual({ policy: "fingerprint" });
+
+    const eas = resolveWith({ EAS_PROJECT_ID: "project-123" });
+    expect(eas.updates).toMatchObject({
+      enabled: true,
+      url: "https://u.expo.dev/project-123",
+      fallbackToCacheTimeout: 0,
+    });
+  });
+
+  it("adds Sentry source-map upload only when org and project are set", () => {
+    const hasSentry = (config: ExpoConfig) =>
+      config.plugins.some(
+        (plugin: unknown) =>
+          Array.isArray(plugin) && plugin[0] === "@sentry/react-native/expo",
+      );
+    expect(
+      hasSentry(resolveWith({ SENTRY_ORG: undefined, SENTRY_PROJECT: undefined })),
+    ).toBe(false);
+    expect(
+      hasSentry(resolveWith({ SENTRY_ORG: "org", SENTRY_PROJECT: "lastride" })),
+    ).toBe(true);
+  });
+
+  it("keeps the signing team across prebuilds when APPLE_TEAM_ID is set", () => {
+    expect(resolveWith({ APPLE_TEAM_ID: undefined }).ios.appleTeamId).toBeUndefined();
+    expect(resolveWith({ APPLE_TEAM_ID: "ABCDE12345" }).ios.appleTeamId).toBe(
+      "ABCDE12345",
+    );
+  });
+
+  it("adds the Live Activity extension only when enabled", () => {
+    const off = resolveWith({ ENABLE_LIVE_ACTIVITY: undefined });
+    expect(off.plugins).not.toContain("expo-widgets");
+    expect(off.extra.liveActivityEnabled).toBe(false);
+
+    const on = resolveWith({ ENABLE_LIVE_ACTIVITY: "true" });
+    expect(on.plugins).toContain("expo-widgets");
+    expect(on.extra.liveActivityEnabled).toBe(true);
+  });
 });

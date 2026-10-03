@@ -7,8 +7,9 @@ import {
 } from "@/lib/enterpriseParticipation";
 import { useLastRide } from "@/context/LastRideContext";
 import { useColors } from "@/hooks/useColors";
+import { businessEnabled } from "@/lib/features";
 import { Feather } from "@expo/vector-icons";
-import { router, useLocalSearchParams } from "expo-router";
+import { Redirect, router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -21,7 +22,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-export default function JoinBusinessEventScreen() {
+function JoinBusinessEventScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ token?: string; code?: string }>();
@@ -169,16 +170,19 @@ export default function JoinBusinessEventScreen() {
               >
                 {ja ? "共有中の出発時刻" : "SHARED LEAVE TIME"}
               </Text>
-              <Text style={[styles.leaveTime, { color: colors.foreground }]}>
+              <Text
+                maxFontSizeMultiplier={1.4}
+                style={[styles.leaveTime, { color: colors.foreground }]}
+              >
                 {plan ? leaveBy : ja ? "計算待ち" : "Waiting for a plan"}
               </Text>
               <Text style={[styles.body, { color: colors.mutedForeground }]}>
                 {plan
                   ? ja
-                    ? "LastRide が出発時刻を再計算すると、幹事側も自動で更新されます。"
+                    ? "LastRideが出発時刻を再計算すると、幹事側も自動で更新されます。"
                     : "When LastRide recalculates your leave time, the organizer’s roster updates automatically."
                   : ja
-                    ? "いつもの LastRide で現在地からプランを計算すると自動で共有されます。"
+                    ? "いつものLastRideで現在地からプランを計算すると自動で共有されます。"
                     : "Calculate your normal LastRide plan and the leave time will sync automatically."}
               </Text>
             </View>
@@ -213,6 +217,7 @@ export default function JoinBusinessEventScreen() {
                 {ja ? "表示名" : "Your name"}
               </Text>
               <TextInput
+                accessibilityLabel={ja ? "表示名" : "Your name"}
                 value={displayName}
                 onChangeText={setDisplayName}
                 autoCapitalize="words"
@@ -240,6 +245,7 @@ export default function JoinBusinessEventScreen() {
                     {ja ? "参加コード" : "Join code"}
                   </Text>
                   <TextInput
+                    accessibilityLabel={ja ? "参加コード" : "Join code"}
                     value={joinCode}
                     onChangeText={setJoinCode}
                     autoCapitalize="characters"
@@ -388,3 +394,9 @@ const styles = StyleSheet.create({
   secondaryButtonText: { fontFamily: "Inter_700Bold", fontSize: 14 },
   error: { fontFamily: "Inter_500Medium", fontSize: 13, lineHeight: 19 },
 });
+
+/** Business can be switched off per build (lib/features.ts); links then land on home. */
+export default function JoinBusinessEventScreenRoute() {
+  if (!businessEnabled) return <Redirect href="/" />;
+  return <JoinBusinessEventScreen />;
+}

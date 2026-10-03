@@ -2,6 +2,7 @@ import { BottomNav } from '@/components/BottomNav';
 import { RailwayMark } from '@/components/RideUI';
 import { REMINDER_CHOICES, useLastRide } from '@/context/LastRideContext';
 import { useColors } from '@/hooks/useColors';
+import { businessEnabled } from '@/lib/features';
 import { MINUTE_MS } from '@/lib/time';
 import { Feather } from '@expo/vector-icons';
 import { router } from 'expo-router';
@@ -119,6 +120,7 @@ export default function SettingsScreen() {
           <Row title={ja ? '終電後の案内' : 'After the last train'} subtitle={ja ? '乗り遅れたときの選択肢を通知します' : 'A check-in with your other ways home'}>
             <Switch
               testID="toggle-missed-check-in"
+              accessibilityLabel={ja ? '終電後の案内' : 'After the last train'}
               value={missedCheckIn}
               onValueChange={setMissedCheckIn}
               trackColor={{ false: colors.border, true: colors.primary }}
@@ -155,21 +157,23 @@ export default function SettingsScreen() {
           </Row>
         </Section>
 
-        <Section label={ja ? 'グループ' : 'GROUPS'}>
-          <Row
-            testID="join-group"
-            title={ja ? '飲み会に参加' : 'Join a group'}
-            subtitle={ja ? '幹事のコードで出発時刻を共有' : 'Share your leave time with an organizer'}
-            onPress={() => router.push('/join')}
-          />
-          <View style={[styles.divider, { backgroundColor: colors.border }]} />
-          <Row
-            testID="business-mode"
-            title={ja ? '幹事モード' : 'LastRide for Business'}
-            subtitle={ja ? '法人イベントを作成・管理' : 'Create and manage organization events'}
-            onPress={() => router.push('/business')}
-          />
-        </Section>
+        {businessEnabled && (
+          <Section label={ja ? 'グループ' : 'GROUPS'}>
+            <Row
+              testID="join-group"
+              title={ja ? '飲み会に参加' : 'Join a group'}
+              subtitle={ja ? '幹事のコードで出発時刻を共有' : 'Share your leave time with an organizer'}
+              onPress={() => router.push('/join')}
+            />
+            <View style={[styles.divider, { backgroundColor: colors.border }]} />
+            <Row
+              testID="business-mode"
+              title={ja ? '幹事モード' : 'LastRide for Business'}
+              subtitle={ja ? '法人イベントを作成・管理' : 'Create and manage organization events'}
+              onPress={() => router.push('/business')}
+            />
+          </Section>
+        )}
 
         <Section label={ja ? '通知とデータ' : 'NOTIFICATIONS & DATA'}>
           <Row

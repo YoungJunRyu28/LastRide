@@ -6,9 +6,10 @@ import {
 } from "@workspace/api-client-react";
 import { useLastRide } from "@/context/LastRideContext";
 import { useColors } from "@/hooks/useColors";
+import { businessEnabled } from "@/lib/features";
 import { enterpriseRequestOptions } from "@/lib/enterpriseHostAuth";
 import { Feather } from "@expo/vector-icons";
-import { router, useLocalSearchParams } from "expo-router";
+import { Redirect, router, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import QRCode from "react-native-qrcode-svg";
 import {
@@ -48,7 +49,7 @@ function joinLink(token: string): string {
   return `${base}?token=${encodeURIComponent(token)}`;
 }
 
-export default function BusinessEventScreen() {
+function BusinessEventScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { language } = useLastRide();
@@ -163,7 +164,7 @@ export default function BusinessEventScreen() {
     if (!invite || !event) return;
     const link = joinLink(invite.token);
     const message = ja
-      ? `${event.title} に LastRide で参加してください。\n参加コード: ${invite.code}\n${link}`
+      ? `「${event.title}」にLastRideで参加してください。\n参加コード: ${invite.code}\n${link}`
       : `Join ${event.title} on LastRide.\nJoin code: ${invite.code}\n${link}`;
     await Share.share({ message });
   };
@@ -310,6 +311,7 @@ export default function BusinessEventScreen() {
                 </Text>
                 <View style={styles.buttonRow}>
                   <Pressable
+                    accessibilityRole="button"
                     onPress={() => void shareInvite()}
                     style={[
                       styles.primaryButton,
@@ -331,6 +333,7 @@ export default function BusinessEventScreen() {
                     </Text>
                   </Pressable>
                   <Pressable
+                    accessibilityRole="button"
                     disabled={busy}
                     onPress={() => void rotateInvite()}
                     style={[
@@ -351,6 +354,7 @@ export default function BusinessEventScreen() {
               </>
             ) : (
               <Pressable
+                accessibilityRole="button"
                 disabled={busy}
                 onPress={() => void rotateInvite()}
                 style={[
@@ -469,6 +473,7 @@ export default function BusinessEventScreen() {
 
         {event?.status === "active" && (
           <Pressable
+            accessibilityRole="button"
             disabled={busy}
             onPress={() => void closeEvent()}
             style={[styles.closeButton, { borderColor: colors.border }]}
@@ -591,3 +596,9 @@ const styles = StyleSheet.create({
   closeText: { fontFamily: "Inter_700Bold", fontSize: 13 },
   error: { fontFamily: "Inter_500Medium", fontSize: 13, lineHeight: 19 },
 });
+
+/** Business can be switched off per build (lib/features.ts); links then land on home. */
+export default function BusinessEventScreenRoute() {
+  if (!businessEnabled) return <Redirect href="/" />;
+  return <BusinessEventScreen />;
+}
