@@ -10,6 +10,7 @@ import { lineNameEn } from "./lineNames";
 import { logger } from "./logger";
 import { kanaToRomaji } from "./romaji";
 import { recordCall } from "./usage";
+import { providerTimeoutMs } from "./runtimeConfig";
 
 const BASE_URL = "https://api.ekispert.jp/v1/json";
 const ROUTE_TTL_MS = 6 * 60 * 60 * 1000;
@@ -53,7 +54,7 @@ async function call(
   await recordCall("ekispert", path);
   let response: Response;
   try {
-    response = await fetch(url, { signal: AbortSignal.timeout(15000) });
+    response = await fetch(url, { signal: AbortSignal.timeout(providerTimeoutMs()) });
   } catch (err) {
     throw new ProviderError(
       `Ekispert request failed: ${(err as Error).message}`,

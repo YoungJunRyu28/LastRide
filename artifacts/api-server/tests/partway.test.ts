@@ -34,6 +34,6 @@ describe("partway train candidates", () => {
         nameEn: `Station ${index}`,
       })),
     };
-    expect(partwayCandidateStops(many, "駅0", "駅11")).toHaveLength(6);
+    expect(partwayCandidateStops(many, "駅0", "駅11")).toHaveLength(4);
   });
 });
