@@ -20,7 +20,10 @@ import {
   UpdateEventParticipantHeader,
   UpdateEventParticipantResponse,
 } from "@workspace/api-zod";
-import { authenticateEnterpriseRequest } from "../lib/enterpriseAuth";
+import {
+  authenticateEnterpriseRequest,
+  EnterpriseAuthUnavailableError,
+} from "../lib/enterpriseAuth";
 import { rateLimitMiddleware, requestAddress } from "../lib/rateLimit";
 import { hashCapability } from "../lib/enterpriseTokens";
 import {
@@ -49,6 +52,8 @@ router.use((_req, res, next) => {
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const MAX_EVENT_DURATION_MS = 36 * 60 * 60_000;
+const MAX_EVENT_FUTURE_MS = 180 * 24 * 60 * 60_000;
 
 const joinLimiter = rateLimitMiddleware({
   limit: 20,
@@ -68,7 +73,16 @@ const participantLimiter = rateLimitMiddleware({
 });
 
 async function organizerFor(req: Request, res: Response) {
-  const principal = await authenticateEnterpriseRequest(req);
+  let principal;
+  try {
+    principal = await authenticateEnterpriseRequest(req);
+  } catch (err) {
+    if (err instanceof EnterpriseAuthUnavailableError) {
+      res.status(503).json({ error: "Organizer authentication unavailable" });
+      return null;
+    }
+    throw err;
+  }
   if (!principal) {
     res.status(401).json({ error: "Organizer authentication required" });
     return null;
@@ -98,8 +112,26 @@ router.post("/enterprise/events", async (req, res) => {
       .json({ error: "Invalid event", issues: parsed.error.issues });
     return;
   }
+  const now = Date.now();
   if (parsed.data.expiresAt <= parsed.data.startsAt) {
     res.status(400).json({ error: "Event expiry must be after its start" });
+    return;
+  }
+  if (parsed.data.expiresAt.getTime() <= now) {
+    res.status(400).json({ error: "Event expiry must be in the future" });
+    return;
+  }
+  if (
+    parsed.data.expiresAt.getTime() - parsed.data.startsAt.getTime() >
+    MAX_EVENT_DURATION_MS
+  ) {
+    res.status(400).json({ error: "Event duration cannot exceed 36 hours" });
+    return;
+  }
+  if (parsed.data.startsAt.getTime() > now + MAX_EVENT_FUTURE_MS) {
+    res
+      .status(400)
+      .json({ error: "Event start cannot be more than 180 days away" });
     return;
   }
 
@@ -144,16 +176,23 @@ router.patch("/enterprise/events/:eventId", async (req, res) => {
     res.status(400).json({ error: "Invalid event update" });
     return;
   }
-  const event = await updateEnterpriseEventRecord(
+  const result = await updateEnterpriseEventRecord(
     organizer.organizationId,
     params.data.eventId,
     body.data,
   );
-  if (!event) {
+  if (result.kind === "not-found") {
     res.status(404).json({ error: "Event not found" });
     return;
   }
-  res.json(UpdateEnterpriseEventResponse.parse(event));
+  if (result.kind === "limit-below-active") {
+    res.status(409).json({
+      error: "Participant limit cannot be below the active participant count",
+      activeParticipantCount: result.activeCount,
+    });
+    return;
+  }
+  res.json(UpdateEnterpriseEventResponse.parse(result.event));
 });
 
 router.post("/enterprise/events/:eventId/invite", async (req, res) => {
@@ -273,6 +312,12 @@ router.patch("/events/participant", participantLimiter, async (req, res) => {
   }
   if (result.kind === "gone") {
     res.status(410).json({ error: "Event is closed or expired" });
+    return;
+  }
+  if (result.kind === "invalid-leave-by") {
+    res
+      .status(400)
+      .json({ error: "Leave-by time is outside the event window" });
     return;
   }
   res.json(UpdateEventParticipantResponse.parse(result.participant));

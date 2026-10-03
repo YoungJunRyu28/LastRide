@@ -14,13 +14,29 @@ import type { ToLonParameter } from './toLonParameter';
 import type { ToNameParameter } from './toNameParameter';
 
 export type GetLastTrainParams = {
+/**
+ * @minimum -90
+ * @maximum 90
+ */
 fromLat: FromLatParameter;
+/**
+ * @minimum -180
+ * @maximum 180
+ */
 fromLon: FromLonParameter;
 /**
  * Japanese station name, used to pick the right station near the coordinates
  */
 fromName: FromNameParameter;
+/**
+ * @minimum -90
+ * @maximum 90
+ */
 toLat: ToLatParameter;
+/**
+ * @minimum -180
+ * @maximum 180
+ */
 toLon: ToLonParameter;
 toName: ToNameParameter;
 /**

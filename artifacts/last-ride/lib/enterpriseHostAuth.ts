@@ -77,8 +77,10 @@ async function deleteStoredSession(): Promise<void> {
 }
 
 async function readSession(): Promise<HostSession | null> {
+  if (Platform.OS === "web") return null;
   try {
     const secure = await secureStoreAvailable();
+    if (!secure && !__DEV__) return null;
     let raw = secure
       ? await SecureStore.getItemAsync(SESSION_KEY)
       : await AsyncStorage.getItem(SESSION_KEY);
@@ -116,16 +118,23 @@ async function readSession(): Promise<HostSession | null> {
 }
 
 async function saveSession(session: HostSession): Promise<void> {
+  if (Platform.OS === "web") {
+    throw new Error("Organizer accounts require the native LastRide app.");
+  }
   const serialized = JSON.stringify(session);
   if (await secureStoreAvailable()) {
     await SecureStore.setItemAsync(SESSION_KEY, serialized);
     await AsyncStorage.removeItem(SESSION_KEY).catch(() => undefined);
     return;
   }
+  if (!__DEV__) {
+    throw new Error("Secure credential storage is unavailable on this device.");
+  }
   await AsyncStorage.setItem(SESSION_KEY, serialized);
 }
 
 export function enterpriseOtpConfigured(): boolean {
+  if (Platform.OS === "web") return false;
   return Boolean(
     process.env.EXPO_PUBLIC_SUPABASE_URL &&
     process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY,

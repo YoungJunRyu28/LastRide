@@ -10,11 +10,11 @@ temporary event participation. This policy explains what data each mode uses.
 
 ## Personal LastRide
 
-| What                                               | Why                                                     | Where it goes                                                       |
-| -------------------------------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------- |
-| **Your location** (GPS coordinates)                | Find nearby stations and calculate walking time         | Our API server and transit/routing providers                        |
-| **Your saved destinations** (nearest stations and optional addresses) | Last-train, walking and taxi calculations | Stored on your phone; coordinates are sent when needed for a lookup |
-| **Your settings**                                  | Language, walking pace, reminders and other preferences | Stored on your phone                                                |
+| What                                                                  | Why                                                     | Where it goes                                                       |
+| --------------------------------------------------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------- |
+| **Your location** (GPS coordinates)                                   | Find nearby stations and calculate walking time         | Our API server and transit/routing providers                        |
+| **Your saved destinations** (nearest stations and optional addresses) | Last-train, walking and taxi calculations               | Stored on your phone; coordinates are sent when needed for a lookup |
+| **Your settings**                                                     | Language, walking pace, reminders and other preferences | Stored on your phone                                                |
 
 Personal mode does not require your name, email address, phone number, contacts,
 photos or a LastRide account.
@@ -44,9 +44,11 @@ underlying Apple or Google push service.
 - **While night-out tracking is on**, also in the background, so your plan and
   reminders stay current as you move.
 
-Tracking is off unless you switch it on. It switches itself off once the
-night's reminders are finished (by 04:00 at the latest). You can revoke
-location access at any time in your phone's settings.
+Tracking is off unless you switch it on. LastRide is configured to end a
+night's tracking once its reminders are finished and uses 04:00 as a hard
+stop. Mobile operating systems do not guarantee an exact background wake at
+04:00, so the app enforces that stop on the first location wake at or after the
+deadline. You can stop tracking or revoke location access at any time.
 
 If you joined a Business event, a re-plan sends **only the resulting leave-by
 timestamp** to the Business event. It does not send the underlying location,
@@ -60,7 +62,9 @@ to:
 - **駅すぱあと API (Val Laboratory Co., Ltd.)** — train timetables, fares and routes.
 - **NAVITIME JAPAN Co., Ltd.** (via RapidAPI) — nearby stations, walking and
   driving routes, and nearby places.
-- **OpenStreetMap services** — fallback station/geocoding data.
+- **OpenStreetMap-based community services** — fallback station/geocoding or
+  routing data only in development or explicitly opted-in test builds; ordinary
+  production builds keep these public fallbacks disabled.
 - **Supabase** — organizer authentication for LastRide for Business, when enabled.
 - **Expo / Apple / Google push services** — organizer departure alerts.
 
@@ -116,4 +120,8 @@ date at the top.
 ## Contact
 
 Questions, privacy requests or organizer-account deletion requests:
-**[add your contact email before public release]**
+Repository contact: https://github.com/nicknr100/LastRide
+
+Do not include sensitive personal information in a public GitHub issue. If a
+request requires account or identity details, first ask the maintainers for a
+private follow-up channel.

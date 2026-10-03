@@ -16,6 +16,7 @@ import {
   getOrganizerContext,
   joinEnterpriseEventRecord,
   updateEnterpriseEventRecord,
+  updateEventParticipantRecord,
 } from "../src/lib/enterpriseStore";
 
 async function clearEnterpriseData() {
@@ -79,8 +80,10 @@ describe("enterprise store integrity", () => {
       created.id,
       { status: "closed" },
     );
-    expect(closed?.status).toBe("closed");
-    expect(closed?.participantCount).toBe(0);
+    expect(closed.kind).toBe("updated");
+    if (closed.kind !== "updated") throw new Error("close failed");
+    expect(closed.event.status).toBe("closed");
+    expect(closed.event.participantCount).toBe(0);
 
     const participants = await getDb()
       .select()
@@ -114,6 +117,63 @@ describe("enterprise store integrity", () => {
 
     expect(stale.kind).toBe("invalid");
     expect(fresh.kind).toBe("joined");
+  });
+
+  it("rejects lowering the participant limit below the active roster", async () => {
+    const { owner, created } = await eventForTest();
+    const first = await joinEnterpriseEventRecord({
+      inviteToken: created.inviteToken,
+      displayName: "One",
+    });
+    const second = await joinEnterpriseEventRecord({
+      inviteToken: created.inviteToken,
+      displayName: "Two",
+    });
+    expect(first.kind).toBe("joined");
+    expect(second.kind).toBe("joined");
+
+    const result = await updateEnterpriseEventRecord(
+      owner.organizationId,
+      created.id,
+      { participantLimit: 1 },
+    );
+    expect(result).toEqual({ kind: "limit-below-active", activeCount: 2 });
+
+    const [stored] = await getDb()
+      .select({ participantLimit: enterpriseEventsTable.participantLimit })
+      .from(enterpriseEventsTable)
+      .where(eq(enterpriseEventsTable.id, created.id));
+    expect(stored.participantLimit).toBe(30);
+  });
+
+  it("rejects participant leave-by times outside the event window", async () => {
+    const { created } = await eventForTest();
+    const joined = await joinEnterpriseEventRecord({
+      inviteToken: created.inviteToken,
+      displayName: "Participant",
+    });
+    expect(joined.kind).toBe("joined");
+    if (joined.kind !== "joined") throw new Error("join failed");
+
+    const result = await updateEventParticipantRecord(
+      joined.participantToken,
+      new Date(created.expiresAt.getTime() + 60_000),
+    );
+    expect(result.kind).toBe("invalid-leave-by");
+  });
+
+  it("enforces the maximum event retention window in PostgreSQL", async () => {
+    const owner = await organizer();
+    const start = new Date();
+    await expect(
+      createEnterpriseEventRecord(owner, {
+        title: "Too long",
+        startsAt: start,
+        expiresAt: new Date(start.getTime() + 37 * 60 * 60_000),
+        alertLeadMinutes: 10,
+        participantLimit: 30,
+      }),
+    ).rejects.toThrow();
   });
 
   it("concurrent first access provisions exactly one organizer context", async () => {

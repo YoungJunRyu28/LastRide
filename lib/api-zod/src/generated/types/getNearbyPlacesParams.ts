@@ -7,6 +7,14 @@
  */
 
 export type GetNearbyPlacesParams = {
+/**
+ * @minimum -90
+ * @maximum 90
+ */
 lat: number;
+/**
+ * @minimum -180
+ * @maximum 180
+ */
 lon: number;
 };

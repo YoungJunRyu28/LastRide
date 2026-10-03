@@ -59,6 +59,16 @@ function resolveApiBaseUrl(): string | null {
 }
 
 export const apiBaseUrl = resolveApiBaseUrl();
+
+/**
+ * Public community OSM/Photon endpoints are useful during local development,
+ * but production traffic must stay on contracted/provider-backed services.
+ * An explicit build-time opt-in exists only for controlled testing.
+ */
+export const communityFallbacksEnabled =
+  isDevelopment ||
+  process.env.EXPO_PUBLIC_ENABLE_COMMUNITY_FALLBACKS === "true";
+
 setBaseUrl(apiBaseUrl);
 
 if (isDevelopment) {

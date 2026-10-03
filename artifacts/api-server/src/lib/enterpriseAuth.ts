@@ -7,6 +7,13 @@ export type EnterprisePrincipal = {
   email: string | null;
 };
 
+export class EnterpriseAuthUnavailableError extends Error {
+  constructor(message = "Organizer authentication service is unavailable") {
+    super(message);
+    this.name = "EnterpriseAuthUnavailableError";
+  }
+}
+
 const tokenCache = new Map<
   string,
   { principal: EnterprisePrincipal; expiresAt: number }
@@ -46,15 +53,34 @@ async function verifyWithSupabase(
 ): Promise<EnterprisePrincipal | null> {
   const url = process.env.SUPABASE_URL?.replace(/\/+$/, "");
   const apiKey = process.env.SUPABASE_ANON_KEY;
-  if (!url || !apiKey) return null;
+  if (!url || !apiKey) {
+    throw new EnterpriseAuthUnavailableError(
+      "Organizer authentication is not configured",
+    );
+  }
 
-  const response = await fetch(`${url}/auth/v1/user`, {
-    headers: { apikey: apiKey, authorization: `Bearer ${token}` },
-    signal: AbortSignal.timeout(5_000),
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${url}/auth/v1/user`, {
+      headers: { apikey: apiKey, authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(5_000),
+    });
+  } catch {
+    throw new EnterpriseAuthUnavailableError();
+  }
+  if (response.status === 429 || response.status >= 500) {
+    throw new EnterpriseAuthUnavailableError();
+  }
   if (!response.ok) return null;
 
-  const user = (await response.json()) as { id?: unknown; email?: unknown };
+  let user: { id?: unknown; email?: unknown };
+  try {
+    user = (await response.json()) as { id?: unknown; email?: unknown };
+  } catch {
+    throw new EnterpriseAuthUnavailableError(
+      "Organizer authentication returned an invalid response",
+    );
+  }
   if (typeof user.id !== "string" || !user.id) return null;
   return {
     authUserId: user.id,
@@ -85,12 +111,8 @@ export async function authenticateEnterpriseRequest(
   if (cached && cached.expiresAt > Date.now()) return cached.principal;
   if (cached) tokenCache.delete(cacheKey);
 
-  try {
-    const principal = await verifyWithSupabase(token);
-    if (!principal) return null;
-    cachePrincipal(token, principal);
-    return principal;
-  } catch {
-    return null;
-  }
+  const principal = await verifyWithSupabase(token);
+  if (!principal) return null;
+  cachePrincipal(token, principal);
+  return principal;
 }

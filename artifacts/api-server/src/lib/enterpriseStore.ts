@@ -257,17 +257,48 @@ export async function updateEnterpriseEventRecord(
   if (patch.status !== undefined) updates.status = patch.status;
 
   return db.transaction(async (tx) => {
-    const [updated] = await tx
-      .update(enterpriseEventsTable)
-      .set(updates)
+    // Serialize organizer changes with joins, which also lock this row. This
+    // makes participant-limit changes deterministic under concurrent joins.
+    const [current] = await tx
+      .select()
+      .from(enterpriseEventsTable)
       .where(
         and(
           eq(enterpriseEventsTable.id, eventId),
           eq(enterpriseEventsTable.organizationId, organizationId),
         ),
       )
+      .for("update")
+      .limit(1);
+    if (!current) return { kind: "not-found" as const };
+
+    const [counter] = await tx
+      .select({ value: count(eventParticipantsTable.id) })
+      .from(eventParticipantsTable)
+      .where(
+        and(
+          eq(eventParticipantsTable.eventId, eventId),
+          eq(eventParticipantsTable.status, "active"),
+        ),
+      );
+    const activeCount = counter?.value ?? 0;
+
+    if (
+      patch.status !== "closed" &&
+      patch.participantLimit !== undefined &&
+      patch.participantLimit < activeCount
+    ) {
+      return {
+        kind: "limit-below-active" as const,
+        activeCount,
+      };
+    }
+
+    const [updated] = await tx
+      .update(enterpriseEventsTable)
+      .set(updates)
+      .where(eq(enterpriseEventsTable.id, eventId))
       .returning();
-    if (!updated) return null;
 
     if (patch.status === "closed") {
       // Closing is also a data-minimization action: participant records,
@@ -279,19 +310,13 @@ export async function updateEnterpriseEventRecord(
       await tx
         .delete(eventInvitesTable)
         .where(eq(eventInvitesTable.eventId, eventId));
-      return eventShape(updated, 0);
+      return { kind: "updated" as const, event: eventShape(updated, 0) };
     }
 
-    const [counter] = await tx
-      .select({ value: count(eventParticipantsTable.id) })
-      .from(eventParticipantsTable)
-      .where(
-        and(
-          eq(eventParticipantsTable.eventId, eventId),
-          eq(eventParticipantsTable.status, "active"),
-        ),
-      );
-    return eventShape(updated, counter?.value ?? 0);
+    return {
+      kind: "updated" as const,
+      event: eventShape(updated, activeCount),
+    };
   });
 }
 
@@ -436,6 +461,17 @@ export async function updateEventParticipantRecord(
     current.event.expiresAt.getTime() <= Date.now()
   ) {
     return { kind: "gone" as const };
+  }
+
+  // A synced leave-by is derived from this event's night plan. Keep it within
+  // the event's retention window so malformed clients cannot persist
+  // effectively unbounded timestamps.
+  const earliestLeaveBy = current.event.startsAt.getTime() - 12 * 60 * 60_000;
+  if (
+    leaveBy.getTime() < earliestLeaveBy ||
+    leaveBy.getTime() > current.event.expiresAt.getTime()
+  ) {
+    return { kind: "invalid-leave-by" as const };
   }
 
   const now = new Date();

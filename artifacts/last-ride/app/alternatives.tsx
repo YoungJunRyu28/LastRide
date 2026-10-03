@@ -2,7 +2,7 @@ import { BottomNav } from "@/components/BottomNav";
 import { RailwayMark } from "@/components/RideUI";
 import { useLastRide } from "@/context/LastRideContext";
 import { useColors } from "@/hooks/useColors";
-import { apiBaseUrl } from "@/lib/api";
+import { apiBaseUrl, communityFallbacksEnabled } from "@/lib/api";
 import { STATION_BUFFER_MINUTES } from "@/lib/planner";
 import {
   distanceBetween,
@@ -123,6 +123,7 @@ async function fetchNearbyStays(
       // Fall back to OpenStreetMap below.
     }
   }
+  if (!communityFallbacksEnabled) return [];
   const query = `[out:json][timeout:15];(node(around:1500,${latitude},${longitude})["amenity"="internet_cafe"];node(around:1500,${latitude},${longitude})["amenity"="karaoke_box"];node(around:1500,${latitude},${longitude})["tourism"~"^(hotel|hostel|guest_house)$"];);out tags center 30;`;
   const elements = await overpassQuery(query);
   const options: StayOption[] = [];
@@ -181,8 +182,10 @@ async function fetchTaxiEstimate(
       // Fall back to OpenStreetMap routing below.
     }
   }
+  if (!communityFallbacksEnabled) return null;
   const response = await fetch(
     `https://routing.openstreetmap.de/routed-car/route/v1/driving/${from.longitude},${from.latitude};${to.longitude},${to.latitude}?overview=false&alternatives=false&steps=false`,
+    { signal: AbortSignal.timeout(8_000) },
   ).catch(() => null);
   if (!response?.ok) return null;
   const payload = (await response.json()) as {

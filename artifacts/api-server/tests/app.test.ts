@@ -80,4 +80,13 @@ describe("HTTP runtime perimeter", () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({ error: "Invalid request" });
   });
+
+  it("rejects coordinates outside geographic bounds before provider calls", async () => {
+    const response = await fetch(
+      `${baseUrl}/api/stations/nearby?lat=91&lon=139.7&pace=normal`,
+    );
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { error?: unknown };
+    expect(body.error).toBe("Invalid query");
+  });
 });
