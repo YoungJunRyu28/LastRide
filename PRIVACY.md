@@ -86,8 +86,9 @@ lookup, not the Business participant display name.
 - **Business participants:** your display name, leave-by time and event
   capability are deleted immediately after a successful leave request or when
   the organizer closes the event. If a leave request cannot reach the server,
-  the app retains the anonymous capability locally so deletion can be retried;
-  otherwise remaining participant data is deleted when the event expires.
+  the app retains the anonymous capability locally so deletion can be retried,
+  except after **Reset & start over**, which always erases it from your phone.
+  Any participant data the server still holds is deleted when the event expires.
   Events created for a night out currently expire at 08:00 Japan time the
   following morning.
 - **Organizer accounts:** organization membership remains until the Business
@@ -102,7 +103,9 @@ lookup, not the Business participant display name.
 - Use Personal LastRide without creating an account.
 - Leave a Business event at any time to delete that participant record.
 - Use **Reset & start over** to erase LastRide's local settings and leave the
-  current Business event.
+  current Business event. If the server can't be reached, your phone's copy is
+  still erased and the server-side participant record is removed when the
+  event expires.
 - Turn off location permission to stop location access.
 - Organizer account deletion/deprovisioning requests can be made through the
   contact below.

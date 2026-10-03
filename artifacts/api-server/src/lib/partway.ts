@@ -7,6 +7,7 @@ import {
   type TrainRouteWithStops,
   type TrainStopRef,
 } from "./ekispert";
+import { ProviderError } from "./cache";
 import { taxiEstimate, type TaxiEstimate } from "./navitime";
 
 const MAX_STOP_ATTEMPTS = 4;
@@ -132,11 +133,20 @@ export async function findPartwayTrainTaxi(input: {
     input.to.name,
   );
 
-  // Candidate order is farthest-first. Evaluate the bounded set concurrently
-  // so one slow/unreachable intermediate station cannot multiply request
-  // latency by the number of attempts; Promise.all preserves input order.
-  const evaluated = await Promise.all(
-    candidates.map((candidate) => evaluateCandidate(candidate, input)),
-  );
-  return evaluated.find((option) => option !== null) ?? null;
+  // Candidate order is farthest-first, so the first workable stop is the
+  // best one. Evaluate sequentially and stop there: every attempt costs paid
+  // route, station and taxi calls. A provider error on one candidate moves on
+  // to the next; it only fails the request if no candidate works.
+  let firstError: unknown;
+  for (const candidate of candidates) {
+    try {
+      const option = await evaluateCandidate(candidate, input);
+      if (option) return option;
+    } catch (err) {
+      if (!(err instanceof ProviderError)) throw err;
+      firstError ??= err;
+    }
+  }
+  if (firstError) throw firstError;
+  return null;
 }

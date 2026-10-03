@@ -7,6 +7,7 @@
  */
 import { getNearbyStations, getWalkRoute } from "@workspace/api-client-react";
 import { apiBaseUrl, communityFallbacksEnabled } from "@/lib/api";
+import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
 
 export type Coordinates = { latitude: number; longitude: number };
 
@@ -262,9 +263,9 @@ export async function walkingRoute(
     };
   }
   try {
-    const response = await fetch(
+    const response = await fetchWithTimeout(
       `https://routing.openstreetmap.de/routed-foot/route/v1/driving/${from.longitude},${from.latitude};${to.longitude},${to.latitude}?overview=false&alternatives=false&steps=false`,
-      { signal: AbortSignal.timeout(8_000) },
+      8_000,
     );
     if (response.ok) {
       const route = (await response.json()) as {

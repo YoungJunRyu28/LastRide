@@ -96,6 +96,9 @@ export async function recordCall(
       let priorMonthCount: number | null = null;
       if (limit) {
         const lockKey = `lastride:provider-quota:${provider}:${month}`;
+        // Bound the wait for the quota lock; on timeout the reservation fails
+        // closed like any other accounting error instead of hanging the request.
+        await tx.execute(sql`set local lock_timeout = '2s'`);
         await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${lockKey}, 0))`);
         const [monthly] = await tx
           .select({

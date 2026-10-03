@@ -8,7 +8,7 @@ import Constants from "expo-constants";
 import { NativeModules, Platform } from "react-native";
 
 const API_PORT = 8080;
-const isDevelopment =
+export const isDevelopment =
   typeof __DEV__ !== "undefined"
     ? __DEV__
     : process.env.NODE_ENV !== "production";
@@ -30,28 +30,44 @@ function devMachineHost(): string | null {
   return fromBundle ?? Constants.expoConfig?.hostUri?.split(":")[0] ?? null;
 }
 
-function validatedConfiguredUrl(value: string): string {
+/** The configured URL without trailing slashes, or null if it isn't usable in this build. */
+function validatedConfiguredUrl(value: string): string | null {
   const trimmed = value.trim().replace(/\/+$/, "");
   let parsed: URL;
   try {
     parsed = new URL(trimmed);
   } catch {
-    throw new Error("EXPO_PUBLIC_API_URL must be an absolute URL.");
+    return null;
   }
-  if (!isDevelopment && parsed.protocol !== "https:") {
-    throw new Error("Production LastRide builds require an HTTPS API URL.");
-  }
+  if (!isDevelopment && parsed.protocol !== "https:") return null;
   return trimmed;
 }
 
+/**
+ * Release builds are refused at build time (app.config.js) without an HTTPS
+ * EXPO_PUBLIC_API_URL. Never throw here: this runs at module load, so a throw
+ * would crash the app at launch. Without a server, production lookups report
+ * "unavailable" rather than showing sample times (see lib/timetable.ts).
+ */
 function resolveApiBaseUrl(): string | null {
   const configured = process.env.EXPO_PUBLIC_API_URL;
-  if (configured?.trim()) return validatedConfiguredUrl(configured);
+  if (configured?.trim()) {
+    const url = validatedConfiguredUrl(configured);
+    if (!url) {
+      console.error(
+        isDevelopment
+          ? "[LastRide] EXPO_PUBLIC_API_URL must be an absolute URL."
+          : "[LastRide] EXPO_PUBLIC_API_URL must be an absolute HTTPS URL; train times are unavailable.",
+      );
+    }
+    return url;
+  }
 
   if (!isDevelopment) {
-    throw new Error(
-      "EXPO_PUBLIC_API_URL is required in production; refusing to use sample timetable data.",
+    console.error(
+      "[LastRide] EXPO_PUBLIC_API_URL is not set; train times are unavailable.",
     );
+    return null;
   }
 
   const host = devMachineHost();

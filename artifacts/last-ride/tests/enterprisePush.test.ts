@@ -59,4 +59,28 @@ describe("enterprise push unregister", () => {
 
     expect(storage.has(PUSH_KEY)).toBe(false);
   });
+
+  it.each([401, 404, 410])(
+    "treats a %i response as already unregistered",
+    async (status) => {
+      api.unregisterEnterpriseHostDevice.mockRejectedValueOnce(
+        Object.assign(new Error("gone"), { status }),
+      );
+
+      await unregisterEnterprisePushDevice();
+
+      expect(storage.has(PUSH_KEY)).toBe(false);
+    },
+  );
+
+  it("forgets the token without calling the server when signed out", async () => {
+    auth.enterpriseRequestOptions.mockRejectedValueOnce(
+      new Error("Organizer sign-in required."),
+    );
+
+    await unregisterEnterprisePushDevice();
+
+    expect(api.unregisterEnterpriseHostDevice).not.toHaveBeenCalled();
+    expect(storage.has(PUSH_KEY)).toBe(false);
+  });
 });

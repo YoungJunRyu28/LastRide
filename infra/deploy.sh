@@ -4,14 +4,40 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 
-STAGE="${1:-staging}"
-SECRET_ID="${2:-${LASTRIDE_SECRET_ID:-}}"
+usage() {
+  echo "Usage: $0 <staging|production> [secret-id] [--confirm]" >&2
+  echo "  secret-id defaults to \$LASTRIDE_SECRET_ID." >&2
+  echo "  production requires --confirm, a clean tree, and HEAD == origin/main." >&2
+}
+
+STAGE=""
+SECRET_ARG=""
+CONFIRM=false
+for arg in "$@"; do
+  case "$arg" in
+    --confirm) CONFIRM=true ;;
+    -h|--help) usage; exit 0 ;;
+    -*) echo "Unknown option: $arg" >&2; usage; exit 2 ;;
+    *)
+      if [[ -z "$STAGE" ]]; then
+        STAGE="$arg"
+      elif [[ -z "$SECRET_ARG" ]]; then
+        SECRET_ARG="$arg"
+      else
+        echo "Unexpected argument: $arg" >&2; usage; exit 2
+      fi
+      ;;
+  esac
+done
+STAGE="${STAGE:-staging}"
+SECRET_ID="${SECRET_ARG:-${LASTRIDE_SECRET_ID:-}}"
 AWS_REGION="${AWS_REGION:-ap-northeast-1}"
 CORS_ALLOWED_ORIGINS="${CORS_ALLOWED_ORIGINS:-}"
 ALARM_EMAIL="${ALARM_EMAIL:-}"
 
 if [[ "$STAGE" != "staging" && "$STAGE" != "production" ]]; then
   echo "stage must be staging or production" >&2
+  usage
   exit 2
 fi
 if [[ -z "$SECRET_ID" ]]; then
@@ -19,9 +45,36 @@ if [[ -z "$SECRET_ID" ]]; then
   exit 2
 fi
 
-for cmd in aws sam pnpm python3 curl; do
+for cmd in aws sam pnpm python3 curl git; do
   command -v "$cmd" >/dev/null || { echo "$cmd is required" >&2; exit 2; }
 done
+
+# Production migrates the live database and ships the local tree, so only
+# allow it for an explicit, clean checkout of exactly what is on origin/main.
+if [[ "$STAGE" == "production" ]]; then
+  if [[ "$CONFIRM" != true ]]; then
+    echo "Production deploys migrate the production database. Re-run with --confirm:" >&2
+    echo "  $0 production $SECRET_ID --confirm" >&2
+    exit 2
+  fi
+  if [[ -n "$(git status --porcelain)" ]]; then
+    echo "Refusing to deploy production with uncommitted or untracked changes:" >&2
+    git status --short >&2
+    echo "Commit, stash, or remove them, then check out the merged main branch." >&2
+    exit 1
+  fi
+  echo "Fetching origin/main..."
+  git fetch --quiet origin main
+  HEAD_SHA="$(git rev-parse HEAD)"
+  MAIN_SHA="$(git rev-parse origin/main)"
+  if [[ "$HEAD_SHA" != "$MAIN_SHA" ]]; then
+    echo "Refusing to deploy production: HEAD ($HEAD_SHA) is not origin/main ($MAIN_SHA)." >&2
+    echo "Production only ships merged, reviewed code. Fix with:" >&2
+    echo "  git checkout main && git pull --ff-only origin main" >&2
+    exit 1
+  fi
+  echo "Deploying production from origin/main at $HEAD_SHA."
+fi
 
 STACK_NAME="lastride-$STAGE"
 echo "Validating secret contract..."
@@ -49,6 +102,12 @@ EXPO_PUBLIC_API_URL="https://api.invalid.example" CI=true pnpm run build:ci
 # Never run integration tests against the target environment database. CI owns
 # those tests using an ephemeral Postgres service. The target DATABASE_URL is
 # used here only to apply the already-reviewed committed migrations.
+echo "Checking existing data against pending migrations..."
+if ! DATABASE_URL="$DATABASE_URL" pnpm --filter @workspace/db run preflight; then
+  echo "Migration preflight failed; nothing was migrated or deployed. Fix the reported data first." >&2
+  exit 1
+fi
+
 echo "Applying committed database migrations..."
 DATABASE_URL="$DATABASE_URL" pnpm --filter @workspace/db run migrate
 unset DATABASE_URL

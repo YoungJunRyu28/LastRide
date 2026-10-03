@@ -4,7 +4,9 @@
  * Basic plans allow 500 calls a month per API, so every answer is cached.
  */
 import { ProviderError, TtlCache } from "./cache";
+import { CircuitBreaker, ProviderOutageError } from "./circuitBreaker";
 import { logger } from "./logger";
+import { isJapaneseQuery, searchStationsPhoton } from "./photon";
 import { kanaToRomaji } from "./romaji";
 import { recordCall, type Provider } from "./usage";
 import { providerTimeoutMs } from "./runtimeConfig";
@@ -39,27 +41,37 @@ export type WalkRoute = { distanceMeters: number; minutes: number };
 
 export type Address = { name: string; postalCode?: string; latitude: number; longitude: number };
 
+// One breaker per RapidAPI host: each NAVITIME API is a separate service.
+const breakers = new Map<string, CircuitBreaker>();
+
 async function call<T>(host: string, path: string, params: Record<string, string>): Promise<T> {
   const key = process.env["RAPIDAPI_KEY"];
   if (!key) throw new ProviderError("RAPIDAPI_KEY is not configured");
   const url = new URL(`https://${host}${path}`);
   url.search = new URLSearchParams(params).toString();
-  await recordCall(host.split(".")[0] as Provider, path);
-  let response: Response;
-  try {
-    response = await fetch(url, {
-      headers: { "x-rapidapi-key": key, "x-rapidapi-host": host },
-      signal: AbortSignal.timeout(providerTimeoutMs()),
-    });
-  } catch (err) {
-    throw new ProviderError(`NAVITIME request failed: ${(err as Error).message}`);
-  }
-  if (!response.ok) {
-    const detail = await response.text().catch(() => "");
-    logger.warn({ host, path, status: response.status, detail: detail.slice(0, 200) }, "NAVITIME error");
-    throw new ProviderError(`NAVITIME responded ${response.status}`);
-  }
-  return (await response.json()) as T;
+  const provider = host.split(".")[0] as Provider;
+  let breaker = breakers.get(provider);
+  if (!breaker) breakers.set(provider, (breaker = new CircuitBreaker(provider)));
+  // The breaker runs before quota reservation, so an open circuit costs nothing.
+  return breaker.run(async () => {
+    await recordCall(provider, path);
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        headers: { "x-rapidapi-key": key, "x-rapidapi-host": host },
+        signal: AbortSignal.timeout(providerTimeoutMs()),
+      });
+    } catch (err) {
+      throw new ProviderOutageError(`NAVITIME request failed: ${(err as Error).message}`);
+    }
+    if (!response.ok) {
+      const detail = await response.text().catch(() => "");
+      logger.warn({ host, path, status: response.status, detail: detail.slice(0, 200) }, "NAVITIME error");
+      const ErrorType = response.status >= 500 ? ProviderOutageError : ProviderError;
+      throw new ErrorType(`NAVITIME responded ${response.status}`);
+    }
+    return (await response.json()) as T;
+  });
 }
 
 type TransportNode = {
@@ -105,11 +117,15 @@ export async function nearbyStations(latitude: number, longitude: number, pace: 
   return stations;
 }
 
-const searchCache = new TtlCache<Station[]>(7 * DAY_MS, "navitime-search");
+// Station-name queries return public station data, not anything about the
+// person searching, so they may outlive the 24-hour personal-data cap.
+const searchCache = new TtlCache<Station[]>(7 * DAY_MS, "navitime-search", { containsPersonalData: false });
 
-/** Stations whose name matches `word` (Japanese or kana). */
+/** Stations whose name matches `word`: Japanese/kana via NAVITIME, romaji via Photon. */
 export async function searchStations(word: string): Promise<Station[]> {
   const cacheKey = word.trim();
+  // NAVITIME's transport_node search only understands Japanese and kana.
+  if (!isJapaneseQuery(cacheKey)) return searchStationsPhoton(cacheKey);
   const cached = await searchCache.get(cacheKey);
   if (cached) return cached;
   const body = await call<{ items?: TransportNode[] }>(HOSTS.transport, "/transport_node", {

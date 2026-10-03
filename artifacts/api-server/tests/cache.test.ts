@@ -114,6 +114,43 @@ describe("TtlCache", () => {
     expect(row.expiresAt.getTime()).toBeLessThanOrEqual(before + MAX_CACHE_TTL_MS + 2_000);
   });
 
+  it("keeps the requested TTL only for caches that opt out of personal data", async () => {
+    const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
+    const before = Date.now();
+    const capped = new TtlCache<string>(thirtyDaysMs, TEST_CACHE);
+    const optedOut = new TtlCache<string>(thirtyDaysMs, TEST_CACHE, {
+      containsPersonalData: false,
+    });
+    await capped.set("capped", "value");
+    await optedOut.set("opted-out", "value");
+
+    const expiryFor = async (key: string) => {
+      const [row] = await getDb()
+        .select({ expiresAt: kvCacheTable.expiresAt })
+        .from(kvCacheTable)
+        .where(
+          and(
+            eq(kvCacheTable.cacheName, TEST_CACHE),
+            eq(
+              kvCacheTable.cacheKey,
+              createHash("sha256")
+                .update(TEST_CACHE, "utf8")
+                .update("\0")
+                .update(key, "utf8")
+                .digest("hex"),
+            ),
+          ),
+        );
+      return row.expiresAt.getTime() - before;
+    };
+
+    const cappedTtl = await expiryFor("capped");
+    const optedOutTtl = await expiryFor("opted-out");
+    expect(cappedTtl).toBeLessThanOrEqual(MAX_CACHE_TTL_MS + 2_000);
+    expect(optedOutTtl).toBeGreaterThan(thirtyDaysMs - 2_000);
+    expect(optedOutTtl).toBeLessThanOrEqual(thirtyDaysMs + 2_000);
+  });
+
   it("physically purges expired rows while retaining live rows", async () => {
     const now = new Date();
     await getDb().insert(kvCacheTable).values([

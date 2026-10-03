@@ -24,6 +24,7 @@ import { router } from "expo-router";
 import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -222,23 +223,47 @@ export default function BusinessScreen() {
     }
   };
 
+  const finishSignOut = async () => {
+    await signOutEnterpriseHost();
+    setEvents([]);
+    setSignedIn(false);
+  };
+
   const signOut = async () => {
     if (busy) return;
     setBusy(true);
     setError(null);
     try {
-      // Do not discard the organizer session if device unregistering failed:
-      // keeping the session and local push token means the user can retry and
-      // prevents a signed-out device from silently remaining registered.
+      // An expired session or a token the server no longer knows counts as
+      // already unregistered (see unregisterEnterprisePushDevice).
       await unregisterEnterprisePushDevice();
-      await signOutEnterpriseHost();
-      setEvents([]);
-      setSignedIn(false);
+      await finishSignOut();
     } catch {
+      // Usually offline. Keep the session so a retry can unregister the
+      // device, but let the organizer sign out anyway: the server removes
+      // push tokens it can no longer deliver to.
       setError(
         ja
           ? "通知端末の解除に失敗しました。通信状況を確認してもう一度サインアウトしてください。"
           : "Couldn’t unregister this device. Check your connection and try signing out again.",
+      );
+      Alert.alert(
+        ja ? "通知端末の解除に失敗しました" : "Couldn’t unregister this device",
+        ja
+          ? "このままサインアウトすると、しばらくこの端末に通知が届く場合があります。"
+          : "If you sign out anyway, this device may keep receiving notifications for a while.",
+        [
+          { text: ja ? "キャンセル" : "Cancel", style: "cancel" },
+          {
+            text: ja ? "このままサインアウト" : "Sign out anyway",
+            style: "destructive",
+            onPress: () => {
+              void finishSignOut()
+                .then(() => setError(null))
+                .catch(() => undefined);
+            },
+          },
+        ],
       );
     } finally {
       setBusy(false);

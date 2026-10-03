@@ -193,7 +193,7 @@ export default function HomeStationScreen() {
           )}
           {searchError && <Text style={[styles.helper, { color: colors.destructive ?? '#d05656' }]}>{ja ? '検索に失敗しました。もう一度お試しください。' : 'Search failed. Please try again.'}</Text>}
           {!searchError && !selected && query.trim().length >= 2 && !isSearching && results.length === 0 && (
-            <Text style={[styles.helper, { color: colors.mutedForeground }]}>{ja ? '該当する駅が見つかりません。表記を変えてみてください。' : 'No matching stations. Try a different spelling.'}</Text>
+            <Text style={[styles.helper, { color: colors.mutedForeground }]}>{ja ? '駅が見つかりませんでした。漢字やかなでも検索してみてください。' : 'No stations found. Try the station’s Japanese name, e.g. 渋谷.'}</Text>
           )}
           {selected && <Text style={[styles.helper, { color: colors.mutedForeground }]}>{ja ? `「${selected.nameJa}」を「${label || '帰り先'}」の最寄り駅として保存します。` : `“${selected.name}” will be saved for “${label || 'this destination'}”.`}</Text>}
         </View>

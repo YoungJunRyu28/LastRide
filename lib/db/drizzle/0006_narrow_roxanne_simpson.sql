@@ -1,1 +1,1 @@
-ALTER TABLE "enterprise_events" ADD CONSTRAINT "enterprise_events_max_duration_check" CHECK ("enterprise_events"."expires_at" <= "enterprise_events"."starts_at" + interval '36 hours');
+ALTER TABLE "enterprise_events" ADD CONSTRAINT "enterprise_events_max_duration_check" CHECK ("enterprise_events"."expires_at" <= "enterprise_events"."starts_at" + interval '36 hours') NOT VALID;

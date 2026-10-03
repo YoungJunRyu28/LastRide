@@ -113,6 +113,14 @@ export function rateLimitMiddleware(input: {
   key: (req: Request) => string;
 }) {
   const localFallback = new FixedWindowLimiter(input.limit, input.windowMs);
+  // Used when the shared limiter's database is unreachable. Each warm Lambda
+  // instance keeps its own window, so allow a quarter of the normal budget
+  // per instance. Paid provider calls stay protected by quota accounting,
+  // which still fails closed.
+  const degradedFallback = new FixedWindowLimiter(
+    Math.max(1, Math.floor(input.limit / 4)),
+    input.windowMs,
+  );
 
   return async (req: Request, res: Response, next: NextFunction) => {
     let result: RateLimitResult;
@@ -125,12 +133,11 @@ export function rateLimitMiddleware(input: {
           )
         : localFallback.check(input.key(req));
     } catch (err) {
-      logger.error({ err }, "Shared rate limiter unavailable");
-      if (process.env.NODE_ENV === "production") {
-        res.status(503).json({ error: "Request protection unavailable" });
-        return;
-      }
-      result = localFallback.check(input.key(req));
+      logger.warn(
+        { err },
+        "Shared rate limiter unavailable, using per-instance fallback",
+      );
+      result = degradedFallback.check(input.key(req));
     }
 
     if (result.allowed) {

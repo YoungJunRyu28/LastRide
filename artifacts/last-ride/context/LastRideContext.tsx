@@ -14,6 +14,7 @@ import React, {
 import { AppState, Platform } from "react-native";
 import { apiBaseUrl, communityFallbacksEnabled } from "@/lib/api";
 import {
+  clearEnterpriseParticipation,
   leaveCurrentEnterpriseEvent,
   syncEnterpriseLeaveBy,
 } from "@/lib/enterpriseParticipation";
@@ -224,7 +225,10 @@ export async function searchStations(query: string): Promise<StationOption[]> {
       }
     }
   }
-  if (!communityFallbacksEnabled) return [];
+  // Only reached without a configured server in production builds.
+  if (!communityFallbacksEnabled) {
+    throw new Error("Station search is temporarily unavailable.");
+  }
   return searchStationsPhoton(trimmed);
 }
 
@@ -985,7 +989,11 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     sessionRef.current += 1;
     await stopTracking();
     await cancelAllReminders();
-    await leaveCurrentEnterpriseEvent().catch(() => undefined);
+    // Try to leave on the server first; if that fails (e.g. offline), still
+    // erase the token locally — the server row is removed when the event expires.
+    await leaveCurrentEnterpriseEvent().catch(() =>
+      clearEnterpriseParticipation(),
+    );
     await AsyncStorage.multiRemove(Object.values(STORAGE_KEYS));
     await clearSavedPlan();
     setLanguageState(DEFAULT_SETTINGS.language);

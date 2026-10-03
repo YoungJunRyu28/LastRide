@@ -191,3 +191,8 @@ export async function leaveCurrentEnterpriseEvent(): Promise<void> {
   }
   await removeParticipation();
 }
+
+/** Forgets this device's participation locally, without contacting the server. */
+export async function clearEnterpriseParticipation(): Promise<void> {
+  await removeParticipation();
+}

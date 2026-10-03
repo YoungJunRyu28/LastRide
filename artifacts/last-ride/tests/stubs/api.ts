@@ -7,3 +7,5 @@
  * the module graph to resolve. See vitest.config.ts.
  */
 export const apiBaseUrl = 'https://api.test.invalid';
+export const isDevelopment = false;
+export const communityFallbacksEnabled = false;

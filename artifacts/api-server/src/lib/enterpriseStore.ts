@@ -440,56 +440,64 @@ export async function updateEventParticipantRecord(
 ) {
   const db = getDb();
   const tokenHash = hashCapability(participantToken);
-  const [current] = await db
-    .select({
-      participant: eventParticipantsTable,
-      event: enterpriseEventsTable,
-    })
-    .from(eventParticipantsTable)
-    .innerJoin(
-      enterpriseEventsTable,
-      eq(eventParticipantsTable.eventId, enterpriseEventsTable.id),
-    )
-    .where(eq(eventParticipantsTable.participantTokenHash, tokenHash))
-    .limit(1);
+  return db.transaction(async (tx) => {
+    // Lock the event row (as closing and joins do) so the event cannot close
+    // between this check and the write below. A concurrent leave deletes the
+    // participant without that lock and is caught by the empty update.
+    const [current] = await tx
+      .select({
+        participant: eventParticipantsTable,
+        event: enterpriseEventsTable,
+      })
+      .from(eventParticipantsTable)
+      .innerJoin(
+        enterpriseEventsTable,
+        eq(eventParticipantsTable.eventId, enterpriseEventsTable.id),
+      )
+      .where(eq(eventParticipantsTable.participantTokenHash, tokenHash))
+      .for("update", { of: enterpriseEventsTable })
+      .limit(1);
 
-  if (!current) return { kind: "unauthorized" as const };
+    if (!current) return { kind: "unauthorized" as const };
 
-  if (
-    current.participant.status !== "active" ||
-    current.event.status !== "active" ||
-    current.event.expiresAt.getTime() <= Date.now()
-  ) {
-    return { kind: "gone" as const };
-  }
+    if (
+      current.participant.status !== "active" ||
+      current.event.status !== "active" ||
+      current.event.expiresAt.getTime() <= Date.now()
+    ) {
+      return { kind: "gone" as const };
+    }
 
-  // A synced leave-by is derived from this event's night plan. Keep it within
-  // the event's retention window so malformed clients cannot persist
-  // effectively unbounded timestamps.
-  const earliestLeaveBy = current.event.startsAt.getTime() - 12 * 60 * 60_000;
-  if (
-    leaveBy.getTime() < earliestLeaveBy ||
-    leaveBy.getTime() > current.event.expiresAt.getTime()
-  ) {
-    return { kind: "invalid-leave-by" as const };
-  }
+    // A synced leave-by is derived from this event's night plan. Keep it within
+    // the event's retention window so malformed clients cannot persist
+    // effectively unbounded timestamps.
+    const earliestLeaveBy =
+      current.event.startsAt.getTime() - 12 * 60 * 60_000;
+    if (
+      leaveBy.getTime() < earliestLeaveBy ||
+      leaveBy.getTime() > current.event.expiresAt.getTime()
+    ) {
+      return { kind: "invalid-leave-by" as const };
+    }
 
-  const now = new Date();
-  const [updated] = await db
-    .update(eventParticipantsTable)
-    .set({
-      leaveBy,
-      lastSyncedAt: now,
-      updatedAt: now,
-    })
-    .where(eq(eventParticipantsTable.id, current.participant.id))
-    .returning({
-      id: eventParticipantsTable.id,
-      displayName: eventParticipantsTable.displayName,
-      leaveBy: eventParticipantsTable.leaveBy,
-      status: eventParticipantsTable.status,
-    });
-  return { kind: "updated" as const, participant: updated };
+    const now = new Date();
+    const [updated] = await tx
+      .update(eventParticipantsTable)
+      .set({
+        leaveBy,
+        lastSyncedAt: now,
+        updatedAt: now,
+      })
+      .where(eq(eventParticipantsTable.id, current.participant.id))
+      .returning({
+        id: eventParticipantsTable.id,
+        displayName: eventParticipantsTable.displayName,
+        leaveBy: eventParticipantsTable.leaveBy,
+        status: eventParticipantsTable.status,
+      });
+    if (!updated) return { kind: "gone" as const };
+    return { kind: "updated" as const, participant: updated };
+  });
 }
 
 export async function leaveEnterpriseEventRecord(
