@@ -61,6 +61,9 @@ The API host needs:
 
 - `DATABASE_URL`
 - transit-provider keys
+- provider monthly quota ceilings matching the active contracts
+- `USAGE_ADMIN_TOKEN` for the private usage endpoint
+- `PUBLIC_LOOKUP_RATE_LIMIT_PER_MINUTE` (default 60)
 - Supabase server auth configuration
 - HTTPS
 - either an always-on process (the server runs enterprise cleanup/push
@@ -148,11 +151,13 @@ perform schema changes during a rolling deploy.
 
 ## 8. Reverse proxy and rate limiting
 
-Anonymous event join/update endpoints have an in-process first-line rate limit.
-When the API runs behind a trusted hosting/load-balancer proxy, set
+Public provider lookups plus anonymous event join/update endpoints use a
+Postgres-backed fixed-window rate limiter, so limits are shared across Lambda
+instances. When the API runs behind a trusted hosting/load-balancer proxy, set
 `TRUST_PROXY_HOPS` to the number of trusted hops (commonly `1`). LastRide
 then uses Express's validated `req.ip` resolution for per-client limits rather
 than trusting a raw `X-Forwarded-For` header.
 
-For a multi-replica/high-volume deployment, replace the in-process limiter with
-a shared Redis-backed limiter so limits are coordinated across instances.
+For substantially higher traffic, Redis/Valkey or API Gateway/WAF throttling can
+replace the Postgres counters, but the database-backed limiter remains the
+correct shared fallback rather than a per-process security boundary.

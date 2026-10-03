@@ -297,7 +297,7 @@ export const GetNearbyPlacesResponse = zod.array(GetNearbyPlacesResponseItem)
 
 
 /**
- * Real (uncached) calls to each paid provider today and this month, in Japan time.
+ * Real (uncached) calls to each paid provider today and this month, in Japan time. Administrator-only in production.
  * @summary Paid API usage
  */
 export const GetUsageResponse = zod.object({

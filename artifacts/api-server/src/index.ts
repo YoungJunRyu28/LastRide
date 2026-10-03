@@ -5,6 +5,7 @@ import {
   reconcileEnterprisePushReceipts,
 } from "./lib/enterpriseNotifications";
 import { purgeExpiredCacheEntries } from "./lib/cache";
+import { purgeExpiredRateLimits } from "./lib/rateLimit";
 import { purgeExpiredEnterpriseData } from "./lib/enterpriseStore";
 import { logger } from "./lib/logger";
 
@@ -25,13 +26,15 @@ if (Number.isNaN(port) || port <= 0) {
 if (isDatabaseConfigured()) {
   const cleanup = async () => {
     try {
-      const [eventsPurged, cacheRowsPurged] = await Promise.all([
-        purgeExpiredEnterpriseData(),
-        purgeExpiredCacheEntries(),
-      ]);
-      if (eventsPurged > 0 || cacheRowsPurged > 0) {
+      const [eventsPurged, cacheRowsPurged, rateLimitRowsPurged] =
+        await Promise.all([
+          purgeExpiredEnterpriseData(),
+          purgeExpiredCacheEntries(),
+          purgeExpiredRateLimits(),
+        ]);
+      if (eventsPurged > 0 || cacheRowsPurged > 0 || rateLimitRowsPurged > 0) {
         logger.info(
-          { eventsPurged, cacheRowsPurged },
+          { eventsPurged, cacheRowsPurged, rateLimitRowsPurged },
           "Purged expired application data",
         );
       }

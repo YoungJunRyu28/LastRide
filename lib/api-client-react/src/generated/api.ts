@@ -1015,7 +1015,7 @@ export const getGetUsageUrl = () => {
 }
 
 /**
- * Real (uncached) calls to each paid provider today and this month, in Japan time.
+ * Real (uncached) calls to each paid provider today and this month, in Japan time. Administrator-only in production.
  * @summary Paid API usage
  */
 export const getUsage = async ( options?: Parameters<typeof customFetch>[1]): Promise<UsageReport> => {

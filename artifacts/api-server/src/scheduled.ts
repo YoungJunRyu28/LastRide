@@ -18,6 +18,7 @@ import {
   reconcileEnterprisePushReceipts,
 } from "./lib/enterpriseNotifications";
 import { purgeExpiredCacheEntries } from "./lib/cache";
+import { purgeExpiredRateLimits } from "./lib/rateLimit";
 import { purgeExpiredEnterpriseData } from "./lib/enterpriseStore";
 import { logger } from "./lib/logger";
 
@@ -33,13 +34,15 @@ export async function handler(event: ScheduledEvent) {
 
   switch (event.task) {
     case "cleanup": {
-      const [eventsPurged, cacheRowsPurged] = await Promise.all([
-        purgeExpiredEnterpriseData(),
-        purgeExpiredCacheEntries(),
-      ]);
-      if (eventsPurged > 0 || cacheRowsPurged > 0) {
+      const [eventsPurged, cacheRowsPurged, rateLimitRowsPurged] =
+        await Promise.all([
+          purgeExpiredEnterpriseData(),
+          purgeExpiredCacheEntries(),
+          purgeExpiredRateLimits(),
+        ]);
+      if (eventsPurged > 0 || cacheRowsPurged > 0 || rateLimitRowsPurged > 0) {
         logger.info(
-          { eventsPurged, cacheRowsPurged },
+          { eventsPurged, cacheRowsPurged, rateLimitRowsPurged },
           "Purged expired application data",
         );
       }

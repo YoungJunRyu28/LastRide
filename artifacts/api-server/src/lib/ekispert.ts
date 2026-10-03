@@ -50,10 +50,7 @@ async function call(
 ): Promise<Record<string, unknown>> {
   const url = new URL(`${BASE_URL}${path}`);
   url.search = new URLSearchParams({ key: apiKey(), ...params }).toString();
-  // Not awaited: recording usage should never add a database round-trip to
-  // the critical path of an upstream call, and recordCall handles its own
-  // errors internally, so nothing here goes unhandled.
-  void recordCall("ekispert", path);
+  await recordCall("ekispert", path);
   let response: Response;
   try {
     response = await fetch(url, { signal: AbortSignal.timeout(15000) });

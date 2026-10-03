@@ -1,22 +1,37 @@
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from "vitest";
 import { eq } from "drizzle-orm";
 import { getDb, apiUsageTable } from "@workspace/db";
-import { recordCall, usageReport, MONTHLY_LIMITS, type Provider } from "../src/lib/usage";
+import {
+  MONTHLY_LIMITS,
+  ProviderQuotaExceededError,
+  recordCall,
+  usageReport,
+  type Provider,
+} from "../src/lib/usage";
 
-/**
- * Runs against a real Postgres. The property that matters most here —
- * concurrent calls all being counted — cannot be demonstrated against a mock;
- * it depends on Postgres actually serialising the two `UPDATE`s, which is the
- * reason this moved off a JSON file (two processes reading-then-writing a
- * shared object can each read "5" and both write "6", losing one).
- */
 const TEST_PROVIDER = "navitime-transport" as Provider;
+const LIMIT_ENV = "NAVITIME_TRANSPORT_MONTHLY_LIMIT";
 
 async function clearTestUsage() {
-  await getDb().delete(apiUsageTable).where(eq(apiUsageTable.provider, TEST_PROVIDER));
+  await getDb()
+    .delete(apiUsageTable)
+    .where(eq(apiUsageTable.provider, TEST_PROVIDER));
 }
 
-beforeEach(clearTestUsage);
+beforeEach(async () => {
+  delete process.env[LIMIT_ENV];
+  await clearTestUsage();
+});
+afterEach(() => {
+  delete process.env[LIMIT_ENV];
+});
 afterAll(clearTestUsage);
 
 describe("recordCall", () => {
@@ -35,12 +50,45 @@ describe("recordCall", () => {
   });
 
   it("counts every call made concurrently, none lost", async () => {
-    // The regression this guards against: two requests recording the same
-    // provider at the same instant both reading count=N and both writing
-    // N+1, so twenty calls land as fewer than twenty.
-    await Promise.all(Array.from({ length: 20 }, () => recordCall(TEST_PROVIDER, "/test")));
+    await Promise.all(
+      Array.from({ length: 20 }, () => recordCall(TEST_PROVIDER, "/test")),
+    );
     const report = await usageReport();
     expect(report.today[TEST_PROVIDER]).toBe(20);
+  });
+
+  it("rejects calls once the configured monthly quota is exhausted", async () => {
+    process.env[LIMIT_ENV] = "2";
+    await recordCall(TEST_PROVIDER, "/test");
+    await recordCall(TEST_PROVIDER, "/test");
+
+    await expect(recordCall(TEST_PROVIDER, "/test")).rejects.toBeInstanceOf(
+      ProviderQuotaExceededError,
+    );
+
+    const report = await usageReport();
+    expect(report.thisMonth[TEST_PROVIDER]).toBe(2);
+  });
+
+  it("cannot race past a monthly quota under concurrency", async () => {
+    process.env[LIMIT_ENV] = "5";
+    const results = await Promise.allSettled(
+      Array.from({ length: 20 }, () => recordCall(TEST_PROVIDER, "/test")),
+    );
+
+    expect(
+      results.filter((result) => result.status === "fulfilled"),
+    ).toHaveLength(5);
+    expect(
+      results.filter(
+        (result) =>
+          result.status === "rejected" &&
+          result.reason instanceof ProviderQuotaExceededError,
+      ),
+    ).toHaveLength(15);
+
+    const report = await usageReport();
+    expect(report.thisMonth[TEST_PROVIDER]).toBe(5);
   });
 });
 

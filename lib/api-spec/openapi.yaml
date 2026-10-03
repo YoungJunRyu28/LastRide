@@ -302,7 +302,8 @@ paths:
       operationId: getUsage
       tags: [usage]
       summary: Paid API usage
-      description: Real (uncached) calls to each paid provider today and this month, in Japan time.
+      description: Real (uncached) calls to each paid provider today and this month, in Japan time. Administrator-only in production.
+      security: [{ usageAdminBearer: [] }]
       responses:
         "200":
           description: Usage report
@@ -479,6 +480,10 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
+    usageAdminBearer:
+      type: http
+      scheme: bearer
+      description: Server-configured administrator token for the private usage report.
   parameters:
     EventId:
       name: eventId
