@@ -38,12 +38,17 @@ if missing:
 DATABASE_URL="$(printf '%s' "$SECRET_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["DATABASE_URL"])')"
 unset SECRET_JSON
 
-echo "Running repository validation..."
+echo "Running non-mutating repository validation..."
 CI=true pnpm install --frozen-lockfile
-DATABASE_URL="$DATABASE_URL" CI=true pnpm run typecheck
-DATABASE_URL="$DATABASE_URL" CI=true pnpm run test
+CI=true pnpm run typecheck
+CI=true pnpm run verify:migrations
+CI=true pnpm run verify:codegen
+CI=true pnpm audit --prod --audit-level=critical
 EXPO_PUBLIC_API_URL="https://api.invalid.example" CI=true pnpm run build:ci
 
+# Never run integration tests against the target environment database. CI owns
+# those tests using an ephemeral Postgres service. The target DATABASE_URL is
+# used here only to apply the already-reviewed committed migrations.
 echo "Applying committed database migrations..."
 DATABASE_URL="$DATABASE_URL" pnpm --filter @workspace/db run migrate
 unset DATABASE_URL

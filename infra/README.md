@@ -59,9 +59,11 @@ export CORS_ALLOWED_ORIGINS=https://staging.example.com
 ./infra/deploy.sh staging last-ride/staging
 ```
 
-The script performs repository validation, runs the committed database
-migrations, validates/builds the SAM application, deploys the stack, and smoke
-tests both liveness and readiness.
+The script performs non-mutating repository validation, runs the committed
+database migrations, validates/builds the SAM application, deploys the stack,
+and smoke tests both liveness and readiness. Database-backed integration tests
+run in CI against disposable Postgres; the deployment script never points the
+test suite at staging or production data.
 
 ## Deploy production
 
