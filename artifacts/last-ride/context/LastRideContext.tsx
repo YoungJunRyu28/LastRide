@@ -5,7 +5,7 @@ import { searchStations as searchStationsApi } from '@workspace/api-client-react
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, Platform } from 'react-native';
 import { apiBaseUrl } from '@/lib/api';
-import { clearEnterpriseParticipation, leaveCurrentEnterpriseEvent, syncEnterpriseLeaveBy } from '@/lib/enterpriseParticipation';
+import { leaveCurrentEnterpriseEvent, syncEnterpriseLeaveBy } from '@/lib/enterpriseParticipation';
 import { cancelAllReminders, ensureNotificationPermission, scheduleReminders, sendTestNotification } from '@/lib/notifications';
 import { recordNightPlan } from '@/lib/nightHistory';
 import { buildReminderPlans, nightEndsAt, planNight, repick, rideStatus, shouldReplan, trackingEndsAt, trackingHardStopAt, type NightPlan, type RideStatus } from '@/lib/planner';
@@ -698,7 +698,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     sessionRef.current += 1;
     await stopTracking();
     await cancelAllReminders();
-    await leaveCurrentEnterpriseEvent().catch(() => clearEnterpriseParticipation());
+    await leaveCurrentEnterpriseEvent().catch(() => undefined);
     await AsyncStorage.multiRemove(Object.values(STORAGE_KEYS));
     await clearSavedPlan();
     setLanguageState(DEFAULT_SETTINGS.language);

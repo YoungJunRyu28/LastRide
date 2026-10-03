@@ -45,15 +45,20 @@ export async function getOrganizerContext(
   principal: EnterprisePrincipal,
 ): Promise<OrganizerContext | null> {
   const db = getDb();
-  const existing = await db
-    .select({
-      memberId: organizationMembersTable.id,
-      organizationId: organizationMembersTable.organizationId,
-    })
-    .from(organizationMembersTable)
-    .where(eq(organizationMembersTable.authUserId, principal.authUserId))
-    .limit(1);
-  if (existing[0]) return existing[0];
+  const findExisting = async () => {
+    const [member] = await db
+      .select({
+        memberId: organizationMembersTable.id,
+        organizationId: organizationMembersTable.organizationId,
+      })
+      .from(organizationMembersTable)
+      .where(eq(organizationMembersTable.authUserId, principal.authUserId))
+      .limit(1);
+    return member ?? null;
+  };
+
+  const existing = await findExisting();
+  if (existing) return existing;
 
   const devBootstrap =
     process.env.NODE_ENV !== "production" &&
@@ -64,29 +69,38 @@ export async function getOrganizerContext(
     bootstrapEmails().has(principal.email.toLowerCase());
   if (!devBootstrap && !emailBootstrap) return null;
 
-  return db.transaction(async (tx) => {
-    const [organization] = await tx
-      .insert(organizationsTable)
-      .values({
-        name:
-          process.env.ENTERPRISE_BOOTSTRAP_ORGANIZATION_NAME ||
-          "LastRide Business",
-      })
-      .returning({ id: organizationsTable.id });
-    const [member] = await tx
-      .insert(organizationMembersTable)
-      .values({
-        organizationId: organization.id,
-        authUserId: principal.authUserId,
-        displayName: principal.email,
-        role: "owner",
-      })
-      .returning({
-        memberId: organizationMembersTable.id,
-        organizationId: organizationMembersTable.organizationId,
-      });
-    return member;
-  });
+  try {
+    return await db.transaction(async (tx) => {
+      const [organization] = await tx
+        .insert(organizationsTable)
+        .values({
+          name:
+            process.env.ENTERPRISE_BOOTSTRAP_ORGANIZATION_NAME ||
+            "LastRide Business",
+        })
+        .returning({ id: organizationsTable.id });
+      const [member] = await tx
+        .insert(organizationMembersTable)
+        .values({
+          organizationId: organization.id,
+          authUserId: principal.authUserId,
+          displayName: principal.email,
+          role: "owner",
+        })
+        .returning({
+          memberId: organizationMembersTable.id,
+          organizationId: organizationMembersTable.organizationId,
+        });
+      return member;
+    });
+  } catch (err) {
+    // Concurrent first requests can both observe "not provisioned". The
+    // global unique auth-user index makes one insertion win; the losing
+    // transaction rolls back its organization and reuses the winner.
+    const raced = await findExisting();
+    if (raced) return raced;
+    throw err;
+  }
 }
 
 function eventShape(
@@ -242,28 +256,43 @@ export async function updateEnterpriseEventRecord(
   }
   if (patch.status !== undefined) updates.status = patch.status;
 
-  const [updated] = await db
-    .update(enterpriseEventsTable)
-    .set(updates)
-    .where(
-      and(
-        eq(enterpriseEventsTable.id, eventId),
-        eq(enterpriseEventsTable.organizationId, organizationId),
-      ),
-    )
-    .returning();
-  if (!updated) return null;
+  return db.transaction(async (tx) => {
+    const [updated] = await tx
+      .update(enterpriseEventsTable)
+      .set(updates)
+      .where(
+        and(
+          eq(enterpriseEventsTable.id, eventId),
+          eq(enterpriseEventsTable.organizationId, organizationId),
+        ),
+      )
+      .returning();
+    if (!updated) return null;
 
-  const [counter] = await db
-    .select({ value: count(eventParticipantsTable.id) })
-    .from(eventParticipantsTable)
-    .where(
-      and(
-        eq(eventParticipantsTable.eventId, eventId),
-        eq(eventParticipantsTable.status, "active"),
-      ),
-    );
-  return eventShape(updated, counter?.value ?? 0);
+    if (patch.status === "closed") {
+      // Closing is also a data-minimization action: participant records,
+      // capabilities and notification deliveries disappear immediately, and
+      // all outstanding invite credentials are invalidated by deletion.
+      await tx
+        .delete(eventParticipantsTable)
+        .where(eq(eventParticipantsTable.eventId, eventId));
+      await tx
+        .delete(eventInvitesTable)
+        .where(eq(eventInvitesTable.eventId, eventId));
+      return eventShape(updated, 0);
+    }
+
+    const [counter] = await tx
+      .select({ value: count(eventParticipantsTable.id) })
+      .from(eventParticipantsTable)
+      .where(
+        and(
+          eq(eventParticipantsTable.eventId, eventId),
+          eq(eventParticipantsTable.status, "active"),
+        ),
+      );
+    return eventShape(updated, counter?.value ?? 0);
+  });
 }
 
 type JoinInput = {
@@ -312,13 +341,31 @@ export async function joinEnterpriseEventRecord(input: JoinInput) {
       .where(eq(enterpriseEventsTable.id, resolved.event.id))
       .for("update")
       .limit(1);
+    const lockedAt = new Date();
     if (
       !event ||
       event.status !== "active" ||
-      event.expiresAt.getTime() <= Date.now()
+      event.expiresAt.getTime() <= lockedAt.getTime()
     ) {
       return { kind: "invalid" as const };
     }
+
+    // Invite rotation locks the same event row before revoking credentials.
+    // Re-check the resolved invite only after acquiring that lock: if rotation
+    // won the race, this sees revokedAt and the stale credential cannot join.
+    const [stillValidInvite] = await tx
+      .select({ id: eventInvitesTable.id })
+      .from(eventInvitesTable)
+      .where(
+        and(
+          eq(eventInvitesTable.id, resolved.invite.id),
+          inviteCondition,
+          isNull(eventInvitesTable.revokedAt),
+          gt(eventInvitesTable.expiresAt, lockedAt),
+        ),
+      )
+      .limit(1);
+    if (!stillValidInvite) return { kind: "invalid" as const };
 
     const [counter] = await tx
       .select({ value: count(eventParticipantsTable.id) })

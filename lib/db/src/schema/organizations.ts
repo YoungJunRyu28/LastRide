@@ -1,5 +1,4 @@
 import {
-  index,
   pgEnum,
   pgTable,
   text,
@@ -50,7 +49,7 @@ export const organizationMembersTable = pgTable(
       table.organizationId,
       table.authUserId,
     ),
-    index("organization_members_auth_user_idx").on(table.authUserId),
+    uniqueIndex("organization_members_auth_user_idx").on(table.authUserId),
   ],
 );
 

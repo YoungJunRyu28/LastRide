@@ -80,9 +80,12 @@ lookup, not the Business participant display name.
   station/place/address candidates returned by a provider. Expired cache rows
   are physically deleted by the server maintenance job.
 - **Business participants:** your display name, leave-by time and event
-  capability are deleted immediately when you leave the event. Otherwise they
-  are automatically deleted when that event expires. Events created for a
-  night out currently expire at 08:00 Japan time the following morning.
+  capability are deleted immediately after a successful leave request or when
+  the organizer closes the event. If a leave request cannot reach the server,
+  the app retains the anonymous capability locally so deletion can be retried;
+  otherwise remaining participant data is deleted when the event expires.
+  Events created for a night out currently expire at 08:00 Japan time the
+  following morning.
 - **Organizer accounts:** organization membership remains until the Business
   account is deprovisioned. A registered push token is removed when the device
   signs out successfully or when it is identified as no longer registered.
