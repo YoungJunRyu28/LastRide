@@ -15,6 +15,13 @@
       "when": 1790505652578,
       "tag": "0001_neat_quasimodo",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791010097948,
+      "tag": "0002_fresh_meggan",
+      "breakpoints": true
     }
   ]
 }

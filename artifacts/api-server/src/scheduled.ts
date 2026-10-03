@@ -17,6 +17,7 @@ import {
   dispatchEnterpriseDepartureAlerts,
   reconcileEnterprisePushReceipts,
 } from "./lib/enterpriseNotifications";
+import { purgeExpiredCacheEntries } from "./lib/cache";
 import { purgeExpiredEnterpriseData } from "./lib/enterpriseStore";
 import { logger } from "./lib/logger";
 
@@ -32,8 +33,16 @@ export async function handler(event: ScheduledEvent) {
 
   switch (event.task) {
     case "cleanup": {
-      const purged = await purgeExpiredEnterpriseData();
-      if (purged > 0) logger.info({ purged }, "Purged expired enterprise event data");
+      const [eventsPurged, cacheRowsPurged] = await Promise.all([
+        purgeExpiredEnterpriseData(),
+        purgeExpiredCacheEntries(),
+      ]);
+      if (eventsPurged > 0 || cacheRowsPurged > 0) {
+        logger.info(
+          { eventsPurged, cacheRowsPurged },
+          "Purged expired application data",
+        );
+      }
       return;
     }
     case "departureAlerts": {

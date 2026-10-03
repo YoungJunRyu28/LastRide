@@ -1,0 +1,1 @@
+CREATE INDEX "kv_cache_expires_at_idx" ON "kv_cache" USING btree ("expires_at");

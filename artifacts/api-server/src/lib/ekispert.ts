@@ -1,9 +1,9 @@
 /**
  * 駅すぱあと API (Ekispert) client for last/first train searches.
  *
- * Results are cached in memory: station codes never change, and a timetable
- * answer for a station pair only changes by service date, so repeated plans
- * (and background tracking) rarely reach the paid API.
+ * Results are cached in the shared bounded Postgres cache: station metadata
+ * changes rarely, and timetable answers are stable for a service date, so
+ * repeated plans (and background tracking) rarely reach the paid API.
  */
 import { ProviderError, TtlCache } from "./cache";
 import { lineNameEn } from "./lineNames";

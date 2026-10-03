@@ -73,8 +73,12 @@ lookup, not the Business participant display name.
   plan and local night history stay until you clear them, use **Reset & start
   over**, or uninstall the app. Night history contains plan times and station /
   destination labels, not a GPS trail.
-- **Transit-query cache:** server responses may be cached for up to 24 hours,
-  keyed by an approximate location (roughly a 100-metre grid), not by a user.
+- **Provider-query cache:** server responses may be cached for no more than
+  24 hours and are never keyed by a user account. Cache lookup keys are stored
+  only as one-way SHA-256 digests, so raw coordinate, station-name and address
+  query keys are not persisted. Cached payloads may contain the public
+  station/place/address candidates returned by a provider. Expired cache rows
+  are physically deleted by the server maintenance job.
 - **Business participants:** your display name, leave-by time and event
   capability are deleted immediately when you leave the event. Otherwise they
   are automatically deleted when that event expires. Events created for a
@@ -82,8 +86,9 @@ lookup, not the Business participant display name.
 - **Organizer accounts:** organization membership remains until the Business
   account is deprovisioned. A registered push token is removed when the device
   signs out successfully or when it is identified as no longer registered.
-- **Server logs:** record endpoint and response status but omit query strings, so
-  coordinates and API keys are not written to ordinary request logs.
+- **Server logs:** record endpoint and response status but omit query strings.
+  Cache errors also omit raw cache keys, so coordinates, address queries and API
+  keys are not written to ordinary application logs.
 
 ## Your choices
 

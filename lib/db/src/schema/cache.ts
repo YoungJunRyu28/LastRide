@@ -1,13 +1,18 @@
-import { pgTable, text, jsonb, timestamp, primaryKey } from "drizzle-orm/pg-core";
+import {
+  index,
+  jsonb,
+  pgTable,
+  primaryKey,
+  text,
+  timestamp,
+} from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 
 /**
- * Backs `TtlCache` (see artifacts/api-server/src/lib/cache.ts). One row per
- * cached key, scoped by `cacheName` (e.g. "navitime-nearby", "ekispert-routes-v3").
- *
- * This replaces a JSON file per cache on local disk. A file disappears the
- * moment the server restarts or a second instance starts up with an empty
- * disk of its own — this table is shared and durable across both.
+ * Shared provider-response cache. cacheKey is a SHA-256 digest of the cache
+ * namespace plus the caller key; raw coordinate/address-derived keys are never
+ * persisted. Application code caps retention at 24 hours and periodically
+ * deletes expired rows.
  */
 export const kvCacheTable = pgTable(
   "kv_cache",
@@ -17,7 +22,10 @@ export const kvCacheTable = pgTable(
     value: jsonb("value").notNull(),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   },
-  (table) => [primaryKey({ columns: [table.cacheName, table.cacheKey] })],
+  (table) => [
+    primaryKey({ columns: [table.cacheName, table.cacheKey] }),
+    index("kv_cache_expires_at_idx").on(table.expiresAt),
+  ],
 );
 
 export const insertKvCacheSchema = createInsertSchema(kvCacheTable);
