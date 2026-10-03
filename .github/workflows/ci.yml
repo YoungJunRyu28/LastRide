@@ -41,7 +41,7 @@ jobs:
 
       - uses: pnpm/action-setup@v4
         with:
-          version: 10
+          version: 10.34.6
 
       - uses: actions/setup-node@v4
         with:
@@ -54,10 +54,16 @@ jobs:
       - name: Typecheck
         run: pnpm run typecheck
 
-      - name: Apply database schema
-        run: pnpm --filter @workspace/db run push
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/lastride_test
+      - name: Apply committed database migrations
+        run: pnpm --filter @workspace/db run migrate
 
-      - name: Unit tests
+      - name: Verify generated API clients
+        run: pnpm run verify:codegen
+
+      - name: Unit and integration tests
         run: pnpm run test
+
+      - name: Build production artifacts
+        run: pnpm run build:ci
+        env:
+          EXPO_PUBLIC_API_URL: https://api.invalid.example

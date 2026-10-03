@@ -10,7 +10,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "android": "expo run:android",
-    "ios": "expo run:ios"
+    "ios": "expo run:ios",
+    "bundle:ci": "expo export --platform all --output-dir .ci-export --clear"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
