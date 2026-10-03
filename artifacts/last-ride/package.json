@@ -57,8 +57,7 @@
     "vite": "catalog:",
     "vite-tsconfig-paths": "^6.1.1",
     "vitest": "^5.0.3",
-    "zod": "catalog:",
-    "zod-validation-error": "^3.4.0"
+    "zod": "catalog:"
   },
   "dependencies": {
     "expo": "~54.0.37",
