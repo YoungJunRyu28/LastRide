@@ -41,10 +41,22 @@ Organizer bearer/refresh credentials are stored in SecureStore in production.
 Organizer accounts are intentionally unavailable on web until LastRide has a
 secure browser-session design.
 
-Bootstrap emails are a provisioning aid only. If
-`ENTERPRISE_BOOTSTRAP_EMAILS` is used during a pilot, remove it after the
-intended organization members have been provisioned. The production SAM
-template keeps it empty.
+Production organizer membership is provisioned explicitly after the Supabase
+user exists. Copy that user's auth-provider user ID, then run the repository
+command against the target database:
+
+```bash
+DATABASE_URL=... pnpm --filter @workspace/scripts provision-organizer -- \
+  --auth-user-id <supabase-user-id> \
+  --organization-name "LastRide Business" \
+  --display-name "Organizer name" \
+  --role owner --confirm
+```
+
+The command is idempotent by auth user ID and requires `--confirm`. To add an
+organizer to an existing organization, use `--organization-id` instead of
+`--organization-name`. Bootstrap emails remain a local/pilot convenience only;
+the production SAM template keeps `ENTERPRISE_BOOTSTRAP_EMAILS` empty.
 
 ## 3. Provider and API configuration
 
@@ -96,7 +108,9 @@ Scheduler invocations have bounded retries and dead-letter queues.
 ## 5. Remote organizer push
 
 Production organizer push needs a real EAS project plus APNs/FCM credentials.
-For the native production build:
+Enable Expo Push Security as well; the server reads its access token from the
+production Secrets Manager secret as `EXPO_ACCESS_TOKEN`. For the native
+production build:
 
 ```text
 ENABLE_REMOTE_PUSH=true
@@ -109,10 +123,12 @@ display name on the lock screen. Only enable
 `ENTERPRISE_PUSH_INCLUDE_NAME=true` after making that privacy decision
 explicitly.
 
-The server reserves each participant/device/notification kind once, sends with
-bounded concurrency, records Expo tickets, reconciles receipts in deterministic
-order, retires devices reported as `DeviceNotRegistered`, and ages missing
-receipts out instead of leaving them pending forever.
+The server reserves each participant/device/notification kind once, batches up
+to 100 messages per Expo request, caps concurrent Expo connections at six,
+records tickets in response order, reconciles receipts deterministically,
+retires devices reported as `DeviceNotRegistered`, and ages missing receipts
+out instead of leaving them pending forever. Failed batch submissions are
+released for the next scheduled pass rather than spinning inside one Lambda.
 
 ## 6. Event join links
 

@@ -29,7 +29,7 @@ SECRET_JSON="$(aws secretsmanager get-secret-value   --region "$AWS_REGION"   --
 printf '%s' "$SECRET_JSON" | python3 -c '
 import json, sys
 data=json.load(sys.stdin)
-required=["DATABASE_URL","RAPIDAPI_KEY","EKISPERT_KEY","SUPABASE_URL","SUPABASE_ANON_KEY","USAGE_ADMIN_TOKEN"]
+required=["DATABASE_URL","RAPIDAPI_KEY","EKISPERT_KEY","SUPABASE_URL","SUPABASE_ANON_KEY","USAGE_ADMIN_TOKEN","EXPO_ACCESS_TOKEN"]
 missing=[k for k in required if not isinstance(data.get(k), str) or not data[k].strip()]
 if missing:
     raise SystemExit("Secret is missing required keys: " + ", ".join(missing))

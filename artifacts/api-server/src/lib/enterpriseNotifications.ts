@@ -15,10 +15,44 @@ const MAX_ALERT_WINDOW_MS = 120 * MINUTE_MS;
 const LEAVE_NOW_GRACE_MS = 10 * MINUTE_MS;
 const RECEIPT_DELAY_MS = 15 * MINUTE_MS;
 const RECEIPT_BATCH_SIZE = 100;
-const SEND_CONCURRENCY = 10;
 const MAX_RECEIPT_AGE_MS = 24 * 60 * MINUTE_MS;
 
-type ExpoPushSendResult =
+// Expo accepts up to 100 messages per request and recommends no more than six
+// concurrent connections. Six full batches also stay at the documented
+// 600-notifications-per-second project limit.
+export const EXPO_PUSH_BATCH_SIZE = 100;
+const EXPO_MAX_CONCURRENT_BATCHES = 6;
+const EXPO_RATE_WINDOW_MS = 1_100;
+const RESERVATION_BATCH_SIZE = 500;
+
+type ExpoPushInput = {
+  token: string;
+  displayName: string;
+  leaveBy: Date;
+  kind: EnterpriseNotificationKind;
+  eventId: string;
+};
+
+type ExpoPushMessage = {
+  to: string;
+  sound: "default";
+  title: string;
+  body: string;
+  priority: "high";
+  data: {
+    target: "/business-event";
+    eventId: string;
+  };
+};
+
+type ExpoPushTicket = {
+  status?: "ok" | "error";
+  id?: string;
+  message?: string;
+  details?: { error?: string };
+};
+
+export type ExpoPushSendResult =
   | { accepted: true; ticketId: string }
   | { accepted: false; error: string | null };
 
@@ -26,6 +60,12 @@ type ExpoPushReceipt = {
   status?: "ok" | "error";
   message?: string;
   details?: { error?: string };
+};
+
+type PreparedDelivery = ExpoPushInput & {
+  participantId: string;
+  hostDeviceId: string;
+  reservationId: string;
 };
 
 export function expoReceiptError(receipt: ExpoPushReceipt): string | null {
@@ -57,75 +97,112 @@ function formatJstTime(date: Date): string {
   }).format(date);
 }
 
-async function sendExpoPush(input: {
-  token: string;
-  displayName: string;
-  leaveBy: Date;
-  kind: EnterpriseNotificationKind;
-  eventId: string;
-}): Promise<ExpoPushSendResult> {
+export function buildExpoPushMessage(input: ExpoPushInput): ExpoPushMessage {
   const time = formatJstTime(input.leaveBy);
   const includeName = process.env.ENTERPRISE_PUSH_INCLUDE_NAME === "true";
   const subject = includeName ? input.displayName : "A participant";
   const title =
     input.kind === "leave_now"
-      ? `${subject} — time to leave`
-      : `${subject} should leave soon`;
+      ? subject + " — time to leave"
+      : subject + " should leave soon";
   const body =
     input.kind === "leave_now"
-      ? `LastRide departure time is now (${time}).`
-      : `LastRide departure time is ${time}.`;
+      ? "LastRide departure time is now (" + time + ")."
+      : "LastRide departure time is " + time + ".";
+
+  return {
+    to: input.token,
+    sound: "default",
+    title,
+    body,
+    priority: "high",
+    data: {
+      target: "/business-event",
+      eventId: input.eventId,
+    },
+  };
+}
+
+function ticketResult(ticket: ExpoPushTicket | undefined): ExpoPushSendResult {
+  if (ticket?.status === "ok" && typeof ticket.id === "string") {
+    return { accepted: true, ticketId: ticket.id };
+  }
+  return {
+    accepted: false,
+    error:
+      ticket?.details?.error ||
+      ticket?.message ||
+      (ticket ? "UnknownPushTicketError" : "MissingPushTicket"),
+  };
+}
+
+export async function sendExpoPushBatch(
+  inputs: ExpoPushInput[],
+): Promise<ExpoPushSendResult[]> {
+  if (inputs.length === 0) return [];
+  if (inputs.length > EXPO_PUSH_BATCH_SIZE) {
+    throw new Error(
+      "Expo push batch exceeds " + EXPO_PUSH_BATCH_SIZE + " messages.",
+    );
+  }
+
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+    "Content-Type": "application/json",
+  };
+  const accessToken = process.env.EXPO_ACCESS_TOKEN?.trim();
+  if (accessToken) headers.Authorization = "Bearer " + accessToken;
 
   try {
     const response = await fetch("https://exp.host/--/api/v2/push/send", {
       method: "POST",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        to: input.token,
-        sound: "default",
-        title,
-        body,
-        priority: "high",
-        data: {
-          target: "/business-event",
-          eventId: input.eventId,
-        },
-      }),
+      headers,
+      body: JSON.stringify(inputs.map(buildExpoPushMessage)),
       signal: AbortSignal.timeout(8_000),
     });
     if (!response.ok) {
-      return { accepted: false, error: `HTTP ${response.status}` };
+      return inputs.map(() => ({
+        accepted: false as const,
+        error: "HTTP " + response.status,
+      }));
     }
+
     const payload = (await response.json()) as {
-      data?:
-        | {
-            status?: string;
-            id?: string;
-            message?: string;
-            details?: { error?: string };
-          }
-        | Array<{
-            status?: string;
-            id?: string;
-            message?: string;
-            details?: { error?: string };
-          }>;
+      data?: ExpoPushTicket | ExpoPushTicket[];
     };
-    const ticket = Array.isArray(payload.data) ? payload.data[0] : payload.data;
-    if (ticket?.status === "ok" && typeof ticket.id === "string") {
-      return { accepted: true, ticketId: ticket.id };
-    }
-    return {
-      accepted: false,
-      error: ticket?.details?.error || ticket?.message || null,
-    };
+    const tickets = Array.isArray(payload.data)
+      ? payload.data
+      : payload.data
+        ? [payload.data]
+        : [];
+    return inputs.map((_, index) => ticketResult(tickets[index]));
   } catch (err) {
-    logger.warn({ err }, "Enterprise push request failed");
-    return { accepted: false, error: null };
+    logger.warn(
+      { err, batchSize: inputs.length },
+      "Enterprise push batch failed",
+    );
+    return inputs.map(() => ({ accepted: false as const, error: null }));
   }
+}
+
+function reservationKey(input: {
+  participantId: string;
+  hostDeviceId: string;
+  kind: EnterpriseNotificationKind;
+}): string {
+  return input.participantId + ":" + input.hostDeviceId + ":" + input.kind;
+}
+
+function chunks<T>(items: T[], size: number): T[][] {
+  const result: T[][] = [];
+  for (let offset = 0; offset < items.length; offset += size) {
+    result.push(items.slice(offset, offset + size));
+  }
+  return result;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export async function dispatchEnterpriseDepartureAlerts(
@@ -168,60 +245,117 @@ export async function dispatchEnterpriseDepartureAlerts(
       ),
     );
 
+  const deliverable: Array<Omit<PreparedDelivery, "reservationId">> = [];
+  for (const candidate of candidates) {
+    if (!candidate.leaveBy) continue;
+    const kind = notificationKindFor(
+      candidate.leaveBy.getTime(),
+      candidate.alertLeadMinutes,
+      now.getTime(),
+    );
+    if (!kind) continue;
+    deliverable.push({
+      participantId: candidate.participantId,
+      hostDeviceId: candidate.hostDeviceId,
+      token: candidate.expoPushToken,
+      displayName: candidate.displayName,
+      leaveBy: candidate.leaveBy,
+      kind,
+      eventId: candidate.eventId,
+    });
+  }
+  if (deliverable.length === 0) return 0;
+
+  // Reserve every participant/device/kind before talking to Expo. A unique
+  // constraint makes concurrent scheduled invocations collapse to one sender.
+  const reservedByKey = new Map<string, string>();
+  for (const reservationBatch of chunks(deliverable, RESERVATION_BATCH_SIZE)) {
+    const reservations = await db
+      .insert(notificationDeliveriesTable)
+      .values(
+        reservationBatch.map((candidate) => ({
+          participantId: candidate.participantId,
+          hostDeviceId: candidate.hostDeviceId,
+          kind: candidate.kind,
+        })),
+      )
+      .onConflictDoNothing()
+      .returning({
+        id: notificationDeliveriesTable.id,
+        participantId: notificationDeliveriesTable.participantId,
+        hostDeviceId: notificationDeliveriesTable.hostDeviceId,
+        kind: notificationDeliveriesTable.kind,
+      });
+
+    for (const reservation of reservations) {
+      reservedByKey.set(reservationKey(reservation), reservation.id);
+    }
+  }
+
+  const prepared: PreparedDelivery[] = [];
+  for (const candidate of deliverable) {
+    const reservationId = reservedByKey.get(reservationKey(candidate));
+    if (reservationId) prepared.push({ ...candidate, reservationId });
+  }
+  if (prepared.length === 0) return 0;
+
   let sent = 0;
-  for (let offset = 0; offset < candidates.length; offset += SEND_CONCURRENCY) {
-    const batch = candidates.slice(offset, offset + SEND_CONCURRENCY);
-    const results = await Promise.all(
-      batch.map(async (candidate) => {
-        if (!candidate.leaveBy) return 0;
-        const kind = notificationKindFor(
-          candidate.leaveBy.getTime(),
-          candidate.alertLeadMinutes,
-          now.getTime(),
-        );
-        if (!kind) return 0;
+  const rateWindowSize = EXPO_PUSH_BATCH_SIZE * EXPO_MAX_CONCURRENT_BATCHES;
 
-        const [reservation] = await db
-          .insert(notificationDeliveriesTable)
-          .values({
-            participantId: candidate.participantId,
-            hostDeviceId: candidate.hostDeviceId,
-            kind,
-          })
-          .onConflictDoNothing()
-          .returning({ id: notificationDeliveriesTable.id });
-        if (!reservation) return 0;
+  for (
+    let windowOffset = 0;
+    windowOffset < prepared.length;
+    windowOffset += rateWindowSize
+  ) {
+    const window = prepared.slice(windowOffset, windowOffset + rateWindowSize);
+    const batches = chunks(window, EXPO_PUSH_BATCH_SIZE);
 
-        const delivery = await sendExpoPush({
-          token: candidate.expoPushToken,
-          displayName: candidate.displayName,
-          leaveBy: candidate.leaveBy,
-          kind,
-          eventId: candidate.eventId,
-        });
+    const batchResults = await Promise.all(
+      batches.map(async (batch) => ({
+        batch,
+        results: await sendExpoPushBatch(batch),
+      })),
+    );
+
+    for (const { batch, results } of batchResults) {
+      const writes = batch.map(async (candidate, index) => {
+        const delivery = results[index] ?? {
+          accepted: false as const,
+          error: "MissingPushTicket",
+        };
 
         if (delivery.accepted) {
           await db
             .update(notificationDeliveriesTable)
-            .set({ sentAt: new Date(), expoTicketId: delivery.ticketId })
-            .where(eq(notificationDeliveriesTable.id, reservation.id));
+            .set({
+              sentAt: new Date(),
+              expoTicketId: delivery.ticketId,
+            })
+            .where(eq(notificationDeliveriesTable.id, candidate.reservationId));
           return 1;
         }
+
         if (delivery.error === "DeviceNotRegistered") {
           await db
             .delete(hostDevicesTable)
             .where(eq(hostDevicesTable.id, candidate.hostDeviceId));
         } else {
-          // No ticket means the push was not accepted. Remove the reservation so
-          // the next worker pass can retry transient failures.
+          // No accepted ticket means the reservation can be retried by the
+          // next scheduled pass. A network/429/5xx failure therefore gets an
+          // automatic ~1 minute backoff instead of blocking this invocation.
           await db
             .delete(notificationDeliveriesTable)
-            .where(eq(notificationDeliveriesTable.id, reservation.id));
+            .where(eq(notificationDeliveriesTable.id, candidate.reservationId));
         }
         return 0;
-      }),
-    );
-    sent += results.reduce((total, value) => total + value, 0);
+      });
+      const writeResults = await Promise.all(writes);
+      sent += writeResults.reduce((total, value) => total + value, 0);
+    }
+
+    if (windowOffset + rateWindowSize < prepared.length) {
+      await delay(EXPO_RATE_WINDOW_MS);
+    }
   }
 
   return sent;
@@ -256,17 +390,21 @@ export async function reconcileEnterprisePushReceipts(
     .filter((id): id is string => Boolean(id));
   if (ids.length === 0) return { checked: 0, invalidDevices: 0 };
 
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+    "Content-Type": "application/json",
+  };
+  const accessToken = process.env.EXPO_ACCESS_TOKEN?.trim();
+  if (accessToken) headers.Authorization = "Bearer " + accessToken;
+
   const response = await fetch("https://exp.host/--/api/v2/push/getReceipts", {
     method: "POST",
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-    },
+    headers,
     body: JSON.stringify({ ids }),
     signal: AbortSignal.timeout(8_000),
   });
   if (!response.ok) {
-    throw new Error(`Expo receipt request failed with HTTP ${response.status}`);
+    throw new Error("Expo receipt request failed with HTTP " + response.status);
   }
 
   const payload = (await response.json()) as {
@@ -278,10 +416,16 @@ export async function reconcileEnterprisePushReceipts(
     if (!row.expoTicketId) continue;
     const receipt = payload.data?.[row.expoTicketId];
     if (!receipt) {
-      if (row.sentAt && now.getTime() - row.sentAt.getTime() >= MAX_RECEIPT_AGE_MS) {
+      if (
+        row.sentAt &&
+        now.getTime() - row.sentAt.getTime() >= MAX_RECEIPT_AGE_MS
+      ) {
         await db
           .update(notificationDeliveriesTable)
-          .set({ receiptCheckedAt: now, receiptError: "ReceiptUnavailable" })
+          .set({
+            receiptCheckedAt: now,
+            receiptError: "ReceiptUnavailable",
+          })
           .where(eq(notificationDeliveriesTable.id, row.deliveryId));
         checked += 1;
       }

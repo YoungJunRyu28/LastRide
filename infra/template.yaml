@@ -127,6 +127,7 @@ Resources:
           SUPABASE_URL: !Sub "{{resolve:secretsmanager:${AppSecretName}:SecretString:SUPABASE_URL}}"
           SUPABASE_ANON_KEY: !Sub "{{resolve:secretsmanager:${AppSecretName}:SecretString:SUPABASE_ANON_KEY}}"
           USAGE_ADMIN_TOKEN: !Sub "{{resolve:secretsmanager:${AppSecretName}:SecretString:USAGE_ADMIN_TOKEN}}"
+          EXPO_ACCESS_TOKEN: !Sub "{{resolve:secretsmanager:${AppSecretName}:SecretString:EXPO_ACCESS_TOKEN}}"
           ENTERPRISE_BOOTSTRAP_EMAILS: ""
           ENTERPRISE_BOOTSTRAP_ORGANIZATION_NAME: LastRide Business
           ENTERPRISE_PUSH_INCLUDE_NAME: "false"
@@ -182,6 +183,7 @@ Resources:
           SUPABASE_URL: !Sub "{{resolve:secretsmanager:${AppSecretName}:SecretString:SUPABASE_URL}}"
           SUPABASE_ANON_KEY: !Sub "{{resolve:secretsmanager:${AppSecretName}:SecretString:SUPABASE_ANON_KEY}}"
           USAGE_ADMIN_TOKEN: !Sub "{{resolve:secretsmanager:${AppSecretName}:SecretString:USAGE_ADMIN_TOKEN}}"
+          EXPO_ACCESS_TOKEN: !Sub "{{resolve:secretsmanager:${AppSecretName}:SecretString:EXPO_ACCESS_TOKEN}}"
           ENTERPRISE_BOOTSTRAP_EMAILS: ""
           ENTERPRISE_BOOTSTRAP_ORGANIZATION_NAME: LastRide Business
           ENTERPRISE_PUSH_INCLUDE_NAME: "false"

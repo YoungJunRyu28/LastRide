@@ -39,12 +39,15 @@ Create one JSON secret per environment. It must contain non-empty values for:
   "EKISPERT_KEY": "...",
   "SUPABASE_URL": "...",
   "SUPABASE_ANON_KEY": "...",
-  "USAGE_ADMIN_TOKEN": "..."
+  "USAGE_ADMIN_TOKEN": "...",
+  "EXPO_ACCESS_TOKEN": "..."
 }
 ```
 
-Use the pooled production database URL for serverless execution. Never commit
-these values or put the secret JSON in a shell history entry.
+Use the pooled production database URL for serverless execution. Enable Expo
+Push Security for the production EAS project and store its access token as
+`EXPO_ACCESS_TOKEN`. Never commit these values or put the secret JSON in a
+shell history entry.
 
 The SAM template uses Secrets Manager dynamic references. CloudFormation
 resolves those references into the Lambda environment during deployment; if a
