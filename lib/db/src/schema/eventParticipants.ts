@@ -53,6 +53,10 @@ export const eventParticipantsTable = pgTable(
       table.eventId,
       table.status,
     ),
+    index("event_participants_status_leave_by_idx").on(
+      table.status,
+      table.leaveBy,
+    ),
   ],
 );
 

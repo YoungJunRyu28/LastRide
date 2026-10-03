@@ -43,7 +43,7 @@ export const notificationDeliveriesTable = pgTable(
     ),
     index("notification_deliveries_receipt_pending_idx").on(
       table.receiptCheckedAt,
-      table.createdAt,
+      table.sentAt,
     ),
   ],
 );

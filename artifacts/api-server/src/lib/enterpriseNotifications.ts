@@ -1,4 +1,4 @@
-import { and, eq, gt, gte, isNotNull, isNull, lte } from "drizzle-orm";
+import { and, asc, eq, gt, gte, isNotNull, isNull, lte } from "drizzle-orm";
 import {
   enterpriseEventsTable,
   eventParticipantsTable,
@@ -15,6 +15,8 @@ const MAX_ALERT_WINDOW_MS = 120 * MINUTE_MS;
 const LEAVE_NOW_GRACE_MS = 10 * MINUTE_MS;
 const RECEIPT_DELAY_MS = 15 * MINUTE_MS;
 const RECEIPT_BATCH_SIZE = 100;
+const SEND_CONCURRENCY = 10;
+const MAX_RECEIPT_AGE_MS = 24 * 60 * MINUTE_MS;
 
 type ExpoPushSendResult =
   | { accepted: true; ticketId: string }
@@ -63,14 +65,16 @@ async function sendExpoPush(input: {
   eventId: string;
 }): Promise<ExpoPushSendResult> {
   const time = formatJstTime(input.leaveBy);
+  const includeName = process.env.ENTERPRISE_PUSH_INCLUDE_NAME === "true";
+  const subject = includeName ? input.displayName : "A participant";
   const title =
     input.kind === "leave_now"
-      ? `${input.displayName} — time to leave`
-      : `${input.displayName} should leave soon`;
+      ? `${subject} — time to leave`
+      : `${subject} should leave soon`;
   const body =
     input.kind === "leave_now"
-      ? `Their LastRide departure time is now (${time}).`
-      : `Their LastRide departure time is ${time}.`;
+      ? `LastRide departure time is now (${time}).`
+      : `LastRide departure time is ${time}.`;
 
   try {
     const response = await fetch("https://exp.host/--/api/v2/push/send", {
@@ -165,54 +169,59 @@ export async function dispatchEnterpriseDepartureAlerts(
     );
 
   let sent = 0;
-  for (const candidate of candidates) {
-    if (!candidate.leaveBy) continue;
-    const kind = notificationKindFor(
-      candidate.leaveBy.getTime(),
-      candidate.alertLeadMinutes,
-      now.getTime(),
+  for (let offset = 0; offset < candidates.length; offset += SEND_CONCURRENCY) {
+    const batch = candidates.slice(offset, offset + SEND_CONCURRENCY);
+    const results = await Promise.all(
+      batch.map(async (candidate) => {
+        if (!candidate.leaveBy) return 0;
+        const kind = notificationKindFor(
+          candidate.leaveBy.getTime(),
+          candidate.alertLeadMinutes,
+          now.getTime(),
+        );
+        if (!kind) return 0;
+
+        const [reservation] = await db
+          .insert(notificationDeliveriesTable)
+          .values({
+            participantId: candidate.participantId,
+            hostDeviceId: candidate.hostDeviceId,
+            kind,
+          })
+          .onConflictDoNothing()
+          .returning({ id: notificationDeliveriesTable.id });
+        if (!reservation) return 0;
+
+        const delivery = await sendExpoPush({
+          token: candidate.expoPushToken,
+          displayName: candidate.displayName,
+          leaveBy: candidate.leaveBy,
+          kind,
+          eventId: candidate.eventId,
+        });
+
+        if (delivery.accepted) {
+          await db
+            .update(notificationDeliveriesTable)
+            .set({ sentAt: new Date(), expoTicketId: delivery.ticketId })
+            .where(eq(notificationDeliveriesTable.id, reservation.id));
+          return 1;
+        }
+        if (delivery.error === "DeviceNotRegistered") {
+          await db
+            .delete(hostDevicesTable)
+            .where(eq(hostDevicesTable.id, candidate.hostDeviceId));
+        } else {
+          // No ticket means the push was not accepted. Remove the reservation so
+          // the next worker pass can retry transient failures.
+          await db
+            .delete(notificationDeliveriesTable)
+            .where(eq(notificationDeliveriesTable.id, reservation.id));
+        }
+        return 0;
+      }),
     );
-    if (!kind) continue;
-
-    const [reservation] = await db
-      .insert(notificationDeliveriesTable)
-      .values({
-        participantId: candidate.participantId,
-        hostDeviceId: candidate.hostDeviceId,
-        kind,
-      })
-      .onConflictDoNothing()
-      .returning({ id: notificationDeliveriesTable.id });
-    if (!reservation) continue;
-
-    const delivery = await sendExpoPush({
-      token: candidate.expoPushToken,
-      displayName: candidate.displayName,
-      leaveBy: candidate.leaveBy,
-      kind,
-      eventId: candidate.eventId,
-    });
-
-    if (delivery.accepted) {
-      await db
-        .update(notificationDeliveriesTable)
-        .set({
-          sentAt: new Date(),
-          expoTicketId: delivery.ticketId,
-        })
-        .where(eq(notificationDeliveriesTable.id, reservation.id));
-      sent += 1;
-    } else if (delivery.error === "DeviceNotRegistered") {
-      await db
-        .delete(hostDevicesTable)
-        .where(eq(hostDevicesTable.id, candidate.hostDeviceId));
-    } else {
-      // No ticket means the push was not accepted. Remove the reservation so
-      // the next worker pass can retry transient failures.
-      await db
-        .delete(notificationDeliveriesTable)
-        .where(eq(notificationDeliveriesTable.id, reservation.id));
-    }
+    sent += results.reduce((total, value) => total + value, 0);
   }
 
   return sent;
@@ -228,6 +237,7 @@ export async function reconcileEnterprisePushReceipts(
       deliveryId: notificationDeliveriesTable.id,
       hostDeviceId: notificationDeliveriesTable.hostDeviceId,
       expoTicketId: notificationDeliveriesTable.expoTicketId,
+      sentAt: notificationDeliveriesTable.sentAt,
     })
     .from(notificationDeliveriesTable)
     .where(
@@ -238,6 +248,7 @@ export async function reconcileEnterprisePushReceipts(
         lte(notificationDeliveriesTable.sentAt, cutoff),
       ),
     )
+    .orderBy(asc(notificationDeliveriesTable.sentAt))
     .limit(RECEIPT_BATCH_SIZE);
 
   const ids = pending
@@ -266,7 +277,16 @@ export async function reconcileEnterprisePushReceipts(
   for (const row of pending) {
     if (!row.expoTicketId) continue;
     const receipt = payload.data?.[row.expoTicketId];
-    if (!receipt) continue;
+    if (!receipt) {
+      if (row.sentAt && now.getTime() - row.sentAt.getTime() >= MAX_RECEIPT_AGE_MS) {
+        await db
+          .update(notificationDeliveriesTable)
+          .set({ receiptCheckedAt: now, receiptError: "ReceiptUnavailable" })
+          .where(eq(notificationDeliveriesTable.id, row.deliveryId));
+        checked += 1;
+      }
+      continue;
+    }
 
     const error = expoReceiptError(receipt);
     if (error === "DeviceNotRegistered") {

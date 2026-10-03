@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { Request } from "express";
 import { constantTimeTextEqual } from "./enterpriseTokens";
 
@@ -11,6 +12,27 @@ const tokenCache = new Map<
   { principal: EnterprisePrincipal; expiresAt: number }
 >();
 const CACHE_MS = 60_000;
+const MAX_CACHE_ENTRIES = 512;
+
+function tokenCacheKey(token: string): string {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+function cachePrincipal(token: string, principal: EnterprisePrincipal): void {
+  const now = Date.now();
+  for (const [key, value] of tokenCache) {
+    if (value.expiresAt <= now) tokenCache.delete(key);
+  }
+  while (tokenCache.size >= MAX_CACHE_ENTRIES) {
+    const oldest = tokenCache.keys().next().value as string | undefined;
+    if (!oldest) break;
+    tokenCache.delete(oldest);
+  }
+  tokenCache.set(tokenCacheKey(token), {
+    principal,
+    expiresAt: now + CACHE_MS,
+  });
+}
 
 function bearerToken(req: Request): string | null {
   const value = req.header("authorization");
@@ -58,13 +80,15 @@ export async function authenticateEnterpriseRequest(
     };
   }
 
-  const cached = tokenCache.get(token);
+  const cacheKey = tokenCacheKey(token);
+  const cached = tokenCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) return cached.principal;
+  if (cached) tokenCache.delete(cacheKey);
 
   try {
     const principal = await verifyWithSupabase(token);
     if (!principal) return null;
-    tokenCache.set(token, { principal, expiresAt: Date.now() + CACHE_MS });
+    cachePrincipal(token, principal);
     return principal;
   } catch {
     return null;
