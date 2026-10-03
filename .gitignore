@@ -27,6 +27,7 @@ android/
 # secrets. If a committed example file is ever needed, name it .env.example
 # and add a matching negation (!.env.example) below.
 .env*
+!.enc.example
 *.p8
 *.p12
 *.key
