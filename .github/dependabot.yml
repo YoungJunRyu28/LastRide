@@ -20,6 +20,9 @@ updates:
       - dependency-name: "react-native-*"
       - dependency-name: "@types/react"
       - dependency-name: "@types/react-dom"
+      # The SDK also pins TypeScript (~5.9 for SDK 54); patches are fine.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
     # Routine minor/patch updates are batched; major versions arrive as their
     # own PRs so one breaking upgrade can't hold back the rest.
     groups:
