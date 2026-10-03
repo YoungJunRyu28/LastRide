@@ -6,29 +6,29 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 5
-    # Expo SDK packages (and the React/React Native versions they pin) must
-    # move together via an SDK upgrade, not one Dependabot PR at a time.
-    # Patch updates still flow through.
+    # Each Expo SDK pins exact versions of these (React and React Native
+    # included, down to the patch), so even a patch bump fails Expo Doctor.
+    # They only move together, via a deliberate SDK upgrade
+    # (`npx expo install --fix` after bumping `expo`), never via Dependabot.
     ignore:
       - dependency-name: "expo"
-        update-types: ["version-update:semver-major", "version-update:semver-minor"]
       - dependency-name: "expo-*"
-        update-types: ["version-update:semver-major", "version-update:semver-minor"]
       - dependency-name: "@expo/*"
-        update-types: ["version-update:semver-major", "version-update:semver-minor"]
       - dependency-name: "react"
-        update-types: ["version-update:semver-major", "version-update:semver-minor"]
       - dependency-name: "react-dom"
-        update-types: ["version-update:semver-major", "version-update:semver-minor"]
       - dependency-name: "react-native"
-        update-types: ["version-update:semver-major", "version-update:semver-minor"]
       - dependency-name: "react-native-*"
-        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: "@types/react"
+      - dependency-name: "@types/react-dom"
+    # Routine minor/patch updates are batched; major versions arrive as their
+    # own PRs so one breaking upgrade can't hold back the rest.
     groups:
       production:
         dependency-type: production
+        update-types: ["minor", "patch"]
       development:
         dependency-type: development
+        update-types: ["minor", "patch"]
 
   - package-ecosystem: github-actions
     directory: /
