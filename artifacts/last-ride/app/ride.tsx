@@ -2,6 +2,11 @@ import { BottomNav } from "@/components/BottomNav";
 import { Notice, RailwayMark } from "@/components/RideUI";
 import { locationErrorText, useLastRide } from "@/context/LastRideContext";
 import { sameStation, type RideStatus } from "@/lib/planner";
+import {
+  planAgeMinutes,
+  planFreshness,
+  recommendedLeaveTime,
+} from "@/lib/reliability";
 import { formatDuration, formatJstTime } from "@/lib/time";
 import { shortLineName } from "@/lib/timetable";
 import { apiBaseUrl } from "@/lib/api";
@@ -122,6 +127,7 @@ export default function RideScreen() {
     locationError,
     requestLocation,
     currentTime,
+    nowMs,
     demoActive,
     trackingMode,
     startTracking,
@@ -131,6 +137,13 @@ export default function RideScreen() {
   const text = copy(language ?? "en");
   const station = ja ? stationNameJa : stationName;
   const [disruptions, setDisruptions] = useState<TrainDisruption[]>([]);
+  const freshness = plan ? planFreshness(plan.computedAt, nowMs) : null;
+  const planAge = plan ? planAgeMinutes(plan.computedAt, nowMs) : null;
+  const recommendedDeadline = plan ? recommendedLeaveTime(plan) : null;
+  const safetyMarginMinutes =
+    plan && recommendedDeadline !== null
+      ? Math.max(0, Math.round((plan.leaveByMs - recommendedDeadline) / 60000))
+      : 0;
 
   useEffect(() => {
     const legs = plan?.lastTrain.legs ?? [];
@@ -275,7 +288,9 @@ export default function RideScreen() {
         {plan?.pinned &&
           (() => {
             const gain = Math.round(
-              (plan.autoPick.leaveByMs - plan.leaveByMs) / 60000,
+              (recommendedLeaveTime(plan.autoPick) -
+                recommendedLeaveTime(plan)) /
+                60000,
             );
             const autoName = ja
               ? plan.autoPick.station.nameJa
@@ -374,6 +389,13 @@ export default function RideScreen() {
           >
             {leaveBy}
           </Text>
+          {plan && safetyMarginMinutes > 0 && (
+            <Text style={[styles.heroMargin, { color: colors.muted }]}>
+              {ja
+                ? `推奨時刻 · 最終限界 ${formatJstTime(plan.leaveByMs)}（余裕${safetyMarginMinutes}分）`
+                : `Recommended · absolute latest ${formatJstTime(plan.leaveByMs)} (${safetyMarginMinutes} min margin)`}
+            </Text>
+          )}
           <View
             style={[styles.strip, { borderTopColor: colors.mutedForeground }]}
           >
@@ -419,6 +441,72 @@ export default function RideScreen() {
             />
           </View>
         </View>
+
+        {plan && freshness && (
+          <Pressable
+            testID="plan-freshness"
+            disabled={freshness === "fresh"}
+            onPress={() => void requestLocation()}
+            accessibilityRole={freshness === "fresh" ? undefined : "button"}
+            style={({ pressed }) => [
+              styles.planHealth,
+              {
+                backgroundColor: colors.card,
+                borderColor:
+                  freshness === "stale" ? colors.destructive : colors.border,
+                opacity: pressed ? 0.72 : 1,
+              },
+            ]}
+          >
+            <Feather
+              name={freshness === "stale" ? "alert-triangle" : "refresh-cw"}
+              size={16}
+              color={
+                freshness === "stale"
+                  ? colors.destructive
+                  : colors.mutedForeground
+              }
+            />
+            <View style={styles.flex}>
+              <Text
+                style={[
+                  styles.planHealthTitle,
+                  {
+                    color:
+                      freshness === "stale"
+                        ? colors.destructive
+                        : colors.foreground,
+                  },
+                ]}
+              >
+                {freshness === "fresh"
+                  ? ja
+                    ? "プランは最新です"
+                    : "Plan is current"
+                  : freshness === "aging"
+                    ? ja
+                      ? `最終更新 ${planAge}分前`
+                      : `Updated ${planAge} min ago`
+                    : ja
+                      ? `プランが古い可能性があります · ${planAge}分前`
+                      : `Plan may be stale · ${planAge} min old`}
+              </Text>
+              <Text style={[styles.note, { color: colors.mutedForeground }]}>
+                {freshness === "fresh"
+                  ? ja
+                    ? "現在地と時刻表から計算済み"
+                    : "Calculated from your latest location and timetable"
+                  : freshness === "aging"
+                    ? ja
+                      ? "移動すると自動更新。タップで今すぐ再計算。"
+                      : "It will re-plan as you move. Tap to refresh now."
+                    : ja
+                      ? "位置情報や運行状況が変わっている可能性があります。タップして再計算。"
+                      : "Your location or service conditions may have changed. Tap to recalculate."}
+              </Text>
+            </View>
+          </Pressable>
+        )}
 
         {status === "departed" && (
           <Pressable
@@ -565,7 +653,7 @@ export default function RideScreen() {
                     <Text
                       style={[styles.legTime, { color: colors.foreground }]}
                     >
-                      {formatJstTime(option.leaveByMs)}
+                      {formatJstTime(recommendedLeaveTime(option))}
                     </Text>
                     <View style={styles.flex}>
                       <Text
@@ -586,6 +674,11 @@ export default function RideScreen() {
                         {ja
                           ? `徒歩${option.walkingMinutes}分 · 終電 ${formatJstTime(option.lastTrain.departsAt)}`
                           : `${option.walkingMinutes} min walk · last train ${formatJstTime(option.lastTrain.departsAt)}`}
+                        {(option.disruptionLines?.length ?? 0) > 0
+                          ? ja
+                            ? " · 運行情報あり"
+                            : " · service issue"
+                          : ""}
                       </Text>
                     </View>
                     <Feather
@@ -812,6 +905,22 @@ const styles = StyleSheet.create({
     padding: 14,
   },
   hero: { borderRadius: 26, padding: 22 },
+  heroMargin: {
+    fontFamily: "Inter_500Medium",
+    fontSize: 11,
+    lineHeight: 16,
+    marginTop: -2,
+  },
+  planHealth: {
+    alignItems: "center",
+    borderRadius: 16,
+    borderWidth: 1,
+    flexDirection: "row",
+    gap: 11,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  planHealthTitle: { fontFamily: "Inter_700Bold", fontSize: 13 },
   heroTop: {
     alignItems: "center",
     flexDirection: "row",

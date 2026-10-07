@@ -15,6 +15,7 @@ import * as TaskManager from 'expo-task-manager';
 import { Platform } from 'react-native';
 import { syncEnterpriseLeaveBy } from '@/lib/enterpriseParticipation';
 import { recordNightPlan } from '@/lib/nightHistory';
+import { recommendedLeaveTime } from '@/lib/reliability';
 import { endLiveActivity, syncLiveActivity } from '@/lib/liveActivity';
 import { scheduleReminders } from '@/lib/notifications';
 import { buildReminderPlans, planNight, shouldReplan, trackingEndsAt, trackingHardStopAt, type NightPlan } from '@/lib/planner';
@@ -71,12 +72,12 @@ async function recomputeFromLocation(coordinates: Coordinates): Promise<void> {
   }
   const language = settings.language ?? 'en';
   await scheduleReminders(buildReminderPlans(plan, settings.reminderIntervals, now, { missedCheckIn: settings.missedCheckIn }), {
-    leaveBy: formatJstTime(plan.leaveByMs),
+    leaveBy: formatJstTime(recommendedLeaveTime(plan)),
     station: language === 'ja' ? plan.station.nameJa : plan.station.name,
     language,
   });
   await syncLiveActivity(plan, language, now).catch(() => undefined);
-  await syncEnterpriseLeaveBy(plan.leaveByMs).catch(() => undefined);
+  await syncEnterpriseLeaveBy(recommendedLeaveTime(plan)).catch(() => undefined);
 }
 
 // Must be registered at module scope so the OS can invoke it headlessly.

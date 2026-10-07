@@ -5,6 +5,7 @@ import {
   syncEnterpriseLeaveBy,
   type EnterpriseParticipation,
 } from "@/lib/enterpriseParticipation";
+import { recommendedLeaveTime } from "@/lib/reliability";
 import { useLastRide } from "@/context/LastRideContext";
 import { useColors } from "@/hooks/useColors";
 import { businessEnabled } from "@/lib/features";
@@ -66,7 +67,9 @@ function JoinBusinessEventScreen() {
       });
       setParticipation(joined);
       if (plan) {
-        await syncEnterpriseLeaveBy(plan.leaveByMs).catch(() => undefined);
+        await syncEnterpriseLeaveBy(recommendedLeaveTime(plan)).catch(
+          () => undefined,
+        );
       }
     } catch (err) {
       const status = (err as { status?: number }).status;

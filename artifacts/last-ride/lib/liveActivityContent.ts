@@ -3,6 +3,7 @@
  * the night. Pure so it can be tested; lib/liveActivity.ts shows it.
  */
 import { rideStatus, type NightPlan } from "@/lib/planner";
+import { recommendedLeaveTime } from "@/lib/reliability";
 import { formatJstTime } from "@/lib/time";
 
 export type LiveActivityContent = {
@@ -22,7 +23,12 @@ type Language = "ja" | "en";
 export function liveActivityContent(
   plan: Pick<
     NightPlan,
-    "leaveByMs" | "lastTrain" | "walkingMinutes" | "station"
+    | "leaveByMs"
+    | "recommendedLeaveByMs"
+    | "safetyMarginMinutes"
+    | "lastTrain"
+    | "walkingMinutes"
+    | "station"
   >,
   language: Language,
   nowMs: number,
@@ -31,7 +37,8 @@ export function liveActivityContent(
   if (status === "departed") return null;
 
   const ja = language === "ja";
-  const leaveBy = formatJstTime(plan.leaveByMs);
+  const recommended = recommendedLeaveTime(plan);
+  const leaveBy = formatJstTime(recommended);
   const lastTrain = formatJstTime(plan.lastTrain.departsAt);
   const station = ja ? plan.station.nameJa : plan.station.name;
   const subtitle = ja
@@ -42,7 +49,7 @@ export function liveActivityContent(
     return {
       title: ja ? `${leaveBy}までに出発` : `Leave by ${leaveBy}`,
       subtitle,
-      countdownTo: plan.leaveByMs,
+      countdownTo: recommended,
     };
   }
   return {

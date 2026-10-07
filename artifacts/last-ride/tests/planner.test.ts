@@ -22,6 +22,7 @@ import {
   repick,
   rideStatus,
   sameStation,
+  shouldExpandStationSearch,
   shouldReplan,
   trackingEndsAt,
   trackingHardStopAt,
@@ -38,9 +39,11 @@ function jst(year: number, month: number, day: number, hours: number, minutes = 
 }
 
 // One canonical night: the last train home leaves Shibuya at 23:52 on 23 Sept,
-// an 8-minute walk away, so the user must set off at 23:41 (8 + 3 buffer).
+// an 8-minute walk away. 23:41 is the absolute deadline (8 + 3 station
+// buffer); the reliability layer recommends 23:37 with four more minutes of margin.
 const LAST_TRAIN = jst(2026, 9, 23, 23, 52);
 const LEAVE_BY = jst(2026, 9, 23, 23, 41);
+const RECOMMENDED_LEAVE_BY = jst(2026, 9, 23, 23, 37);
 
 function train(departsAt: number): TrainTime {
   return { departsAt, source: 'sample' };
@@ -79,30 +82,27 @@ function planFrom(choices: StationChoice[], overrides: Partial<NightPlan> = {}):
 describe('rideStatus', () => {
   const tonight = choice();
 
-  test('counts down from relaxed to hurry', () => {
-    expect(rideStatus(tonight, jst(2026, 9, 23, 23, 10))).toBe('relaxed');
-    expect(rideStatus(tonight, jst(2026, 9, 23, 23, 11))).toBe('soon');
-    expect(rideStatus(tonight, jst(2026, 9, 23, 23, 40))).toBe('soon');
+  test('counts down against the recommended departure, not the hard deadline', () => {
+    expect(rideStatus(tonight, jst(2026, 9, 23, 23, 6))).toBe('relaxed');
+    expect(rideStatus(tonight, jst(2026, 9, 23, 23, 7))).toBe('soon');
+    expect(rideStatus(tonight, jst(2026, 9, 23, 23, 36))).toBe('soon');
   });
 
-  test('the warning begins exactly 30 minutes before leave-by', () => {
-    expect(rideStatus(tonight, LEAVE_BY - 30 * MINUTE_MS)).toBe('soon');
-    expect(rideStatus(tonight, LEAVE_BY - 30 * MINUTE_MS - 1000)).toBe('relaxed');
+  test('the warning begins exactly 30 minutes before the recommended departure', () => {
+    expect(rideStatus(tonight, RECOMMENDED_LEAVE_BY - 30 * MINUTE_MS)).toBe('soon');
+    expect(rideStatus(tonight, RECOMMENDED_LEAVE_BY - 30 * MINUTE_MS - 1000)).toBe('relaxed');
   });
 
-  test('leave-by itself reads "now", not "soon"', () => {
-    expect(rideStatus(tonight, LEAVE_BY - 1000)).toBe('soon');
-    expect(rideStatus(tonight, LEAVE_BY)).toBe('now');
+  test('the recommended departure itself reads "now", not "soon"', () => {
+    expect(rideStatus(tonight, RECOMMENDED_LEAVE_BY - 1000)).toBe('soon');
+    expect(rideStatus(tonight, RECOMMENDED_LEAVE_BY)).toBe('now');
   });
 
-  test('the station buffer is a three-minute grace period before "hurry"', () => {
-    // Written as a literal, not as STATION_BUFFER_MINUTES: the point is to pin
-    // the value down, and an assertion phrased in terms of the constant would
-    // simply move with it.
+  test('the absolute deadline is the boundary between "now" and "hurry"', () => {
+    // The fixed station-entry/platform buffer remains part of the hard deadline.
     expect(STATION_BUFFER_MINUTES).toBe(3);
-    // Being exactly three minutes late is still "now" — that time was padding.
-    expect(rideStatus(tonight, LEAVE_BY + 3 * MINUTE_MS)).toBe('now');
-    expect(rideStatus(tonight, LEAVE_BY + 3 * MINUTE_MS + 1000)).toBe('hurry');
+    expect(rideStatus(tonight, LEAVE_BY)).toBe('now');
+    expect(rideStatus(tonight, LEAVE_BY + 1000)).toBe('hurry');
   });
 
   test('departed starts the moment the train leaves', () => {
@@ -184,9 +184,9 @@ describe('buildReminderPlans', () => {
     const plans = buildReminderPlans(tonight, [30, 10], evening);
 
     expect(plans.map((plan) => plan.fireAt)).toEqual([
-      jst(2026, 9, 23, 23, 11), // 30 minutes before leave-by
-      jst(2026, 9, 23, 23, 31), // 10 minutes before
-      LEAVE_BY, //                "leave now"
+      jst(2026, 9, 23, 23, 7), // 30 minutes before recommended departure
+      jst(2026, 9, 23, 23, 27), // 10 minutes before
+      RECOMMENDED_LEAVE_BY, //     "leave now"
       jst(2026, 9, 23, 23, 55), // "missed it?"
     ]);
     expect(plans.at(-1)?.missedCheckIn).toBe(true);
@@ -204,11 +204,11 @@ describe('buildReminderPlans', () => {
 
   test('reminders that have already passed are dropped', () => {
     const plans = buildReminderPlans(tonight, [30, 10], jst(2026, 9, 23, 23, 35));
-    expect(plans.map((plan) => plan.fireAt)).toEqual([LEAVE_BY, jst(2026, 9, 23, 23, 55)]);
+    expect(plans.map((plan) => plan.fireAt)).toEqual([RECOMMENDED_LEAVE_BY, jst(2026, 9, 23, 23, 55)]);
   });
 
   test('a reminder due within five seconds is not worth scheduling', () => {
-    const plans = buildReminderPlans(tonight, [30, 10], LEAVE_BY - 3000);
+    const plans = buildReminderPlans(tonight, [30, 10], RECOMMENDED_LEAVE_BY - 3000);
     expect(plans.map((plan) => plan.fireAt)).toEqual([jst(2026, 9, 23, 23, 55)]);
   });
 });
@@ -218,7 +218,10 @@ describe('shouldReplan', () => {
   const here = { latitude: 35.658, longitude: 139.701 };
   const far = { latitude: 35.662, longitude: 139.701 };
   const near = { latitude: 35.66, longitude: 139.701 };
-  const recent = planFrom([choice()], { computedAt: jst(2026, 9, 23, 23, 0), coordinates: here });
+  const recent = planFrom([choice()], {
+    computedAt: jst(2026, 9, 23, 23, 0),
+    coordinates: here,
+  });
 
   test('with no previous plan there is nothing to reuse', () => {
     expect(shouldReplan(null, here, jst(2026, 9, 23, 23, 1))).toBe(true);
@@ -248,7 +251,11 @@ describe('choosing between stations', () => {
   });
 
   test('a farther station needs to buy real time to be worth it', () => {
-    const close = choice({ station: shibuya, walkingMinutes: 5, leaveByMs: LEAVE_BY });
+    const close = choice({
+      station: shibuya,
+      walkingMinutes: 5,
+      leaveByMs: LEAVE_BY,
+    });
     const fartherSmallGain = choice({
       station: ebisu,
       walkingMinutes: 12,
@@ -260,7 +267,11 @@ describe('choosing between stations', () => {
   });
 
   test('ten minutes is enough', () => {
-    const close = choice({ station: shibuya, walkingMinutes: 5, leaveByMs: LEAVE_BY });
+    const close = choice({
+      station: shibuya,
+      walkingMinutes: 5,
+      leaveByMs: LEAVE_BY,
+    });
     const fartherRealGain = choice({
       station: ebisu,
       walkingMinutes: 12,
@@ -271,8 +282,29 @@ describe('choosing between stations', () => {
     expect(plan.station.nameJa).toBe('恵比寿');
   });
 
+  test('a current disruption can make a slightly earlier clean station the automatic pick', () => {
+    const disruptedClose = choice({
+      station: shibuya,
+      walkingMinutes: 5,
+      leaveByMs: LEAVE_BY,
+      disruptionLines: ['ＪＲ山手線'],
+    });
+    const cleanFarther = choice({
+      station: ebisu,
+      walkingMinutes: 12,
+      leaveByMs: LEAVE_BY - 5 * MINUTE_MS,
+    });
+
+    const plan = repick(planFrom([disruptedClose, cleanFarther]), null);
+    expect(plan.station.nameJa).toBe('恵比寿');
+  });
+
   test('pinning overrides the automatic pick, and unpinning restores it', () => {
-    const close = choice({ station: shibuya, walkingMinutes: 5, leaveByMs: LEAVE_BY });
+    const close = choice({
+      station: shibuya,
+      walkingMinutes: 5,
+      leaveByMs: LEAVE_BY,
+    });
     const farther = choice({
       station: ebisu,
       walkingMinutes: 12,
@@ -296,5 +328,40 @@ describe('choosing between stations', () => {
 
     const plan = repick(planFrom([close, farther]), ebisu);
     expect(plan.alternatives.map((option) => option.station.nameJa)).toEqual(['渋谷']);
+  });
+});
+
+describe('adaptive station search', () => {
+  test('keeps the normal three-station pass when there are several healthy options and time', () => {
+    const options = [
+      choice({ leaveByMs: jst(2026, 9, 24, 0, 30) }),
+      choice({
+        station: station('Ebisu', '恵比寿'),
+        leaveByMs: jst(2026, 9, 24, 0, 20),
+      }),
+    ];
+    expect(shouldExpandStationSearch(options, jst(2026, 9, 23, 23, 0))).toBe(false);
+  });
+
+  test('widens when routes are sparse, disrupted, or the deadline is near', () => {
+    expect(shouldExpandStationSearch([choice()], jst(2026, 9, 23, 23, 0))).toBe(true);
+
+    const disrupted = [
+      choice({ leaveByMs: jst(2026, 9, 24, 0, 30), disruptionLines: ['JR'] }),
+      choice({
+        station: station('Ebisu', '恵比寿'),
+        leaveByMs: jst(2026, 9, 24, 0, 20),
+      }),
+    ];
+    expect(shouldExpandStationSearch(disrupted, jst(2026, 9, 23, 23, 0))).toBe(true);
+
+    const urgent = [
+      choice({ leaveByMs: jst(2026, 9, 23, 23, 25) }),
+      choice({
+        station: station('Ebisu', '恵比寿'),
+        leaveByMs: jst(2026, 9, 23, 23, 24),
+      }),
+    ];
+    expect(shouldExpandStationSearch(urgent, jst(2026, 9, 23, 23, 0))).toBe(true);
   });
 });

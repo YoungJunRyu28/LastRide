@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { NightPlan } from "@/lib/planner";
+import { recommendedLeaveTime } from "@/lib/reliability";
 import { STORAGE_KEYS } from "@/lib/settings";
 import { serviceDate } from "@/lib/time";
 
@@ -67,7 +68,7 @@ async function upsertNightHistory(
     destinationLabel: destination.label,
     departureStation: plan.station.name,
     departureStationJa: plan.station.nameJa,
-    leaveByMs: plan.leaveByMs,
+    leaveByMs: recommendedLeaveTime(plan),
     lastTrainDepartsAt: plan.lastTrain.departsAt,
     arrivalMs: plan.arriveHomeMs ?? plan.lastTrain.arrivesAt ?? null,
     fareYen: plan.lastTrain.fareYen ?? null,

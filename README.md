@@ -12,9 +12,11 @@ destination, and shows a single leave-by time: the last train's departure minus
 the walk minus a few minutes to get from the entrance to the platform. As you
 move during the evening the plan follows you, and reminders are rescheduled.
 
-- **Leave screen** — leave-by time, a live countdown, the route home (lines,
-  transfers, arrival, fare), and the other nearby stations, any of which you can
-  switch to for the night.
+- **Leave screen** — a reliability-aware recommended leave time, the absolute
+  latest practical deadline, a live countdown, route freshness, current service
+  disruptions, the route home (lines, transfers, arrival, fare), and nearby
+  stations. Automatic station choice can avoid a disrupted route and widens its
+  search when the night is time-critical.
 - **Reminders** — at the intervals you choose before leave-by, again when it's
   time to go, and once more just after the last train has gone, in case you
   missed it. They run while night-out tracking is on, which switches itself off
@@ -77,10 +79,13 @@ components are rendered, these are plain functions run in Node.
   end the night (the last train counts as gone by 01:30, tracking stops by
   04:00, the night is over by 05:00).
 
-Several rules tested there are product decisions that otherwise live only in
-comments: the 3-minute station buffer, the 30-minute warning, and the 10
-minutes a farther station must save to be worth a longer walk. The tests exist
-so those cannot change by accident.
+Several rules tested there are product decisions, not implementation details:
+the 3-minute hard station buffer, the reliability margin used for the
+recommended departure, the 30-minute warning, disruption-aware station
+selection, adaptive station search, and the 10 minutes a farther healthy
+station must gain to be worth a longer walk. See
+`docs/reliability-planning.md`. The tests exist so those rules cannot change
+by accident.
 
 `@/lib/api` is stubbed under Vitest (`tests/stubs/api.ts`) because the real
 module imports `react-native` at load time, which Vite cannot parse. Nothing

@@ -3,14 +3,19 @@
  * work out when they must start walking. Shared by the React app and the
  * headless background-location task so both always agree.
  */
+import { getTrainDisruptions } from '@workspace/api-client-react';
 import type { HomeAddress } from '@/lib/settings';
+import { matchingDisruptionLines, recommendedLeaveTime, recommendedSafetyMarginMinutes, riskAdjustedLeaveTime } from '@/lib/reliability';
 import { distanceBetween, findNearbyStations, LocationError, walkingRoute, type Coordinates, type NearbyStation, type StationOption, type WalkingSpeed } from '@/lib/stations';
 import { MINUTE_MS, serviceDayStart } from '@/lib/time';
 import { getLastTrain, type TrainTime } from '@/lib/timetable';
 
 /** Time from the station entrance to the platform (gates, stairs, finding the right line). */
 export const STATION_BUFFER_MINUTES = 3;
-const CANDIDATE_STATIONS = 3;
+const CANDIDATE_STATIONS_INITIAL = 3;
+const CANDIDATE_STATIONS_EXPANDED = 6;
+/** Search a wider station ring when the current plan is risky or time-critical. */
+const EXPAND_SEARCH_WITHIN_MINUTES = 30;
 /** While tracking, re-plan only after moving this far from the last plan, or once it is this old. */
 const REPLAN_DISTANCE_METERS = 300;
 const REPLAN_AFTER_MS = 10 * MINUTE_MS;
@@ -30,8 +35,14 @@ export type StationChoice = {
   walkingMinutes: number;
   distanceMeters: number;
   lastTrain: TrainTime;
-  /** When to start walking, epoch ms. */
+  /** Absolute/latest practical time to start walking, epoch ms. */
   leaveByMs: number;
+  /** Recommended departure with uncertainty margin. Older saved plans may omit it. */
+  recommendedLeaveByMs?: number;
+  /** Minutes between the recommended and absolute deadlines. */
+  safetyMarginMinutes?: number;
+  /** Current provider-reported service incidents affecting this route. */
+  disruptionLines?: string[];
   /** Station this train arrives at — the home station unless a home address opened up a better one. */
   destination: StationOption;
   /** Walk from that station to the home address, when one is set. */
@@ -107,10 +118,11 @@ export function trackingHardStopAt(startedAt: number): number {
   return serviceDayStart(startedAt) + TRACKING_OFF_BY;
 }
 
-export function rideStatus(choice: Pick<StationChoice, 'leaveByMs' | 'lastTrain'>, nowMs: number): RideStatus {
+export function rideStatus(choice: Pick<StationChoice, 'leaveByMs' | 'recommendedLeaveByMs' | 'safetyMarginMinutes' | 'walkingMinutes' | 'lastTrain'>, nowMs: number): RideStatus {
   if (nowMs >= lastTrainLeftAt(choice)) return 'departed';
-  const minutesLeft = (choice.leaveByMs - nowMs) / MINUTE_MS;
-  if (minutesLeft < -STATION_BUFFER_MINUTES) return 'hurry';
+  const recommended = recommendedLeaveTime(choice);
+  const minutesLeft = (recommended - nowMs) / MINUTE_MS;
+  if (nowMs > choice.leaveByMs) return 'hurry';
   if (minutesLeft <= 0) return 'now';
   if (minutesLeft <= SOON_MINUTES) return 'soon';
   return 'relaxed';
@@ -136,11 +148,7 @@ export function sameStation(first: StationOption, second: StationOption) {
  * station; with one, nearby stations are worth comparing too, since a line that
  * runs later can be worth a longer walk at the other end.
  */
-async function destinationOptions(
-  home: StationOption,
-  homeAddress: HomeAddress | null,
-  walkingSpeed: WalkingSpeed,
-): Promise<Array<{ station: StationOption; walkHomeMinutes?: number }>> {
+async function destinationOptions(home: StationOption, homeAddress: HomeAddress | null, walkingSpeed: WalkingSpeed): Promise<Array<{ station: StationOption; walkHomeMinutes?: number }>> {
   if (!homeAddress) return [{ station: home }];
   const nearHome = await findNearbyStations(homeAddress, walkingSpeed, DESTINATION_CANDIDATES + 1).catch(() => []);
   const homeWalk = nearHome.find((candidate) => sameStation(candidate.station, home))?.walk;
@@ -153,7 +161,10 @@ async function destinationOptions(
   for (const candidate of nearHome) {
     if (options.length >= DESTINATION_CANDIDATES) break;
     if (sameStation(candidate.station, home)) continue;
-    options.push({ station: candidate.station, walkHomeMinutes: candidate.walk?.walkingMinutes });
+    options.push({
+      station: candidate.station,
+      walkHomeMinutes: candidate.walk?.walkingMinutes,
+    });
   }
   return options;
 }
@@ -165,7 +176,9 @@ async function destinationOptions(
 function autoPick(options: StationChoice[]): StationChoice {
   let best = options[0];
   for (const option of options.slice(1)) {
-    if (option.leaveByMs - best.leaveByMs >= FARTHER_STATION_MIN_GAIN_MINUTES * MINUTE_MS) best = option;
+    if (riskAdjustedLeaveTime(option) - riskAdjustedLeaveTime(best) >= FARTHER_STATION_MIN_GAIN_MINUTES * MINUTE_MS) {
+      best = option;
+    }
   }
   return best;
 }
@@ -176,13 +189,16 @@ function assemble(options: StationChoice[], pinned: StationOption | null, coordi
   const auto = autoPick(sorted);
   const pinnedChoice = pinned ? sorted.find((option) => sameStation(option.station, pinned)) : undefined;
   const chosen = pinnedChoice ?? auto;
-  const { station, walkingMinutes, distanceMeters, lastTrain, leaveByMs, destination, walkHomeMinutes, arriveHomeMs } = chosen;
+  const { station, walkingMinutes, distanceMeters, lastTrain, leaveByMs, recommendedLeaveByMs, safetyMarginMinutes, disruptionLines, destination, walkHomeMinutes, arriveHomeMs } = chosen;
   return {
     station,
     walkingMinutes,
     distanceMeters,
     lastTrain,
     leaveByMs,
+    recommendedLeaveByMs,
+    safetyMarginMinutes,
+    disruptionLines,
     destination,
     walkHomeMinutes,
     arriveHomeMs,
@@ -196,8 +212,20 @@ function assemble(options: StationChoice[], pinned: StationOption | null, coordi
 
 /** Switches an existing plan to `pinned` (or back to the automatic pick with null) without new lookups. */
 export function repick(plan: NightPlan, pinned: StationOption | null): NightPlan {
-  const { station, walkingMinutes, distanceMeters, lastTrain, leaveByMs, destination, walkHomeMinutes, arriveHomeMs } = plan;
-  const current: StationChoice = { station, walkingMinutes, distanceMeters, lastTrain, leaveByMs, destination, walkHomeMinutes, arriveHomeMs };
+  const { station, walkingMinutes, distanceMeters, lastTrain, leaveByMs, recommendedLeaveByMs, safetyMarginMinutes, disruptionLines, destination, walkHomeMinutes, arriveHomeMs } = plan;
+  const current: StationChoice = {
+    station,
+    walkingMinutes,
+    distanceMeters,
+    lastTrain,
+    leaveByMs,
+    recommendedLeaveByMs,
+    safetyMarginMinutes,
+    disruptionLines,
+    destination,
+    walkHomeMinutes,
+    arriveHomeMs,
+  };
   return assemble([current, ...plan.alternatives], pinned, plan.coordinates, plan.computedAt);
 }
 
@@ -207,71 +235,165 @@ export function repick(plan: NightPlan, pinned: StationOption | null): NightPlan
  * in the service day to plan for; it defaults to now, but lets the app keep
  * planning for tonight while the user waits for the first train after 04:00.
  */
-export async function planNight(
+type DestinationOption = Awaited<ReturnType<typeof destinationOptions>>[number];
+
+async function evaluateCandidates(
+  candidates: NearbyStation[],
+  destinations: DestinationOption[],
   coordinates: Coordinates,
-  home: StationOption,
   walkingSpeed: WalkingSpeed,
-  nowMs: number,
-  { pinned = null, nightOf = nowMs, homeAddress = null }: { pinned?: StationOption | null; nightOf?: number; homeAddress?: HomeAddress | null } = {},
-): Promise<NightPlan> {
-  const destinations = await destinationOptions(home, homeAddress, walkingSpeed);
-  const candidates: NearbyStation[] = await findNearbyStations(coordinates, walkingSpeed, CANDIDATE_STATIONS);
-  if (pinned && !candidates.some((candidate) => sameStation(candidate.station, pinned))) {
-    candidates.push({ station: pinned, straightMeters: distanceBetween(coordinates, pinned) });
-  }
+  nightOf: number,
+): Promise<{ options: StationChoice[]; lookupFailed: boolean }> {
   let lookupFailed = false;
   const evaluated = await Promise.all(
     candidates.map(async ({ station, walk: knownWalk }) => {
       try {
         const walk = knownWalk ?? (await walkingRoute(coordinates, station, walkingSpeed));
-        // With a home address there may be more than one station worth arriving at.
         const legs = await Promise.all(
-          destinations.map(async (destination) => {
+          destinations.map(async (destination): Promise<StationChoice | null> => {
             const lastTrain = await getLastTrain(station, destination.station, nightOf);
-            if (!lastTrain) return null; // no train from here reaches that station
-            return {
+            if (!lastTrain) return null;
+            const leaveByMs = lastTrain.departsAt - (walk.walkingMinutes + STATION_BUFFER_MINUTES) * MINUTE_MS;
+            const base: StationChoice = {
               station,
               lastTrain,
               destination: destination.station,
               walkHomeMinutes: destination.walkHomeMinutes,
               arriveHomeMs: lastTrain.arrivesAt === undefined ? undefined : lastTrain.arrivesAt + (destination.walkHomeMinutes ?? 0) * MINUTE_MS,
-              leaveByMs: lastTrain.departsAt - (walk.walkingMinutes + STATION_BUFFER_MINUTES) * MINUTE_MS,
+              leaveByMs,
               ...walk,
+            };
+            const safetyMarginMinutes = recommendedSafetyMarginMinutes(base);
+            return {
+              ...base,
+              safetyMarginMinutes,
+              recommendedLeaveByMs: leaveByMs - safetyMarginMinutes * MINUTE_MS,
             };
           }),
         );
-        const usable = legs.filter((leg): leg is NonNullable<typeof leg> => leg !== null);
-        if (usable.length === 0) return null; // no train from this station reaches home
-        // Leaving later wins; arriving home earlier breaks the tie.
-        usable.sort((first, second) => second.leaveByMs - first.leaveByMs || (first.arriveHomeMs ?? Infinity) - (second.arriveHomeMs ?? Infinity));
+        const usable = legs.filter((leg): leg is StationChoice => leg !== null);
+        if (usable.length === 0) return null;
+        usable.sort((first, second) => recommendedLeaveTime(second) - recommendedLeaveTime(first) || (first.arriveHomeMs ?? Infinity) - (second.arriveHomeMs ?? Infinity));
         return usable[0];
       } catch {
-        lookupFailed = true; // one station failing shouldn't sink the whole plan
+        lookupFailed = true;
         return null;
       }
     }),
   );
-  const options = evaluated.filter((option): option is NonNullable<typeof option> => option !== null);
+  return {
+    options: evaluated.filter((option): option is StationChoice => option !== null),
+    lookupFailed,
+  };
+}
+
+async function annotateDisruptions(options: StationChoice[]): Promise<StationChoice[]> {
+  const lines = [...new Set(options.flatMap((option) => option.lastTrain.legs?.map((leg) => leg.line) ?? []))].slice(0, 12);
+  if (lines.length === 0) return options;
+
+  try {
+    const incidents = await getTrainDisruptions({ lines: lines.join(':') });
+    if (incidents.length === 0) return options;
+    return options.map((option) => ({
+      ...option,
+      disruptionLines: matchingDisruptionLines(option, incidents),
+    }));
+  } catch {
+    // Disruption data is optional. Core timetable planning must still work.
+    return options;
+  }
+}
+
+/**
+ * Broaden station discovery only when it can plausibly change the decision:
+ * too few viable routes, a current service incident, or a deadline close
+ * enough that another line is worth the extra provider work.
+ */
+export function shouldExpandStationSearch(options: StationChoice[], nowMs: number): boolean {
+  if (options.length < 2) return true;
+  if (options.some((option) => (option.disruptionLines?.length ?? 0) > 0)) return true;
+  const bestRecommended = Math.max(...options.map((option) => recommendedLeaveTime(option)));
+  return bestRecommended - nowMs <= EXPAND_SEARCH_WITHIN_MINUTES * MINUTE_MS;
+}
+
+/**
+ * Evaluates the nearest stations first, then widens the search only when the
+ * first pass is sparse, disrupted, or time-critical. This keeps the normal
+ * provider footprint small without assuming the fourth-nearest station is
+ * irrelevant in dense Japanese rail networks.
+ */
+export async function planNight(
+  coordinates: Coordinates,
+  home: StationOption,
+  walkingSpeed: WalkingSpeed,
+  nowMs: number,
+  {
+    pinned = null,
+    nightOf = nowMs,
+    homeAddress = null,
+  }: {
+    pinned?: StationOption | null;
+    nightOf?: number;
+    homeAddress?: HomeAddress | null;
+  } = {},
+): Promise<NightPlan> {
+  const destinations = await destinationOptions(home, homeAddress, walkingSpeed);
+  let candidates = await findNearbyStations(coordinates, walkingSpeed, CANDIDATE_STATIONS_INITIAL);
+  if (pinned && !candidates.some((candidate) => sameStation(candidate.station, pinned))) {
+    candidates.push({
+      station: pinned,
+      straightMeters: distanceBetween(coordinates, pinned),
+    });
+  }
+
+  const firstPass = await evaluateCandidates(candidates, destinations, coordinates, walkingSpeed, nightOf);
+  let lookupFailed = firstPass.lookupFailed;
+  let options = await annotateDisruptions(firstPass.options);
+
+  if (shouldExpandStationSearch(options, nowMs)) {
+    const expanded = await findNearbyStations(coordinates, walkingSpeed, CANDIDATE_STATIONS_EXPANDED).catch(() => []);
+    const known = new Set(candidates.map((candidate) => candidate.station.nameJa));
+    const extra = expanded.filter((candidate) => !known.has(candidate.station.nameJa));
+    if (extra.length > 0) {
+      const secondPass = await evaluateCandidates(extra, destinations, coordinates, walkingSpeed, nightOf);
+      lookupFailed ||= secondPass.lookupFailed;
+      options = await annotateDisruptions([...options, ...secondPass.options]);
+    }
+  }
+
   if (options.length === 0) throw new LocationError(lookupFailed ? 'unavailable' : 'no-route');
   return assemble(options, pinned, coordinates, nowMs);
 }
 
 /** A leave reminder (`minutesBefore` leave-by, 0 = "leave now") or the "missed it?" check-in. */
-export type ReminderPlan = { minutesBefore: number; fireAt: number; missedCheckIn?: true };
+export type ReminderPlan = {
+  minutesBefore: number;
+  fireAt: number;
+  missedCheckIn?: true;
+};
 
 /**
  * One reminder per selected interval, a "leave now" at leave-by itself, and a
  * "missed it?" check-in just after the last train leaves; past ones are dropped.
  */
 export function buildReminderPlans(
-  choice: Pick<StationChoice, 'leaveByMs' | 'lastTrain'>,
+  choice: Pick<StationChoice, 'leaveByMs' | 'recommendedLeaveByMs' | 'safetyMarginMinutes' | 'walkingMinutes' | 'lastTrain'>,
   intervals: number[],
   nowMs: number,
   { missedCheckIn = true }: { missedCheckIn?: boolean } = {},
 ): ReminderPlan[] {
+  const leaveAt = recommendedLeaveTime(choice);
   const reminders: ReminderPlan[] = [...new Set([...intervals, 0])]
     .sort((first, second) => second - first)
-    .map((minutesBefore) => ({ minutesBefore, fireAt: choice.leaveByMs - minutesBefore * MINUTE_MS }));
-  if (missedCheckIn) reminders.push({ minutesBefore: 0, fireAt: missedCheckInAt(choice), missedCheckIn: true });
+    .map((minutesBefore) => ({
+      minutesBefore,
+      fireAt: leaveAt - minutesBefore * MINUTE_MS,
+    }));
+  if (missedCheckIn)
+    reminders.push({
+      minutesBefore: 0,
+      fireAt: missedCheckInAt(choice),
+      missedCheckIn: true,
+    });
   return reminders.filter((reminder) => reminder.fireAt > nowMs + 5000);
 }
