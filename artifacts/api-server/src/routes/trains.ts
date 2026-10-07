@@ -11,6 +11,7 @@ import {
 import { ProviderError } from "../lib/cache";
 import { searchTrain, trainDisruptionsForLines } from "../lib/ekispert";
 import { findPartwayTrainTaxi } from "../lib/partway";
+import { recordLastTrainShadowComparison } from "../lib/transitShadow";
 
 const router: IRouter = Router();
 
@@ -38,6 +39,19 @@ function trainHandler(
         { latitude: query.toLat, longitude: query.toLon, name: query.toName },
         query.date,
       );
+      if (kind === "last") {
+        await recordLastTrainShadowComparison({
+          fromName: query.fromName,
+          toName: query.toName,
+          serviceDate: query.date,
+          provider: route,
+        }).catch((err) => {
+          req.log.debug(
+            { errorName: (err as Error).name },
+            "Transit shadow comparison failed",
+          );
+        });
+      }
       if (!route) {
         res.status(404).json({
           error: "No train route between these stations on that date",
