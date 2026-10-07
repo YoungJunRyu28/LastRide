@@ -6,6 +6,8 @@
 import { getTrainDisruptions } from '@workspace/api-client-react';
 import type { HomeAddress } from '@/lib/settings';
 import { matchingDisruptionLines, recommendedLeaveTime, recommendedSafetyMarginMinutes, riskAdjustedLeaveTime } from '@/lib/reliability';
+import { getStationAccessProfiles, lineLearningKey, readPersonalTimingProfile, stationLearningKey, type StationAccessProfile } from '@/lib/mobilityLearning';
+import { buildTimingPrediction, FINAL_SAFETY_BUFFER_MINUTES, type TimingPredictionSource } from '@/lib/timingPrediction';
 import { distanceBetween, findNearbyStations, LocationError, walkingRoute, type Coordinates, type NearbyStation, type StationOption, type WalkingSpeed } from '@/lib/stations';
 import { MINUTE_MS, serviceDayStart } from '@/lib/time';
 import { getLastTrain, type TrainTime } from '@/lib/timetable';
@@ -41,6 +43,18 @@ export type StationChoice = {
   recommendedLeaveByMs?: number;
   /** Minutes between the recommended and absolute deadlines. */
   safetyMarginMinutes?: number;
+  /** Provider walking estimate before personalization, for outcome learning. */
+  providerWalkingMinutes?: number;
+  /** Learned delay from the leave-now moment until sustained walking begins. */
+  packupMinutes?: number;
+  /** Aggregate/fallback station traversal before personal residual adjustment. */
+  aggregateStationAccessMinutes?: number;
+  /** Predicted station entrance-to-platform/boarding traversal. */
+  stationAccessMinutes?: number;
+  /** Aggregate samples supporting the station traversal estimate. */
+  stationAccessSampleCount?: number;
+  /** Which timing layer materially changed the deadline. */
+  timingPredictionSource?: TimingPredictionSource;
   /** Current provider-reported service incidents affecting this route. */
   disruptionLines?: string[];
   /** Station this train arrives at — the home station unless a home address opened up a better one. */
@@ -189,19 +203,8 @@ function assemble(options: StationChoice[], pinned: StationOption | null, coordi
   const auto = autoPick(sorted);
   const pinnedChoice = pinned ? sorted.find((option) => sameStation(option.station, pinned)) : undefined;
   const chosen = pinnedChoice ?? auto;
-  const { station, walkingMinutes, distanceMeters, lastTrain, leaveByMs, recommendedLeaveByMs, safetyMarginMinutes, disruptionLines, destination, walkHomeMinutes, arriveHomeMs } = chosen;
   return {
-    station,
-    walkingMinutes,
-    distanceMeters,
-    lastTrain,
-    leaveByMs,
-    recommendedLeaveByMs,
-    safetyMarginMinutes,
-    disruptionLines,
-    destination,
-    walkHomeMinutes,
-    arriveHomeMs,
+    ...chosen,
     coordinates,
     alternatives: sorted.filter((option) => option !== chosen),
     autoPick: auto,
@@ -212,21 +215,8 @@ function assemble(options: StationChoice[], pinned: StationOption | null, coordi
 
 /** Switches an existing plan to `pinned` (or back to the automatic pick with null) without new lookups. */
 export function repick(plan: NightPlan, pinned: StationOption | null): NightPlan {
-  const { station, walkingMinutes, distanceMeters, lastTrain, leaveByMs, recommendedLeaveByMs, safetyMarginMinutes, disruptionLines, destination, walkHomeMinutes, arriveHomeMs } = plan;
-  const current: StationChoice = {
-    station,
-    walkingMinutes,
-    distanceMeters,
-    lastTrain,
-    leaveByMs,
-    recommendedLeaveByMs,
-    safetyMarginMinutes,
-    disruptionLines,
-    destination,
-    walkHomeMinutes,
-    arriveHomeMs,
-  };
-  return assemble([current, ...plan.alternatives], pinned, plan.coordinates, plan.computedAt);
+  const { coordinates, alternatives, autoPick: _autoPick, pinned: _pinned, computedAt, ...current } = plan;
+  return assemble([current, ...alternatives], pinned, coordinates, computedAt);
 }
 
 /**
@@ -285,6 +275,82 @@ async function evaluateCandidates(
     options: evaluated.filter((option): option is StationChoice => option !== null),
     lookupFailed,
   };
+}
+
+function learningDayTypeJst(timestamp: number): "weekday" | "weekend" {
+  const day = new Date(timestamp + 9 * 60 * 60 * 1000).getUTCDay();
+  return day === 0 || day === 6 ? "weekend" : "weekday";
+}
+
+function learningHourBucketJst(timestamp: number): number {
+  return new Date(timestamp + 9 * 60 * 60 * 1000).getUTCHours();
+}
+
+async function applyLearnedTiming(
+  options: StationChoice[],
+  contextTimeMs: number,
+): Promise<StationChoice[]> {
+  if (options.length === 0) return options;
+
+  const personalProfile = await readPersonalTimingProfile().catch(() => ({
+    walkingRatios: [],
+    packupSeconds: [],
+    stationResidualSeconds: [],
+  }));
+  const hourBucket = learningHourBucketJst(contextTimeMs);
+  const dayType = learningDayTypeJst(contextTimeMs);
+  const queries = options.map((option) => ({
+    stationKey: stationLearningKey(option.station),
+    lineKey: lineLearningKey(option.lastTrain.legs?.[0]?.line),
+    hourBucket,
+    dayType,
+  }));
+  const profiles = await getStationAccessProfiles(queries).catch(
+    () => [] as StationAccessProfile[],
+  );
+  const profileMap = new Map(
+    profiles.map((profile) => [
+      `${profile.stationKey}|${profile.lineKey ?? ''}`,
+      profile,
+    ]),
+  );
+
+  return options.map((option, index) => {
+    const query = queries[index];
+    const aggregate = profileMap.get(
+      `${query.stationKey}|${query.lineKey ?? ''}`,
+    );
+    const prediction = buildTimingPrediction({
+      providerWalkingMinutes: option.walkingMinutes,
+      aggregateStationP90Seconds: aggregate?.p90Seconds,
+      personalProfile,
+    });
+    const walkingMinutes = Math.max(1, Math.ceil(prediction.walkingSeconds / 60));
+    const leaveByMs =
+      option.lastTrain.departsAt - prediction.requiredSeconds * 1000;
+    const safetyMarginMinutes = Math.max(
+      FINAL_SAFETY_BUFFER_MINUTES,
+      recommendedSafetyMarginMinutes({
+        walkingMinutes,
+        lastTrain: option.lastTrain,
+      }),
+    );
+
+    return {
+      ...option,
+      walkingMinutes,
+      providerWalkingMinutes: option.walkingMinutes,
+      packupMinutes: prediction.packupSeconds / 60,
+      aggregateStationAccessMinutes: prediction.aggregateStationSeconds / 60,
+      stationAccessMinutes: prediction.stationAccessSeconds / 60,
+      stationAccessSampleCount: aggregate?.sampleCount ?? 0,
+      timingPredictionSource: prediction.source,
+      leaveByMs,
+      safetyMarginMinutes,
+      recommendedLeaveByMs:
+        leaveByMs - safetyMarginMinutes * MINUTE_MS,
+    };
+  });
 }
 
 async function annotateDisruptions(options: StationChoice[]): Promise<StationChoice[]> {
@@ -348,7 +414,7 @@ export async function planNight(
 
   const firstPass = await evaluateCandidates(candidates, destinations, coordinates, walkingSpeed, nightOf);
   let lookupFailed = firstPass.lookupFailed;
-  let options = await annotateDisruptions(firstPass.options);
+  let options = await annotateDisruptions(await applyLearnedTiming(firstPass.options, nowMs));
 
   if (shouldExpandStationSearch(options, nowMs)) {
     const expanded = await findNearbyStations(coordinates, walkingSpeed, CANDIDATE_STATIONS_EXPANDED).catch(() => []);
@@ -357,7 +423,8 @@ export async function planNight(
     if (extra.length > 0) {
       const secondPass = await evaluateCandidates(extra, destinations, coordinates, walkingSpeed, nightOf);
       lookupFailed ||= secondPass.lookupFailed;
-      options = await annotateDisruptions([...options, ...secondPass.options]);
+      const learnedSecondPass = await applyLearnedTiming(secondPass.options, nowMs);
+      options = await annotateDisruptions([...options, ...learnedSecondPass]);
     }
   }
 

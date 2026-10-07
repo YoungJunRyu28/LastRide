@@ -6,6 +6,10 @@ import { apiBaseUrl, communityFallbacksEnabled } from "@/lib/api";
 import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
 import { STATION_BUFFER_MINUTES } from "@/lib/planner";
 import {
+  cheapestRecoveryTransitRoute,
+  paretoRecoveryTransitRoutes,
+} from "@/lib/recoveryRanking";
+import {
   distanceBetween,
   overpassQuery,
   walkingRoute,
@@ -29,8 +33,10 @@ import { Feather } from "@expo/vector-icons";
 import {
   getNearbyPlaces,
   getPartwayTrainTaxi,
+  getRecoveryTransitRoutes,
   getTaxiEstimate,
   type PartwayTrainTaxi,
+  type RecoveryTransitRoute,
 } from "@workspace/api-client-react";
 import React, { useEffect, useRef, useState } from "react";
 import {
@@ -231,7 +237,19 @@ function balancedStays(options: StayOption[]): StayOption[] {
     .slice(0, MAX_STAYS);
 }
 
-type OptionKey = "train" | "partway" | "stay" | "taxi" | "walk";
+function recoveryModeSummary(route: RecoveryTransitRoute, ja: boolean): string {
+  const labels = route.modes
+    .filter((mode, index, all) => all.indexOf(mode) === index)
+    .map((mode) => {
+      if (mode === "train") return ja ? "電車" : "train";
+      if (mode === "bus") return ja ? "バス" : "bus";
+      if (mode === "walk") return ja ? "徒歩" : "walk";
+      return ja ? "公共交通" : "transit";
+    });
+  return labels.join(ja ? "＋" : " + ");
+}
+
+type OptionKey = "transit" | "train" | "partway" | "stay" | "taxi" | "walk";
 
 export default function AlternativesScreen() {
   const colors = useColors();
@@ -264,6 +282,8 @@ export default function AlternativesScreen() {
   const [isLoadingTaxi, setIsLoadingTaxi] = useState(false);
   const [partway, setPartway] = useState<PartwayTrainTaxi | null>(null);
   const [isLoadingPartway, setIsLoadingPartway] = useState(false);
+  const [recoveryRoutes, setRecoveryRoutes] = useState<RecoveryTransitRoute[]>([]);
+  const [isLoadingRecovery, setIsLoadingRecovery] = useState(false);
   const [walkHome, setWalkHome] = useState<WalkingRoute | null>(null);
   const [selected, setSelected] = useState<OptionKey>("train");
   const [kindFilter, setKindFilter] = useState<StayKind | null>(null);
@@ -271,6 +291,7 @@ export default function AlternativesScreen() {
   const [showAllStays, setShowAllStays] = useState(false);
   const requestToken = useRef(0);
   const partwayToken = useRef(0);
+  const recoveryToken = useRef(0);
   const [retryCount, setRetryCount] = useState(0);
 
   const homeHasCoordinates =
@@ -351,6 +372,51 @@ export default function AlternativesScreen() {
   ]);
 
   useEffect(() => {
+    const token = ++recoveryToken.current;
+    setRecoveryRoutes([]);
+    if (
+      status !== "departed" ||
+      !apiBaseUrl ||
+      !userCoordinates ||
+      !taxiTarget
+    ) {
+      setIsLoadingRecovery(false);
+      return;
+    }
+
+    setIsLoadingRecovery(true);
+    void getRecoveryTransitRoutes({
+      fromLat: userCoordinates.latitude,
+      fromLon: userCoordinates.longitude,
+      toLat: taxiTarget.latitude,
+      toLon: taxiTarget.longitude,
+      earliestDepartureAtMs: nowMs,
+      limit: 12,
+    })
+      .then((routes) => {
+        if (token === recoveryToken.current) {
+          setRecoveryRoutes(paretoRecoveryTransitRoutes(routes));
+        }
+      })
+      .catch(() => {
+        if (token === recoveryToken.current) setRecoveryRoutes([]);
+      })
+      .finally(() => {
+        if (token === recoveryToken.current) setIsLoadingRecovery(false);
+      });
+    // nowMs deliberately is not a dependency: opening/retrying the recovery
+    // screen snapshots the departure time instead of issuing a new paid lookup
+    // every clock tick.
+  }, [
+    status,
+    userCoordinates?.latitude,
+    userCoordinates?.longitude,
+    taxiTarget?.latitude,
+    taxiTarget?.longitude,
+    retryCount,
+  ]);
+
+  useEffect(() => {
     const token = ++partwayToken.current;
     setPartway(null);
     if (
@@ -402,7 +468,13 @@ export default function AlternativesScreen() {
   useEffect(() => {
     if (selected === "partway" && !partway && !isLoadingPartway)
       setSelected("train");
-  }, [selected, partway, isLoadingPartway]);
+    if (
+      selected === "transit" &&
+      recoveryRoutes.length === 0 &&
+      !isLoadingRecovery
+    )
+      setSelected("train");
+  }, [selected, partway, isLoadingPartway, recoveryRoutes.length, isLoadingRecovery]);
 
   const station = ja ? stationNameJa : stationName;
   const homeLabel = destination || (ja ? "帰り先" : "your destination");
@@ -418,6 +490,10 @@ export default function AlternativesScreen() {
     Number.isFinite(partwayTrainArrival)
       ? partwayTrainArrival + partway.taxi.minutes * MINUTE_MS
       : null;
+  const cheapestTransit = cheapestRecoveryTransitRoute(recoveryRoutes);
+  const homeByTransit = cheapestTransit
+    ? Date.parse(cheapestTransit.arrivesAt)
+    : null;
   const homeByWalk = walkHome
     ? nowMs + walkHome.walkingMinutes * MINUTE_MS
     : null;
@@ -439,6 +515,23 @@ export default function AlternativesScreen() {
     cost: number | null;
   };
   const options: Option[] = [
+    ...(cheapestTransit
+      ? [
+          {
+            key: "transit" as const,
+            icon: "repeat" as const,
+            label: ja ? "まだ動いている公共交通" : "Public transit still running",
+            detail: ja
+              ? `${recoveryModeSummary(cheapestTransit, true)} · ${cheapestTransit.durationMinutes}分`
+              : `${recoveryModeSummary(cheapestTransit, false)} · ${cheapestTransit.durationMinutes} min`,
+            homeBy:
+              homeByTransit !== null && Number.isFinite(homeByTransit)
+                ? homeByTransit
+                : null,
+            cost: cheapestTransit.fareYen,
+          },
+        ]
+      : []),
     {
       key: "train",
       icon: "sunrise",
@@ -703,6 +796,17 @@ export default function AlternativesScreen() {
           })}
         </View>
 
+        {isLoadingRecovery && status === "departed" && (
+          <View style={styles.loadingRow}>
+            <ActivityIndicator color={colors.primary} />
+            <Text style={[styles.note, { color: colors.mutedForeground }]}>
+              {ja
+                ? "まだ動いている電車・バスを料金順に確認中…"
+                : "Checking trains and buses still running, including fare-ranked combinations…"}
+            </Text>
+          </View>
+        )}
+
         {isLoadingPartway && status === "departed" && (
           <View style={styles.loadingRow}>
             <ActivityIndicator color={colors.primary} />
@@ -710,6 +814,99 @@ export default function AlternativesScreen() {
               {ja
                 ? "まだ乗れる電車＋タクシーを確認中…"
                 : "Checking whether a train can shorten the taxi…"}
+            </Text>
+          </View>
+        )}
+
+        {/* Public transit still running: fare-ranked train/bus/walk recovery */}
+        {selected === "transit" && cheapestTransit && (
+          <View
+            style={[
+              styles.panel,
+              { backgroundColor: colors.card, borderColor: colors.border },
+            ]}
+          >
+            <View style={styles.panelHead}>
+              <Text style={[styles.panelTime, { color: colors.foreground }]}>
+                {formatJstTime(Date.parse(cheapestTransit.departsAt))}
+              </Text>
+              <View style={styles.panelHeadCopy}>
+                <Text style={[styles.panelTitle, { color: colors.foreground }]}>
+                  {ja ? "今夜まだ使える最安の公共交通" : "Cheapest public transit still running"}
+                </Text>
+                <Text style={[styles.note, { color: colors.mutedForeground }]}>
+                  {[
+                    cheapestTransit.fareYen === null
+                      ? null
+                      : formatYen(cheapestTransit.fareYen),
+                    Number.isFinite(Date.parse(cheapestTransit.arrivesAt))
+                      ? ja
+                        ? `${formatJstTime(Date.parse(cheapestTransit.arrivesAt))}着`
+                        : `arrives ${formatJstTime(Date.parse(cheapestTransit.arrivesAt))}`
+                      : null,
+                    cheapestTransit.walkingMinutes > 0
+                      ? ja
+                        ? `徒歩${cheapestTransit.walkingMinutes}分`
+                        : `${cheapestTransit.walkingMinutes} min walking`
+                      : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </Text>
+              </View>
+            </View>
+            <View style={styles.legs}>
+              {cheapestTransit.legs.map((leg, index) => (
+                <View
+                  key={`${leg.mode}-${leg.line}-${leg.from}-${leg.to}-${index}`}
+                  style={styles.leg}
+                >
+                  <Feather
+                    name={
+                      leg.mode === "walk"
+                        ? "navigation"
+                        : leg.mode === "bus"
+                          ? "map"
+                          : "corner-down-right"
+                    }
+                    size={18}
+                    color={colors.primary}
+                    style={styles.legIcon}
+                  />
+                  <View style={styles.cardCopy}>
+                    <Text style={[styles.cardTitle, { color: colors.foreground }]}>
+                      {ja
+                        ? `${leg.from} → ${leg.to}`
+                        : `${leg.fromEn || leg.from} → ${leg.toEn || leg.to}`}
+                    </Text>
+                    <Text style={[styles.note, { color: colors.mutedForeground }]}>
+                      {[
+                        leg.mode === "bus"
+                          ? ja
+                            ? `バス ${leg.line}`
+                            : `Bus ${leg.lineEn || leg.line}`
+                          : leg.mode === "train"
+                            ? ja
+                              ? shortLineName(leg.line)
+                              : leg.lineEn || shortLineName(leg.line)
+                            : ja
+                              ? "徒歩"
+                              : "Walk",
+                        leg.departsAt
+                          ? formatJstTime(Date.parse(leg.departsAt))
+                          : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+            <Text style={[styles.note, { color: colors.mutedForeground }]}>
+              {ja
+                ? `駅すぱあとで電車・路線バス・高速バス等を含め料金順に探索しています。既知運賃の候補${recoveryRoutes.length}件から、より安く・早く・徒歩も少ない経路に完全に劣る候補を除外しています。`
+                : `Ekispert searches fare-ranked train and bus combinations. LastRide keeps ${recoveryRoutes.length} known-fare option${recoveryRoutes.length === 1 ? "" : "s"} after removing routes that are simultaneously more expensive, slower, and no easier to walk.`}
             </Text>
           </View>
         )}

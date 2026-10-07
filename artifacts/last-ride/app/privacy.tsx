@@ -19,6 +19,10 @@ function copy(ja: boolean) {
             body: "現在地、保存した帰り先の最寄り駅（設定した場合は住所も）、言語・歩くペース・リマインダーなどを使って移動プランを計算します。帰り先と個人設定、夜ごとのプラン時刻の履歴は端末内に保存されます。履歴はGPSの移動軌跡ではありません。",
           },
           {
+            heading: "移動時間の学習（任意）",
+            body: "設定で明示的に有効にした場合だけ、徒歩時間、出発通知から実際に歩き始めるまでの時間、駅付近に着いてから乗車までの時間、利用駅・路線、粗い時間帯、利用可能な高度情報から端末上で集計した上り・下り量などの算出済みデータを匿名トークンとともに共有します。学習用に自宅住所、出発地点、GPSの移動軌跡は送信しません。共有データは最大365日保持し、設定から共有停止・この端末が共有したデータの削除ができます。共有しなくても、他の利用者から十分なサンプルがある駅の集計予測は利用できます。",
+          },
+          {
             heading: "飲み会に参加するとき",
             body: "幹事に共有されるのは、あなたが入力した表示名とLastRideが計算した出発時刻だけです。現在地、自宅、最寄り駅、経路、目的地、歩くペースは法人イベントのデータとして保存・表示されません。",
           },
@@ -49,6 +53,10 @@ function copy(ja: boolean) {
           {
             heading: "Personal LastRide",
             body: "Your location, saved destinations and their nearest stations (plus an address if you add one), language, walking pace and reminder settings are used to calculate your trip. Destinations, personal settings and a per-night summary of plan times stay on your device. History is not a GPS trail.",
+          },
+          {
+            heading: "Mobility learning (optional)",
+            body: "Only if you explicitly enable it in Settings, LastRide shares derived timing outcomes such as walking duration, time from a leave prompt to sustained movement, time from reaching the station area to boarding, public station/line identifiers, coarse time buckets, and total ascent/descent summarized on-device from usable altitude samples using an anonymous installation token. LastRide does not upload your home address, starting point, or raw GPS trail for learning. Shared observations are retained for up to 365 days, and Settings lets you stop sharing or delete observations contributed by this installation. You can still benefit from aggregate station estimates when sharing is off.",
           },
           {
             heading: "When you join a group",

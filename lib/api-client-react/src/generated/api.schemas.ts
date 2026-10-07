@@ -117,6 +117,54 @@ export interface PartwayTrainTaxi {
   totalFareYen: number | null;
 }
 
+export type RecoveryTransitLegMode = typeof RecoveryTransitLegMode[keyof typeof RecoveryTransitLegMode];
+
+
+export const RecoveryTransitLegMode = {
+  train: 'train',
+  bus: 'bus',
+  walk: 'walk',
+  other: 'other',
+} as const;
+
+export interface RecoveryTransitLeg {
+  mode: RecoveryTransitLegMode;
+  /** @nullable */
+  modeDetail: string | null;
+  line: string;
+  lineEn: string;
+  from: string;
+  fromEn: string;
+  to: string;
+  toEn: string;
+  /** @nullable */
+  departsAt: string | null;
+  /** @nullable */
+  arrivesAt: string | null;
+}
+
+export type RecoveryTransitRouteModesItem = typeof RecoveryTransitRouteModesItem[keyof typeof RecoveryTransitRouteModesItem];
+
+
+export const RecoveryTransitRouteModesItem = {
+  train: 'train',
+  bus: 'bus',
+  walk: 'walk',
+  other: 'other',
+} as const;
+
+export interface RecoveryTransitRoute {
+  departsAt: string;
+  arrivesAt: string;
+  transfers: number;
+  /** @nullable */
+  fareYen: number | null;
+  walkingMinutes: number;
+  durationMinutes: number;
+  modes: RecoveryTransitRouteModesItem[];
+  legs: RecoveryTransitLeg[];
+}
+
 export interface TrainDisruption {
   line: string;
   /** @nullable */
@@ -127,6 +175,192 @@ export interface TrainDisruption {
   comment: string | null;
   /** @nullable */
   updatedAt: string | null;
+}
+
+export type MobilityLearningObservationKind = typeof MobilityLearningObservationKind[keyof typeof MobilityLearningObservationKind];
+
+
+export const MobilityLearningObservationKind = {
+  trip_timing: 'trip_timing',
+  station_traversal: 'station_traversal',
+} as const;
+
+export type MobilityLearningObservationDayType = typeof MobilityLearningObservationDayType[keyof typeof MobilityLearningObservationDayType];
+
+
+export const MobilityLearningObservationDayType = {
+  weekday: 'weekday',
+  weekend: 'weekend',
+  holiday: 'holiday',
+} as const;
+
+export interface MobilityLearningObservation {
+  /**
+     * @minLength 1
+     * @maxLength 80
+     */
+  clientObservationId: string;
+  kind: MobilityLearningObservationKind;
+  /**
+     * @minLength 1
+     * @maxLength 180
+     */
+  stationKey?: string;
+  /**
+     * @minLength 1
+     * @maxLength 180
+     */
+  lineKey?: string;
+  /**
+     * @minimum 0
+     * @maximum 23
+     */
+  hourBucket: number;
+  dayType: MobilityLearningObservationDayType;
+  /**
+     * @minimum 0
+     * @maximum 3600
+     */
+  packupSeconds?: number;
+  /**
+     * @minimum 0
+     * @maximum 50000
+     */
+  walkingDistanceMeters?: number;
+  /**
+     * @minimum 0
+     * @maximum 14400
+     */
+  providerWalkingSeconds?: number;
+  /**
+     * @minimum 0
+     * @maximum 14400
+     */
+  actualWalkingSeconds?: number;
+  /**
+     * @minimum 0
+     * @maximum 5000
+     */
+  elevationGainMeters?: number;
+  /**
+     * @minimum 0
+     * @maximum 5000
+     */
+  elevationLossMeters?: number;
+  /**
+     * @minimum 0
+     * @maximum 1800
+     */
+  stationTraversalSeconds?: number;
+  caughtTrain?: boolean;
+  /**
+     * @minimum 0
+     * @maximum 1000
+     */
+  confidencePermille: number;
+  /**
+     * @minLength 1
+     * @maxLength 40
+     */
+  modelVersion: string;
+}
+
+export interface MobilityLearningBatch {
+  /** @minimum 1 */
+  consentVersion: number;
+  /**
+     * @minItems 1
+     * @maxItems 20
+     */
+  observations: MobilityLearningObservation[];
+}
+
+export interface MobilityLearningAccepted {
+  /**
+     * @minimum 0
+     * @maximum 20
+     */
+  accepted: number;
+}
+
+export type StationAccessProfileQueryDayType = typeof StationAccessProfileQueryDayType[keyof typeof StationAccessProfileQueryDayType];
+
+
+export const StationAccessProfileQueryDayType = {
+  weekday: 'weekday',
+  weekend: 'weekend',
+  holiday: 'holiday',
+} as const;
+
+export interface StationAccessProfileQuery {
+  /**
+     * @minLength 1
+     * @maxLength 180
+     */
+  stationKey: string;
+  /**
+     * @minLength 1
+     * @maxLength 180
+     */
+  lineKey?: string;
+  /**
+     * @minimum 0
+     * @maximum 23
+     */
+  hourBucket: number;
+  dayType: StationAccessProfileQueryDayType;
+}
+
+export interface StationAccessProfileBatch {
+  /**
+     * @minItems 1
+     * @maxItems 12
+     */
+  queries: StationAccessProfileQuery[];
+}
+
+export type StationAccessProfileDayType = typeof StationAccessProfileDayType[keyof typeof StationAccessProfileDayType];
+
+
+export const StationAccessProfileDayType = {
+  weekday: 'weekday',
+  weekend: 'weekend',
+  holiday: 'holiday',
+} as const;
+
+export type StationAccessProfileSource = typeof StationAccessProfileSource[keyof typeof StationAccessProfileSource];
+
+
+export const StationAccessProfileSource = {
+  'station-line-context': 'station-line-context',
+  'station-line': 'station-line',
+  station: 'station',
+  insufficient: 'insufficient',
+} as const;
+
+export interface StationAccessProfile {
+  stationKey: string;
+  /** @nullable */
+  lineKey: string | null;
+  /**
+     * @minimum 0
+     * @maximum 23
+     */
+  hourBucket: number;
+  dayType: StationAccessProfileDayType;
+  /** @minimum 0 */
+  sampleCount: number;
+  /** @minimum 0 */
+  contributorCount: number;
+  /** @nullable */
+  p50Seconds: number | null;
+  /** @nullable */
+  p90Seconds: number | null;
+  /** @nullable */
+  p95Seconds: number | null;
+  source: StationAccessProfileSource;
+  /** @minimum 1 */
+  lookbackDays: number;
 }
 
 export interface CreateEnterpriseEventRequest {
@@ -307,6 +541,11 @@ export interface HealthStatus {
 
 export type ParticipantTokenParameter = string;
 
+/**
+ * Random 256-bit per-installation token; the server stores only its SHA-256 digest.
+ */
+export type LearningTokenParameter = string;
+
 export type FromLatParameter = number;
 
 export type FromLonParameter = number;
@@ -335,6 +574,11 @@ export type TaxiToLonParameter = number;
  * Earliest epoch millisecond at which the user can board a train
  */
 export type EarliestBoardAtMsParameter = number;
+
+/**
+ * Earliest epoch millisecond at which a recovery itinerary may depart
+ */
+export type EarliestDepartureAtMsParameter = number;
 
 export type GetLastTrainParams = {
 /**
@@ -439,6 +683,38 @@ date: ServiceDateParameter;
  * Earliest epoch millisecond at which the user can board a train
  */
 earliestBoardAtMs: EarliestBoardAtMsParameter;
+};
+
+export type GetRecoveryTransitRoutesParams = {
+/**
+ * @minimum -90
+ * @maximum 90
+ */
+fromLat: FromLatParameter;
+/**
+ * @minimum -180
+ * @maximum 180
+ */
+fromLon: FromLonParameter;
+/**
+ * @minimum -90
+ * @maximum 90
+ */
+toLat: ToLatParameter;
+/**
+ * @minimum -180
+ * @maximum 180
+ */
+toLon: ToLonParameter;
+/**
+ * Earliest epoch millisecond at which a recovery itinerary may depart
+ */
+earliestDepartureAtMs: EarliestDepartureAtMsParameter;
+/**
+ * @minimum 1
+ * @maximum 20
+ */
+limit?: number;
 };
 
 export type GetTrainDisruptionsParams = {

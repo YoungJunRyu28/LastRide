@@ -66,6 +66,7 @@ app.use(
       "Authorization",
       "Content-Type",
       "X-Participant-Token",
+      "X-Learning-Token",
       "X-Request-Id",
     ],
     maxAge: 600,

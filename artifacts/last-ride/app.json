@@ -43,8 +43,8 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "LastRide uses your location to find the nearest station and calculate walking time home.",
-          "locationAlwaysAndWhenInUsePermission": "LastRide uses your location in the background during a night out to keep your nearest station, walking time, and leave-by reminders accurate.",
+          "locationWhenInUsePermission": "LastRide uses your location to find nearby stations and calculate when you need to leave. If you opt in to timing improvement, location samples also help derive on-device walking and station timing outcomes.",
+          "locationAlwaysAndWhenInUsePermission": "LastRide uses your location in the background during a night out to keep station, walking time, and leave-by reminders accurate. If you opt in to timing improvement, background samples also derive timing outcomes; raw GPS trails are not uploaded for learning.",
           "isAndroidBackgroundLocationEnabled": true,
           "isAndroidForegroundServiceEnabled": true
         }

@@ -99,28 +99,37 @@ describe("partway train + taxi search", () => {
       earliestBoardAtMs: Date.parse("2026-10-03T00:05:00+09:00"),
     });
 
-  it("stops at the first workable candidate, making one set of paid calls", async () => {
-    const option = await search();
-
-    expect(option?.taxiFrom.nameJa).toBe("吉祥寺");
-    expect(option?.totalFareYen).toBe(2_300);
-    expect(searchTrain).toHaveBeenCalledTimes(1);
-    // One full-route check plus one partway search for the first candidate.
-    expect(searchDepartureTrain).toHaveBeenCalledTimes(2);
-    expect(stationByCode).toHaveBeenCalledTimes(1);
-    expect(taxiEstimate).toHaveBeenCalledTimes(1);
-  });
-
-  it("moves on when a candidate's provider call fails", async () => {
+  it("evaluates the bounded candidates and selects the cheapest known total fare", async () => {
     vi.mocked(taxiEstimate)
       .mockReset()
-      .mockRejectedValueOnce(new ProviderError("NAVITIME responded 503"))
-      .mockResolvedValue({ distanceMeters: 6_000, minutes: 15, fareYen: 2_800 });
+      // Farthest is not always cheapest once road geometry and taxi fares are included.
+      .mockResolvedValueOnce({ distanceMeters: 3_000, minutes: 10, fareYen: 2_600 })
+      .mockResolvedValueOnce({ distanceMeters: 4_000, minutes: 12, fareYen: 1_400 })
+      .mockResolvedValueOnce({ distanceMeters: 5_000, minutes: 14, fareYen: 1_800 });
 
     const option = await search();
 
     expect(option?.taxiFrom.nameJa).toBe("中野");
-    expect(taxiEstimate).toHaveBeenCalledTimes(2);
+    expect(option?.totalFareYen).toBe(1_700);
+    expect(searchTrain).toHaveBeenCalledTimes(1);
+    // One full-route check plus one departure search for each bounded candidate.
+    expect(searchDepartureTrain).toHaveBeenCalledTimes(4);
+    expect(stationByCode).toHaveBeenCalledTimes(3);
+    expect(taxiEstimate).toHaveBeenCalledTimes(3);
+  });
+
+  it("continues after one provider failure and still chooses the cheapest remaining option", async () => {
+    vi.mocked(taxiEstimate)
+      .mockReset()
+      .mockRejectedValueOnce(new ProviderError("NAVITIME responded 503"))
+      .mockResolvedValueOnce({ distanceMeters: 6_000, minutes: 15, fareYen: 2_800 })
+      .mockResolvedValueOnce({ distanceMeters: 7_000, minutes: 17, fareYen: 1_600 });
+
+    const option = await search();
+
+    expect(option?.taxiFrom.nameJa).toBe("新宿");
+    expect(option?.totalFareYen).toBe(1_900);
+    expect(taxiEstimate).toHaveBeenCalledTimes(3);
   });
 
   it("surfaces the provider error when no candidate works", async () => {

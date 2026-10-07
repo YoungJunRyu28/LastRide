@@ -57,6 +57,13 @@
       "when": 1791032504978,
       "tag": "0007_purge_legacy_cache_keys",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1791403583276,
+      "tag": "0008_tiny_warstar",
+      "breakpoints": true
     }
   ]
 }

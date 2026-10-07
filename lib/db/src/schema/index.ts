@@ -7,3 +7,4 @@ export * from "./eventInvites";
 export * from "./eventParticipants";
 export * from "./hostDevices";
 export * from "./notificationDeliveries";
+export * from "./mobilityLearning";

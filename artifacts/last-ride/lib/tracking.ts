@@ -22,6 +22,7 @@ import { buildReminderPlans, planNight, shouldReplan, trackingEndsAt, trackingHa
 import { hasCoordinates, readSettings } from '@/lib/settings';
 import type { Coordinates } from '@/lib/stations';
 import { formatJstTime } from '@/lib/time';
+import { beginLearningSession, recordLearningLocationSignal } from '@/lib/tripLearning';
 
 export const LOCATION_TASK = 'lastride-night-tracking';
 const SNAPSHOT_KEY = 'lastride-tracking-snapshot';
@@ -60,6 +61,9 @@ async function recomputeFromLocation(coordinates: Coordinates): Promise<void> {
   const plan = await planNight(coordinates, settings.homeStation, settings.walkingSpeed, now, { pinned: settings.pinnedStation, homeAddress: settings.homeAddress });
   if (!(await isTrackingFlagOn())) return; // stopped while we were computing
   await AsyncStorage.setItem(SNAPSHOT_KEY, JSON.stringify(plan));
+  if (settings.mobilityLearning) {
+    await beginLearningSession(plan, true).catch(() => undefined);
+  }
   const activeDestination =
     settings.destinations.find(
       (destination) => destination.id === settings.activeDestinationId,
@@ -84,12 +88,39 @@ async function recomputeFromLocation(coordinates: Coordinates): Promise<void> {
 if (Platform.OS !== 'web') {
   TaskManager.defineTask(LOCATION_TASK, async ({ data, error }) => {
     if (error || !data) return;
-    const { locations } = data as { locations?: Array<{ coords: { latitude: number; longitude: number } }> };
+    const { locations } = data as {
+      locations?: Array<{
+        timestamp: number;
+        coords: {
+          latitude: number;
+          longitude: number;
+          speed?: number | null;
+          accuracy?: number | null;
+          altitude?: number | null;
+          altitudeAccuracy?: number | null;
+        };
+      }>;
+    };
     const latest = locations?.[locations.length - 1];
     if (!latest) return;
     if (!(await isTrackingFlagOn())) return;
+    const coordinates = {
+      latitude: latest.coords.latitude,
+      longitude: latest.coords.longitude,
+    };
+    const settings = await readSettings().catch(() => null);
+    if (settings?.mobilityLearning) {
+      await recordLearningLocationSignal({
+        coordinates,
+        timestamp: latest.timestamp,
+        speedMps: latest.coords.speed,
+        accuracyMeters: latest.coords.accuracy,
+        altitudeMeters: latest.coords.altitude,
+        altitudeAccuracyMeters: latest.coords.altitudeAccuracy,
+      }).catch(() => undefined);
+    }
     try {
-      await recomputeFromLocation({ latitude: latest.coords.latitude, longitude: latest.coords.longitude });
+      await recomputeFromLocation(coordinates);
     } catch {
       // Transient network failures are fine — the next location update retries.
     }
@@ -97,15 +128,15 @@ if (Platform.OS !== 'web') {
 }
 
 /** Starts OS-level background updates. Returns true if background mode is active. */
-export async function startBackgroundTracking(): Promise<boolean> {
+export async function startBackgroundTracking(mobilityLearning = false): Promise<boolean> {
   if (Platform.OS === 'web') return false;
   try {
     const background = await Location.requestBackgroundPermissionsAsync();
     if (!background.granted) return false;
     await Location.startLocationUpdatesAsync(LOCATION_TASK, {
-      accuracy: Location.Accuracy.Balanced,
-      distanceInterval: 200, // meters moved before an update
-      timeInterval: 180000, // at most every 3 minutes (Android)
+      accuracy: mobilityLearning ? Location.Accuracy.High : Location.Accuracy.Balanced,
+      distanceInterval: mobilityLearning ? 50 : 200,
+      timeInterval: mobilityLearning ? 60000 : 180000,
       pausesUpdatesAutomatically: true,
       showsBackgroundLocationIndicator: true,
       foregroundService: {

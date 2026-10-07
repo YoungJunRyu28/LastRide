@@ -1,6 +1,6 @@
 # LastRide Privacy Policy
 
-_Last updated: 4 October 2026_
+_Last updated: 7 October 2026_
 
 LastRide (帰り時) helps you catch the last train home. Personal LastRide works
 without an account. LastRide for Business adds optional organizer accounts and
@@ -18,6 +18,33 @@ temporary event participation. This policy explains what data each mode uses.
 
 Personal mode does not require your name, email address, phone number, contacts,
 photos or a LastRide account.
+
+### Optional mobility learning
+
+Mobility learning is **off by default**. If you explicitly enable **Improve
+timing predictions** in Settings, LastRide may derive timing outcomes while
+night-out tracking is active. These can include:
+
+- time between the leave recommendation and sustained movement;
+- provider-predicted versus observed walking duration and walking distance;
+- coarse total ascent/descent derived on-device from usable altitude samples;
+- time from reaching the public station area to boarding;
+- whether the planned train was caught;
+- public station and line identifiers, a coarse hour bucket, day type and a
+  confidence score.
+
+The learning upload does **not** include your home address, destination address,
+starting coordinates, raw GPS samples or a GPS trail. A random 256-bit
+installation token is kept in the device secure store. The server stores only
+the SHA-256 digest of that token and uses it to deduplicate uploads and honor a
+delete request from the same installation.
+
+Aggregate station estimates are available to users whether or not they
+contribute observations. Personal timing residuals stay on the device. Turning
+sharing off stops new learning observations from being contributed. **Delete
+shared learning data** removes observations associated with that installation
+from the server and clears its local learning profile; the deletion requires a
+network connection so the app can confirm the server-side copy was removed.
 
 ## LastRide for Business
 
@@ -99,6 +126,11 @@ lookup, not the Business participant display name.
 - **Organizer accounts:** organization membership remains until the Business
   account is deprovisioned. A registered push token is removed when the device
   signs out successfully or when it is identified as no longer registered.
+- **Optional mobility-learning observations:** retained for at most 365 days and
+  then deleted. Deleting the installation's shared learning data earlier removes
+  its contributor row and associated observations immediately after the server
+  accepts the request. Aggregate predictions are computed from eligible
+  observations and do not expose individual trip records to other users.
 - **Crash reports:** kept by Sentry for up to 90 days, then deleted.
 - **Server logs:** record endpoint and response status but omit query strings.
   Cache errors also omit raw cache keys, so coordinates, address queries and API
@@ -112,6 +144,10 @@ lookup, not the Business participant display name.
   current Business event. If the server can't be reached, your phone's copy is
   still erased and the server-side participant record is removed when the
   event expires.
+- Turn optional mobility-learning sharing on or off in Settings. Use **Delete
+  shared learning data** to remove this installation's shared observations and
+  local learning profile; if the device is offline, retry once it can reach the
+  server so deletion can be confirmed.
 - Turn off location permission to stop location access.
 - Organizer account deletion/deprovisioning requests can be made through the
   contact below.

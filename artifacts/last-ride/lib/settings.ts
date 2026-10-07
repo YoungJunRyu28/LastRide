@@ -29,6 +29,8 @@ export const STORAGE_KEYS = {
   destinations: 'lastride-destinations',
   activeDestinationId: 'lastride-active-destination-id',
   nightHistory: 'lastride-night-history',
+  mobilityLearning: 'lastride-mobility-learning',
+  backgroundLocationDisclosure: 'lastride-background-location-disclosure-v1',
 } as const;
 
 export const REMINDER_CHOICES = [30, 15, 10, 5];
@@ -48,6 +50,8 @@ export type Settings = {
   /** All saved destinations stay on-device. */
   destinations: SavedDestination[];
   activeDestinationId: string | null;
+  /** Explicit opt-in for sharing derived timing outcomes with aggregate learning. */
+  mobilityLearning: boolean;
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -60,6 +64,7 @@ export const DEFAULT_SETTINGS: Settings = {
   homeAddress: null,
   destinations: [],
   activeDestinationId: null,
+  mobilityLearning: false,
 };
 
 function parseHomeStation(raw: string | null): StationOption | null {
@@ -144,7 +149,7 @@ export async function writePinnedStation(station: StationOption | null): Promise
 }
 
 export async function readSettings(): Promise<Settings> {
-  const [language, homeStation, walkingSpeed, reminders, pinnedStation, missedCheckIn, homeAddress, destinationsRaw, activeDestinationIdRaw] = await Promise.all([
+  const [language, homeStation, walkingSpeed, reminders, pinnedStation, missedCheckIn, homeAddress, destinationsRaw, activeDestinationIdRaw, mobilityLearning] = await Promise.all([
     AsyncStorage.getItem(STORAGE_KEYS.language),
     AsyncStorage.getItem(STORAGE_KEYS.homeStation),
     AsyncStorage.getItem(STORAGE_KEYS.walkingSpeed),
@@ -154,6 +159,7 @@ export async function readSettings(): Promise<Settings> {
     AsyncStorage.getItem(STORAGE_KEYS.homeAddress),
     AsyncStorage.getItem(STORAGE_KEYS.destinations),
     AsyncStorage.getItem(STORAGE_KEYS.activeDestinationId),
+    AsyncStorage.getItem(STORAGE_KEYS.mobilityLearning),
   ]);
 
   const legacyStation = parseHomeStation(homeStation);
@@ -191,6 +197,8 @@ export async function readSettings(): Promise<Settings> {
     homeAddress: activeDestination?.address ?? legacyAddress,
     destinations,
     activeDestinationId,
+    // Aggregate mobility learning is explicitly opt-in.
+    mobilityLearning: mobilityLearning === 'true',
   };
 }
 

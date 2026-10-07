@@ -89,4 +89,51 @@ describe("HTTP runtime perimeter", () => {
     const body = (await response.json()) as { error?: unknown };
     expect(body.error).toBe("Invalid query");
   });
+
+  it("rejects raw-coordinate fields from mobility-learning uploads", async () => {
+    const response = await fetch(`${baseUrl}/api/learning/observations`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Learning-Token": "a".repeat(64),
+      },
+      body: JSON.stringify({
+        consentVersion: 1,
+        observations: [
+          {
+            clientObservationId: "privacy-contract-test",
+            kind: "trip_timing",
+            hourBucket: 23,
+            dayType: "weekday",
+            confidencePermille: 1000,
+            modelVersion: "mobility-v1",
+            latitude: 35.658,
+          },
+        ],
+      }),
+    });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "Invalid learning observation" });
+  });
+
+  it("requires an anonymous learning token before accepting observations", async () => {
+    const response = await fetch(`${baseUrl}/api/learning/observations`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        consentVersion: 1,
+        observations: [
+          {
+            clientObservationId: "missing-token",
+            kind: "trip_timing",
+            hourBucket: 23,
+            dayType: "weekday",
+            confidencePermille: 1000,
+            modelVersion: "mobility-v1",
+          },
+        ],
+      }),
+    });
+    expect(response.status).toBe(401);
+  });
 });

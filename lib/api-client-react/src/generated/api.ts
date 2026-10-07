@@ -33,17 +33,23 @@ import type {
   GetNearbyPlacesParams,
   GetNearbyStationsParams,
   GetPartwayTrainTaxiParams,
+  GetRecoveryTransitRoutesParams,
   GetTaxiEstimateParams,
   GetTrainDisruptionsParams,
   GetWalkRouteParams,
   HealthStatus,
   HostDeviceRegistration,
   JoinEnterpriseEventRequest,
+  MobilityLearningAccepted,
+  MobilityLearningBatch,
   PartwayTrainTaxi,
   Place,
+  RecoveryTransitRoute,
   SearchAddressesParams,
   SearchStationsParams,
   Station,
+  StationAccessProfile,
+  StationAccessProfileBatch,
   TaxiEstimate,
   TrainDisruption,
   TrainRoute,
@@ -479,6 +485,91 @@ export function useGetPartwayTrainTaxi<TData = Awaited<ReturnType<typeof getPart
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetPartwayTrainTaxiQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetRecoveryTransitRoutesUrl = (params: GetRecoveryTransitRoutesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/trains/recovery-transit?${stringifiedParams}` : `/api/trains/recovery-transit`
+}
+
+/**
+ * Door-to-door ground public-transport routes from the user's current coordinates to the destination using live scheduled trains and buses. Results are requested in fare order. Taxi hybrids are evaluated separately so every fare in this response remains provider-traceable.
+ * @summary Public-transit routes still available after a missed train
+ */
+export const getRecoveryTransitRoutes = async (params: GetRecoveryTransitRoutesParams, options?: Parameters<typeof customFetch>[1]): Promise<RecoveryTransitRoute[]> => {
+
+  return customFetch<RecoveryTransitRoute[]>(getGetRecoveryTransitRoutesUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetRecoveryTransitRoutesQueryKey = (params?: GetRecoveryTransitRoutesParams,) => {
+    return [
+    `/api/trains/recovery-transit`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetRecoveryTransitRoutesQueryOptions = <TData = Awaited<ReturnType<typeof getRecoveryTransitRoutes>>, TError = ErrorType<void>>(params: GetRecoveryTransitRoutesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRecoveryTransitRoutes>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetRecoveryTransitRoutesQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getRecoveryTransitRoutes>>> = ({ signal }) => getRecoveryTransitRoutes(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getRecoveryTransitRoutes>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetRecoveryTransitRoutesQueryResult = NonNullable<Awaited<ReturnType<typeof getRecoveryTransitRoutes>>>
+export type GetRecoveryTransitRoutesQueryError = ErrorType<void>
+
+
+/**
+ * @summary Public-transit routes still available after a missed train
+ */
+
+export function useGetRecoveryTransitRoutes<TData = Awaited<ReturnType<typeof getRecoveryTransitRoutes>>, TError = ErrorType<void>>(
+ params: GetRecoveryTransitRoutesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getRecoveryTransitRoutes>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetRecoveryTransitRoutesQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
@@ -1161,6 +1252,258 @@ export function useGetUsage<TData = Awaited<ReturnType<typeof getUsage>>, TError
 
 
 
+
+export const getUploadMobilityLearningObservationsUrl = () => {
+
+
+
+
+  return `/api/learning/observations`
+}
+
+/**
+ * Optional opt-in learning upload. Contains durations, public station/line identifiers and coarse time buckets only; no raw GPS trail, home address, starting coordinate or exact observation timestamp.
+ * @summary Contribute derived mobility timing outcomes
+ */
+export const uploadMobilityLearningObservations = async (mobilityLearningBatch: MobilityLearningBatch, options?: Parameters<typeof customFetch>[1]): Promise<MobilityLearningAccepted> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<MobilityLearningAccepted>(getUploadMobilityLearningObservationsUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(mobilityLearningBatch)
+  }
+);}
+
+
+
+
+
+export const getUploadMobilityLearningObservationsMutationKey = () => ['uploadMobilityLearningObservations'] as const;
+
+export const getUploadMobilityLearningObservationsMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof uploadMobilityLearningObservations>>, TError,UploadMobilityLearningObservationsMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof uploadMobilityLearningObservations>>, TError,UploadMobilityLearningObservationsMutationVariables, TContext> => {
+
+const mutationKey = getUploadMobilityLearningObservationsMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof uploadMobilityLearningObservations>>, UploadMobilityLearningObservationsMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  uploadMobilityLearningObservations(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UploadMobilityLearningObservationsMutationResult = NonNullable<Awaited<ReturnType<typeof uploadMobilityLearningObservations>>>
+    export type UploadMobilityLearningObservationsMutationBody = BodyType<MobilityLearningBatch>
+    export type UploadMobilityLearningObservationsMutationError = ErrorType<void>
+    export type UploadMobilityLearningObservationsMutationVariables = {data: BodyType<MobilityLearningBatch>}
+
+    /**
+ * @summary Contribute derived mobility timing outcomes
+ */
+export const useUploadMobilityLearningObservations = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof uploadMobilityLearningObservations>>, TError,UploadMobilityLearningObservationsMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof uploadMobilityLearningObservations>>,
+        TError,
+        UploadMobilityLearningObservationsMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUploadMobilityLearningObservationsMutationOptions(options));
+    }
+
+export const getGetStationAccessProfilesUrl = () => {
+
+
+
+
+  return `/api/learning/station-profiles`
+}
+
+/**
+ * Returns privacy-thresholded aggregate timing percentiles. Sparse cohorts return source=insufficient and no percentile values.
+ * @summary Aggregate station-to-boarding timing profiles
+ */
+export const getStationAccessProfiles = async (stationAccessProfileBatch: StationAccessProfileBatch, options?: Parameters<typeof customFetch>[1]): Promise<StationAccessProfile[]> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<StationAccessProfile[]>(getGetStationAccessProfilesUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(stationAccessProfileBatch)
+  }
+);}
+
+
+
+
+
+export const getGetStationAccessProfilesMutationKey = () => ['getStationAccessProfiles'] as const;
+
+export const getGetStationAccessProfilesMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof getStationAccessProfiles>>, TError,GetStationAccessProfilesMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof getStationAccessProfiles>>, TError,GetStationAccessProfilesMutationVariables, TContext> => {
+
+const mutationKey = getGetStationAccessProfilesMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof getStationAccessProfiles>>, GetStationAccessProfilesMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  getStationAccessProfiles(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type GetStationAccessProfilesMutationResult = NonNullable<Awaited<ReturnType<typeof getStationAccessProfiles>>>
+    export type GetStationAccessProfilesMutationBody = BodyType<StationAccessProfileBatch>
+    export type GetStationAccessProfilesMutationError = ErrorType<void>
+    export type GetStationAccessProfilesMutationVariables = {data: BodyType<StationAccessProfileBatch>}
+
+    /**
+ * @summary Aggregate station-to-boarding timing profiles
+ */
+export const useGetStationAccessProfiles = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof getStationAccessProfiles>>, TError,GetStationAccessProfilesMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof getStationAccessProfiles>>,
+        TError,
+        GetStationAccessProfilesMutationVariables,
+        TContext
+      > => {
+      return useMutation(getGetStationAccessProfilesMutationOptions(options));
+    }
+
+export const getDeleteMobilityLearningContributorUrl = () => {
+
+
+
+
+  return `/api/learning/contributor`
+}
+
+/**
+ * @summary Delete this installation's contributed learning data
+ */
+export const deleteMobilityLearningContributor = async ( options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+
+  return customFetch<void>(getDeleteMobilityLearningContributorUrl(),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteMobilityLearningContributorMutationKey = () => ['deleteMobilityLearningContributor'] as const;
+
+export const getDeleteMobilityLearningContributorMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteMobilityLearningContributor>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteMobilityLearningContributor>>, TError,void, TContext> => {
+
+const mutationKey = getDeleteMobilityLearningContributorMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteMobilityLearningContributor>>, void> = () => {
+
+
+          return  deleteMobilityLearningContributor(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteMobilityLearningContributorMutationResult = NonNullable<Awaited<ReturnType<typeof deleteMobilityLearningContributor>>>
+
+    export type DeleteMobilityLearningContributorMutationError = ErrorType<void>
+
+
+    /**
+ * @summary Delete this installation's contributed learning data
+ */
+export const useDeleteMobilityLearningContributor = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteMobilityLearningContributor>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteMobilityLearningContributor>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getDeleteMobilityLearningContributorMutationOptions(options));
+    }
 
 export const getCreateEnterpriseEventUrl = () => {
 

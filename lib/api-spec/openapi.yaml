@@ -24,6 +24,8 @@ tags:
     description: Places to wait for the first train
   - name: usage
     description: Paid API usage
+  - name: learning
+    description: Optional privacy-minimal mobility learning
   - name: enterprise
     description: LastRide for Business organizer and event operations
   - name: event-participants
@@ -144,6 +146,36 @@ paths:
           description: No useful partway rail option remains
         "502":
           description: Timetable or routing provider unavailable
+  /trains/recovery-transit:
+    get:
+      operationId: getRecoveryTransitRoutes
+      tags: [trains]
+      summary: Public-transit routes still available after a missed train
+      description: >-
+        Door-to-door ground public-transport routes from the user's current
+        coordinates to the destination using live scheduled trains and buses.
+        Results are requested in fare order. Taxi hybrids are evaluated
+        separately so every fare in this response remains provider-traceable.
+      parameters:
+        - $ref: "#/components/parameters/FromLat"
+        - $ref: "#/components/parameters/FromLon"
+        - $ref: "#/components/parameters/ToLat"
+        - $ref: "#/components/parameters/ToLon"
+        - $ref: "#/components/parameters/EarliestDepartureAtMs"
+        - name: limit
+          in: query
+          required: false
+          schema: { type: number, minimum: 1, maximum: 20, default: 10 }
+      responses:
+        "200":
+          description: Fare-sorted public-transit recovery routes
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/RecoveryTransitRoute" }
+        "502":
+          description: Timetable provider unavailable
   /trains/disruptions:
     get:
       operationId: getTrainDisruptions
@@ -330,6 +362,68 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/UsageReport"
+  /learning/observations:
+    post:
+      operationId: uploadMobilityLearningObservations
+      tags: [learning]
+      summary: Contribute derived mobility timing outcomes
+      description: >-
+        Optional opt-in learning upload. Contains durations, public station/line
+        identifiers and coarse time buckets only; no raw GPS trail, home address,
+        starting coordinate or exact observation timestamp.
+      parameters:
+        - $ref: "#/components/parameters/LearningToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MobilityLearningBatch" }
+      responses:
+        "202":
+          description: Observations accepted or deduplicated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MobilityLearningAccepted" }
+        "400": { description: Invalid observation batch or consent version }
+        "401": { description: Anonymous learning token required }
+        "429": { description: Too many learning uploads }
+        "503": { description: Learning service unavailable }
+  /learning/station-profiles:
+    post:
+      operationId: getStationAccessProfiles
+      tags: [learning]
+      summary: Aggregate station-to-boarding timing profiles
+      description: >-
+        Returns privacy-thresholded aggregate timing percentiles. Sparse cohorts
+        return source=insufficient and no percentile values.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StationAccessProfileBatch" }
+      responses:
+        "200":
+          description: Aggregate profiles in request order
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/StationAccessProfile" }
+        "400": { description: Invalid profile query }
+        "429": { description: Too many profile queries }
+        "503": { description: Learning service unavailable }
+  /learning/contributor:
+    delete:
+      operationId: deleteMobilityLearningContributor
+      tags: [learning]
+      summary: Delete this installation's contributed learning data
+      parameters:
+        - $ref: "#/components/parameters/LearningToken"
+      responses:
+        "204": { description: Contributor and associated observations deleted }
+        "401": { description: Anonymous learning token required }
+        "429": { description: Too many deletion requests }
+        "503": { description: Learning service unavailable }
   /enterprise/events:
     post:
       operationId: createEnterpriseEvent
@@ -524,6 +618,12 @@ components:
       in: header
       required: true
       schema: { type: string, minLength: 32, maxLength: 256 }
+    LearningToken:
+      name: X-Learning-Token
+      in: header
+      required: true
+      description: Random 256-bit per-installation token; the server stores only its SHA-256 digest.
+      schema: { type: string, pattern: "^[A-Fa-f0-9]{64}$" }
     FromLat:
       name: fromLat
       in: query
@@ -576,6 +676,12 @@ components:
       in: query
       required: true
       description: Earliest epoch millisecond at which the user can board a train
+      schema: { type: number }
+    EarliestDepartureAtMs:
+      name: earliestDepartureAtMs
+      in: query
+      required: true
+      description: Earliest epoch millisecond at which a recovery itinerary may depart
       schema: { type: number }
   schemas:
     TrainRoute:
@@ -708,6 +814,38 @@ components:
         totalFareYen:
           type: [number, "null"]
       required: [train, taxiFrom, taxi, totalFareYen]
+    RecoveryTransitLeg:
+      type: object
+      properties:
+        mode: { type: string, enum: [train, bus, walk, other] }
+        modeDetail: { type: [string, "null"] }
+        line: { type: string }
+        lineEn: { type: string }
+        from: { type: string }
+        fromEn: { type: string }
+        to: { type: string }
+        toEn: { type: string }
+        departsAt: { type: [string, "null"] }
+        arrivesAt: { type: [string, "null"] }
+      required:
+        [mode, modeDetail, line, lineEn, from, fromEn, to, toEn, departsAt, arrivesAt]
+    RecoveryTransitRoute:
+      type: object
+      properties:
+        departsAt: { type: string }
+        arrivesAt: { type: string }
+        transfers: { type: number }
+        fareYen: { type: [number, "null"] }
+        walkingMinutes: { type: number }
+        durationMinutes: { type: number }
+        modes:
+          type: array
+          items: { type: string, enum: [train, bus, walk, other] }
+        legs:
+          type: array
+          items: { $ref: "#/components/schemas/RecoveryTransitLeg" }
+      required:
+        [departsAt, arrivesAt, transfers, fareYen, walkingMinutes, durationMinutes, modes, legs]
     TrainDisruption:
       type: object
       properties:
@@ -739,6 +877,81 @@ components:
         arrivesAt:
           type: string
       required: [line, lineEn, from, fromEn, to, toEn, departsAt, arrivesAt]
+    MobilityLearningObservation:
+      type: object
+      additionalProperties: false
+      properties:
+        clientObservationId: { type: string, minLength: 1, maxLength: 80 }
+        kind: { type: string, enum: [trip_timing, station_traversal] }
+        stationKey: { type: string, minLength: 1, maxLength: 180 }
+        lineKey: { type: string, minLength: 1, maxLength: 180 }
+        hourBucket: { type: integer, minimum: 0, maximum: 23 }
+        dayType: { type: string, enum: [weekday, weekend, holiday] }
+        packupSeconds: { type: integer, minimum: 0, maximum: 3600 }
+        walkingDistanceMeters: { type: integer, minimum: 0, maximum: 50000 }
+        providerWalkingSeconds: { type: integer, minimum: 0, maximum: 14400 }
+        actualWalkingSeconds: { type: integer, minimum: 0, maximum: 14400 }
+        elevationGainMeters: { type: integer, minimum: 0, maximum: 5000 }
+        elevationLossMeters: { type: integer, minimum: 0, maximum: 5000 }
+        stationTraversalSeconds: { type: integer, minimum: 0, maximum: 1800 }
+        caughtTrain: { type: boolean }
+        confidencePermille: { type: integer, minimum: 0, maximum: 1000 }
+        modelVersion: { type: string, minLength: 1, maxLength: 40 }
+      required:
+        [clientObservationId, kind, hourBucket, dayType, confidencePermille, modelVersion]
+    MobilityLearningBatch:
+      type: object
+      additionalProperties: false
+      properties:
+        consentVersion: { type: integer, minimum: 1 }
+        observations:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items: { $ref: "#/components/schemas/MobilityLearningObservation" }
+      required: [consentVersion, observations]
+    MobilityLearningAccepted:
+      type: object
+      properties:
+        accepted: { type: integer, minimum: 0, maximum: 20 }
+      required: [accepted]
+    StationAccessProfileQuery:
+      type: object
+      additionalProperties: false
+      properties:
+        stationKey: { type: string, minLength: 1, maxLength: 180 }
+        lineKey: { type: string, minLength: 1, maxLength: 180 }
+        hourBucket: { type: integer, minimum: 0, maximum: 23 }
+        dayType: { type: string, enum: [weekday, weekend, holiday] }
+      required: [stationKey, hourBucket, dayType]
+    StationAccessProfileBatch:
+      type: object
+      additionalProperties: false
+      properties:
+        queries:
+          type: array
+          minItems: 1
+          maxItems: 12
+          items: { $ref: "#/components/schemas/StationAccessProfileQuery" }
+      required: [queries]
+    StationAccessProfile:
+      type: object
+      properties:
+        stationKey: { type: string }
+        lineKey: { type: [string, "null"] }
+        hourBucket: { type: integer, minimum: 0, maximum: 23 }
+        dayType: { type: string, enum: [weekday, weekend, holiday] }
+        sampleCount: { type: integer, minimum: 0 }
+        contributorCount: { type: integer, minimum: 0 }
+        p50Seconds: { type: [number, "null"] }
+        p90Seconds: { type: [number, "null"] }
+        p95Seconds: { type: [number, "null"] }
+        source:
+          type: string
+          enum: [station-line-context, station-line, station, insufficient]
+        lookbackDays: { type: integer, minimum: 1 }
+      required:
+        [stationKey, lineKey, hourBucket, dayType, sampleCount, contributorCount, p50Seconds, p90Seconds, p95Seconds, source, lookbackDays]
     CreateEnterpriseEventRequest:
       type: object
       properties:

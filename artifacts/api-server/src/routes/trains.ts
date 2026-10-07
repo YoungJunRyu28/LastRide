@@ -5,11 +5,13 @@ import {
   GetLastTrainResponse,
   GetPartwayTrainTaxiQueryParams,
   GetPartwayTrainTaxiResponse,
+  GetRecoveryTransitRoutesQueryParams,
+  GetRecoveryTransitRoutesResponse,
   GetTrainDisruptionsQueryParams,
   GetTrainDisruptionsResponse,
 } from "@workspace/api-zod";
 import { ProviderError } from "../lib/cache";
-import { searchTrain, trainDisruptionsForLines } from "../lib/ekispert";
+import { searchRecoveryTransitRoutes, searchTrain, trainDisruptionsForLines } from "../lib/ekispert";
 import { findPartwayTrainTaxi } from "../lib/partway";
 import { recordLastTrainShadowComparison } from "../lib/transitShadow";
 
@@ -112,6 +114,35 @@ router.get("/trains/partway", async (req, res) => {
     res
       .status(502)
       .json({ error: "Timetable or routing provider unavailable" });
+  }
+});
+
+
+router.get("/trains/recovery-transit", async (req, res) => {
+  const parsed = GetRecoveryTransitRoutesQueryParams.safeParse(req.query);
+  if (!parsed.success) {
+    res
+      .status(400)
+      .json({ error: "Invalid query", issues: parsed.error.issues });
+    return;
+  }
+
+  const query = parsed.data;
+  try {
+    const routes = await searchRecoveryTransitRoutes(
+      { latitude: query.fromLat, longitude: query.fromLon },
+      { latitude: query.toLat, longitude: query.toLon },
+      query.earliestDepartureAtMs,
+      query.limit,
+    );
+    res.json(GetRecoveryTransitRoutesResponse.parse(routes));
+  } catch (err) {
+    if (!(err instanceof ProviderError)) throw err;
+    req.log.warn(
+      { err: err.message },
+      "Recovery public-transit provider unavailable",
+    );
+    res.status(502).json({ error: "Timetable provider unavailable" });
   }
 });
 

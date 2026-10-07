@@ -133,20 +133,36 @@ export async function findPartwayTrainTaxi(input: {
     input.to.name,
   );
 
-  // Candidate order is farthest-first, so the first workable stop is the
-  // best one. Evaluate sequentially and stop there: every attempt costs paid
-  // route, station and taxi calls. A provider error on one candidate moves on
-  // to the next; it only fails the request if no candidate works.
+  // Evaluate the bounded candidate set rather than stopping at the farthest
+  // reachable station. The farthest rail stop often shortens the taxi, but fare
+  // zones, road geometry and late-night taxi estimates can make an earlier
+  // cutover cheaper. Sequential calls keep paid-provider pressure predictable.
   let firstError: unknown;
+  const options: PartwayTrainTaxi[] = [];
   for (const candidate of candidates) {
     try {
       const option = await evaluateCandidate(candidate, input);
-      if (option) return option;
+      if (option) options.push(option);
     } catch (err) {
       if (!(err instanceof ProviderError)) throw err;
       firstError ??= err;
     }
   }
-  if (firstError) throw firstError;
-  return null;
+
+  if (options.length === 0) {
+    if (firstError) throw firstError;
+    return null;
+  }
+
+  options.sort((first, second) => {
+    const firstFare = first.totalFareYen ?? Number.POSITIVE_INFINITY;
+    const secondFare = second.totalFareYen ?? Number.POSITIVE_INFINITY;
+    return (
+      firstFare - secondFare ||
+      first.taxi.distanceMeters - second.taxi.distanceMeters ||
+      first.taxi.minutes - second.taxi.minutes ||
+      Date.parse(first.train.arrivesAt) - Date.parse(second.train.arrivesAt)
+    );
+  });
+  return options[0];
 }

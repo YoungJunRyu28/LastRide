@@ -11,7 +11,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { AppState, Platform } from "react-native";
+import { Alert, AppState, Platform } from "react-native";
 import { apiBaseUrl, communityFallbacksEnabled } from "@/lib/api";
 import {
   clearEnterpriseParticipation,
@@ -26,6 +26,13 @@ import {
 } from "@/lib/notifications";
 import { recordNightPlan } from "@/lib/nightHistory";
 import { recommendedLeaveTime } from "@/lib/reliability";
+import {
+  clearLocalLearningState,
+  deleteSharedLearningData,
+  discardPendingLearningObservations,
+  flushLearningQueue,
+  getOrCreateLearningToken,
+} from "@/lib/mobilityLearning";
 import {
   buildReminderPlans,
   nightEndsAt,
@@ -66,6 +73,12 @@ import {
 import { getFirstTrain, type TrainTime } from "@/lib/timetable";
 import { endLiveActivity, syncLiveActivity } from "@/lib/liveActivity";
 import {
+  beginLearningSession,
+  clearActiveLearningSession,
+  confirmLearningTrainOutcome,
+  recordLearningLocationSignal,
+} from "@/lib/tripLearning";
+import {
   clearTrackingSnapshot,
   isTrackingFlagOn,
   markTrackingStarted,
@@ -79,6 +92,44 @@ export type { HomeAddress, Language, SavedDestination } from "@/lib/settings";
 export type { StationOption } from "@/lib/stations";
 export { REMINDER_CHOICES } from "@/lib/settings";
 export type LocationErrorCode = LocationError["code"];
+
+const BACKGROUND_LOCATION_DISCLOSURE_VERSION = "1";
+
+async function chooseBackgroundTracking(language: Language | null): Promise<boolean> {
+  if (Platform.OS === "web") return false;
+  const prior = await AsyncStorage.getItem(
+    STORAGE_KEYS.backgroundLocationDisclosure,
+  ).catch(() => null);
+  if (prior === BACKGROUND_LOCATION_DISCLOSURE_VERSION) return true;
+
+  const ja = language === "ja";
+  return new Promise<boolean>((resolve) => {
+    Alert.alert(
+      ja ? "バックグラウンド位置情報" : "Background location",
+      ja
+        ? "夜のトラッキング中は、アプリを閉じている間も位置情報を使って最寄り駅・徒歩時間・出発時刻を更新します。『時間予測を改善』を有効にした場合は、位置サンプルから徒歩・駅内移動の時間だけを端末上で算出します。学習用にGPSの移動軌跡は送信しません。"
+        : "While night tracking is on, LastRide uses location even when the app is closed to keep your nearby station, walking time, and leave-by reminders current. If Improve timing predictions is enabled, location samples are also reduced on-device to walking and station timing outcomes; raw GPS trails are not uploaded for learning.",
+      [
+        {
+          text: ja ? "アプリ使用中のみ" : "While using app only",
+          style: "cancel",
+          onPress: () => resolve(false),
+        },
+        {
+          text: ja ? "バックグラウンドを許可" : "Allow background",
+          onPress: () => {
+            void AsyncStorage.setItem(
+              STORAGE_KEYS.backgroundLocationDisclosure,
+              BACKGROUND_LOCATION_DISCLOSURE_VERSION,
+            );
+            resolve(true);
+          },
+        },
+      ],
+      { cancelable: false },
+    );
+  });
+}
 
 type RideContextValue = {
   language: Language | null;
@@ -124,6 +175,11 @@ type RideContextValue = {
   /** Send the "missed the last train?" check-in after the last train has gone. */
   missedCheckIn: boolean;
   setMissedCheckIn: (enabled: boolean) => void;
+  /** Opt-in sharing of derived timing outcomes for aggregate mobility learning. */
+  mobilityLearning: boolean;
+  setMobilityLearning: (enabled: boolean) => void;
+  deleteMobilityLearningData: () => Promise<boolean>;
+  confirmTrainOutcome: (caughtTrain: boolean) => Promise<boolean>;
   notificationsAllowed: boolean | null;
   /** "HH:MM" (Japan time) of the app clock — the demo clock while one is set. */
   currentTime: string;
@@ -331,6 +387,9 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
   const [missedCheckIn, setMissedCheckInState] = useState(
     DEFAULT_SETTINGS.missedCheckIn,
   );
+  const [mobilityLearning, setMobilityLearningState] = useState(
+    DEFAULT_SETTINGS.mobilityLearning,
+  );
   const [pinnedStation, setPinnedStationState] = useState<StationOption | null>(
     DEFAULT_SETTINGS.pinnedStation,
   );
@@ -392,6 +451,11 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
         setReminderIntervals(saved.reminderIntervals);
         setPinnedStationState(saved.pinnedStation);
         setMissedCheckInState(saved.missedCheckIn);
+        setMobilityLearningState(saved.mobilityLearning);
+        if (saved.mobilityLearning) {
+          void getOrCreateLearningToken();
+          void flushLearningQueue();
+        }
         setHomeAddressState(saved.homeAddress);
         setDestinations(saved.destinations);
         setActiveDestinationId(saved.activeDestinationId);
@@ -696,6 +760,35 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     void Haptics.selectionAsync();
   }, []);
 
+  const setMobilityLearning = useCallback((enabled: boolean) => {
+    setMobilityLearningState(enabled);
+    void AsyncStorage.setItem(STORAGE_KEYS.mobilityLearning, String(enabled));
+    if (enabled) {
+      void getOrCreateLearningToken();
+      void flushLearningQueue();
+    } else {
+      // Opting out is immediate: never keep unsent observations around to be
+      // uploaded on a later re-enable, and stop the in-progress learning trip.
+      void discardPendingLearningObservations();
+      void clearActiveLearningSession();
+    }
+    void Haptics.selectionAsync();
+  }, []);
+
+  const deleteMobilityLearningData = useCallback(async () => {
+    const deleted = await deleteSharedLearningData();
+    if (!deleted) return false;
+    await clearLocalLearningState();
+    setMobilityLearningState(false);
+    await AsyncStorage.setItem(STORAGE_KEYS.mobilityLearning, 'false');
+    return true;
+  }, []);
+
+  const confirmTrainOutcome = useCallback(
+    (caughtTrain: boolean) => confirmLearningTrainOutcome(caughtTrain, getNow()),
+    [getNow],
+  );
+
   const setDemoNow = useCallback(
     (virtualMs: number | null) => {
       const realAt = Date.now();
@@ -794,7 +887,10 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
   const applyPlan = useCallback((next: NightPlan) => {
     setUserCoordinates(next.coordinates);
     setPlan(next);
-  }, []);
+    if (trackingMode && mobilityLearning) {
+      void beginLearningSession(next, true);
+    }
+  }, [mobilityLearning, trackingMode]);
 
   const removeWatches = useCallback(() => {
     foregroundWatch.current?.remove();
@@ -830,8 +926,28 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       if (op !== trackingOp.current) return;
       if (!resume) void markTrackingStarted(startedAt);
       setTrackingStartedAt(startedAt);
-      const handleCoordinates = (coordinates: Coordinates) => {
-        if (op !== trackingOp.current || replanInFlight.current) return;
+      const handleCoordinates = (
+        coordinates: Coordinates,
+        signal?: {
+          timestamp: number;
+          speedMps?: number | null;
+          accuracyMeters?: number | null;
+          altitudeMeters?: number | null;
+          altitudeAccuracyMeters?: number | null;
+        },
+      ) => {
+        if (op !== trackingOp.current) return;
+        if (mobilityLearning && signal) {
+          void recordLearningLocationSignal({
+            coordinates,
+            timestamp: signal.timestamp,
+            speedMps: signal.speedMps,
+            accuracyMeters: signal.accuracyMeters,
+            altitudeMeters: signal.altitudeMeters,
+            altitudeAccuracyMeters: signal.altitudeAccuracyMeters,
+          });
+        }
+        if (replanInFlight.current) return;
         if (!shouldReplan(planRef.current, coordinates, getNow())) return;
         replanInFlight.current = true;
         void planFrom(coordinates)
@@ -844,17 +960,30 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
           });
       };
       removeWatches();
+      const allowBackground = resume
+        ? true
+        : await chooseBackgroundTracking(language);
+      if (op !== trackingOp.current) return;
       if (Platform.OS === "web") {
         if (!navigator.geolocation) {
           setLocationError("unsupported");
           return;
         }
         webWatchId.current = navigator.geolocation.watchPosition(
-          ({ coords }) =>
-            handleCoordinates({
-              latitude: coords.latitude,
-              longitude: coords.longitude,
-            }),
+          ({ coords, timestamp }) =>
+            handleCoordinates(
+              {
+                latitude: coords.latitude,
+                longitude: coords.longitude,
+              },
+              {
+                timestamp,
+                speedMps: coords.speed,
+                accuracyMeters: coords.accuracy,
+                altitudeMeters: coords.altitude,
+                altitudeAccuracyMeters: coords.altitudeAccuracy,
+              },
+            ),
           () => setLocationError("permission"),
           { enableHighAccuracy: true },
         );
@@ -869,15 +998,26 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       }
       const watch = await Location.watchPositionAsync(
         {
-          accuracy: Location.Accuracy.Balanced,
-          distanceInterval: 150,
-          timeInterval: 120000,
+          accuracy: mobilityLearning
+            ? Location.Accuracy.High
+            : Location.Accuracy.Balanced,
+          distanceInterval: mobilityLearning ? 50 : 150,
+          timeInterval: mobilityLearning ? 60000 : 120000,
         },
         (position) =>
-          handleCoordinates({
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-          }),
+          handleCoordinates(
+            {
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude,
+            },
+            {
+              timestamp: position.timestamp,
+              speedMps: position.coords.speed,
+              accuracyMeters: position.coords.accuracy,
+              altitudeMeters: position.coords.altitude,
+              altitudeAccuracyMeters: position.coords.altitudeAccuracy,
+            },
+          ),
       );
       if (op !== trackingOp.current) {
         watch.remove(); // a stop/reset happened while we were awaiting — tear down
@@ -885,15 +1025,20 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       }
       foregroundWatch.current = watch;
       // Background updates keep it fresh while the app is closed (dev/production builds).
-      const backgroundActive = await startBackgroundTracking();
+      const backgroundActive = allowBackground
+        ? await startBackgroundTracking(mobilityLearning)
+        : false;
       if (op !== trackingOp.current) {
         if (backgroundActive) await stopBackgroundTracking(); // compensate a stale start
         return;
       }
       setTrackingMode(backgroundActive ? "background" : "foreground");
+      if (mobilityLearning && planRef.current) {
+        void beginLearningSession(planRef.current, true);
+      }
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     },
-    [planFrom, applyPlan, removeWatches, getNow],
+    [planFrom, applyPlan, removeWatches, getNow, mobilityLearning, language],
   );
 
   // Once the night is over (the first train has left), move on to the next night
@@ -1009,12 +1154,17 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     await leaveCurrentEnterpriseEvent().catch(() =>
       clearEnterpriseParticipation(),
     );
+    // Best-effort remote erasure. If offline, the anonymous token remains in
+    // SecureStore so the user can retry deletion later instead of orphaning it.
+    await deleteSharedLearningData().catch(() => false);
+    await clearLocalLearningState();
     await AsyncStorage.multiRemove(Object.values(STORAGE_KEYS));
     await clearSavedPlan();
     setLanguageState(DEFAULT_SETTINGS.language);
     setHomeStationOption(DEFAULT_SETTINGS.homeStation);
     setWalkingSpeedState(DEFAULT_SETTINGS.walkingSpeed);
     setReminderIntervals(DEFAULT_SETTINGS.reminderIntervals);
+    setMobilityLearningState(DEFAULT_SETTINGS.mobilityLearning);
     setPinnedStationState(null);
     setHomeAddressState(null);
     setDestinations(DEFAULT_SETTINGS.destinations);
@@ -1080,6 +1230,10 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       reminderIntervals,
       missedCheckIn,
       setMissedCheckIn,
+      mobilityLearning,
+      setMobilityLearning,
+      deleteMobilityLearningData,
+      confirmTrainOutcome,
       notificationsAllowed,
       currentTime: formatJstTime(nowMs),
       nowMs,
@@ -1109,6 +1263,10 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       homeStation,
       missedCheckIn,
       setMissedCheckIn,
+      mobilityLearning,
+      setMobilityLearning,
+      deleteMobilityLearningData,
+      confirmTrainOutcome,
       homeStationOption,
       isHydrated,
       isLocating,

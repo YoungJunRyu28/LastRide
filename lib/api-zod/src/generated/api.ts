@@ -185,6 +185,60 @@ export const GetPartwayTrainTaxiResponse = zod.object({
 
 
 /**
+ * Door-to-door ground public-transport routes from the user's current coordinates to the destination using live scheduled trains and buses. Results are requested in fare order. Taxi hybrids are evaluated separately so every fare in this response remains provider-traceable.
+ * @summary Public-transit routes still available after a missed train
+ */
+export const getRecoveryTransitRoutesQueryFromLatMin = -90;
+export const getRecoveryTransitRoutesQueryFromLatMax = 90;
+
+export const getRecoveryTransitRoutesQueryFromLonMin = -180;
+export const getRecoveryTransitRoutesQueryFromLonMax = 180;
+
+export const getRecoveryTransitRoutesQueryToLatMin = -90;
+export const getRecoveryTransitRoutesQueryToLatMax = 90;
+
+export const getRecoveryTransitRoutesQueryToLonMin = -180;
+export const getRecoveryTransitRoutesQueryToLonMax = 180;
+
+export const getRecoveryTransitRoutesQueryLimitDefault = 10;
+export const getRecoveryTransitRoutesQueryLimitMax = 20;
+
+
+
+export const GetRecoveryTransitRoutesQueryParams = zod.object({
+  "fromLat": zod.coerce.number().min(getRecoveryTransitRoutesQueryFromLatMin).max(getRecoveryTransitRoutesQueryFromLatMax),
+  "fromLon": zod.coerce.number().min(getRecoveryTransitRoutesQueryFromLonMin).max(getRecoveryTransitRoutesQueryFromLonMax),
+  "toLat": zod.coerce.number().min(getRecoveryTransitRoutesQueryToLatMin).max(getRecoveryTransitRoutesQueryToLatMax),
+  "toLon": zod.coerce.number().min(getRecoveryTransitRoutesQueryToLonMin).max(getRecoveryTransitRoutesQueryToLonMax),
+  "earliestDepartureAtMs": zod.coerce.number().describe('Earliest epoch millisecond at which a recovery itinerary may depart'),
+  "limit": zod.coerce.number().min(1).max(getRecoveryTransitRoutesQueryLimitMax).default(getRecoveryTransitRoutesQueryLimitDefault)
+})
+
+export const GetRecoveryTransitRoutesResponseItem = zod.object({
+  "departsAt": zod.string(),
+  "arrivesAt": zod.string(),
+  "transfers": zod.number(),
+  "fareYen": zod.number().nullable(),
+  "walkingMinutes": zod.number(),
+  "durationMinutes": zod.number(),
+  "modes": zod.array(zod.enum(['train', 'bus', 'walk', 'other'])),
+  "legs": zod.array(zod.object({
+  "mode": zod.enum(['train', 'bus', 'walk', 'other']),
+  "modeDetail": zod.string().nullable(),
+  "line": zod.string(),
+  "lineEn": zod.string(),
+  "from": zod.string(),
+  "fromEn": zod.string(),
+  "to": zod.string(),
+  "toEn": zod.string(),
+  "departsAt": zod.string().nullable(),
+  "arrivesAt": zod.string().nullable()
+}))
+})
+export const GetRecoveryTransitRoutesResponse = zod.array(GetRecoveryTransitRoutesResponseItem)
+
+
+/**
  * Returns RescueNow disruption information matching the supplied rail line names. Returns an empty list when the optional provider product is unavailable so core planning remains unaffected.
  * @summary Live disruption information for route lines
  */
@@ -392,6 +446,152 @@ export const GetUsageResponse = zod.object({
   "thisMonth": zod.record(zod.string(), zod.number()),
   "monthlyLimits": zod.record(zod.string(), zod.number())
 })
+
+
+/**
+ * Optional opt-in learning upload. Contains durations, public station/line identifiers and coarse time buckets only; no raw GPS trail, home address, starting coordinate or exact observation timestamp.
+ * @summary Contribute derived mobility timing outcomes
+ */
+export const uploadMobilityLearningObservationsHeaderXLearningTokenRegExp = new RegExp('^[A-Fa-f0-9]{64}$');
+
+
+export const UploadMobilityLearningObservationsHeader = zod.object({
+  "X-Learning-Token": zod.string().regex(uploadMobilityLearningObservationsHeaderXLearningTokenRegExp).describe('Random 256-bit per-installation token; the server stores only its SHA-256 digest.')
+})
+
+
+export const uploadMobilityLearningObservationsBodyObservationsItemClientObservationIdMax = 80;
+
+export const uploadMobilityLearningObservationsBodyObservationsItemStationKeyMax = 180;
+
+export const uploadMobilityLearningObservationsBodyObservationsItemLineKeyMax = 180;
+
+export const uploadMobilityLearningObservationsBodyObservationsItemHourBucketMin = 0;
+export const uploadMobilityLearningObservationsBodyObservationsItemHourBucketMax = 23;
+
+export const uploadMobilityLearningObservationsBodyObservationsItemPackupSecondsMin = 0;
+export const uploadMobilityLearningObservationsBodyObservationsItemPackupSecondsMax = 3600;
+
+export const uploadMobilityLearningObservationsBodyObservationsItemWalkingDistanceMetersMin = 0;
+export const uploadMobilityLearningObservationsBodyObservationsItemWalkingDistanceMetersMax = 50000;
+
+export const uploadMobilityLearningObservationsBodyObservationsItemProviderWalkingSecondsMin = 0;
+export const uploadMobilityLearningObservationsBodyObservationsItemProviderWalkingSecondsMax = 14400;
+
+export const uploadMobilityLearningObservationsBodyObservationsItemActualWalkingSecondsMin = 0;
+export const uploadMobilityLearningObservationsBodyObservationsItemActualWalkingSecondsMax = 14400;
+
+export const uploadMobilityLearningObservationsBodyObservationsItemElevationGainMetersMin = 0;
+export const uploadMobilityLearningObservationsBodyObservationsItemElevationGainMetersMax = 5000;
+
+export const uploadMobilityLearningObservationsBodyObservationsItemElevationLossMetersMin = 0;
+export const uploadMobilityLearningObservationsBodyObservationsItemElevationLossMetersMax = 5000;
+
+export const uploadMobilityLearningObservationsBodyObservationsItemStationTraversalSecondsMin = 0;
+export const uploadMobilityLearningObservationsBodyObservationsItemStationTraversalSecondsMax = 1800;
+
+export const uploadMobilityLearningObservationsBodyObservationsItemConfidencePermilleMin = 0;
+export const uploadMobilityLearningObservationsBodyObservationsItemConfidencePermilleMax = 1000;
+
+export const uploadMobilityLearningObservationsBodyObservationsItemModelVersionMax = 40;
+
+export const uploadMobilityLearningObservationsBodyObservationsMax = 20;
+
+
+
+export const UploadMobilityLearningObservationsBody = zod.object({
+  "consentVersion": zod.int().min(1),
+  "observations": zod.array(zod.object({
+  "clientObservationId": zod.string().min(1).max(uploadMobilityLearningObservationsBodyObservationsItemClientObservationIdMax),
+  "kind": zod.enum(['trip_timing', 'station_traversal']),
+  "stationKey": zod.string().min(1).max(uploadMobilityLearningObservationsBodyObservationsItemStationKeyMax).optional(),
+  "lineKey": zod.string().min(1).max(uploadMobilityLearningObservationsBodyObservationsItemLineKeyMax).optional(),
+  "hourBucket": zod.int().min(uploadMobilityLearningObservationsBodyObservationsItemHourBucketMin).max(uploadMobilityLearningObservationsBodyObservationsItemHourBucketMax),
+  "dayType": zod.enum(['weekday', 'weekend', 'holiday']),
+  "packupSeconds": zod.int().min(uploadMobilityLearningObservationsBodyObservationsItemPackupSecondsMin).max(uploadMobilityLearningObservationsBodyObservationsItemPackupSecondsMax).optional(),
+  "walkingDistanceMeters": zod.int().min(uploadMobilityLearningObservationsBodyObservationsItemWalkingDistanceMetersMin).max(uploadMobilityLearningObservationsBodyObservationsItemWalkingDistanceMetersMax).optional(),
+  "providerWalkingSeconds": zod.int().min(uploadMobilityLearningObservationsBodyObservationsItemProviderWalkingSecondsMin).max(uploadMobilityLearningObservationsBodyObservationsItemProviderWalkingSecondsMax).optional(),
+  "actualWalkingSeconds": zod.int().min(uploadMobilityLearningObservationsBodyObservationsItemActualWalkingSecondsMin).max(uploadMobilityLearningObservationsBodyObservationsItemActualWalkingSecondsMax).optional(),
+  "elevationGainMeters": zod.int().min(uploadMobilityLearningObservationsBodyObservationsItemElevationGainMetersMin).max(uploadMobilityLearningObservationsBodyObservationsItemElevationGainMetersMax).optional(),
+  "elevationLossMeters": zod.int().min(uploadMobilityLearningObservationsBodyObservationsItemElevationLossMetersMin).max(uploadMobilityLearningObservationsBodyObservationsItemElevationLossMetersMax).optional(),
+  "stationTraversalSeconds": zod.int().min(uploadMobilityLearningObservationsBodyObservationsItemStationTraversalSecondsMin).max(uploadMobilityLearningObservationsBodyObservationsItemStationTraversalSecondsMax).optional(),
+  "caughtTrain": zod.boolean().optional(),
+  "confidencePermille": zod.int().min(uploadMobilityLearningObservationsBodyObservationsItemConfidencePermilleMin).max(uploadMobilityLearningObservationsBodyObservationsItemConfidencePermilleMax),
+  "modelVersion": zod.string().min(1).max(uploadMobilityLearningObservationsBodyObservationsItemModelVersionMax)
+})).min(1).max(uploadMobilityLearningObservationsBodyObservationsMax)
+})
+
+export const uploadMobilityLearningObservationsResponseAcceptedMin = 0;
+export const uploadMobilityLearningObservationsResponseAcceptedMax = 20;
+
+
+
+export const UploadMobilityLearningObservationsResponse = zod.object({
+  "accepted": zod.int().min(uploadMobilityLearningObservationsResponseAcceptedMin).max(uploadMobilityLearningObservationsResponseAcceptedMax)
+})
+
+
+/**
+ * Returns privacy-thresholded aggregate timing percentiles. Sparse cohorts return source=insufficient and no percentile values.
+ * @summary Aggregate station-to-boarding timing profiles
+ */
+export const getStationAccessProfilesBodyQueriesItemStationKeyMax = 180;
+
+export const getStationAccessProfilesBodyQueriesItemLineKeyMax = 180;
+
+export const getStationAccessProfilesBodyQueriesItemHourBucketMin = 0;
+export const getStationAccessProfilesBodyQueriesItemHourBucketMax = 23;
+
+export const getStationAccessProfilesBodyQueriesMax = 12;
+
+
+
+export const GetStationAccessProfilesBody = zod.object({
+  "queries": zod.array(zod.object({
+  "stationKey": zod.string().min(1).max(getStationAccessProfilesBodyQueriesItemStationKeyMax),
+  "lineKey": zod.string().min(1).max(getStationAccessProfilesBodyQueriesItemLineKeyMax).optional(),
+  "hourBucket": zod.int().min(getStationAccessProfilesBodyQueriesItemHourBucketMin).max(getStationAccessProfilesBodyQueriesItemHourBucketMax),
+  "dayType": zod.enum(['weekday', 'weekend', 'holiday'])
+})).min(1).max(getStationAccessProfilesBodyQueriesMax)
+})
+
+export const getStationAccessProfilesResponseHourBucketMin = 0;
+export const getStationAccessProfilesResponseHourBucketMax = 23;
+
+export const getStationAccessProfilesResponseSampleCountMin = 0;
+
+export const getStationAccessProfilesResponseContributorCountMin = 0;
+
+
+
+
+export const GetStationAccessProfilesResponseItem = zod.object({
+  "stationKey": zod.string(),
+  "lineKey": zod.string().nullable(),
+  "hourBucket": zod.int().min(getStationAccessProfilesResponseHourBucketMin).max(getStationAccessProfilesResponseHourBucketMax),
+  "dayType": zod.enum(['weekday', 'weekend', 'holiday']),
+  "sampleCount": zod.int().min(getStationAccessProfilesResponseSampleCountMin),
+  "contributorCount": zod.int().min(getStationAccessProfilesResponseContributorCountMin),
+  "p50Seconds": zod.number().nullable(),
+  "p90Seconds": zod.number().nullable(),
+  "p95Seconds": zod.number().nullable(),
+  "source": zod.enum(['station-line-context', 'station-line', 'station', 'insufficient']),
+  "lookbackDays": zod.int().min(1)
+})
+export const GetStationAccessProfilesResponse = zod.array(GetStationAccessProfilesResponseItem)
+
+
+/**
+ * @summary Delete this installation's contributed learning data
+ */
+export const deleteMobilityLearningContributorHeaderXLearningTokenRegExp = new RegExp('^[A-Fa-f0-9]{64}$');
+
+
+export const DeleteMobilityLearningContributorHeader = zod.object({
+  "X-Learning-Token": zod.string().regex(deleteMobilityLearningContributorHeaderXLearningTokenRegExp).describe('Random 256-bit per-installation token; the server stores only its SHA-256 digest.')
+})
+
+export const DeleteMobilityLearningContributorResponse = zod.void()
 
 
 /**

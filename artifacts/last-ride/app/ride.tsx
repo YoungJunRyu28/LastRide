@@ -132,11 +132,14 @@ export default function RideScreen() {
     trackingMode,
     startTracking,
     stopTracking,
+    mobilityLearning,
+    confirmTrainOutcome,
   } = useLastRide();
   const ja = language === "ja";
   const text = copy(language ?? "en");
   const station = ja ? stationNameJa : stationName;
   const [disruptions, setDisruptions] = useState<TrainDisruption[]>([]);
+  const [outcomeConfirmed, setOutcomeConfirmed] = useState(false);
   const freshness = plan ? planFreshness(plan.computedAt, nowMs) : null;
   const planAge = plan ? planAgeMinutes(plan.computedAt, nowMs) : null;
   const recommendedDeadline = plan ? recommendedLeaveTime(plan) : null;
@@ -144,6 +147,10 @@ export default function RideScreen() {
     plan && recommendedDeadline !== null
       ? Math.max(0, Math.round((plan.leaveByMs - recommendedDeadline) / 60000))
       : 0;
+
+  useEffect(() => {
+    setOutcomeConfirmed(false);
+  }, [plan?.lastTrain.departsAt, plan?.station.nameJa]);
 
   useEffect(() => {
     const legs = plan?.lastTrain.legs ?? [];
@@ -506,6 +513,88 @@ export default function RideScreen() {
               </Text>
             </View>
           </Pressable>
+        )}
+
+        {status === "departed" && mobilityLearning && !outcomeConfirmed && (
+          <View
+            testID="train-outcome-prompt"
+            style={[
+              styles.outcomeCard,
+              { backgroundColor: colors.card, borderColor: colors.border },
+            ]}
+          >
+            <View style={styles.flex}>
+              <Text style={[styles.rowTitle, { color: colors.foreground }]}>
+                {ja ? "この終電に乗れましたか？" : "Did you make this train?"}
+              </Text>
+              <Text style={[styles.note, { color: colors.mutedForeground }]}>
+                {ja
+                  ? "回答はあなたの予測と、匿名共有を有効にしている場合は駅構内の所要時間モデルの改善に使われます。"
+                  : "Your answer improves your timing model and, when anonymous sharing is enabled, the aggregate station-access model."}
+              </Text>
+            </View>
+            <View style={styles.outcomeActions}>
+              <Pressable
+                testID="outcome-caught"
+                accessibilityRole="button"
+                onPress={() => {
+                  setOutcomeConfirmed(true);
+                  void confirmTrainOutcome(true);
+                }}
+                style={({ pressed }) => [
+                  styles.outcomeButton,
+                  {
+                    backgroundColor: colors.primary,
+                    opacity: pressed ? 0.8 : 1,
+                  },
+                ]}
+              >
+                <Feather
+                  name="check"
+                  size={15}
+                  color={colors.primaryForeground}
+                />
+                <Text
+                  style={[
+                    styles.smallButtonText,
+                    { color: colors.primaryForeground },
+                  ]}
+                >
+                  {ja ? "乗れた" : "Made it"}
+                </Text>
+              </Pressable>
+              <Pressable
+                testID="outcome-missed"
+                accessibilityRole="button"
+                onPress={() => {
+                  setOutcomeConfirmed(true);
+                  void confirmTrainOutcome(false);
+                  router.replace("/alternatives");
+                }}
+                style={({ pressed }) => [
+                  styles.outcomeButton,
+                  {
+                    backgroundColor: colors.secondary,
+                    opacity: pressed ? 0.8 : 1,
+                  },
+                ]}
+              >
+                <Feather
+                  name="x"
+                  size={15}
+                  color={colors.secondaryForeground}
+                />
+                <Text
+                  style={[
+                    styles.smallButtonText,
+                    { color: colors.secondaryForeground },
+                  ]}
+                >
+                  {ja ? "乗れなかった" : "Missed it"}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
         )}
 
         {status === "departed" && (
@@ -964,6 +1053,25 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 12,
     padding: 15,
+  },
+  outcomeCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    gap: 12,
+    padding: 15,
+  },
+  outcomeActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  outcomeButton: {
+    alignItems: "center",
+    borderRadius: 12,
+    flexDirection: "row",
+    gap: 6,
+    paddingHorizontal: 13,
+    paddingVertical: 9,
   },
   section: { gap: 8 },
   sectionHead: {

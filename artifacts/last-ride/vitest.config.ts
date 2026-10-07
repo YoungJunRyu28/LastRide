@@ -21,6 +21,10 @@ export default defineConfig({
         find: /^@\/lib\/api$/,
         replacement: resolve(import.meta.dirname, 'tests/stubs/api.ts'),
       },
+      {
+        find: /^@\/lib\/mobilityLearning$/,
+        replacement: resolve(import.meta.dirname, 'tests/stubs/mobilityLearning.ts'),
+      },
     ],
   },
   test: {

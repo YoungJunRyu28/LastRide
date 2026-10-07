@@ -40,6 +40,30 @@ export type TrainRoute = {
 export type TrainStopRef = { code: string; name: string; nameEn: string };
 export type TrainRouteWithStops = TrainRoute & { stopRefs: TrainStopRef[] };
 
+export type RecoveryTransitMode = "train" | "bus" | "walk" | "other";
+export type RecoveryTransitLeg = {
+  mode: RecoveryTransitMode;
+  modeDetail: string | null;
+  line: string;
+  lineEn: string;
+  from: string;
+  fromEn: string;
+  to: string;
+  toEn: string;
+  departsAt: string | null;
+  arrivesAt: string | null;
+};
+export type RecoveryTransitRoute = {
+  departsAt: string;
+  arrivesAt: string;
+  transfers: number;
+  fareYen: number | null;
+  walkingMinutes: number;
+  durationMinutes: number;
+  modes: RecoveryTransitMode[];
+  legs: RecoveryTransitLeg[];
+};
+
 function apiKey(): string {
   const key = process.env["EKISPERT_KEY"];
   if (!key) throw new ProviderError("EKISPERT_KEY is not configured");
@@ -113,6 +137,33 @@ function trainOnlyCondition(): Promise<string> {
   return conditionDetail;
 }
 
+// Ground public transport for the "I missed it" recovery planner. Unlike the
+// last-train calculation this deliberately allows local/highway/connection/
+// midnight buses. Planes and ships stay excluded: they are not sensible
+// same-night urban recovery edges and would distort "cheapest" results.
+let recoveryConditionDetail: Promise<string> | null = null;
+function recoveryTransitCondition(): Promise<string> {
+  recoveryConditionDetail ??= call("/toolbox/course/condition", {
+    plane: "never",
+    ship: "never",
+    highwayBus: "normal",
+    localBus: "normal",
+    connectionBus: "normal",
+    midnightBus: "normal",
+  })
+    .then((resultSet) => {
+      const condition = resultSet["Condition"];
+      if (typeof condition !== "string")
+        throw new ProviderError("Ekispert returned no recovery search condition");
+      return condition;
+    })
+    .catch((err) => {
+      recoveryConditionDetail = null;
+      throw err;
+    });
+  return recoveryConditionDetail;
+}
+
 /**
  * "府中(広島県)" → "府中", "押上〈スカイツリー前〉" → "押上": providers add
  * prefectures or alternate names in brackets.
@@ -168,7 +219,7 @@ type EkispertStop = {
 
 type EkispertLine = {
   Name: string;
-  Type: string | { text: string };
+  Type: string | { text: string; detail?: string };
   DepartureState?: { Datetime?: { text: string } };
   ArrivalState?: { Datetime?: { text: string } };
   Stop?: EkispertStop | EkispertStop[];
@@ -191,6 +242,8 @@ type EkispertCourse = {
   Price?: EkispertPrice | EkispertPrice[];
   Route: {
     transferCount?: string;
+    timeWalk?: string;
+    timeTotal?: string;
     Line: EkispertLine | EkispertLine[];
     Point: Array<{ Station?: { Name: string; Yomi?: string }; Name?: string }>;
   };
@@ -246,6 +299,112 @@ function toTrainRoute(course: EkispertCourse): TrainRouteWithStops | null {
     stopRefs,
   };
 }
+
+
+function recoveryMode(line: EkispertLine): {
+  mode: RecoveryTransitMode;
+  detail: string | null;
+} {
+  const text =
+    typeof line.Type === "string" ? line.Type : line.Type.text;
+  const detail =
+    typeof line.Type === "string" ? null : (line.Type.detail ?? null);
+  switch (text) {
+    case "train":
+      return { mode: "train", detail };
+    case "bus":
+      return { mode: "bus", detail };
+    case "walk":
+      return { mode: "walk", detail };
+    default:
+      return { mode: "other", detail: detail ?? text };
+  }
+}
+
+function routePointName(
+  point: EkispertCourse["Route"]["Point"][number] | undefined,
+): string {
+  return point?.Station?.Name ?? point?.Name ?? "";
+}
+
+function routePointNameEn(
+  point: EkispertCourse["Route"]["Point"][number] | undefined,
+): string {
+  return point?.Station?.Yomi
+    ? kanaToRomaji(point.Station.Yomi)
+    : routePointName(point);
+}
+
+/**
+ * Pure parser for bus/train/walk recovery results. Exported so provider-shape
+ * regressions can be unit-tested without calling the paid API.
+ */
+export function toRecoveryTransitRoute(
+  course: EkispertCourse,
+): RecoveryTransitRoute | null {
+  const lines = list(course.Route.Line);
+  const points = list(course.Route.Point);
+  if (lines.length === 0) return null;
+
+  const legs: RecoveryTransitLeg[] = lines.map((line, index) => {
+    const { mode, detail } = recoveryMode(line);
+    return {
+      mode,
+      modeDetail: detail,
+      line: line.Name,
+      lineEn: line.Name ? lineNameEn(line.Name) : "",
+      from: routePointName(points[index]),
+      fromEn: routePointNameEn(points[index]),
+      to: routePointName(points[index + 1]),
+      toEn: routePointNameEn(points[index + 1]),
+      departsAt: line.DepartureState?.Datetime?.text ?? null,
+      arrivesAt: line.ArrivalState?.Datetime?.text ?? null,
+    };
+  });
+
+  const firstDeparture = legs.find((leg) => leg.departsAt)?.departsAt ?? null;
+  const lastArrival =
+    [...legs].reverse().find((leg) => leg.arrivesAt)?.arrivesAt ?? null;
+  if (!firstDeparture || !lastArrival) return null;
+
+  const departureMs = Date.parse(firstDeparture);
+  const arrivalMs = Date.parse(lastArrival);
+  if (
+    !Number.isFinite(departureMs) ||
+    !Number.isFinite(arrivalMs) ||
+    arrivalMs < departureMs
+  ) {
+    return null;
+  }
+
+  const timeWalk = Number(course.Route.timeWalk ?? NaN);
+  const timeTotal = Number(course.Route.timeTotal ?? NaN);
+  const modes = [
+    ...new Set(
+      legs
+        .map((leg) => leg.mode)
+        .filter((mode): mode is RecoveryTransitMode => mode !== "other"),
+    ),
+  ];
+
+  return {
+    departsAt: firstDeparture,
+    arrivesAt: lastArrival,
+    transfers: Math.max(0, Number(course.Route.transferCount ?? 0)),
+    fareYen: onewayFare(course),
+    walkingMinutes: Number.isFinite(timeWalk) ? Math.max(0, timeWalk) : 0,
+    durationMinutes: Number.isFinite(timeTotal)
+      ? Math.max(0, timeTotal)
+      : Math.max(0, Math.ceil((arrivalMs - departureMs) / 60_000)),
+    modes,
+    legs,
+  };
+}
+
+const recoveryTransitRoutes = new TtlCache<RecoveryTransitRoute[]>(
+  5 * 60 * 1000,
+  "ekispert-recovery-transit-v1",
+);
 
 // Bump the cache name when TrainRoute changes shape, so stale entries are ignored.
 const routes = new TtlCache<TrainRouteWithStops | null>(
@@ -347,6 +506,88 @@ function jstSearchParts(ms: number): { date: string; time: string } {
       pad(shifted.getUTCDate()),
     time: pad(shifted.getUTCHours()) + pad(shifted.getUTCMinutes()),
   };
+}
+
+
+/**
+ * Door-to-door ground public-transport recovery search from the user's current
+ * coordinates. Ekispert evaluates trains and buses on the actual timetable;
+ * results are requested in fare order, then normalized and defensively sorted.
+ *
+ * Taxi is intentionally not part of this function. Hybrid taxi edges are
+ * evaluated separately so a route labeled "cheapest" has a traceable fare for
+ * every leg.
+ */
+export async function searchRecoveryTransitRoutes(
+  from: { latitude: number; longitude: number },
+  to: { latitude: number; longitude: number },
+  earliestDepartureMs: number,
+  limit = 10,
+): Promise<RecoveryTransitRoute[]> {
+  const boundedLimit = Math.min(20, Math.max(1, Math.floor(limit)));
+  const { date, time } = jstSearchParts(earliestDepartureMs);
+  const condition = await recoveryTransitCondition();
+  const cacheKey = [
+    from.latitude.toFixed(5),
+    from.longitude.toFixed(5),
+    to.latitude.toFixed(5),
+    to.longitude.toFixed(5),
+    date,
+    time,
+    boundedLimit,
+  ].join("|");
+  const cached = await recoveryTransitRoutes.get(cacheKey);
+  if (cached !== undefined) return cached;
+
+  const resultSet = await call("/search/course/extreme", {
+    viaList: `${from.latitude},${from.longitude}:${to.latitude},${to.longitude}`,
+    gcs: "wgs84",
+    searchType: "departure",
+    date,
+    time,
+    sort: "price",
+    answerCount: String(boundedLimit),
+    searchCount: String(boundedLimit),
+    addStop: "true",
+    conditionDetail: condition,
+  });
+
+  const seen = new Set<string>();
+  const routes = list(
+    resultSet["Course"] as EkispertCourse | EkispertCourse[] | undefined,
+  )
+    .map(toRecoveryTransitRoute)
+    .filter((route): route is RecoveryTransitRoute => route !== null)
+    .filter(
+      (route) =>
+        route.modes.includes("train") || route.modes.includes("bus"),
+    )
+    .filter((route) => Date.parse(route.departsAt) >= earliestDepartureMs)
+    .filter((route) => {
+      const key = [
+        route.departsAt,
+        route.arrivesAt,
+        route.fareYen ?? "unknown",
+        route.legs
+          .map((leg) => `${leg.mode}:${leg.line}:${leg.from}:${leg.to}`)
+          .join(">"),
+      ].join("|");
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((first, second) => {
+      const firstFare = first.fareYen ?? Number.POSITIVE_INFINITY;
+      const secondFare = second.fareYen ?? Number.POSITIVE_INFINITY;
+      return (
+        firstFare - secondFare ||
+        Date.parse(first.arrivesAt) - Date.parse(second.arrivesAt) ||
+        first.walkingMinutes - second.walkingMinutes
+      );
+    });
+
+  await recoveryTransitRoutes.set(cacheKey, routes);
+  return routes;
 }
 
 /** Earliest timetable route departing no sooner than the user can board. */

@@ -8,7 +8,7 @@ import { MINUTE_MS } from '@/lib/time';
 import { Feather } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import React from 'react';
-import { Platform, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Alert, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 /** A labelled group of rows. */
@@ -72,9 +72,66 @@ export default function SettingsScreen() {
     language, homeStation, destination, walkingSpeed, setWalkingSpeed, setLanguage,
     reminderIntervals, toggleReminderInterval, notificationsAllowed,
     missedCheckIn, setMissedCheckIn,
+    mobilityLearning, setMobilityLearning, deleteMobilityLearningData,
     demoActive, setDemoNow, nowMs, plan, currentTime, leaveBy, triggerTestNotification, resetAll,
   } = useLastRide();
   const ja = language === 'ja';
+
+  const changeMobilityLearning = (enabled: boolean) => {
+    if (!enabled) {
+      setMobilityLearning(false);
+      return;
+    }
+    Alert.alert(
+      ja ? '移動学習に協力' : 'Improve LastRide predictions',
+      ja
+        ? '駅までの所要時間、出発までの遅れ、駅に着いてから乗車までの時間など、位置履歴ではない算出済みの時間データを匿名トークンで共有します。自宅住所・出発地点・GPSの軌跡は共有しません。設定からいつでも停止・削除できます。'
+        : 'Share derived timing outcomes such as walk duration, delay before starting to move, and station-to-boarding time using an anonymous token. LastRide does not upload your home address, starting point, or raw GPS trail for learning. You can stop sharing or delete your contributions at any time.',
+      [
+        { text: ja ? 'キャンセル' : 'Cancel', style: 'cancel' },
+        {
+          text: ja ? '有効にする' : 'Enable',
+          onPress: () => setMobilityLearning(true),
+        },
+      ],
+    );
+  };
+
+  const confirmDeleteMobilityLearningData = () => {
+    Alert.alert(
+      ja ? '共有データを削除しますか？' : 'Delete shared learning data?',
+      ja
+        ? 'この端末の匿名トークンで共有した学習データをサーバーから削除し、端末内の学習プロファイルも消去します。'
+        : 'This deletes observations contributed by this installation from the server and clears the local learning profile.',
+      [
+        { text: ja ? 'キャンセル' : 'Cancel', style: 'cancel' },
+        {
+          text: ja ? '削除' : 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            void deleteMobilityLearningData().then((deleted) => {
+              Alert.alert(
+                deleted
+                  ? ja
+                    ? '削除しました'
+                    : 'Learning data deleted'
+                  : ja
+                    ? '削除できませんでした'
+                    : 'Could not delete data',
+                deleted
+                  ? ja
+                    ? '共有と端末内の学習データを削除しました。'
+                    : 'Shared and on-device learning data were deleted.'
+                  : ja
+                    ? '通信状況を確認して、もう一度お試しください。'
+                    : 'Check your connection and try again so the server-side copy can also be removed.',
+              );
+            });
+          },
+        },
+      ],
+    );
+  };
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
@@ -177,6 +234,32 @@ export default function SettingsScreen() {
         )}
 
         <Section label={ja ? '通知とデータ' : 'NOTIFICATIONS & DATA'}>
+          {Platform.OS !== 'web' && (
+            <>
+              <Row
+                title={ja ? '移動時間の学習に協力' : 'Improve timing predictions'}
+                subtitle={ja ? '算出済みの時間データだけを共有し、みんなの駅構内・徒歩予測を改善します' : 'Share derived timing outcomes to improve station and walking estimates for everyone'}
+              >
+                <Switch
+                  testID="toggle-mobility-learning"
+                  accessibilityLabel={ja ? '移動時間の学習に協力' : 'Improve timing predictions'}
+                  value={mobilityLearning}
+                  onValueChange={changeMobilityLearning}
+                  trackColor={{ false: colors.border, true: colors.primary }}
+                  thumbColor={colors.card}
+                />
+              </Row>
+              <View style={[styles.divider, { backgroundColor: colors.border }]} />
+              <Row
+                testID="delete-learning-data"
+                title={ja ? '共有した学習データを削除' : 'Delete shared learning data'}
+                subtitle={ja ? 'この端末から共有したデータと端末内の学習プロファイルを消去' : 'Erase this installation’s contributions and on-device learning profile'}
+                onPress={confirmDeleteMobilityLearningData}
+                destructive
+              />
+              <View style={[styles.divider, { backgroundColor: colors.border }]} />
+            </>
+          )}
           <Row
             testID="open-night-history"
             title={ja ? '夜の履歴' : 'Night history'}
