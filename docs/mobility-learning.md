@@ -68,7 +68,7 @@ The server never receives a learning payload containing:
 
 The device converts location signals to derived durations, distance, total ascent/descent, station/line public identifiers, a coarse JST hour bucket, day type, and confidence. Idempotency IDs contain no timestamp.
 
-The device owns a random 256-bit installation token in SecureStore. The server stores only SHA-256(token). Deleting the contributor row cascades all observations. Shared observations are retained at most 365 days.
+The device owns a random 256-bit installation token in SecureStore. The server stores only SHA-256(token). Deleting the contributor row cascades all observations. Shared observations are deleted after the 365-day retention horizon by the scheduled cleanup worker (and as a fallback on new uploads).
 
 ## Background location
 

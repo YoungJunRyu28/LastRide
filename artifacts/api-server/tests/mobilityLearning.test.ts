@@ -2,6 +2,7 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { count, eq } from "drizzle-orm";
 import {
   getDb,
+  getPool,
   mobilityLearningContributorsTable,
   mobilityLearningObservationsTable,
 } from "@workspace/db";
@@ -10,6 +11,7 @@ import {
   deleteContributorLearningData,
   hashLearningToken,
   recordMobilityObservations,
+  purgeExpiredMobilityLearningObservations,
   stationAccessProfiles,
   validLearningToken,
 } from "../src/lib/mobilityLearning";
@@ -71,6 +73,32 @@ describe("mobility learning identity", () => {
       .select({ total: count() })
       .from(mobilityLearningObservationsTable);
     expect(Number(row.total)).toBe(1);
+  });
+
+  it("purges observations older than the retention limit without requiring new uploads", async () => {
+    const value = token(10);
+    await recordMobilityObservations(
+      value,
+      CURRENT_LEARNING_CONSENT_VERSION,
+      [{
+        clientObservationId: "old-record",
+        kind: "trip_timing",
+        hourBucket: 22,
+        dayType: "weekday",
+        confidencePermille: 850,
+        modelVersion: "mobility-v1",
+      }],
+    );
+    const past = new Date(Date.now() - 366 * 24 * 60 * 60 * 1000);
+    await getPool().query(
+      "update mobility_learning_observations set created_at = $1 where client_observation_id = $2",
+      [past, "old-record"],
+    );
+    expect(await purgeExpiredMobilityLearningObservations()).toBe(1);
+    const [row] = await getDb()
+      .select({ total: count() })
+      .from(mobilityLearningObservationsTable);
+    expect(Number(row.total)).toBe(0);
   });
 
   it("deletes every observation for the installation through the contributor cascade", async () => {

@@ -19,6 +19,7 @@ import {
 } from "./lib/enterpriseNotifications";
 import { purgeExpiredCacheEntries } from "./lib/cache";
 import { purgeExpiredRateLimits } from "./lib/rateLimit";
+import { purgeExpiredMobilityLearningObservations } from "./lib/mobilityLearning";
 import { purgeExpiredEnterpriseData } from "./lib/enterpriseStore";
 import { logger } from "./lib/logger";
 
@@ -37,15 +38,16 @@ export async function handler(event: ScheduledEvent) {
 
   switch (event.task) {
     case "cleanup": {
-      const [eventsPurged, cacheRowsPurged, rateLimitRowsPurged] =
+      const [eventsPurged, cacheRowsPurged, rateLimitRowsPurged, learningRowsPurged] =
         await Promise.all([
           purgeExpiredEnterpriseData(),
           purgeExpiredCacheEntries(),
           purgeExpiredRateLimits(),
+          purgeExpiredMobilityLearningObservations(),
         ]);
-      if (eventsPurged > 0 || cacheRowsPurged > 0 || rateLimitRowsPurged > 0) {
+      if (eventsPurged > 0 || cacheRowsPurged > 0 || rateLimitRowsPurged > 0 || learningRowsPurged > 0) {
         logger.info(
-          { eventsPurged, cacheRowsPurged, rateLimitRowsPurged },
+          { eventsPurged, cacheRowsPurged, rateLimitRowsPurged, learningRowsPurged },
           "Purged expired application data",
         );
       }

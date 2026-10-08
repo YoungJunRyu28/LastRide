@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { eq, lt } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import {
   getDb,
   getPool,
@@ -75,15 +75,25 @@ export function validLearningToken(token: string): boolean {
   return /^[a-f0-9]{64}$/i.test(token);
 }
 
+/** Called by both scheduled Lambda cleanup and the always-on server. */
+export async function purgeExpiredMobilityLearningObservations(
+  now = new Date(),
+): Promise<number> {
+  const cutoff = new Date(
+    now.getTime() - MOBILITY_OBSERVATION_RETENTION_DAYS * 24 * 60 * 60 * 1000,
+  );
+  // Do not materialize every deleted UUID into process memory.
+  const result = await getPool().query(
+    "delete from mobility_learning_observations where created_at < $1",
+    [cutoff],
+  );
+  return result.rowCount ?? 0;
+}
+
 async function purgeExpiredObservationsIfDue(now = Date.now()): Promise<void> {
   if (now - lastRetentionPurgeAt < 24 * 60 * 60 * 1000) return;
+  await purgeExpiredMobilityLearningObservations(new Date(now));
   lastRetentionPurgeAt = now;
-  const cutoff = new Date(
-    now - MOBILITY_OBSERVATION_RETENTION_DAYS * 24 * 60 * 60 * 1000,
-  );
-  await getDb()
-    .delete(mobilityLearningObservationsTable)
-    .where(lt(mobilityLearningObservationsTable.createdAt, cutoff));
 }
 
 export async function recordMobilityObservations(
