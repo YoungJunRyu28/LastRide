@@ -116,6 +116,32 @@ describe("HTTP runtime perimeter", () => {
     expect(await response.json()).toEqual({ error: "Invalid learning observation" });
   });
 
+  it("rejects fabricated non-Japanese station identifiers", async () => {
+    const response = await fetch(`${baseUrl}/api/learning/observations`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Learning-Token": "b".repeat(64),
+      },
+      body: JSON.stringify({
+        consentVersion: 1,
+        observations: [{
+          clientObservationId: "invalid-station-key",
+          kind: "station_traversal",
+          stationKey: "station-v1:London:51.5074:-0.1278",
+          hourBucket: 23,
+          dayType: "weekday",
+          stationTraversalSeconds: 480,
+          caughtTrain: true,
+          confidencePermille: 1000,
+          modelVersion: "mobility-v1",
+        }],
+      }),
+    });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "Invalid learning observation" });
+  });
+
   it("requires an anonymous learning token before accepting observations", async () => {
     const response = await fetch(`${baseUrl}/api/learning/observations`, {
       method: "POST",

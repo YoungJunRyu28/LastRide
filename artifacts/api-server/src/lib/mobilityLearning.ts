@@ -178,6 +178,7 @@ export async function stationAccessProfiles(
           q.index as query_index,
           o.contributor_hash,
           o.station_traversal_seconds,
+          o.created_at as observation_created_at,
           case
             when q.line_key is not null
               and o.line_key = q.line_key
@@ -196,6 +197,12 @@ export async function stationAccessProfiles(
           and o.confidence_permille >= 800
           and o.caught_train is true
           and o.created_at >= now() - ($2::int * interval '1 day')
+      ), capped as (
+        select *, row_number() over (
+          partition by query_index, contributor_hash, level
+          order by observation_created_at desc
+        ) as contributor_sample_rank
+        from eligible
       ), aggregated as (
         select
           query_index,
@@ -205,7 +212,8 @@ export async function stationAccessProfiles(
           percentile_cont(0.50) within group (order by station_traversal_seconds)::float8 as p50_seconds,
           percentile_cont(0.90) within group (order by station_traversal_seconds)::float8 as p90_seconds,
           percentile_cont(0.95) within group (order by station_traversal_seconds)::float8 as p95_seconds
-        from eligible
+        from capped
+        where contributor_sample_rank <= 3
         group by query_index, level
       ), qualified as (
         select *

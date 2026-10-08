@@ -390,6 +390,10 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
   const [mobilityLearning, setMobilityLearningState] = useState(
     DEFAULT_SETTINGS.mobilityLearning,
   );
+  // Foreground location callbacks outlive a settings toggle. Read the latest
+  // consent state rather than a stale startTracking closure.
+  const mobilityLearningRef = useRef(mobilityLearning);
+  mobilityLearningRef.current = mobilityLearning;
   const [pinnedStation, setPinnedStationState] = useState<StationOption | null>(
     DEFAULT_SETTINGS.pinnedStation,
   );
@@ -762,25 +766,31 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
 
   const setMobilityLearning = useCallback((enabled: boolean) => {
     setMobilityLearningState(enabled);
-    void AsyncStorage.setItem(STORAGE_KEYS.mobilityLearning, String(enabled));
-    if (enabled) {
-      void getOrCreateLearningToken();
-      void flushLearningQueue();
-    } else {
-      // Opting out is immediate: never keep unsent observations around to be
-      // uploaded on a later re-enable, and stop the in-progress learning trip.
-      void discardPendingLearningObservations();
-      void clearActiveLearningSession();
-    }
+    void (async () => {
+      await AsyncStorage.setItem(STORAGE_KEYS.mobilityLearning, String(enabled));
+      if (enabled) {
+        await getOrCreateLearningToken();
+        await flushLearningQueue();
+      } else {
+        // Discard the active raw-location session and every unsent observation
+        // after persisting the opt-out, including tasks already queued to run.
+        await clearActiveLearningSession();
+        await discardPendingLearningObservations();
+      }
+    })().catch(() => undefined);
     void Haptics.selectionAsync();
   }, []);
 
   const deleteMobilityLearningData = useCallback(async () => {
-    const deleted = await deleteSharedLearningData();
-    if (!deleted) return false;
-    await clearLocalLearningState();
+    // Stop collection *before* the network call. Offline deletion can then be
+    // retried without recording or uploading anything in the meantime.
     setMobilityLearningState(false);
     await AsyncStorage.setItem(STORAGE_KEYS.mobilityLearning, 'false');
+    await clearActiveLearningSession();
+    await discardPendingLearningObservations();
+    const deleted = await deleteSharedLearningData().catch(() => false);
+    if (!deleted) return false;
+    await clearLocalLearningState();
     return true;
   }, []);
 
@@ -937,7 +947,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
         },
       ) => {
         if (op !== trackingOp.current) return;
-        if (mobilityLearning && signal) {
+        if (mobilityLearningRef.current && signal) {
           void recordLearningLocationSignal({
             coordinates,
             timestamp: signal.timestamp,

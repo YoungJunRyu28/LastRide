@@ -32,6 +32,12 @@ const uploadLimiter = rateLimitMiddleware({
   },
 });
 
+const uploadIpLimiter = rateLimitMiddleware({
+  limit: 900,
+  windowMs: 60_000,
+  key: (req) => `learning-upload-ip:${requestAddress(req)}`,
+});
+
 const profileLimiter = rateLimitMiddleware({
   limit: 60,
   windowMs: 60_000,
@@ -42,6 +48,20 @@ function object(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : null;
+}
+
+/** Only public Japanese station coordinates and canonical provider-style IDs. */
+function validStationKey(value: string | undefined): boolean {
+  if (!value) return false;
+  const match = /^station-v1:([^\r\n\x00-\x1f]{1,90}):(-?\d{1,2}\.\d{4}):(-?\d{1,3}\.\d{4})$/u.exec(value);
+  if (!match) return false;
+  const lat = Number(match[2]);
+  const lon = Number(match[3]);
+  return lat >= 24 && lat <= 46 && lon >= 122 && lon <= 147;
+}
+
+function validLineKey(value: string | undefined): boolean {
+  return value === undefined || /^line-v1:[^\r\n\x00-\x1f]{1,120}$/u.test(value);
 }
 
 function exactKeys(
@@ -116,7 +136,9 @@ function parseObservation(value: unknown): MobilityObservationInput | null {
     hourBucket === undefined ||
     !dayType ||
     confidencePermille === undefined ||
-    !modelVersion
+    !modelVersion ||
+    (stationKey !== undefined && !validStationKey(stationKey)) ||
+    !validLineKey(lineKey)
   ) {
     return null;
   }
@@ -177,12 +199,12 @@ function parseProfileQuery(value: unknown): StationAccessProfileQuery | null {
     raw.dayType === "weekday" || raw.dayType === "weekend" || raw.dayType === "holiday"
       ? raw.dayType
       : null;
-  return stationKey && hourBucket !== undefined && dayType
-    ? { stationKey, lineKey, hourBucket, dayType }
+  return validStationKey(stationKey) && validLineKey(lineKey) && hourBucket !== undefined && dayType
+    ? { stationKey: stationKey!, lineKey, hourBucket, dayType }
     : null;
 }
 
-router.post("/learning/observations", uploadLimiter, async (req, res) => {
+router.post("/learning/observations", uploadIpLimiter, uploadLimiter, async (req, res) => {
   if (!isDatabaseConfigured()) {
     res.status(503).json({ error: "Learning service unavailable" });
     return;

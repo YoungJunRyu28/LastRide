@@ -172,9 +172,14 @@ export async function discardPendingLearningObservations(): Promise<void> {
   await writeQueue([]);
 }
 
+async function consentEnabled(): Promise<boolean> {
+  return (await AsyncStorage.getItem("lastride-mobility-learning").catch(() => null)) === "true";
+}
+
 export async function enqueueLearningObservation(
   observation: MobilityLearningObservation,
 ): Promise<void> {
+  if (!(await consentEnabled())) return;
   const queue = await readQueue();
   if (queue.some((entry) => entry.clientObservationId === observation.clientObservationId))
     return;
@@ -183,12 +188,12 @@ export async function enqueueLearningObservation(
 }
 
 export async function flushLearningQueue(): Promise<number> {
-  if (!apiBaseUrl || Platform.OS === "web") return 0;
+  if (!apiBaseUrl || Platform.OS === "web" || !(await consentEnabled())) return 0;
   const [token, queue] = await Promise.all([
     getOrCreateLearningToken(),
     readQueue(),
   ]);
-  if (!token || queue.length === 0) return 0;
+  if (!token || queue.length === 0 || !(await consentEnabled())) return 0;
 
   const batch = queue.slice(0, 20);
   const response = await fetchWithTimeout(

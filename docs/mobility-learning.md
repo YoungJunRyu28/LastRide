@@ -53,7 +53,7 @@ Privacy thresholds prevent tiny cohorts from being returned:
 - station + line: at least 20 samples and 8 contributors;
 - station: at least 40 samples and 15 contributors.
 
-Only high-confidence caught-train observations are eligible for shared station aggregates. Automatic speed-based boarding inference remains below that aggregate-training confidence threshold; the explicit "Made it" response can produce an eligible label.
+Only high-confidence caught-train observations are eligible for shared station aggregates. Speed-based boarding inference is tentative and never finalizes a trip on its own. The aggregate dataset requires both a motion transition and explicit "Made it" confirmation; timetable-only confirmation is retained locally but excluded from the aggregate. To limit one installation's influence, each station-profile cohort uses at most its three most recent observations. Installation tokens are **not** proof of unique human identity; anti-Sybil checks and data-quality review remain rollout requirements.
 
 ## Privacy architecture
 
@@ -72,7 +72,7 @@ The device owns a random 256-bit installation token in SecureStore. The server s
 
 ## Background location
 
-Night tracking is user initiated and has an explicit prominent disclosure before background permission is requested. A user can choose foreground-only tracking instead. The background task ends after the night's reminders/check-in or at the hard stop.
+Night tracking is user initiated and has an explicit prominent disclosure before background permission is requested. A user can choose foreground-only tracking instead. The background task ends after the night's reminders/check-in or at the hard stop. Opting out discards the active learning session and unsent observations. Remote deletion first disables collection; if offline, the same token remains available for a future deletion retry.
 
 When mobility learning is enabled, tracking requests finer sampling so movement/station boundaries can be inferred. When it is disabled, LastRide keeps the lower-power routing cadence.
 
@@ -106,7 +106,9 @@ Before enabling the feature in a production store release:
 - complete Google Play background-location permission declaration, prominent-disclosure evidence, and Data Safety answers;
 - complete App Store privacy disclosures and review notes for background location and external transit providers;
 - verify server retention maintenance and contributor deletion in staging;
-- confirm alerts/metrics for learning endpoint error rate, aggregate query latency, and provider failures.
+- confirm alerts/metrics for learning endpoint error rate, aggregate query latency, suspicious-contributor volume, and provider failures;
+- validate the station access model against labeled platform-entry/boarding timing in Japan; unverified station-center GPS crossing is not a ground-truth platform arrival;
+- complete safeguards for coordinated fabricated submissions; opt-in installation tokens alone do not prevent attackers inventing multiple contributors.
 
 ## Model evolution
 

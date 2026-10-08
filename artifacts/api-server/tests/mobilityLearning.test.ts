@@ -165,6 +165,33 @@ describe("aggregate station access profiles", () => {
     expect(stationOnly.contributorCount).toBe(15);
   });
 
+  it("caps a contributor to three samples per profile cohort", async () => {
+    for (let contributor = 1; contributor <= 15; contributor += 1) {
+      await recordMobilityObservations(
+        token(700 + contributor),
+        CURRENT_LEARNING_CONSENT_VERSION,
+        Array.from({ length: 8 }, (_, sample) => ({
+          clientObservationId: `cap-${contributor}-${sample}`,
+          kind: "station_traversal" as const,
+          stationKey: STATION,
+          lineKey: LINE,
+          hourBucket: 23,
+          dayType: "weekday" as const,
+          stationTraversalSeconds: 240 + contributor * 10 + sample,
+          caughtTrain: true,
+          confidencePermille: 950,
+          modelVersion: "mobility-v1",
+        })),
+      );
+    }
+    const [profile] = await stationAccessProfiles([
+      { stationKey: STATION, lineKey: LINE, hourBucket: 23, dayType: "weekday" },
+    ]);
+    expect(profile.source).toBe("station-line-context");
+    expect(profile.contributorCount).toBe(15);
+    expect(profile.sampleCount).toBe(45);
+  });
+
   it("returns insufficient instead of exposing a tiny cohort", async () => {
     await recordMobilityObservations(
       token(500),

@@ -129,6 +129,7 @@ export async function beginLearningSession(
 ): Promise<void> {
   if (!enabled) return;
   return serialized(async () => {
+    if (!(await learningEnabled())) return;
     const existing = await readSession();
     if (existing && sameTrip(existing, plan)) {
       // Before movement starts, a re-plan should refresh the baseline from the
@@ -320,6 +321,7 @@ export async function recordLearningLocationSignal(
 ): Promise<void> {
   if (!(await learningEnabled()) || !usableSignal(signal)) return;
   return serialized(async () => {
+    if (!(await learningEnabled())) return;
     const session = await readSession();
     if (!session) return;
 
@@ -338,17 +340,10 @@ export async function recordLearningLocationSignal(
 
     updateElevationSummary(session, signal);
 
-    if (inferredBoarding(session, signal)) {
+    if (!session.boardedAt && inferredBoarding(session, signal)) {
+      // Speed around a station could also be a bus or taxi. Keep this as a
+      // tentative boarding timestamp until the passenger explicitly confirms.
       session.boardedAt = signal.timestamp;
-      await completeSession(session, {
-        caughtTrain: true,
-        completedAt: signal.timestamp,
-        // Speed/timing alone can confuse a bus/taxi leaving the station with a train.
-        // Keep automatic inference below the aggregate-training threshold until
-        // rail-corridor/motion validation is available.
-        confidencePermille: 750,
-      });
-      return;
     }
 
     session.previousSignal = signal;
@@ -366,9 +361,11 @@ export async function confirmLearningTrainOutcome(
 ): Promise<boolean> {
   if (!(await learningEnabled())) return false;
   return serialized(async () => {
+    if (!(await learningEnabled())) return false;
     const session = await readSession();
     if (!session) return false;
-    if (caughtTrain && session.stationArrivedAt) {
+    const confirmedWithMotion = caughtTrain && session.boardedAt !== undefined;
+    if (caughtTrain && session.stationArrivedAt && !session.boardedAt) {
       session.boardedAt = Math.max(
         session.stationArrivedAt,
         session.lastTrainDepartsAt,
@@ -377,10 +374,10 @@ export async function confirmLearningTrainOutcome(
     await completeSession(session, {
       caughtTrain,
       completedAt: now,
-      // The caught/missed answer is explicit, but when caught we use the
-      // scheduled departure as the boarding-time proxy, so its traversal label
-      // is intentionally not treated as perfect ground truth.
-      confidencePermille: caughtTrain ? 850 : 1000,
+      // An explicit catch plus an inferred movement transition can be used
+      // for aggregate estimates. Confirmation with timetable proxy alone is
+      // too imprecise to contribute an entrance-to-platform training label.
+      confidencePermille: caughtTrain ? (confirmedWithMotion ? 850 : 750) : 1000,
     });
     return true;
   });

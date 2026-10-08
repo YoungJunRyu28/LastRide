@@ -283,6 +283,7 @@ export default function AlternativesScreen() {
   const [partway, setPartway] = useState<PartwayTrainTaxi | null>(null);
   const [isLoadingPartway, setIsLoadingPartway] = useState(false);
   const [recoveryRoutes, setRecoveryRoutes] = useState<RecoveryTransitRoute[]>([]);
+  const [selectedRecoveryIndex, setSelectedRecoveryIndex] = useState(0);
   const [isLoadingRecovery, setIsLoadingRecovery] = useState(false);
   const [walkHome, setWalkHome] = useState<WalkingRoute | null>(null);
   const [selected, setSelected] = useState<OptionKey>("train");
@@ -374,6 +375,7 @@ export default function AlternativesScreen() {
   useEffect(() => {
     const token = ++recoveryToken.current;
     setRecoveryRoutes([]);
+    setSelectedRecoveryIndex(0);
     if (
       status !== "departed" ||
       !apiBaseUrl ||
@@ -491,6 +493,7 @@ export default function AlternativesScreen() {
       ? partwayTrainArrival + partway.taxi.minutes * MINUTE_MS
       : null;
   const cheapestTransit = cheapestRecoveryTransitRoute(recoveryRoutes);
+  const selectedTransit = recoveryRoutes[selectedRecoveryIndex] ?? cheapestTransit;
   const homeByTransit = cheapestTransit
     ? Date.parse(cheapestTransit.arrivesAt)
     : null;
@@ -819,7 +822,7 @@ export default function AlternativesScreen() {
         )}
 
         {/* Public transit still running: fare-ranked train/bus/walk recovery */}
-        {selected === "transit" && cheapestTransit && (
+        {selected === "transit" && selectedTransit && (
           <View
             style={[
               styles.panel,
@@ -828,26 +831,26 @@ export default function AlternativesScreen() {
           >
             <View style={styles.panelHead}>
               <Text style={[styles.panelTime, { color: colors.foreground }]}>
-                {formatJstTime(Date.parse(cheapestTransit.departsAt))}
+                {formatJstTime(Date.parse(selectedTransit.departsAt))}
               </Text>
               <View style={styles.panelHeadCopy}>
                 <Text style={[styles.panelTitle, { color: colors.foreground }]}>
-                  {ja ? "今夜まだ使える最安の公共交通" : "Cheapest public transit still running"}
+                  {ja ? "今夜使える公共交通の経路候補" : "Public transit routes still available"}
                 </Text>
                 <Text style={[styles.note, { color: colors.mutedForeground }]}>
                   {[
-                    cheapestTransit.fareYen === null
+                    selectedTransit.fareYen === null
                       ? null
-                      : formatYen(cheapestTransit.fareYen),
-                    Number.isFinite(Date.parse(cheapestTransit.arrivesAt))
+                      : formatYen(selectedTransit.fareYen),
+                    Number.isFinite(Date.parse(selectedTransit.arrivesAt))
                       ? ja
-                        ? `${formatJstTime(Date.parse(cheapestTransit.arrivesAt))}着`
-                        : `arrives ${formatJstTime(Date.parse(cheapestTransit.arrivesAt))}`
+                        ? `${formatJstTime(Date.parse(selectedTransit.arrivesAt))}着`
+                        : `arrives ${formatJstTime(Date.parse(selectedTransit.arrivesAt))}`
                       : null,
-                    cheapestTransit.walkingMinutes > 0
+                    selectedTransit.walkingMinutes > 0
                       ? ja
-                        ? `徒歩${cheapestTransit.walkingMinutes}分`
-                        : `${cheapestTransit.walkingMinutes} min walking`
+                        ? `徒歩${selectedTransit.walkingMinutes}分`
+                        : `${selectedTransit.walkingMinutes} min walking`
                       : null,
                   ]
                     .filter(Boolean)
@@ -855,8 +858,32 @@ export default function AlternativesScreen() {
                 </Text>
               </View>
             </View>
+            {recoveryRoutes.length > 1 && (
+              <View style={styles.recoveryChoices}>
+                {recoveryRoutes.map((route, index) => (
+                  <Pressable
+                    key={`${route.departsAt}-${route.arrivesAt}-${route.fareYen}-${index}`}
+                    testID={`recovery-route-${index}`}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: selectedRecoveryIndex === index }}
+                    onPress={() => setSelectedRecoveryIndex(index)}
+                    style={[
+                      styles.recoveryChoice,
+                      {
+                        borderColor: selectedRecoveryIndex === index ? colors.primary : colors.border,
+                        backgroundColor: selectedRecoveryIndex === index ? colors.secondary : colors.background,
+                      },
+                    ]}
+                  >
+                    <Text style={[styles.note, { color: colors.foreground }]}>
+                      {`${formatYen(route.fareYen ?? 0)} · ${formatJstTime(Date.parse(route.arrivesAt))}`}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            )}
             <View style={styles.legs}>
-              {cheapestTransit.legs.map((leg, index) => (
+              {selectedTransit.legs.map((leg, index) => (
                 <View
                   key={`${leg.mode}-${leg.line}-${leg.from}-${leg.to}-${index}`}
                   style={styles.leg}
@@ -905,8 +932,8 @@ export default function AlternativesScreen() {
             </View>
             <Text style={[styles.note, { color: colors.mutedForeground }]}>
               {ja
-                ? `駅すぱあとで電車・路線バス・高速バス等を含め料金順に探索しています。既知運賃の候補${recoveryRoutes.length}件から、より安く・早く・徒歩も少ない経路に完全に劣る候補を除外しています。`
-                : `Ekispert searches fare-ranked train and bus combinations. LastRide keeps ${recoveryRoutes.length} known-fare option${recoveryRoutes.length === 1 ? "" : "s"} after removing routes that are simultaneously more expensive, slower, and no easier to walk.`}
+                ? `駅すぱあとで取得できた経路から、運賃・到着時刻・徒歩時間で比較しています。表示した候補の中での最安であり、日本全国すべての乗り継ぎ・タクシーとの組み合わせを保証するものではありません。`
+                : `Compared by known fare, arrival and walking time among routes returned by Ekispert. The lowest fare shown is not a guarantee of a globally cheapest train/bus/taxi combination.`}
             </Text>
           </View>
         )}
@@ -1557,6 +1584,8 @@ export default function AlternativesScreen() {
 }
 
 const styles = StyleSheet.create({
+  recoveryChoices: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  recoveryChoice: { borderRadius: 10, borderWidth: 1, paddingHorizontal: 10, paddingVertical: 8 },
   screen: { flex: 1 },
   content: { gap: 18, paddingHorizontal: 20 },
   top: {
