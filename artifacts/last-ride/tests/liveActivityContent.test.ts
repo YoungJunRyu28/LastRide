@@ -16,6 +16,7 @@ function jst(hours: number, minutes = 0) {
 }
 
 const LEAVE_BY = jst(23, 41);
+const RECOMMENDED_LEAVE_BY = jst(23, 37);
 const LAST_TRAIN = jst(23, 52);
 const shibuya: StationOption = {
   name: "Shibuya",
@@ -34,21 +35,25 @@ describe("liveActivityContent", () => {
   test("counts down to leave-by while there is time", () => {
     const content = liveActivityContent(plan, "en", jst(23, 0));
     expect(content).toEqual({
-      title: "Leave by 23:41",
+      title: "Leave by 23:37",
       subtitle: "8 min walk to Shibuya · last train 23:52",
-      countdownTo: LEAVE_BY,
+      countdownTo: RECOMMENDED_LEAVE_BY,
     });
   });
 
   test("is in Japanese when the app is", () => {
     expect(liveActivityContent(plan, "ja", jst(23, 0))).toMatchObject({
-      title: "23:41までに出発",
+      title: "23:37までに出発",
       subtitle: "渋谷まで徒歩8分 · 終電 23:52",
     });
   });
 
-  test("switches to the last train once leave-by has passed", () => {
-    const content = liveActivityContent(plan, "en", LEAVE_BY + MINUTE_MS);
+  test("switches to the last train once the recommended departure has passed", () => {
+    const content = liveActivityContent(
+      plan,
+      "en",
+      RECOMMENDED_LEAVE_BY + MINUTE_MS,
+    );
     expect(content?.title).toBe("Leave now — last train 23:52");
     expect(content?.countdownTo).toBe(LAST_TRAIN);
   });

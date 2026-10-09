@@ -3,6 +3,7 @@ import { RailwayMark } from '@/components/RideUI';
 import { REMINDER_CHOICES, useLastRide } from '@/context/LastRideContext';
 import { useColors } from '@/hooks/useColors';
 import { businessEnabled } from '@/lib/features';
+import { recommendedLeaveTime } from '@/lib/reliability';
 import { MINUTE_MS } from '@/lib/time';
 import { Feather } from '@expo/vector-icons';
 import { router } from 'expo-router';
@@ -220,7 +221,7 @@ export default function SettingsScreen() {
                   </Pressable>
                 ))}
                 {plan && (
-                  <Pressable testID="demo-jump-leave" onPress={() => setDemoNow(plan.leaveByMs - (Math.max(0, ...reminderIntervals) + 1) * MINUTE_MS)} accessibilityRole="button" style={[styles.chip, { backgroundColor: colors.primary }]}>
+                  <Pressable testID="demo-jump-leave" onPress={() => setDemoNow(recommendedLeaveTime(plan) - (Math.max(0, ...reminderIntervals) + 1) * MINUTE_MS)} accessibilityRole="button" style={[styles.chip, { backgroundColor: colors.primary }]}>
                     <Text style={[styles.chipText, { color: colors.primaryForeground }]}>{ja ? '出発直前へ' : 'Jump near leave'}</Text>
                   </Pressable>
                 )}

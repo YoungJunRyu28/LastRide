@@ -25,6 +25,7 @@ import {
   sendTestNotification,
 } from "@/lib/notifications";
 import { recordNightPlan } from "@/lib/nightHistory";
+import { recommendedLeaveTime } from "@/lib/reliability";
 import {
   buildReminderPlans,
   nightEndsAt,
@@ -449,7 +450,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
         missedCheckIn,
       });
       await scheduleReminders(plans, {
-        leaveBy: formatJstTime(plan.leaveByMs),
+        leaveBy: formatJstTime(recommendedLeaveTime(plan)),
         station: stationLabel,
         language: language ?? "en",
       });
@@ -525,8 +526,10 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
   // leave-by timestamp is synced. Location, station, destination and route stay local.
   useEffect(() => {
     if (!plan) return;
-    void syncEnterpriseLeaveBy(plan.leaveByMs).catch(() => undefined);
-  }, [plan?.leaveByMs]);
+    void syncEnterpriseLeaveBy(recommendedLeaveTime(plan)).catch(
+      () => undefined,
+    );
+  }, [plan?.leaveByMs, plan?.recommendedLeaveByMs]);
 
   const clearPlan = useCallback(() => {
     setPlan(null);
@@ -716,7 +719,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
           fireAt: realAt + (reminder.fireAt - virtualMs) / DEMO_SPEED,
         }));
         await scheduleReminders(plans, {
-          leaveBy: formatJstTime(plan.leaveByMs),
+          leaveBy: formatJstTime(recommendedLeaveTime(plan)),
           station: stationLabel,
           language: language ?? "en",
         });
@@ -1056,12 +1059,14 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
         (language === "ja" ? "最寄り駅を検索中" : "Finding nearby station"),
       stationNameJa: plan?.station.nameJa ?? "最寄り駅を検索中",
       destination: activeDestination?.label ?? homeStation,
-      leaveBy: plan ? formatJstTime(plan.leaveByMs) : "--:--",
+      leaveBy: plan ? formatJstTime(recommendedLeaveTime(plan)) : "--:--",
       lastTrain: plan ? formatJstTime(plan.lastTrain.departsAt) : "--:--",
       lastTrainSource: plan?.lastTrain.source ?? null,
       firstTrain: firstTrain ? formatJstTime(firstTrain.departsAt) : "--:--",
       firstTrainRoute: firstTrain,
-      minutesUntilLeave: plan ? minutesUntil(plan.leaveByMs, nowMs) : null,
+      minutesUntilLeave: plan
+        ? minutesUntil(recommendedLeaveTime(plan), nowMs)
+        : null,
       minutesUntilFirstTrain: firstTrain
         ? Math.max(0, Math.ceil((firstTrain.departsAt - nowMs) / MINUTE_MS))
         : null,

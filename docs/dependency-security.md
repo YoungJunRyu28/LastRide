@@ -1,6 +1,6 @@
 # Dependency security status
 
-Last reviewed: 2026-10-03
+Last reviewed: 2026-10-07
 
 LastRide treats `pnpm audit` as one input to release review rather than hiding
 transitive findings with blanket ignores. The workspace pins patched compatible
@@ -17,7 +17,10 @@ After compatible overrides, `pnpm audit --prod --json` reports:
 - 0 low
 
 This is down from 37 high findings in the production dependency graph before
-the overrides.
+the overrides. On 2026-10-07, newly published critical advisories in
+`proxy-addr` (Express) and `shell-quote` (React Native devtools) were cleared
+with same-major overrides to 2.0.8 and 1.11.0 respectively; both remain covered
+by the normal test and production-bundle gates.
 
 The remaining high findings are all transitive through the Expo toolchain:
 

@@ -73,7 +73,7 @@ describe("night history", () => {
     const history = await readNightHistory();
     expect(history).toHaveLength(1);
     expect(history[0]?.destinationLabel).toBe("Work");
-    expect(history[0]?.leaveByMs).toBe(Date.parse("2026-09-26T14:24:00Z"));
+    expect(history[0]?.leaveByMs).toBe(Date.parse("2026-09-26T14:20:00Z"));
   });
 
   it("keeps different destinations as separate entries", async () => {
