@@ -41,8 +41,12 @@ underlying Apple or Google push service.
 ## When location is used
 
 - **While the app is open**, to calculate your leave-by time.
-- **While night-out tracking is on**, also in the background, so your plan and
-  reminders stay current as you move.
+- **During night-out tracking**, you choose either updates only while LastRide
+  is open, or optional background location so your station, walk estimate and
+  leave-by time can update as you move even when the app is closed. If you
+  choose open-app-only mode, previously scheduled reminders still run from
+  your most recently calculated plan, but that plan is not location-refreshed
+  while the app is closed.
 
 Tracking is off unless you switch it on. LastRide is configured to end a
 night's tracking once its reminders are finished and uses 04:00 as a hard
@@ -112,6 +116,8 @@ lookup, not the Business participant display name.
   current Business event. If the server can't be reached, your phone's copy is
   still erased and the server-side participant record is removed when the
   event expires.
+- Choose **Only while app is open** when starting night-out tracking to avoid
+  background location access. Restart night tracking to change that choice.
 - Turn off location permission to stop location access.
 - Organizer account deletion/deprovisioning requests can be made through the
   contact below.

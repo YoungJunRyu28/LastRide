@@ -11,7 +11,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { AppState, Platform } from "react-native";
+import { Alert, AppState, Platform } from "react-native";
 import { apiBaseUrl, communityFallbacksEnabled } from "@/lib/api";
 import {
   clearEnterpriseParticipation,
@@ -50,6 +50,7 @@ import {
   type SavedDestination,
 } from "@/lib/settings";
 import { clearSavedPlan, readSavedPlan, writeSavedPlan } from "@/lib/savedPlan";
+import { trackingDisclosure } from "@/lib/trackingDisclosure";
 import { searchAddresses as searchAddressesApi } from "@workspace/api-client-react";
 import {
   LocationError,
@@ -79,6 +80,24 @@ export type { HomeAddress, Language, SavedDestination } from "@/lib/settings";
 export type { StationOption } from "@/lib/stations";
 export { REMINDER_CHOICES } from "@/lib/settings";
 export type LocationErrorCode = LocationError["code"];
+
+/** An explicit choice before either OS location-permission prompt. */
+async function chooseNightTrackingLocation(language: Language | null): Promise<'foreground' | 'background'> {
+  if (Platform.OS === 'web') return 'foreground';
+  const disclosure = trackingDisclosure(language);
+  return new Promise((resolve) => {
+    Alert.alert(
+      disclosure.title,
+      disclosure.message,
+      [
+        { text: disclosure.foregroundOnly, onPress: () => resolve('foreground') },
+        { text: disclosure.allowBackground, onPress: () => resolve('background') },
+      ],
+      { cancelable: false },
+    );
+  });
+}
+
 
 type RideContextValue = {
   language: Language | null;
@@ -844,6 +863,20 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
           });
       };
       removeWatches();
+      // The headless background task is only resumed after a previously
+      // accepted background session; don't show an OS prompt on auto-resume.
+      // A new session always offers a battery-friendly foreground-only option,
+      // before requesting *either* OS location permission.
+      const locationMode = resume
+        ? 'background'
+        : await chooseNightTrackingLocation(language);
+      if (op !== trackingOp.current) return;
+      if (locationMode === 'foreground' && Platform.OS !== 'web') {
+        // Never leave a previously registered native background task running
+        // after the user explicitly chose open-app-only tracking.
+        await stopBackgroundTracking();
+        if (op !== trackingOp.current) return;
+      }
       if (Platform.OS === "web") {
         if (!navigator.geolocation) {
           setLocationError("unsupported");
@@ -885,7 +918,9 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       }
       foregroundWatch.current = watch;
       // Background updates keep it fresh while the app is closed (dev/production builds).
-      const backgroundActive = await startBackgroundTracking();
+      const backgroundActive = locationMode === 'background'
+        ? await startBackgroundTracking()
+        : false;
       if (op !== trackingOp.current) {
         if (backgroundActive) await stopBackgroundTracking(); // compensate a stale start
         return;
@@ -893,7 +928,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       setTrackingMode(backgroundActive ? "background" : "foreground");
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     },
-    [planFrom, applyPlan, removeWatches, getNow],
+    [planFrom, applyPlan, removeWatches, getNow, language],
   );
 
   // Once the night is over (the first train has left), move on to the next night
