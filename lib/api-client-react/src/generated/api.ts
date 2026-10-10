@@ -22,6 +22,7 @@ import type {
 import type {
   Address,
   CreateEnterpriseEventRequest,
+  CreateGroupRequest,
   EnterpriseEvent,
   EnterpriseEventCreated,
   EnterpriseEventDetail,
@@ -36,9 +37,14 @@ import type {
   GetTaxiEstimateParams,
   GetTrainDisruptionsParams,
   GetWalkRouteParams,
+  GroupDetail,
+  GroupInvite,
+  GroupSession,
+  GroupTonightParticipationRequest,
   HealthStatus,
   HostDeviceRegistration,
   JoinEnterpriseEventRequest,
+  JoinGroupRequest,
   PartwayTrainTaxi,
   Place,
   SearchAddressesParams,
@@ -47,8 +53,11 @@ import type {
   TaxiEstimate,
   TrainDisruption,
   TrainRoute,
+  TransferGroupHostRequest,
   UpdateEnterpriseEventRequest,
   UpdateEventParticipantRequest,
+  UpdateGroupMembershipRequest,
+  UpdateGroupRequest,
   UsageReport,
   WalkRoute
 } from './api.schemas';
@@ -1991,5 +2000,1208 @@ export const useLeaveEnterpriseEvent = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getLeaveEnterpriseEventMutationOptions(options));
+    }
+
+export const getCreateGroupUrl = () => {
+
+
+
+
+  return `/api/groups`
+}
+
+/**
+ * @summary Create a persistent group (requires the premium entitlement)
+ */
+export const createGroup = async (createGroupRequest: CreateGroupRequest, options?: Parameters<typeof customFetch>[1]): Promise<GroupSession> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<GroupSession>(getCreateGroupUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(createGroupRequest)
+  }
+);}
+
+
+
+
+
+export const getCreateGroupMutationKey = () => ['createGroup'] as const;
+
+export const getCreateGroupMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createGroup>>, TError,CreateGroupMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createGroup>>, TError,CreateGroupMutationVariables, TContext> => {
+
+const mutationKey = getCreateGroupMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createGroup>>, CreateGroupMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  createGroup(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateGroupMutationResult = NonNullable<Awaited<ReturnType<typeof createGroup>>>
+    export type CreateGroupMutationBody = BodyType<CreateGroupRequest>
+    export type CreateGroupMutationError = ErrorType<void>
+    export type CreateGroupMutationVariables = {data: BodyType<CreateGroupRequest>}
+
+    /**
+ * @summary Create a persistent group (requires the premium entitlement)
+ */
+export const useCreateGroup = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createGroup>>, TError,CreateGroupMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createGroup>>,
+        TError,
+        CreateGroupMutationVariables,
+        TContext
+      > => {
+      return useMutation(getCreateGroupMutationOptions(options));
+    }
+
+export const getJoinGroupUrl = () => {
+
+
+
+
+  return `/api/groups/join`
+}
+
+/**
+ * @summary Join a group with an invite token or join code
+ */
+export const joinGroup = async (joinGroupRequest: JoinGroupRequest, options?: Parameters<typeof customFetch>[1]): Promise<GroupSession> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<GroupSession>(getJoinGroupUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(joinGroupRequest)
+  }
+);}
+
+
+
+
+
+export const getJoinGroupMutationKey = () => ['joinGroup'] as const;
+
+export const getJoinGroupMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof joinGroup>>, TError,JoinGroupMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof joinGroup>>, TError,JoinGroupMutationVariables, TContext> => {
+
+const mutationKey = getJoinGroupMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof joinGroup>>, JoinGroupMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  joinGroup(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type JoinGroupMutationResult = NonNullable<Awaited<ReturnType<typeof joinGroup>>>
+    export type JoinGroupMutationBody = BodyType<JoinGroupRequest>
+    export type JoinGroupMutationError = ErrorType<void>
+    export type JoinGroupMutationVariables = {data: BodyType<JoinGroupRequest>}
+
+    /**
+ * @summary Join a group with an invite token or join code
+ */
+export const useJoinGroup = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof joinGroup>>, TError,JoinGroupMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof joinGroup>>,
+        TError,
+        JoinGroupMutationVariables,
+        TContext
+      > => {
+      return useMutation(getJoinGroupMutationOptions(options));
+    }
+
+export const getGetGroupUrl = (groupId: string,) => {
+
+
+
+
+  return `/api/groups/${groupId}`
+}
+
+/**
+ * @summary Get a group, its members and tonight's state
+ */
+export const getGroup = async (groupId: string, options?: Parameters<typeof customFetch>[1]): Promise<GroupDetail> => {
+
+  return customFetch<GroupDetail>(getGetGroupUrl(groupId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetGroupQueryKey = (groupId: string,) => {
+    return [
+    `/api/groups/${groupId}`
+    ] as const;
+    }
+
+
+export const getGetGroupQueryOptions = <TData = Awaited<ReturnType<typeof getGroup>>, TError = ErrorType<void>>(groupId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getGroup>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetGroupQueryKey(groupId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getGroup>>> = ({ signal }) => getGroup(groupId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: groupId !== null && groupId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getGroup>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetGroupQueryResult = NonNullable<Awaited<ReturnType<typeof getGroup>>>
+export type GetGroupQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get a group, its members and tonight's state
+ */
+
+export function useGetGroup<TData = Awaited<ReturnType<typeof getGroup>>, TError = ErrorType<void>>(
+ groupId: string, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getGroup>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetGroupQueryOptions(groupId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateGroupUrl = (groupId: string,) => {
+
+
+
+
+  return `/api/groups/${groupId}`
+}
+
+/**
+ * @summary Rename the group (host only)
+ */
+export const updateGroup = async (groupId: string,
+    updateGroupRequest: UpdateGroupRequest, options?: Parameters<typeof customFetch>[1]): Promise<GroupDetail> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<GroupDetail>(getUpdateGroupUrl(groupId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(updateGroupRequest)
+  }
+);}
+
+
+
+
+
+export const getUpdateGroupMutationKey = () => ['updateGroup'] as const;
+
+export const getUpdateGroupMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateGroup>>, TError,UpdateGroupMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateGroup>>, TError,UpdateGroupMutationVariables, TContext> => {
+
+const mutationKey = getUpdateGroupMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateGroup>>, UpdateGroupMutationVariables> = (props) => {
+          const {groupId,data} = props ?? {};
+
+          return  updateGroup(groupId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateGroupMutationResult = NonNullable<Awaited<ReturnType<typeof updateGroup>>>
+    export type UpdateGroupMutationBody = BodyType<UpdateGroupRequest>
+    export type UpdateGroupMutationError = ErrorType<void>
+    export type UpdateGroupMutationVariables = {groupId: string;data: BodyType<UpdateGroupRequest>}
+
+    /**
+ * @summary Rename the group (host only)
+ */
+export const useUpdateGroup = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateGroup>>, TError,UpdateGroupMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateGroup>>,
+        TError,
+        UpdateGroupMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUpdateGroupMutationOptions(options));
+    }
+
+export const getDisbandGroupUrl = (groupId: string,) => {
+
+
+
+
+  return `/api/groups/${groupId}`
+}
+
+/**
+ * @summary Disband the group and delete everything under it (host only)
+ */
+export const disbandGroup = async (groupId: string, options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+
+  return customFetch<void>(getDisbandGroupUrl(groupId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDisbandGroupMutationKey = () => ['disbandGroup'] as const;
+
+export const getDisbandGroupMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof disbandGroup>>, TError,DisbandGroupMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof disbandGroup>>, TError,DisbandGroupMutationVariables, TContext> => {
+
+const mutationKey = getDisbandGroupMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof disbandGroup>>, DisbandGroupMutationVariables> = (props) => {
+          const {groupId} = props ?? {};
+
+          return  disbandGroup(groupId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DisbandGroupMutationResult = NonNullable<Awaited<ReturnType<typeof disbandGroup>>>
+
+    export type DisbandGroupMutationError = ErrorType<void>
+    export type DisbandGroupMutationVariables = {groupId: string}
+
+    /**
+ * @summary Disband the group and delete everything under it (host only)
+ */
+export const useDisbandGroup = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof disbandGroup>>, TError,DisbandGroupMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof disbandGroup>>,
+        TError,
+        DisbandGroupMutationVariables,
+        TContext
+      > => {
+      return useMutation(getDisbandGroupMutationOptions(options));
+    }
+
+export const getRotateGroupInviteUrl = (groupId: string,) => {
+
+
+
+
+  return `/api/groups/${groupId}/invite`
+}
+
+/**
+ * @summary Replace the invite link and join code; older ones stop working (host only)
+ */
+export const rotateGroupInvite = async (groupId: string, options?: Parameters<typeof customFetch>[1]): Promise<GroupInvite> => {
+
+  return customFetch<GroupInvite>(getRotateGroupInviteUrl(groupId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getRotateGroupInviteMutationKey = () => ['rotateGroupInvite'] as const;
+
+export const getRotateGroupInviteMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof rotateGroupInvite>>, TError,RotateGroupInviteMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof rotateGroupInvite>>, TError,RotateGroupInviteMutationVariables, TContext> => {
+
+const mutationKey = getRotateGroupInviteMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof rotateGroupInvite>>, RotateGroupInviteMutationVariables> = (props) => {
+          const {groupId} = props ?? {};
+
+          return  rotateGroupInvite(groupId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RotateGroupInviteMutationResult = NonNullable<Awaited<ReturnType<typeof rotateGroupInvite>>>
+
+    export type RotateGroupInviteMutationError = ErrorType<void>
+    export type RotateGroupInviteMutationVariables = {groupId: string}
+
+    /**
+ * @summary Replace the invite link and join code; older ones stop working (host only)
+ */
+export const useRotateGroupInvite = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof rotateGroupInvite>>, TError,RotateGroupInviteMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof rotateGroupInvite>>,
+        TError,
+        RotateGroupInviteMutationVariables,
+        TContext
+      > => {
+      return useMutation(getRotateGroupInviteMutationOptions(options));
+    }
+
+export const getTransferGroupHostUrl = (groupId: string,) => {
+
+
+
+
+  return `/api/groups/${groupId}/transfer`
+}
+
+/**
+ * @summary Make another member the host (host only)
+ */
+export const transferGroupHost = async (groupId: string,
+    transferGroupHostRequest: TransferGroupHostRequest, options?: Parameters<typeof customFetch>[1]): Promise<GroupDetail> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<GroupDetail>(getTransferGroupHostUrl(groupId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(transferGroupHostRequest)
+  }
+);}
+
+
+
+
+
+export const getTransferGroupHostMutationKey = () => ['transferGroupHost'] as const;
+
+export const getTransferGroupHostMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof transferGroupHost>>, TError,TransferGroupHostMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof transferGroupHost>>, TError,TransferGroupHostMutationVariables, TContext> => {
+
+const mutationKey = getTransferGroupHostMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof transferGroupHost>>, TransferGroupHostMutationVariables> = (props) => {
+          const {groupId,data} = props ?? {};
+
+          return  transferGroupHost(groupId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type TransferGroupHostMutationResult = NonNullable<Awaited<ReturnType<typeof transferGroupHost>>>
+    export type TransferGroupHostMutationBody = BodyType<TransferGroupHostRequest>
+    export type TransferGroupHostMutationError = ErrorType<void>
+    export type TransferGroupHostMutationVariables = {groupId: string;data: BodyType<TransferGroupHostRequest>}
+
+    /**
+ * @summary Make another member the host (host only)
+ */
+export const useTransferGroupHost = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof transferGroupHost>>, TError,TransferGroupHostMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof transferGroupHost>>,
+        TError,
+        TransferGroupHostMutationVariables,
+        TContext
+      > => {
+      return useMutation(getTransferGroupHostMutationOptions(options));
+    }
+
+export const getRemoveGroupMemberUrl = (groupId: string,
+    memberId: string,) => {
+
+
+
+
+  return `/api/groups/${groupId}/members/${memberId}`
+}
+
+/**
+ * @summary Remove a member from the group (host only)
+ */
+export const removeGroupMember = async (groupId: string,
+    memberId: string, options?: Parameters<typeof customFetch>[1]): Promise<GroupDetail> => {
+
+  return customFetch<GroupDetail>(getRemoveGroupMemberUrl(groupId,memberId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getRemoveGroupMemberMutationKey = () => ['removeGroupMember'] as const;
+
+export const getRemoveGroupMemberMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof removeGroupMember>>, TError,RemoveGroupMemberMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof removeGroupMember>>, TError,RemoveGroupMemberMutationVariables, TContext> => {
+
+const mutationKey = getRemoveGroupMemberMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof removeGroupMember>>, RemoveGroupMemberMutationVariables> = (props) => {
+          const {groupId,memberId} = props ?? {};
+
+          return  removeGroupMember(groupId,memberId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RemoveGroupMemberMutationResult = NonNullable<Awaited<ReturnType<typeof removeGroupMember>>>
+
+    export type RemoveGroupMemberMutationError = ErrorType<void>
+    export type RemoveGroupMemberMutationVariables = {groupId: string;memberId: string}
+
+    /**
+ * @summary Remove a member from the group (host only)
+ */
+export const useRemoveGroupMember = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof removeGroupMember>>, TError,RemoveGroupMemberMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof removeGroupMember>>,
+        TError,
+        RemoveGroupMemberMutationVariables,
+        TContext
+      > => {
+      return useMutation(getRemoveGroupMemberMutationOptions(options));
+    }
+
+export const getUpdateMyGroupMembershipUrl = (groupId: string,) => {
+
+
+
+
+  return `/api/groups/${groupId}/me`
+}
+
+/**
+ * @summary Change my display name, push token, notification language or notifications on/off
+ */
+export const updateMyGroupMembership = async (groupId: string,
+    updateGroupMembershipRequest: UpdateGroupMembershipRequest, options?: Parameters<typeof customFetch>[1]): Promise<GroupDetail> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<GroupDetail>(getUpdateMyGroupMembershipUrl(groupId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(updateGroupMembershipRequest)
+  }
+);}
+
+
+
+
+
+export const getUpdateMyGroupMembershipMutationKey = () => ['updateMyGroupMembership'] as const;
+
+export const getUpdateMyGroupMembershipMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateMyGroupMembership>>, TError,UpdateMyGroupMembershipMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateMyGroupMembership>>, TError,UpdateMyGroupMembershipMutationVariables, TContext> => {
+
+const mutationKey = getUpdateMyGroupMembershipMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateMyGroupMembership>>, UpdateMyGroupMembershipMutationVariables> = (props) => {
+          const {groupId,data} = props ?? {};
+
+          return  updateMyGroupMembership(groupId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateMyGroupMembershipMutationResult = NonNullable<Awaited<ReturnType<typeof updateMyGroupMembership>>>
+    export type UpdateMyGroupMembershipMutationBody = BodyType<UpdateGroupMembershipRequest>
+    export type UpdateMyGroupMembershipMutationError = ErrorType<void>
+    export type UpdateMyGroupMembershipMutationVariables = {groupId: string;data: BodyType<UpdateGroupMembershipRequest>}
+
+    /**
+ * @summary Change my display name, push token, notification language or notifications on/off
+ */
+export const useUpdateMyGroupMembership = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateMyGroupMembership>>, TError,UpdateMyGroupMembershipMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateMyGroupMembership>>,
+        TError,
+        UpdateMyGroupMembershipMutationVariables,
+        TContext
+      > => {
+      return useMutation(getUpdateMyGroupMembershipMutationOptions(options));
+    }
+
+export const getLeaveGroupUrl = (groupId: string,) => {
+
+
+
+
+  return `/api/groups/${groupId}/me`
+}
+
+/**
+ * @summary Leave the group (hosts must transfer or disband first)
+ */
+export const leaveGroup = async (groupId: string, options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+
+  return customFetch<void>(getLeaveGroupUrl(groupId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getLeaveGroupMutationKey = () => ['leaveGroup'] as const;
+
+export const getLeaveGroupMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof leaveGroup>>, TError,LeaveGroupMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof leaveGroup>>, TError,LeaveGroupMutationVariables, TContext> => {
+
+const mutationKey = getLeaveGroupMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof leaveGroup>>, LeaveGroupMutationVariables> = (props) => {
+          const {groupId} = props ?? {};
+
+          return  leaveGroup(groupId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type LeaveGroupMutationResult = NonNullable<Awaited<ReturnType<typeof leaveGroup>>>
+
+    export type LeaveGroupMutationError = ErrorType<void>
+    export type LeaveGroupMutationVariables = {groupId: string}
+
+    /**
+ * @summary Leave the group (hosts must transfer or disband first)
+ */
+export const useLeaveGroup = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof leaveGroup>>, TError,LeaveGroupMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof leaveGroup>>,
+        TError,
+        LeaveGroupMutationVariables,
+        TContext
+      > => {
+      return useMutation(getLeaveGroupMutationOptions(options));
+    }
+
+export const getStartGroupTonightUrl = (groupId: string,) => {
+
+
+
+
+  return `/api/groups/${groupId}/tonight`
+}
+
+/**
+ * @summary Activate the group for tonight and notify members (host only)
+ */
+export const startGroupTonight = async (groupId: string, options?: Parameters<typeof customFetch>[1]): Promise<GroupDetail> => {
+
+  return customFetch<GroupDetail>(getStartGroupTonightUrl(groupId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getStartGroupTonightMutationKey = () => ['startGroupTonight'] as const;
+
+export const getStartGroupTonightMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startGroupTonight>>, TError,StartGroupTonightMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof startGroupTonight>>, TError,StartGroupTonightMutationVariables, TContext> => {
+
+const mutationKey = getStartGroupTonightMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof startGroupTonight>>, StartGroupTonightMutationVariables> = (props) => {
+          const {groupId} = props ?? {};
+
+          return  startGroupTonight(groupId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type StartGroupTonightMutationResult = NonNullable<Awaited<ReturnType<typeof startGroupTonight>>>
+
+    export type StartGroupTonightMutationError = ErrorType<void>
+    export type StartGroupTonightMutationVariables = {groupId: string}
+
+    /**
+ * @summary Activate the group for tonight and notify members (host only)
+ */
+export const useStartGroupTonight = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof startGroupTonight>>, TError,StartGroupTonightMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof startGroupTonight>>,
+        TError,
+        StartGroupTonightMutationVariables,
+        TContext
+      > => {
+      return useMutation(getStartGroupTonightMutationOptions(options));
+    }
+
+export const getEndGroupTonightUrl = (groupId: string,) => {
+
+
+
+
+  return `/api/groups/${groupId}/tonight`
+}
+
+/**
+ * @summary End tonight early and delete every leave-by time (host only)
+ */
+export const endGroupTonight = async (groupId: string, options?: Parameters<typeof customFetch>[1]): Promise<GroupDetail> => {
+
+  return customFetch<GroupDetail>(getEndGroupTonightUrl(groupId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getEndGroupTonightMutationKey = () => ['endGroupTonight'] as const;
+
+export const getEndGroupTonightMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof endGroupTonight>>, TError,EndGroupTonightMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof endGroupTonight>>, TError,EndGroupTonightMutationVariables, TContext> => {
+
+const mutationKey = getEndGroupTonightMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof endGroupTonight>>, EndGroupTonightMutationVariables> = (props) => {
+          const {groupId} = props ?? {};
+
+          return  endGroupTonight(groupId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type EndGroupTonightMutationResult = NonNullable<Awaited<ReturnType<typeof endGroupTonight>>>
+
+    export type EndGroupTonightMutationError = ErrorType<void>
+    export type EndGroupTonightMutationVariables = {groupId: string}
+
+    /**
+ * @summary End tonight early and delete every leave-by time (host only)
+ */
+export const useEndGroupTonight = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof endGroupTonight>>, TError,EndGroupTonightMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof endGroupTonight>>,
+        TError,
+        EndGroupTonightMutationVariables,
+        TContext
+      > => {
+      return useMutation(getEndGroupTonightMutationOptions(options));
+    }
+
+export const getJoinGroupTonightUrl = (groupId: string,) => {
+
+
+
+
+  return `/api/groups/${groupId}/tonight/me`
+}
+
+/**
+ * @summary Opt in to tonight (今夜参加する) and/or update my leave-by time
+ */
+export const joinGroupTonight = async (groupId: string,
+    groupTonightParticipationRequest: GroupTonightParticipationRequest, options?: Parameters<typeof customFetch>[1]): Promise<GroupDetail> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return customFetch<GroupDetail>(getJoinGroupTonightUrl(groupId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(groupTonightParticipationRequest)
+  }
+);}
+
+
+
+
+
+export const getJoinGroupTonightMutationKey = () => ['joinGroupTonight'] as const;
+
+export const getJoinGroupTonightMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof joinGroupTonight>>, TError,JoinGroupTonightMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof joinGroupTonight>>, TError,JoinGroupTonightMutationVariables, TContext> => {
+
+const mutationKey = getJoinGroupTonightMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof joinGroupTonight>>, JoinGroupTonightMutationVariables> = (props) => {
+          const {groupId,data} = props ?? {};
+
+          return  joinGroupTonight(groupId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type JoinGroupTonightMutationResult = NonNullable<Awaited<ReturnType<typeof joinGroupTonight>>>
+    export type JoinGroupTonightMutationBody = BodyType<GroupTonightParticipationRequest>
+    export type JoinGroupTonightMutationError = ErrorType<void>
+    export type JoinGroupTonightMutationVariables = {groupId: string;data: BodyType<GroupTonightParticipationRequest>}
+
+    /**
+ * @summary Opt in to tonight (今夜参加する) and/or update my leave-by time
+ */
+export const useJoinGroupTonight = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof joinGroupTonight>>, TError,JoinGroupTonightMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof joinGroupTonight>>,
+        TError,
+        JoinGroupTonightMutationVariables,
+        TContext
+      > => {
+      return useMutation(getJoinGroupTonightMutationOptions(options));
+    }
+
+export const getLeaveGroupTonightUrl = (groupId: string,) => {
+
+
+
+
+  return `/api/groups/${groupId}/tonight/me`
+}
+
+/**
+ * @summary Opt out of tonight and delete my leave-by time
+ */
+export const leaveGroupTonight = async (groupId: string, options?: Parameters<typeof customFetch>[1]): Promise<GroupDetail> => {
+
+  return customFetch<GroupDetail>(getLeaveGroupTonightUrl(groupId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getLeaveGroupTonightMutationKey = () => ['leaveGroupTonight'] as const;
+
+export const getLeaveGroupTonightMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof leaveGroupTonight>>, TError,LeaveGroupTonightMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof leaveGroupTonight>>, TError,LeaveGroupTonightMutationVariables, TContext> => {
+
+const mutationKey = getLeaveGroupTonightMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof leaveGroupTonight>>, LeaveGroupTonightMutationVariables> = (props) => {
+          const {groupId} = props ?? {};
+
+          return  leaveGroupTonight(groupId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type LeaveGroupTonightMutationResult = NonNullable<Awaited<ReturnType<typeof leaveGroupTonight>>>
+
+    export type LeaveGroupTonightMutationError = ErrorType<void>
+    export type LeaveGroupTonightMutationVariables = {groupId: string}
+
+    /**
+ * @summary Opt out of tonight and delete my leave-by time
+ */
+export const useLeaveGroupTonight = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof leaveGroupTonight>>, TError,LeaveGroupTonightMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof leaveGroupTonight>>,
+        TError,
+        LeaveGroupTonightMutationVariables,
+        TContext
+      > => {
+      return useMutation(getLeaveGroupTonightMutationOptions(options));
+    }
+
+export const getReportGroupTonightMissedUrl = (groupId: string,) => {
+
+
+
+
+  return `/api/groups/${groupId}/tonight/missed`
+}
+
+/**
+ * @summary Tell tonight's participants and the host that I missed my train (乗り遅れた)
+ */
+export const reportGroupTonightMissed = async (groupId: string, options?: Parameters<typeof customFetch>[1]): Promise<GroupDetail> => {
+
+  return customFetch<GroupDetail>(getReportGroupTonightMissedUrl(groupId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getReportGroupTonightMissedMutationKey = () => ['reportGroupTonightMissed'] as const;
+
+export const getReportGroupTonightMissedMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reportGroupTonightMissed>>, TError,ReportGroupTonightMissedMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof reportGroupTonightMissed>>, TError,ReportGroupTonightMissedMutationVariables, TContext> => {
+
+const mutationKey = getReportGroupTonightMissedMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof reportGroupTonightMissed>>, ReportGroupTonightMissedMutationVariables> = (props) => {
+          const {groupId} = props ?? {};
+
+          return  reportGroupTonightMissed(groupId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReportGroupTonightMissedMutationResult = NonNullable<Awaited<ReturnType<typeof reportGroupTonightMissed>>>
+
+    export type ReportGroupTonightMissedMutationError = ErrorType<void>
+    export type ReportGroupTonightMissedMutationVariables = {groupId: string}
+
+    /**
+ * @summary Tell tonight's participants and the host that I missed my train (乗り遅れた)
+ */
+export const useReportGroupTonightMissed = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reportGroupTonightMissed>>, TError,ReportGroupTonightMissedMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof reportGroupTonightMissed>>,
+        TError,
+        ReportGroupTonightMissedMutationVariables,
+        TContext
+      > => {
+      return useMutation(getReportGroupTonightMissedMutationOptions(options));
     }
 

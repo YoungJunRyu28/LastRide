@@ -5,6 +5,162 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+/**
+ * Language used for this member's push notifications
+ */
+export type GroupLanguage = typeof GroupLanguage[keyof typeof GroupLanguage];
+
+
+export const GroupLanguage = {
+  ja: 'ja',
+  en: 'en',
+} as const;
+
+export type GroupRole = typeof GroupRole[keyof typeof GroupRole];
+
+
+export const GroupRole = {
+  host: 'host',
+  member: 'member',
+} as const;
+
+export interface CreateGroupRequest {
+  /**
+     * @minLength 1
+     * @maxLength 80
+     */
+  name: string;
+  /**
+     * @minLength 1
+     * @maxLength 40
+     */
+  displayName: string;
+  language?: GroupLanguage;
+}
+
+export interface JoinGroupRequest {
+  /**
+     * @minLength 32
+     * @maxLength 256
+     */
+  inviteToken?: string;
+  /**
+     * @minLength 4
+     * @maxLength 12
+     */
+  joinCode?: string;
+  /**
+     * @minLength 1
+     * @maxLength 40
+     */
+  displayName: string;
+  language?: GroupLanguage;
+}
+
+export interface UpdateGroupRequest {
+  /**
+     * @minLength 1
+     * @maxLength 80
+     */
+  name: string;
+}
+
+export interface TransferGroupHostRequest {
+  memberId: string;
+}
+
+/**
+ * Omitted fields are unchanged. expoPushToken null unregisters push.
+ */
+export interface UpdateGroupMembershipRequest {
+  /**
+     * @minLength 1
+     * @maxLength 40
+     */
+  displayName?: string;
+  /**
+     * @minLength 20
+     * @maxLength 255
+     * @nullable
+     */
+  expoPushToken?: string | null;
+  language?: GroupLanguage;
+  /** Group notifications on/off for this member (default true); applies to all group pushes */
+  notifications?: boolean;
+}
+
+/**
+ * Only a leave-by timestamp is ever synced; never location, station, route or destination.
+ */
+export interface GroupTonightParticipationRequest {
+  /** @nullable */
+  leaveBy?: string | null;
+}
+
+export interface GroupInvite {
+  inviteToken: string;
+  joinCode: string;
+  rotatedAt: string;
+}
+
+export interface GroupMemberSummary {
+  id: string;
+  displayName: string;
+  role: GroupRole;
+}
+
+export interface GroupMe {
+  memberId: string;
+  displayName: string;
+  role: GroupRole;
+  language: GroupLanguage;
+  pushRegistered: boolean;
+  notifications: boolean;
+}
+
+/**
+ * Privacy-minimal. No location, route, station, or destination data.
+ */
+export interface GroupTonightParticipant {
+  memberId: string;
+  displayName: string;
+  /** @nullable */
+  leaveBy: string | null;
+  missed: boolean;
+}
+
+export interface GroupTonight {
+  active: boolean;
+  /**
+     * Japan service day (04:00 JST boundary) as YYYY-MM-DD
+     * @nullable
+     */
+  serviceDate: string | null;
+  /** @nullable */
+  startedAt: string | null;
+  /** @nullable */
+  endsAt: string | null;
+  /** Sorted by leaveBy (unknown last) */
+  participants: GroupTonightParticipant[];
+}
+
+export interface GroupDetail {
+  id: string;
+  name: string;
+  memberLimit: number;
+  me: GroupMe;
+  members: GroupMemberSummary[];
+  /** Host only. Null for members, and for the host when the server cannot recover the current invite (rotate to get a fresh one). */
+  invite: GroupInvite | null;
+  tonight: GroupTonight;
+}
+
+export interface GroupSession {
+  /** Per-group capability. Store it on the device only; it is never shown again. */
+  memberToken: string;
+  group: GroupDetail;
+}
+
 export interface TrainLeg {
   line: string;
   /** English line name, or the Japanese name if it isn't recognised */
@@ -304,6 +460,10 @@ export interface UpdateEventParticipantRequest {
 export interface HealthStatus {
   status: string;
 }
+
+export type MemberTokenParameter = string;
+
+export type RevenueCatAppUserIdParameter = string;
 
 export type ParticipantTokenParameter = string;
 

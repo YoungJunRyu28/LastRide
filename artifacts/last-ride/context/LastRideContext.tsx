@@ -24,7 +24,6 @@ import {
   scheduleReminders,
   sendTestNotification,
 } from "@/lib/notifications";
-import { recordNightPlan } from "@/lib/nightHistory";
 import { recommendedLeaveTime } from "@/lib/reliability";
 import {
   buildReminderPlans,
@@ -45,6 +44,7 @@ import {
   writeDestinationState,
   writeHomeAddress,
   writePinnedStation,
+  writeTonightDestination,
   type HomeAddress,
   type Language,
   type NightLocationMode,
@@ -70,6 +70,8 @@ import {
 } from "@/lib/time";
 import { getFirstTrain, type TrainTime } from "@/lib/timetable";
 import { endLiveActivity, syncLiveActivity } from "@/lib/liveActivity";
+import { usePremium } from "@/context/PremiumContext";
+import { syncWidgets } from "@/lib/widgets";
 import {
   clearTrackingSnapshot,
   hasBackgroundLocationPermission,
@@ -135,6 +137,9 @@ type RideContextValue = {
     address: HomeAddress | null;
   }) => void;
   selectDestination: (id: string) => void;
+  /** A station for tonight only (not saved; back to the saved destination tomorrow). */
+  tonightDestination: StationOption | null;
+  setTonightDestination: (station: StationOption | null) => void;
   deleteDestination: (id: string) => void;
   walkingSpeed: WalkingSpeed;
   plan: NightPlan | null;
@@ -166,6 +171,8 @@ type RideContextValue = {
   nightLocationMode: NightLocationMode;
   setNightLocationMode: (mode: NightLocationMode) => void;
   notificationsAllowed: boolean | null;
+  /** Asks the OS for notification permission (onboarding step 2). */
+  requestNotifications: () => Promise<boolean>;
   /** "HH:MM" (Japan time) of the app clock — the demo clock while one is set. */
   currentTime: string;
   nowMs: number;
@@ -354,6 +361,8 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
   );
   const [homeStationOption, setHomeStationOption] =
     useState<StationOption | null>(DEFAULT_SETTINGS.homeStation);
+  const [tonightDestination, setTonightDestinationState] =
+    useState<StationOption | null>(null);
   const [homeAddress, setHomeAddressState] = useState<HomeAddress | null>(
     DEFAULT_SETTINGS.homeAddress,
   );
@@ -436,6 +445,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
         setPinnedStationState(saved.pinnedStation);
         setMissedCheckInState(saved.missedCheckIn);
         setNightLocationModeState(saved.nightLocationMode);
+        setTonightDestinationState(saved.tonightDestination);
         setHomeAddressState(saved.homeAddress);
         setDestinations(saved.destinations);
         setActiveDestinationId(saved.activeDestinationId);
@@ -512,13 +522,16 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
   // The lock-screen countdown follows night-out tracking. Re-synced when the plan
   // changes and when the night moves on (leave-by passes, the last train goes).
   const liveStatus = plan && !demoActive ? rideStatus(plan, nowMs) : null;
+  const { isPremium } = usePremium();
   useEffect(() => {
-    if (!trackingMode || !plan || demoActive) {
+    if (!trackingMode || !plan || demoActive || !isPremium) {
       void endLiveActivity();
       return;
     }
-    void syncLiveActivity(plan, language ?? "en").catch(() => undefined);
-  }, [trackingMode, plan, language, liveStatus, demoActive]);
+    void syncLiveActivity(plan, language ?? "en", Date.now(), true).catch(
+      () => undefined,
+    );
+  }, [trackingMode, plan, language, liveStatus, demoActive, isPremium]);
 
   // First train from the chosen station, for the "if missed" screen. Keyed on the
   // station and night rather than the plan, so re-plans that keep them don't refetch.
@@ -553,18 +566,6 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
   useEffect(() => {
     void writeSavedPlan(plan);
   }, [plan]);
-
-  useEffect(() => {
-    if (!plan) return;
-    const active =
-      destinations.find(
-        (destination) => destination.id === activeDestinationId,
-      ) ?? destinations[0];
-    if (!active) return;
-    void recordNightPlan(plan, { id: active.id, label: active.label }).catch(
-      () => undefined,
-    );
-  }, [plan?.computedAt, destinations, activeDestinationId]);
 
   // Enterprise participation is deliberately privacy-minimal: only the computed
   // leave-by timestamp is synced. Location, station, destination and route stay local.
@@ -620,6 +621,8 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
         null;
       setDestinations(next);
       setActiveDestinationId(active?.id ?? null);
+      setTonightDestinationState(null);
+      void writeTonightDestination(null);
       setHomeStationOption(active?.station ?? null);
       setHomeAddressState(active?.address ?? null);
       setPinnedStationState(null); // station pins belong to the previous destination
@@ -706,6 +709,24 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     [activeDestinationId, destinations, saveDestination, clearPlan],
   );
 
+  const setTonightDestination = useCallback(
+    (station: StationOption | null) => {
+      const active =
+        destinations.find((destination) => destination.id === activeDestinationId) ??
+        destinations[0] ??
+        null;
+      setTonightDestinationState(station);
+      void writeTonightDestination(station);
+      setHomeStationOption(station ?? active?.station ?? null);
+      setHomeAddressState(station ? null : (active?.address ?? null));
+      setPinnedStationState(null);
+      void writePinnedStation(null);
+      clearPlan();
+      void Haptics.selectionAsync();
+    },
+    [activeDestinationId, destinations, clearPlan],
+  );
+
   const toggleReminderInterval = useCallback((minutes: number) => {
     setReminderIntervals((current) => {
       const next = current.includes(minutes)
@@ -783,6 +804,12 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       stationLabel,
     ],
   );
+
+  const requestNotifications = useCallback(async () => {
+    const allowed = await ensureNotificationPermission();
+    setNotificationsAllowed(allowed);
+    return allowed;
+  }, []);
 
   const triggerTestNotification = useCallback(async () => {
     const allowed = await ensureNotificationPermission();
@@ -1098,12 +1125,30 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       ? homeStationOption.nameJa
       : homeStationOption.name
     : "";
+
   const activeDestination =
     destinations.find(
       (destination) => destination.id === activeDestinationId,
     ) ??
     destinations[0] ??
     null;
+
+  // Home/lock widgets show tonight's plan whenever there is one (not only while tracking).
+  const widgetDestination = tonightDestination
+    ? language === "ja"
+      ? tonightDestination.nameJa
+      : tonightDestination.name
+    : (activeDestination?.label ?? homeStation);
+  useEffect(() => {
+    if (demoActive || !isHydrated) return;
+    void syncWidgets(
+      plan,
+      widgetDestination,
+      language ?? "en",
+      Date.now(),
+      isPremium,
+    ).catch(() => undefined);
+  }, [plan, widgetDestination, language, isPremium, demoActive, isHydrated]);
 
   const value = useMemo<RideContextValue>(
     () => ({
@@ -1124,7 +1169,13 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
         plan?.station.name ??
         (language === "ja" ? "最寄り駅を検索中" : "Finding nearby station"),
       stationNameJa: plan?.station.nameJa ?? "最寄り駅を検索中",
-      destination: activeDestination?.label ?? homeStation,
+      destination: tonightDestination
+        ? language === "ja"
+          ? tonightDestination.nameJa
+          : tonightDestination.name
+        : (activeDestination?.label ?? homeStation),
+      tonightDestination,
+      setTonightDestination,
       leaveBy: plan ? formatJstTime(recommendedLeaveTime(plan)) : "--:--",
       lastTrain: plan ? formatJstTime(plan.lastTrain.departsAt) : "--:--",
       lastTrainSource: plan?.lastTrain.source ?? null,
@@ -1149,6 +1200,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       nightLocationMode,
       setNightLocationMode,
       notificationsAllowed,
+      requestNotifications,
       currentTime: formatJstTime(nowMs),
       nowMs,
       demoActive,
@@ -1185,6 +1237,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       language,
       locationError,
       notificationsAllowed,
+      requestNotifications,
       nowMs,
       plan,
       reminderIntervals,
@@ -1194,6 +1247,8 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       saveDestination,
       saveHomeStation,
       selectDestination,
+      tonightDestination,
+      setTonightDestination,
       setDemoNow,
       setPinnedStation,
       setLanguage,

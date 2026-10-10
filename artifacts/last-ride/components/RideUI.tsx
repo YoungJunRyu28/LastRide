@@ -64,6 +64,6 @@ const styles = StyleSheet.create({
   iconButton: { alignItems: 'center', height: 38, justifyContent: 'center', width: 38 },
   notice: { alignItems: 'flex-start', borderRadius: 18, flexDirection: 'row', gap: 12, padding: 16 },
   noticeText: { flex: 1, gap: 3 },
-  noticeTitle: { fontFamily: 'Inter_600SemiBold', fontSize: 14 },
-  noticeBody: { fontFamily: 'Inter_400Regular', fontSize: 13, lineHeight: 19 },
+  noticeTitle: { fontWeight: '600', fontSize: 14 },
+  noticeBody: { fontWeight: '400', fontSize: 13, lineHeight: 19 },
 });

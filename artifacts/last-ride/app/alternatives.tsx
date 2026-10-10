@@ -1,6 +1,9 @@
 import { BottomNav } from "@/components/BottomNav";
-import { RailwayMark } from "@/components/RideUI";
+import { MapCard } from "@/components/MapCard";
+import { DIGITS } from "@/constants/type";
 import { useLastRide } from "@/context/LastRideContext";
+import { useGroups } from "@/context/GroupsContext";
+import { reportGroupTonightMissed } from "@workspace/api-client-react";
 import { useColors } from "@/hooks/useColors";
 import { apiBaseUrl, communityFallbacksEnabled } from "@/lib/api";
 import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
@@ -240,8 +243,8 @@ export default function AlternativesScreen() {
     language,
     status,
     destination,
-    currentTime,
     nowMs,
+    lastTrain,
     walkingSpeed,
     plan,
     firstTrain,
@@ -257,6 +260,7 @@ export default function AlternativesScreen() {
     requestLocation,
   } = useLastRide();
   const ja = language === "ja";
+  const { tonightGroup, memberOptions, apply } = useGroups();
   const [stays, setStays] = useState<StayOption[] | null>(null);
   const [staysError, setStaysError] = useState(false);
   const [isLoadingStays, setIsLoadingStays] = useState(false);
@@ -553,23 +557,12 @@ export default function AlternativesScreen() {
         contentContainerStyle={[
           styles.content,
           {
-            paddingTop: insets.top + (Platform.OS === "web" ? 67 : 12),
+            paddingTop: insets.top + (Platform.OS === "web" ? 24 : 12),
             paddingBottom: 26,
           },
         ]}
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.top}>
-          <View style={styles.brand}>
-            <RailwayMark size={22} />
-            <Text style={[styles.brandText, { color: colors.foreground }]}>
-              LastRide
-            </Text>
-          </View>
-          <Text style={[styles.clock, { color: colors.mutedForeground }]}>
-            {currentTime}
-          </Text>
-        </View>
         <View style={styles.heading}>
           <Text
             style={[
@@ -582,8 +575,8 @@ export default function AlternativesScreen() {
           >
             {status === "departed"
               ? ja
-                ? "終電が発車しました"
-                : "THE LAST TRAIN HAS LEFT"
+                ? `終電 ${lastTrain} は発車しました`
+                : `THE ${lastTrain} LAST TRAIN HAS LEFT`
               : ja
                 ? "乗れなかったときは"
                 : "IF YOU MISS IT"}
@@ -609,10 +602,9 @@ export default function AlternativesScreen() {
                 style={({ pressed }) => [
                   styles.option,
                   {
-                    backgroundColor: isSelected
-                      ? colors.foreground
-                      : colors.card,
-                    borderColor: isSelected ? colors.foreground : colors.border,
+                    backgroundColor: colors.card,
+                    borderColor: isSelected ? colors.primary : colors.border,
+                    borderWidth: isSelected ? 2 : 1,
                     opacity: pressed ? 0.85 : 1,
                   },
                 ]}
@@ -620,15 +612,13 @@ export default function AlternativesScreen() {
                 <Feather
                   name={option.icon}
                   size={19}
-                  color={
-                    isSelected ? colors.primary : colors.secondaryForeground
-                  }
+                  color={isSelected ? colors.primary : colors.mutedForeground}
                 />
                 <View style={styles.optionCopy}>
                   <Text
                     style={[
                       styles.optionLabel,
-                      { color: isSelected ? colors.card : colors.foreground },
+                      { color: colors.foreground },
                     ]}
                   >
                     {option.label}
@@ -637,9 +627,7 @@ export default function AlternativesScreen() {
                     style={[
                       styles.optionDetail,
                       {
-                        color: isSelected
-                          ? colors.muted
-                          : colors.mutedForeground,
+                        color: colors.mutedForeground,
                       },
                     ]}
                   >
@@ -655,7 +643,7 @@ export default function AlternativesScreen() {
                   <Text
                     style={[
                       styles.optionCost,
-                      { color: isSelected ? colors.card : colors.foreground },
+                      { color: colors.foreground },
                     ]}
                   >
                     {option.cost === null
@@ -1024,6 +1012,29 @@ export default function AlternativesScreen() {
               </Pressable>
             ) : sortedStays && sortedStays.length > 0 ? (
               <>
+                <MapCard
+                  height={170}
+                  you={userCoordinates}
+                  pins={sortedStays.slice(0, 4).map((stay, index) => ({
+                    label: `${ja ? STAY_META[stay.kind].ja : STAY_META[stay.kind].en} ${formatYen(lowestPrice(stay))}`,
+                    emphasis: index === 0,
+                    latitude: stay.latitude,
+                    longitude: stay.longitude,
+                  }))}
+                  onPress={() =>
+                    openMaps(
+                      sortedStays[0].latitude,
+                      sortedStays[0].longitude,
+                      sortedStays[0].name,
+                    )
+                  }
+                  accessibilityLabel={
+                    ja
+                      ? `近くの${sortedStays.length}件。いちばん上を地図アプリで開く`
+                      : `${sortedStays.length} places nearby. Open the first in Maps`
+                  }
+                  openLabel={ja ? "地図アプリで開く" : "Open in Maps"}
+                />
                 {sortedStays.map((stay) => {
                   const meta = STAY_META[stay.kind];
                   const { range, chain } = stayPrice(stay.name, stay.kind);
@@ -1223,13 +1234,13 @@ export default function AlternativesScreen() {
                   style={({ pressed }) => [
                     styles.actionButton,
                     {
-                      backgroundColor: colors.foreground,
+                      backgroundColor: colors.primary,
                       opacity: pressed ? 0.85 : 1,
                     },
                   ]}
                 >
-                  <Feather name="map" color={colors.card} size={16} />
-                  <Text style={[styles.actionText, { color: colors.card }]}>
+                  <Feather name="map" color={colors.primaryForeground} size={16} />
+                  <Text style={[styles.actionText, { color: colors.primaryForeground }]}>
                     {ja ? "地図でルート" : "Driving route"}
                   </Text>
                 </Pressable>
@@ -1309,18 +1320,51 @@ export default function AlternativesScreen() {
               style={({ pressed }) => [
                 styles.actionButton,
                 {
-                  backgroundColor: colors.foreground,
+                  backgroundColor: colors.primary,
                   opacity: pressed ? 0.85 : 1,
                 },
               ]}
             >
-              <Feather name="map" color={colors.card} size={16} />
-              <Text style={[styles.actionText, { color: colors.card }]}>
+              <Feather name="map" color={colors.primaryForeground} size={16} />
+              <Text style={[styles.actionText, { color: colors.primaryForeground }]}>
                 {ja ? "地図で見る" : "Open in Maps"}
               </Text>
             </Pressable>
           </View>
         )}
+
+        {tonightGroup && status === "departed" && (() => {
+          const reported = tonightGroup.tonight.participants.find(
+            (participant) => participant.memberId === tonightGroup.me.memberId,
+          )?.missed;
+          return (
+            <Pressable
+              testID="group-missed"
+              disabled={reported}
+              onPress={() =>
+                void reportGroupTonightMissed(tonightGroup.id, memberOptions(tonightGroup.id))
+                  .then(apply)
+                  .catch(() => undefined)
+              }
+              accessibilityRole="button"
+              style={({ pressed }) => [
+                styles.locationPrompt,
+                { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1, opacity: pressed ? 0.7 : 1 },
+              ]}
+            >
+              <Feather name={reported ? "check" : "users"} color={colors.primary} size={18} />
+              <Text style={[styles.locationPromptText, { color: colors.foreground }]}>
+                {reported
+                  ? ja
+                    ? `${tonightGroup.name}に知らせました`
+                    : `${tonightGroup.name} has been told`
+                  : ja
+                    ? `${tonightGroup.name}に「乗り遅れた」と知らせる`
+                    : `Tell ${tonightGroup.name} you missed it`}
+              </Text>
+            </Pressable>
+          );
+        })()}
 
         {!userCoordinates && (
           <Pressable
@@ -1362,17 +1406,9 @@ export default function AlternativesScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   content: { gap: 18, paddingHorizontal: 20 },
-  top: {
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-  brand: { alignItems: "center", flexDirection: "row", gap: 7 },
-  brandText: { fontFamily: "Inter_700Bold", fontSize: 17 },
-  clock: { fontFamily: "Inter_600SemiBold", fontSize: 14 },
   heading: { gap: 6, marginTop: 2 },
-  kicker: { fontFamily: "Inter_700Bold", fontSize: 12, letterSpacing: 1.3 },
-  title: { fontFamily: "Inter_700Bold", fontSize: 27, letterSpacing: -1 },
+  kicker: { fontWeight: "700", fontSize: 12, letterSpacing: 1.3 },
+  title: { fontWeight: "800", fontSize: 26, letterSpacing: -0.6 },
   options: { gap: 8 },
   option: {
     alignItems: "center",
@@ -1383,14 +1419,14 @@ const styles = StyleSheet.create({
     padding: 14,
   },
   optionCopy: { flex: 1, gap: 2 },
-  optionLabel: { fontFamily: "Inter_700Bold", fontSize: 15 },
-  optionDetail: { fontFamily: "Inter_400Regular", fontSize: 12 },
+  optionLabel: { fontWeight: "700", fontSize: 15 },
+  optionDetail: { fontWeight: "400", fontSize: 12 },
   optionRight: { alignItems: "flex-end", gap: 3 },
-  optionCost: { fontFamily: "Inter_700Bold", fontSize: 16 },
-  priceNote: { fontFamily: "Inter_400Regular", fontSize: 10 },
+  optionCost: { fontFamily: DIGITS, fontSize: 16 },
+  priceNote: { fontWeight: "400", fontSize: 10 },
   tag: { borderRadius: 9, paddingHorizontal: 8, paddingVertical: 3 },
   tagText: {
-    fontFamily: "Inter_700Bold",
+    fontWeight: "700",
     fontSize: 10,
     letterSpacing: 0.3,
     textTransform: "uppercase",
@@ -1398,12 +1434,12 @@ const styles = StyleSheet.create({
   panel: { borderRadius: 22, borderWidth: 1, gap: 16, padding: 18 },
   panelHead: { alignItems: "center", flexDirection: "row", gap: 16 },
   panelHeadCopy: { flex: 1, gap: 3 },
-  panelTime: { fontFamily: "Inter_700Bold", fontSize: 34, letterSpacing: -1.5 },
-  panelTitle: { fontFamily: "Inter_700Bold", fontSize: 16 },
-  note: { fontFamily: "Inter_400Regular", fontSize: 12, lineHeight: 17 },
+  panelTime: { fontFamily: DIGITS, fontSize: 32, letterSpacing: -0.8 },
+  panelTitle: { fontWeight: "700", fontSize: 16 },
+  note: { fontWeight: "400", fontSize: 12, lineHeight: 17 },
   legs: { gap: 12 },
   leg: { alignItems: "flex-start", flexDirection: "row", gap: 14 },
-  legTime: { fontFamily: "Inter_700Bold", fontSize: 15, width: 46 },
+  legTime: { fontFamily: DIGITS, fontSize: 15, width: 46 },
   legIcon: { marginLeft: 14, marginRight: 14 },
   stayRow: { alignItems: "center", flexDirection: "row", gap: 11 },
   stayActions: { flexDirection: "row", gap: 6 },
@@ -1415,8 +1451,8 @@ const styles = StyleSheet.create({
     width: 40,
   },
   cardCopy: { flex: 1, gap: 2 },
-  cardTitle: { fontFamily: "Inter_700Bold", fontSize: 14 },
-  stayPrice: { fontFamily: "Inter_700Bold", fontSize: 14 },
+  cardTitle: { fontWeight: "700", fontSize: 14 },
+  stayPrice: { fontWeight: "700", fontSize: 14 },
   iconButton: {
     alignItems: "center",
     borderRadius: 11,
@@ -1440,9 +1476,9 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     minHeight: 46,
   },
-  actionText: { fontFamily: "Inter_700Bold", fontSize: 13 },
+  actionText: { fontWeight: "700", fontSize: 13 },
   phraseBox: { borderRadius: 15, gap: 3, padding: 12 },
-  phrase: { fontFamily: "Inter_700Bold", fontSize: 15 },
+  phrase: { fontWeight: "700", fontSize: 15 },
   chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 7 },
   chip: {
     alignItems: "center",
@@ -1452,7 +1488,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
   },
-  chipText: { fontFamily: "Inter_700Bold", fontSize: 11 },
+  chipText: { fontWeight: "700", fontSize: 11 },
   loadingRow: { alignItems: "center", flexDirection: "row", gap: 12 },
   locationPrompt: {
     alignItems: "center",
@@ -1463,7 +1499,7 @@ const styles = StyleSheet.create({
   },
   locationPromptText: {
     flex: 1,
-    fontFamily: "Inter_600SemiBold",
+    fontWeight: "600",
     fontSize: 13,
   },
 });

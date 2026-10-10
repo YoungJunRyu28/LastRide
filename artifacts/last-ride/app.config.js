@@ -15,8 +15,9 @@ module.exports = ({ config }) => {
   // (Personal Team) signing rejects, and the join domain must already serve
   // the files in docs/well-known/ — so they are opt-in.
   const enableUniversalLinks = process.env.ENABLE_UNIVERSAL_LINKS === "true";
-  // The iOS Live Activity (leave-by countdown on the lock screen) ships in a
-  // widget extension that needs an App Group — also rejected by free signing.
+  // The iOS Live Activity (leave-by countdown on the lock screen) and the
+  // home/lock-screen widgets ship in a widget extension that needs an App
+  // Group — also rejected by free signing.
   const enableLiveActivity = process.env.ENABLE_LIVE_ACTIVITY === "true";
 
   // The app refuses to show sample train times in release builds, so a release
@@ -47,8 +48,34 @@ module.exports = ({ config }) => {
         (plugin) => plugin !== "./plugins/withoutPushEntitlement",
       )
     : config.plugins;
+  // The same extension carries the premium home/lock-screen widget
+  // (components/LeaveWidget.tsx); the Live Activity needs no entry here.
   const withLiveActivity = enableLiveActivity
-    ? [...basePlugins, "expo-widgets"]
+    ? [
+        ...basePlugins,
+        [
+          "expo-widgets",
+          {
+            widgets: [
+              {
+                name: "LeaveWidget",
+                displayName: "帰り時",
+                description: "今夜の出発時刻と残り時間",
+                supportedFamilies: [
+                  "systemSmall",
+                  "systemMedium",
+                  "accessoryRectangular",
+                  "accessoryCircular",
+                  "accessoryInline",
+                ],
+                contentMarginsDisabled: false,
+                // Android home widgets need a Jetpack Compose layout; not yet.
+                android: null,
+              },
+            ],
+          },
+        ],
+      ]
     : basePlugins;
   // Uploads source maps so crash reports show real file/line numbers. Needs
   // SENTRY_ORG, SENTRY_PROJECT and (in the build environment) SENTRY_AUTH_TOKEN.

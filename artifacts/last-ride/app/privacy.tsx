@@ -136,9 +136,9 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
   },
   spacer: { width: 38 },
-  title: { fontFamily: "Inter_700Bold", fontSize: 32, letterSpacing: -1.2 },
-  intro: { fontFamily: "Inter_500Medium", fontSize: 15, lineHeight: 23 },
+  title: { fontWeight: "700", fontSize: 32, letterSpacing: -1.2 },
+  intro: { fontWeight: "500", fontSize: 15, lineHeight: 23 },
   section: { gap: 6 },
-  heading: { fontFamily: "Inter_700Bold", fontSize: 15 },
-  body: { fontFamily: "Inter_400Regular", fontSize: 13, lineHeight: 20 },
+  heading: { fontWeight: "700", fontSize: 15 },
+  body: { fontWeight: "400", fontSize: 13, lineHeight: 20 },
 });

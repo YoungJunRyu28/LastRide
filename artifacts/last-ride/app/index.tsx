@@ -18,21 +18,24 @@ export default function WelcomeScreen() {
 
   const chooseLanguage = (language: 'ja' | 'en') => {
     setLanguage(language);
-    router.replace('/home-station');
+    router.replace({ pathname: '/home-station', params: { setup: '1' } });
   };
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background, paddingTop: insets.top + (Platform.OS === 'web' ? 67 : 20) }]}>
-      <View style={styles.orbitOne} />
-      <View style={styles.orbitTwo} />
+      <View style={[styles.orbitOne, { borderColor: colors.secondary }]} />
+      <View style={[styles.orbitTwo, { borderColor: colors.primary }]} />
       <View style={styles.hero}>
         <Image source={require('@/assets/images/icon.png')} style={styles.mark} accessibilityIgnoresInvertColors />
-        <Text style={[styles.appName, { color: colors.foreground }]}>LastRide</Text>
+        <Text style={[styles.appName, { color: colors.mutedForeground }]}>LASTRIDE</Text>
         <Text style={[styles.appNameJa, { color: colors.mutedForeground }]}>帰り時</Text>
       </View>
       <View style={styles.copy}>
-        <Text maxFontSizeMultiplier={1.5} style={[styles.headline, { color: colors.foreground }]}>Enjoy the night.{'\n'}We’ll watch the clock.</Text>
-        <Text style={[styles.subhead, { color: colors.mutedForeground }]}>夜を楽しんで。帰りの時間は、まかせて。</Text>
+        <Text maxFontSizeMultiplier={1.5} style={[styles.headline, { color: colors.foreground }]}>
+          夜を楽しんで。{'\n'}
+          <Text style={{ color: colors.primary }}>帰りの時間は、まかせて。</Text>
+        </Text>
+        <Text style={[styles.subhead, { color: colors.mutedForeground }]}>Enjoy the night. We’ll watch the clock and tell you when to leave for the last train.</Text>
       </View>
       <View style={styles.actions}>
         <Pressable accessibilityRole="button" testID="choose-japanese" onPress={() => chooseLanguage('ja')} style={({ pressed }) => [styles.primaryButton, { backgroundColor: colors.primary, opacity: pressed ? 0.82 : 1 }]}>
@@ -49,19 +52,19 @@ export default function WelcomeScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, justifyContent: 'space-between', overflow: 'hidden', paddingBottom: Platform.OS === 'web' ? 34 : 28, paddingHorizontal: 24 },
-  orbitOne: { backgroundColor: '#DDEBE5', borderRadius: 240, height: 380, position: 'absolute', right: -155, top: -145, width: 380 },
-  orbitTwo: { backgroundColor: '#FBE2B9', borderRadius: 170, bottom: 95, height: 250, left: -165, position: 'absolute', width: 250 },
+  orbitOne: { borderRadius: 240, borderWidth: 18, height: 380, position: 'absolute', right: -155, top: -145, width: 380 },
+  orbitTwo: { borderRadius: 125, borderWidth: 2, bottom: 95, height: 250, left: -165, opacity: 0.35, position: 'absolute', width: 250 },
   hero: { alignItems: 'center', gap: 3, marginTop: 18 },
   mark: { borderRadius: 18, height: 80, marginBottom: 10, width: 80 },
-  appName: { fontFamily: 'Inter_700Bold', fontSize: 34, letterSpacing: -0.5 },
-  appNameJa: { fontFamily: 'Inter_600SemiBold', fontSize: 13, letterSpacing: 4 },
+  appName: { fontWeight: '800', fontSize: 15, letterSpacing: 3 },
+  appNameJa: { fontWeight: '600', fontSize: 13, letterSpacing: 4 },
   copy: { gap: 14 },
-  headline: { fontFamily: 'Inter_700Bold', fontSize: 38, letterSpacing: -1.4, lineHeight: 45 },
-  subhead: { fontFamily: 'Inter_500Medium', fontSize: 16 },
+  headline: { fontWeight: '800', fontSize: 28, letterSpacing: -0.6, lineHeight: 40 },
+  subhead: { fontWeight: '500', fontSize: 15, lineHeight: 22 },
   actions: { gap: 12 },
   primaryButton: { alignItems: 'center', borderRadius: 23, minHeight: 70, justifyContent: 'center' },
-  primaryJa: { fontFamily: 'Inter_700Bold', fontSize: 17 },
-  primaryEn: { fontFamily: 'Inter_500Medium', fontSize: 12, marginTop: 3, opacity: 0.75 },
+  primaryJa: { fontWeight: '700', fontSize: 17 },
+  primaryEn: { fontWeight: '500', fontSize: 12, marginTop: 3, opacity: 0.75 },
   secondaryButton: { alignItems: 'center', borderRadius: 23, borderWidth: 1, minHeight: 58, justifyContent: 'center' },
-  secondaryText: { fontFamily: 'Inter_600SemiBold', fontSize: 16 },
+  secondaryText: { fontWeight: '600', fontSize: 16 },
 });

@@ -43,6 +43,12 @@ export function NotificationRouter() {
       });
       return;
     }
+    if (target === "/groups") {
+      if (typeof data?.groupId === "string")
+        router.push({ pathname: "/group/[id]", params: { id: data.groupId } });
+      else router.replace("/groups");
+      return;
+    }
     if (TARGETS.includes(target as NotificationTarget) && target !== pathname) {
       router.replace(target as "/ride" | "/alternatives");
     }

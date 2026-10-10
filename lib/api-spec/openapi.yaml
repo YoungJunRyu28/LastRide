@@ -28,6 +28,8 @@ tags:
     description: LastRide for Business organizer and event operations
   - name: event-participants
     description: Anonymous event participant operations
+  - name: groups
+    description: Persistent accountless groups and their nightly leave-by sharing
 paths:
   /healthz:
     get:
@@ -503,6 +505,267 @@ paths:
       responses:
         "204": { description: Participant removed from active roster }
         "401": { description: Invalid participant token }
+  /groups:
+    post:
+      operationId: createGroup
+      tags: [groups]
+      summary: Create a persistent group (requires the premium entitlement)
+      parameters:
+        - $ref: "#/components/parameters/RevenueCatAppUserId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateGroupRequest" }
+      responses:
+        "201":
+          description: Group created; the caller is its host
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GroupSession" }
+        "400": { description: Invalid body }
+        "402": { description: Premium entitlement required }
+        "503": { description: Groups or entitlement checks unavailable }
+  /groups/join:
+    post:
+      operationId: joinGroup
+      tags: [groups]
+      summary: Join a group with an invite token or join code
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/JoinGroupRequest" }
+      responses:
+        "201":
+          description: Anonymous group membership
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GroupSession" }
+        "400": { description: Invalid or revoked invite }
+        "409": { description: Group is full }
+  /groups/{groupId}:
+    get:
+      operationId: getGroup
+      tags: [groups]
+      summary: Get a group, its members and tonight's state
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+        - $ref: "#/components/parameters/MemberToken"
+      responses:
+        "200":
+          description: Group detail
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GroupDetail" }
+        "401": { description: Member token missing }
+        "404": { description: Group not found or no longer a member }
+    patch:
+      operationId: updateGroup
+      tags: [groups]
+      summary: Rename the group (host only)
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+        - $ref: "#/components/parameters/MemberToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateGroupRequest" }
+      responses:
+        "200":
+          description: Updated group
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GroupDetail" }
+        "403": { description: Host only }
+        "404": { description: Group not found or no longer a member }
+    delete:
+      operationId: disbandGroup
+      tags: [groups]
+      summary: Disband the group and delete everything under it (host only)
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+        - $ref: "#/components/parameters/MemberToken"
+      responses:
+        "204": { description: Group deleted }
+        "403": { description: Host only }
+        "404": { description: Group not found or no longer a member }
+  /groups/{groupId}/invite:
+    post:
+      operationId: rotateGroupInvite
+      tags: [groups]
+      summary: Replace the invite link and join code; older ones stop working (host only)
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+        - $ref: "#/components/parameters/MemberToken"
+      responses:
+        "201":
+          description: New invite credentials
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GroupInvite" }
+        "403": { description: Host only }
+        "404": { description: Group not found or no longer a member }
+  /groups/{groupId}/transfer:
+    post:
+      operationId: transferGroupHost
+      tags: [groups]
+      summary: Make another member the host (host only)
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+        - $ref: "#/components/parameters/MemberToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TransferGroupHostRequest" }
+      responses:
+        "200":
+          description: Updated group
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GroupDetail" }
+        "400": { description: Target is not another member of this group }
+        "403": { description: Host only }
+        "404": { description: Group not found or no longer a member }
+  /groups/{groupId}/members/{memberId}:
+    delete:
+      operationId: removeGroupMember
+      tags: [groups]
+      summary: Remove a member from the group (host only)
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+        - $ref: "#/components/parameters/MemberId"
+        - $ref: "#/components/parameters/MemberToken"
+      responses:
+        "200":
+          description: Updated group
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GroupDetail" }
+        "400": { description: Hosts cannot remove themselves }
+        "403": { description: Host only }
+        "404": { description: Group or member not found }
+  /groups/{groupId}/me:
+    patch:
+      operationId: updateMyGroupMembership
+      tags: [groups]
+      summary: Change my display name, push token, notification language or notifications on/off
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+        - $ref: "#/components/parameters/MemberToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateGroupMembershipRequest" }
+      responses:
+        "200":
+          description: Updated group
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GroupDetail" }
+        "404": { description: Group not found or no longer a member }
+    delete:
+      operationId: leaveGroup
+      tags: [groups]
+      summary: Leave the group (hosts must transfer or disband first)
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+        - $ref: "#/components/parameters/MemberToken"
+      responses:
+        "204": { description: Membership deleted }
+        "404": { description: Group not found or no longer a member }
+        "409": { description: The host must transfer or disband instead }
+  /groups/{groupId}/tonight:
+    post:
+      operationId: startGroupTonight
+      tags: [groups]
+      summary: Activate the group for tonight and notify members (host only)
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+        - $ref: "#/components/parameters/MemberToken"
+      responses:
+        "200":
+          description: Tonight was already active; nothing changed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GroupDetail" }
+        "201":
+          description: Tonight started
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GroupDetail" }
+        "403": { description: Host only }
+        "404": { description: Group not found or no longer a member }
+    delete:
+      operationId: endGroupTonight
+      tags: [groups]
+      summary: End tonight early and delete every leave-by time (host only)
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+        - $ref: "#/components/parameters/MemberToken"
+      responses:
+        "200":
+          description: Updated group
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GroupDetail" }
+        "403": { description: Host only }
+        "404": { description: Group not found or no longer a member }
+  /groups/{groupId}/tonight/me:
+    put:
+      operationId: joinGroupTonight
+      tags: [groups]
+      summary: Opt in to tonight (今夜参加する) and/or update my leave-by time
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+        - $ref: "#/components/parameters/MemberToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/GroupTonightParticipationRequest" }
+      responses:
+        "200":
+          description: Updated group
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GroupDetail" }
+        "400": { description: Leave-by time is outside tonight's window }
+        "404": { description: Group not found or no longer a member }
+        "409": { description: The group is not active tonight }
+    delete:
+      operationId: leaveGroupTonight
+      tags: [groups]
+      summary: Opt out of tonight and delete my leave-by time
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+        - $ref: "#/components/parameters/MemberToken"
+      responses:
+        "200":
+          description: Updated group
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GroupDetail" }
+        "404": { description: Group not found or no longer a member }
+  /groups/{groupId}/tonight/missed:
+    post:
+      operationId: reportGroupTonightMissed
+      tags: [groups]
+      summary: Tell tonight's participants and the host that I missed my train (乗り遅れた)
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+        - $ref: "#/components/parameters/MemberToken"
+      responses:
+        "200":
+          description: Updated group
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GroupDetail" }
+        "404": { description: Group not found or no longer a member }
+        "409": { description: Not active tonight or not opted in }
 components:
   securitySchemes:
     bearerAuth:
@@ -514,6 +777,26 @@ components:
       scheme: bearer
       description: Server-configured administrator token for the private usage report.
   parameters:
+    GroupId:
+      name: groupId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    MemberId:
+      name: memberId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    MemberToken:
+      name: X-Member-Token
+      in: header
+      required: true
+      schema: { type: string, minLength: 32, maxLength: 256 }
+    RevenueCatAppUserId:
+      name: X-RevenueCat-App-User-Id
+      in: header
+      required: true
+      schema: { type: string, minLength: 1, maxLength: 200 }
     EventId:
       name: eventId
       in: path
@@ -578,6 +861,127 @@ components:
       description: Earliest epoch millisecond at which the user can board a train
       schema: { type: number }
   schemas:
+    GroupLanguage:
+      type: string
+      enum: [ja, en]
+      description: Language used for this member's push notifications
+    GroupRole:
+      type: string
+      enum: [host, member]
+    CreateGroupRequest:
+      type: object
+      properties:
+        name: { type: string, minLength: 1, maxLength: 80 }
+        displayName: { type: string, minLength: 1, maxLength: 40 }
+        language: { $ref: "#/components/schemas/GroupLanguage" }
+      required: [name, displayName]
+    JoinGroupRequest:
+      type: object
+      properties:
+        inviteToken: { type: string, minLength: 32, maxLength: 256 }
+        joinCode: { type: string, minLength: 4, maxLength: 12 }
+        displayName: { type: string, minLength: 1, maxLength: 40 }
+        language: { $ref: "#/components/schemas/GroupLanguage" }
+      required: [displayName]
+    UpdateGroupRequest:
+      type: object
+      properties:
+        name: { type: string, minLength: 1, maxLength: 80 }
+      required: [name]
+    TransferGroupHostRequest:
+      type: object
+      properties:
+        memberId: { type: string, format: uuid }
+      required: [memberId]
+    UpdateGroupMembershipRequest:
+      type: object
+      description: Omitted fields are unchanged. expoPushToken null unregisters push.
+      properties:
+        displayName: { type: string, minLength: 1, maxLength: 40 }
+        expoPushToken: { type: [string, "null"], minLength: 20, maxLength: 255 }
+        language: { $ref: "#/components/schemas/GroupLanguage" }
+        notifications:
+          type: boolean
+          description: Group notifications on/off for this member (default true); applies to all group pushes
+    GroupTonightParticipationRequest:
+      type: object
+      description: Only a leave-by timestamp is ever synced; never location, station, route or destination.
+      properties:
+        leaveBy: { type: [string, "null"], format: date-time }
+    GroupInvite:
+      type: object
+      properties:
+        inviteToken: { type: string }
+        joinCode: { type: string }
+        rotatedAt: { type: string, format: date-time }
+      required: [inviteToken, joinCode, rotatedAt]
+    GroupMemberSummary:
+      type: object
+      properties:
+        id: { type: string }
+        displayName: { type: string }
+        role: { $ref: "#/components/schemas/GroupRole" }
+      required: [id, displayName, role]
+    GroupMe:
+      type: object
+      properties:
+        memberId: { type: string }
+        displayName: { type: string }
+        role: { $ref: "#/components/schemas/GroupRole" }
+        language: { $ref: "#/components/schemas/GroupLanguage" }
+        pushRegistered: { type: boolean }
+        notifications: { type: boolean }
+      required: [memberId, displayName, role, language, pushRegistered, notifications]
+    GroupTonightParticipant:
+      type: object
+      description: Privacy-minimal. No location, route, station, or destination data.
+      properties:
+        memberId: { type: string }
+        displayName: { type: string }
+        leaveBy: { type: [string, "null"], format: date-time }
+        missed: { type: boolean }
+      required: [memberId, displayName, leaveBy, missed]
+    GroupTonight:
+      type: object
+      properties:
+        active: { type: boolean }
+        serviceDate:
+          type: [string, "null"]
+          description: Japan service day (04:00 JST boundary) as YYYY-MM-DD
+        startedAt: { type: [string, "null"], format: date-time }
+        endsAt: { type: [string, "null"], format: date-time }
+        participants:
+          type: array
+          description: Sorted by leaveBy (unknown last)
+          items: { $ref: "#/components/schemas/GroupTonightParticipant" }
+      required: [active, serviceDate, startedAt, endsAt, participants]
+    GroupDetail:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        memberLimit: { type: number }
+        me: { $ref: "#/components/schemas/GroupMe" }
+        members:
+          type: array
+          items: { $ref: "#/components/schemas/GroupMemberSummary" }
+        invite:
+          description: >-
+            Host only. Null for members, and for the host when the server
+            cannot recover the current invite (rotate to get a fresh one).
+          oneOf:
+            - $ref: "#/components/schemas/GroupInvite"
+            - type: "null"
+        tonight: { $ref: "#/components/schemas/GroupTonight" }
+      required: [id, name, memberLimit, me, members, invite, tonight]
+    GroupSession:
+      type: object
+      properties:
+        memberToken:
+          type: string
+          description: Per-group capability. Store it on the device only; it is never shown again.
+        group: { $ref: "#/components/schemas/GroupDetail" }
+      required: [memberToken, group]
     TrainRoute:
       type: object
       properties:

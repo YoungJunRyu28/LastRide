@@ -8,6 +8,7 @@
  */
 import { getFirstTrain as fetchFirstTrain, getLastTrain as fetchLastTrain, type GetLastTrainParams, type TrainRoute } from '@workspace/api-client-react';
 import { apiBaseUrl, isDevelopment } from '@/lib/api';
+import { appleFirstTrain, appleLastTrain, appleTransitEnabled } from '@/lib/appleTransit';
 import type { StationOption } from '@/lib/stations';
 import { nextOccurrence, serviceDate, serviceDayStart, serviceTimeToMs } from '@/lib/time';
 
@@ -32,7 +33,8 @@ export type TrainTime = {
   /** One-way fare including express charges, in yen. */
   fareYen?: number | null;
   legs?: TrainLeg[];
-  source: 'sample' | 'live';
+  /** 'apple': MapKit transit ETA — times only, no legs, line or fare. */
+  source: 'sample' | 'live' | 'apple';
 };
 
 const SAMPLE_LAST_TRAIN = '23:52';
@@ -78,6 +80,10 @@ async function lookup(request: () => Promise<TrainRoute>): Promise<TrainTime | n
 
 /** The last departure from `from` tonight that still reaches `to`, or null if no train goes there. */
 export async function getLastTrain(from: StationOption, to: StationOption, nowMs: number): Promise<TrainTime | null> {
+  if (appleTransitEnabled) {
+    const apple = await appleLastTrain(from, to, nowMs).catch(() => null);
+    if (apple) return apple;
+  }
   if (!apiBaseUrl) {
     requireServer();
     return { departsAt: serviceTimeToMs(SAMPLE_LAST_TRAIN, nowMs), source: 'sample' };
@@ -87,6 +93,10 @@ export async function getLastTrain(from: StationOption, to: StationOption, nowMs
 
 /** The next first train from `from` toward `to` after `nowMs`, or null if no train goes there. */
 export async function getFirstTrain(from: StationOption, to: StationOption, nowMs: number): Promise<TrainTime | null> {
+  if (appleTransitEnabled) {
+    const apple = await appleFirstTrain(from, to, nowMs).catch(() => null);
+    if (apple) return apple;
+  }
   if (!apiBaseUrl) {
     requireServer();
     return { departsAt: nextOccurrence(SAMPLE_FIRST_TRAIN, nowMs), source: 'sample' };

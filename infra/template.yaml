@@ -158,6 +158,8 @@ Resources:
           SUPABASE_ANON_KEY: !Sub "{{resolve:secretsmanager:${AppSecretName}:SecretString:SUPABASE_ANON_KEY}}"
           USAGE_ADMIN_TOKEN: !Sub "{{resolve:secretsmanager:${AppSecretName}:SecretString:USAGE_ADMIN_TOKEN}}"
           EXPO_ACCESS_TOKEN: !Sub "{{resolve:secretsmanager:${AppSecretName}:SecretString:EXPO_ACCESS_TOKEN}}"
+          REVENUECAT_SECRET_KEY: !Sub "{{resolve:secretsmanager:${AppSecretName}:SecretString:REVENUECAT_SECRET_KEY}}"
+          GROUP_INVITE_ENCRYPTION_KEY: !Sub "{{resolve:secretsmanager:${AppSecretName}:SecretString:GROUP_INVITE_ENCRYPTION_KEY}}"
           ENTERPRISE_BOOTSTRAP_EMAILS: ""
           ENTERPRISE_BOOTSTRAP_ORGANIZATION_NAME: LastRide Business
           ENTERPRISE_PUSH_INCLUDE_NAME: "false"

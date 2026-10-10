@@ -1,0 +1,10 @@
+{
+  "name": "apple-maps",
+  "version": "1.0.0",
+  "private": true,
+  "description": "MapKit transit/walking ETAs, place search and map snapshots for LastRide",
+  "license": "UNLICENSED",
+  "author": "LastRide",
+  "homepage": "https://github.com/",
+  "main": "src/index.ts"
+}

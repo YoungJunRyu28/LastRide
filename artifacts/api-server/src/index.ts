@@ -7,6 +7,8 @@ import {
 import { purgeExpiredCacheEntries } from "./lib/cache";
 import { purgeExpiredRateLimits } from "./lib/rateLimit";
 import { purgeExpiredEnterpriseData } from "./lib/enterpriseStore";
+import { purgeEndedGroupNights } from "./lib/groupStore";
+import { dispatchGroupLeaveAlerts } from "./lib/groupNotifications";
 import { logger } from "./lib/logger";
 
 const rawPort = process.env["PORT"];
@@ -26,15 +28,27 @@ if (Number.isNaN(port) || port <= 0) {
 if (isDatabaseConfigured()) {
   const cleanup = async () => {
     try {
-      const [eventsPurged, cacheRowsPurged, rateLimitRowsPurged] =
+      const [eventsPurged, cacheRowsPurged, rateLimitRowsPurged, groupNightsPurged] =
         await Promise.all([
           purgeExpiredEnterpriseData(),
           purgeExpiredCacheEntries(),
           purgeExpiredRateLimits(),
+          // Deletes every group night past 08:00 JST with its leave-by rows.
+          purgeEndedGroupNights(),
         ]);
-      if (eventsPurged > 0 || cacheRowsPurged > 0 || rateLimitRowsPurged > 0) {
+      if (
+        eventsPurged > 0 ||
+        cacheRowsPurged > 0 ||
+        rateLimitRowsPurged > 0 ||
+        groupNightsPurged > 0
+      ) {
         logger.info(
-          { eventsPurged, cacheRowsPurged, rateLimitRowsPurged },
+          {
+            eventsPurged,
+            cacheRowsPurged,
+            rateLimitRowsPurged,
+            groupNightsPurged,
+          },
           "Purged expired application data",
         );
       }
@@ -50,6 +64,14 @@ if (isDatabaseConfigured()) {
       logger.error({ err }, "Enterprise departure alert worker failed");
     }
   };
+  const sendGroupLeaveAlerts = async () => {
+    try {
+      const sent = await dispatchGroupLeaveAlerts();
+      if (sent > 0) logger.info({ sent }, "Sent group leave-time alerts");
+    } catch (err) {
+      logger.error({ err }, "Group leave-time alert worker failed");
+    }
+  };
   const checkPushReceipts = async () => {
     try {
       const result = await reconcileEnterprisePushReceipts();
@@ -63,9 +85,11 @@ if (isDatabaseConfigured()) {
 
   void cleanup();
   void sendDepartureAlerts();
+  void sendGroupLeaveAlerts();
   void checkPushReceipts();
   setInterval(cleanup, 5 * 60_000).unref();
   setInterval(sendDepartureAlerts, 60_000).unref();
+  setInterval(sendGroupLeaveAlerts, 60_000).unref();
   setInterval(checkPushReceipts, 5 * 60_000).unref();
 }
 

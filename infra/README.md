@@ -40,13 +40,20 @@ Create one JSON secret per environment. It must contain non-empty values for:
   "SUPABASE_URL": "...",
   "SUPABASE_ANON_KEY": "...",
   "USAGE_ADMIN_TOKEN": "...",
-  "EXPO_ACCESS_TOKEN": "..."
+  "EXPO_ACCESS_TOKEN": "...",
+  "REVENUECAT_SECRET_KEY": "...",
+  "GROUP_INVITE_ENCRYPTION_KEY": "..."
 }
 ```
 
 Use the pooled production database URL for serverless execution. Enable Expo
 Push Security for the production EAS project and store its access token as
-`EXPO_ACCESS_TOKEN`. Never commit these values or put the secret JSON in a
+`EXPO_ACCESS_TOKEN`. `REVENUECAT_SECRET_KEY` is the RevenueCat secret API key
+used to check the `premium` entitlement before a group is created (without it,
+production group creation answers 503). `GROUP_INVITE_ENCRYPTION_KEY` is 32
+random bytes, base64 or hex (`openssl rand -base64 32`), used to keep group
+invites re-shareable by the host; changing it only forces hosts to rotate
+invites. Never commit these values or put the secret JSON in a
 shell history entry.
 
 The SAM template uses Secrets Manager dynamic references. CloudFormation

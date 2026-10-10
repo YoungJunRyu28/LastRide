@@ -61,11 +61,13 @@ app.use(
       }
       callback(null, allowedOrigins.has(origin));
     },
-    methods: ["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: [
       "Authorization",
       "Content-Type",
       "X-Participant-Token",
+      "X-Member-Token",
+      "X-RevenueCat-App-User-Id",
       "X-Request-Id",
     ],
     maxAge: 600,

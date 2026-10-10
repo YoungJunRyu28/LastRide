@@ -3,25 +3,54 @@ import { useColors } from '@/hooks/useColors';
 import { router, usePathname } from 'expo-router';
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-type NavItem = { icon: React.ComponentProps<typeof Feather>['name']; route: '/ride' | '/alternatives' | '/settings'; label: string; labelJa: string };
-const items: NavItem[] = [
+type Tab = {
+  icon: React.ComponentProps<typeof Feather>['name'];
+  route: '/ride' | '/alternatives' | '/groups';
+  label: string;
+  labelJa: string;
+};
+
+/** The three nightly screens. Settings is reached from the gear on Leave. */
+const TABS: Tab[] = [
   { icon: 'clock', route: '/ride', label: 'Leave', labelJa: '帰る時間' },
   { icon: 'compass', route: '/alternatives', label: 'If missed', labelJa: '乗れなかったら' },
-  { icon: 'sliders', route: '/settings', label: 'Settings', labelJa: '設定' },
+  { icon: 'users', route: '/groups', label: 'Groups', labelJa: 'グループ' },
 ];
 
 export function BottomNav({ language }: { language: 'ja' | 'en' | null }) {
   const colors = useColors();
   const pathname = usePathname();
+  const insets = useSafeAreaInsets();
   return (
-    <View accessibilityRole="tablist" style={[styles.shell, { backgroundColor: colors.card, borderColor: colors.border }]}>
-      {items.map((item) => {
-        const active = pathname === item.route;
+    <View
+      accessibilityRole="tablist"
+      style={[
+        styles.bar,
+        { backgroundColor: colors.background, borderColor: colors.secondary, paddingBottom: Math.max(insets.bottom, 12) },
+      ]}
+    >
+      {TABS.map((tab) => {
+        const active = pathname === tab.route || pathname.startsWith(`${tab.route}/`);
+        const label = language === 'ja' ? tab.labelJa : tab.label;
+        const color = active ? colors.primary : colors.mutedForeground;
         return (
-          <Pressable key={item.route} testID={`tab-${item.label.toLowerCase().replace(' ', '-')}`} onPress={() => router.replace(item.route)} accessibilityRole="tab" accessibilityLabel={language === 'ja' ? item.labelJa : item.label} accessibilityState={{ selected: active }} style={({ pressed }) => [styles.item, { opacity: pressed ? 0.62 : 1 }]}>
-            <Feather name={item.icon} size={20} color={active ? colors.primary : colors.mutedForeground} />
-            <Text style={[styles.label, { color: active ? colors.foreground : colors.mutedForeground }]}>{language === 'ja' ? item.labelJa : item.label}</Text>
+          <Pressable
+            key={tab.route}
+            testID={`tab-${tab.route.slice(1)}`}
+            onPress={() => {
+              // Tabs are roots: drop pushed screens (settings, destinations) first.
+              if (router.canDismiss()) router.dismissAll();
+              router.replace(tab.route);
+            }}
+            accessibilityRole="tab"
+            accessibilityLabel={label}
+            accessibilityState={{ selected: active }}
+            style={({ pressed }) => [styles.tab, { opacity: pressed ? 0.6 : 1 }]}
+          >
+            <Feather name={tab.icon} size={22} color={color} />
+            <Text style={[styles.label, { color }]}>{label}</Text>
           </Pressable>
         );
       })}
@@ -30,7 +59,7 @@ export function BottomNav({ language }: { language: 'ja' | 'en' | null }) {
 }
 
 const styles = StyleSheet.create({
-  shell: { borderTopWidth: 1, flexDirection: 'row', justifyContent: 'space-around', paddingBottom: 18, paddingTop: 11 },
-  item: { alignItems: 'center', gap: 5, minWidth: 78 },
-  label: { fontFamily: 'Inter_600SemiBold', fontSize: 10 },
+  bar: { borderTopWidth: 1, flexDirection: 'row', paddingTop: 6 },
+  tab: { alignItems: 'center', flex: 1, gap: 3, justifyContent: 'center', minHeight: 52 },
+  label: { fontSize: 11, fontWeight: '700' },
 });

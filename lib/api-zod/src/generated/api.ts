@@ -647,3 +647,748 @@ export const LeaveEnterpriseEventHeader = zod.object({
 export const LeaveEnterpriseEventResponse = zod.void()
 
 
+/**
+ * @summary Create a persistent group (requires the premium entitlement)
+ */
+export const createGroupHeaderXRevenueCatAppUserIdMax = 200;
+
+
+
+export const CreateGroupHeader = zod.object({
+  "X-RevenueCat-App-User-Id": zod.string().min(1).max(createGroupHeaderXRevenueCatAppUserIdMax)
+})
+
+export const createGroupBodyNameMax = 80;
+
+export const createGroupBodyDisplayNameMax = 40;
+
+
+
+export const CreateGroupBody = zod.object({
+  "name": zod.string().min(1).max(createGroupBodyNameMax),
+  "displayName": zod.string().min(1).max(createGroupBodyDisplayNameMax),
+  "language": zod.enum(['ja', 'en']).optional().describe('Language used for this member\'s push notifications')
+})
+
+export const CreateGroupResponse = zod.object({
+  "memberToken": zod.string().describe('Per-group capability. Store it on the device only; it is never shown again.'),
+  "group": zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "memberLimit": zod.number(),
+  "me": zod.object({
+  "memberId": zod.string(),
+  "displayName": zod.string(),
+  "role": zod.enum(['host', 'member']),
+  "language": zod.enum(['ja', 'en']).describe('Language used for this member\'s push notifications'),
+  "pushRegistered": zod.boolean(),
+  "notifications": zod.boolean()
+}),
+  "members": zod.array(zod.object({
+  "id": zod.string(),
+  "displayName": zod.string(),
+  "role": zod.enum(['host', 'member'])
+})),
+  "invite": zod.union([zod.object({
+  "inviteToken": zod.string(),
+  "joinCode": zod.string(),
+  "rotatedAt": zod.coerce.date()
+}),zod.null()]).describe('Host only. Null for members, and for the host when the server cannot recover the current invite (rotate to get a fresh one).'),
+  "tonight": zod.object({
+  "active": zod.boolean(),
+  "serviceDate": zod.string().nullable().describe('Japan service day (04:00 JST boundary) as YYYY-MM-DD'),
+  "startedAt": zod.coerce.date().nullable(),
+  "endsAt": zod.coerce.date().nullable(),
+  "participants": zod.array(zod.object({
+  "memberId": zod.string(),
+  "displayName": zod.string(),
+  "leaveBy": zod.coerce.date().nullable(),
+  "missed": zod.boolean()
+}).describe('Privacy-minimal. No location, route, station, or destination data.')).describe('Sorted by leaveBy (unknown last)')
+})
+})
+})
+
+
+/**
+ * @summary Join a group with an invite token or join code
+ */
+export const joinGroupBodyInviteTokenMin = 32;
+export const joinGroupBodyInviteTokenMax = 256;
+
+export const joinGroupBodyJoinCodeMin = 4;
+export const joinGroupBodyJoinCodeMax = 12;
+
+export const joinGroupBodyDisplayNameMax = 40;
+
+
+
+export const JoinGroupBody = zod.object({
+  "inviteToken": zod.string().min(joinGroupBodyInviteTokenMin).max(joinGroupBodyInviteTokenMax).optional(),
+  "joinCode": zod.string().min(joinGroupBodyJoinCodeMin).max(joinGroupBodyJoinCodeMax).optional(),
+  "displayName": zod.string().min(1).max(joinGroupBodyDisplayNameMax),
+  "language": zod.enum(['ja', 'en']).optional().describe('Language used for this member\'s push notifications')
+})
+
+export const JoinGroupResponse = zod.object({
+  "memberToken": zod.string().describe('Per-group capability. Store it on the device only; it is never shown again.'),
+  "group": zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "memberLimit": zod.number(),
+  "me": zod.object({
+  "memberId": zod.string(),
+  "displayName": zod.string(),
+  "role": zod.enum(['host', 'member']),
+  "language": zod.enum(['ja', 'en']).describe('Language used for this member\'s push notifications'),
+  "pushRegistered": zod.boolean(),
+  "notifications": zod.boolean()
+}),
+  "members": zod.array(zod.object({
+  "id": zod.string(),
+  "displayName": zod.string(),
+  "role": zod.enum(['host', 'member'])
+})),
+  "invite": zod.union([zod.object({
+  "inviteToken": zod.string(),
+  "joinCode": zod.string(),
+  "rotatedAt": zod.coerce.date()
+}),zod.null()]).describe('Host only. Null for members, and for the host when the server cannot recover the current invite (rotate to get a fresh one).'),
+  "tonight": zod.object({
+  "active": zod.boolean(),
+  "serviceDate": zod.string().nullable().describe('Japan service day (04:00 JST boundary) as YYYY-MM-DD'),
+  "startedAt": zod.coerce.date().nullable(),
+  "endsAt": zod.coerce.date().nullable(),
+  "participants": zod.array(zod.object({
+  "memberId": zod.string(),
+  "displayName": zod.string(),
+  "leaveBy": zod.coerce.date().nullable(),
+  "missed": zod.boolean()
+}).describe('Privacy-minimal. No location, route, station, or destination data.')).describe('Sorted by leaveBy (unknown last)')
+})
+})
+})
+
+
+/**
+ * @summary Get a group, its members and tonight's state
+ */
+export const GetGroupParams = zod.object({
+  "groupId": zod.uuid()
+})
+
+export const getGroupHeaderXMemberTokenMin = 32;
+export const getGroupHeaderXMemberTokenMax = 256;
+
+
+
+export const GetGroupHeader = zod.object({
+  "X-Member-Token": zod.string().min(getGroupHeaderXMemberTokenMin).max(getGroupHeaderXMemberTokenMax)
+})
+
+export const GetGroupResponse = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "memberLimit": zod.number(),
+  "me": zod.object({
+  "memberId": zod.string(),
+  "displayName": zod.string(),
+  "role": zod.enum(['host', 'member']),
+  "language": zod.enum(['ja', 'en']).describe('Language used for this member\'s push notifications'),
+  "pushRegistered": zod.boolean(),
+  "notifications": zod.boolean()
+}),
+  "members": zod.array(zod.object({
+  "id": zod.string(),
+  "displayName": zod.string(),
+  "role": zod.enum(['host', 'member'])
+})),
+  "invite": zod.union([zod.object({
+  "inviteToken": zod.string(),
+  "joinCode": zod.string(),
+  "rotatedAt": zod.coerce.date()
+}),zod.null()]).describe('Host only. Null for members, and for the host when the server cannot recover the current invite (rotate to get a fresh one).'),
+  "tonight": zod.object({
+  "active": zod.boolean(),
+  "serviceDate": zod.string().nullable().describe('Japan service day (04:00 JST boundary) as YYYY-MM-DD'),
+  "startedAt": zod.coerce.date().nullable(),
+  "endsAt": zod.coerce.date().nullable(),
+  "participants": zod.array(zod.object({
+  "memberId": zod.string(),
+  "displayName": zod.string(),
+  "leaveBy": zod.coerce.date().nullable(),
+  "missed": zod.boolean()
+}).describe('Privacy-minimal. No location, route, station, or destination data.')).describe('Sorted by leaveBy (unknown last)')
+})
+})
+
+
+/**
+ * @summary Rename the group (host only)
+ */
+export const UpdateGroupParams = zod.object({
+  "groupId": zod.uuid()
+})
+
+export const updateGroupHeaderXMemberTokenMin = 32;
+export const updateGroupHeaderXMemberTokenMax = 256;
+
+
+
+export const UpdateGroupHeader = zod.object({
+  "X-Member-Token": zod.string().min(updateGroupHeaderXMemberTokenMin).max(updateGroupHeaderXMemberTokenMax)
+})
+
+export const updateGroupBodyNameMax = 80;
+
+
+
+export const UpdateGroupBody = zod.object({
+  "name": zod.string().min(1).max(updateGroupBodyNameMax)
+})
+
+export const UpdateGroupResponse = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "memberLimit": zod.number(),
+  "me": zod.object({
+  "memberId": zod.string(),
+  "displayName": zod.string(),
+  "role": zod.enum(['host', 'member']),
+  "language": zod.enum(['ja', 'en']).describe('Language used for this member\'s push notifications'),
+  "pushRegistered": zod.boolean(),
+  "notifications": zod.boolean()
+}),
+  "members": zod.array(zod.object({
+  "id": zod.string(),
+  "displayName": zod.string(),
+  "role": zod.enum(['host', 'member'])
+})),
+  "invite": zod.union([zod.object({
+  "inviteToken": zod.string(),
+  "joinCode": zod.string(),
+  "rotatedAt": zod.coerce.date()
+}),zod.null()]).describe('Host only. Null for members, and for the host when the server cannot recover the current invite (rotate to get a fresh one).'),
+  "tonight": zod.object({
+  "active": zod.boolean(),
+  "serviceDate": zod.string().nullable().describe('Japan service day (04:00 JST boundary) as YYYY-MM-DD'),
+  "startedAt": zod.coerce.date().nullable(),
+  "endsAt": zod.coerce.date().nullable(),
+  "participants": zod.array(zod.object({
+  "memberId": zod.string(),
+  "displayName": zod.string(),
+  "leaveBy": zod.coerce.date().nullable(),
+  "missed": zod.boolean()
+}).describe('Privacy-minimal. No location, route, station, or destination data.')).describe('Sorted by leaveBy (unknown last)')
+})
+})
+
+
+/**
+ * @summary Disband the group and delete everything under it (host only)
+ */
+export const DisbandGroupParams = zod.object({
+  "groupId": zod.uuid()
+})
+
+export const disbandGroupHeaderXMemberTokenMin = 32;
+export const disbandGroupHeaderXMemberTokenMax = 256;
+
+
+
+export const DisbandGroupHeader = zod.object({
+  "X-Member-Token": zod.string().min(disbandGroupHeaderXMemberTokenMin).max(disbandGroupHeaderXMemberTokenMax)
+})
+
+export const DisbandGroupResponse = zod.void()
+
+
+/**
+ * @summary Replace the invite link and join code; older ones stop working (host only)
+ */
+export const RotateGroupInviteParams = zod.object({
+  "groupId": zod.uuid()
+})
+
+export const rotateGroupInviteHeaderXMemberTokenMin = 32;
+export const rotateGroupInviteHeaderXMemberTokenMax = 256;
+
+
+
+export const RotateGroupInviteHeader = zod.object({
+  "X-Member-Token": zod.string().min(rotateGroupInviteHeaderXMemberTokenMin).max(rotateGroupInviteHeaderXMemberTokenMax)
+})
+
+export const RotateGroupInviteResponse = zod.object({
+  "inviteToken": zod.string(),
+  "joinCode": zod.string(),
+  "rotatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Make another member the host (host only)
+ */
+export const TransferGroupHostParams = zod.object({
+  "groupId": zod.uuid()
+})
+
+export const transferGroupHostHeaderXMemberTokenMin = 32;
+export const transferGroupHostHeaderXMemberTokenMax = 256;
+
+
+
+export const TransferGroupHostHeader = zod.object({
+  "X-Member-Token": zod.string().min(transferGroupHostHeaderXMemberTokenMin).max(transferGroupHostHeaderXMemberTokenMax)
+})
+
+export const TransferGroupHostBody = zod.object({
+  "memberId": zod.uuid()
+})
+
+export const TransferGroupHostResponse = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "memberLimit": zod.number(),
+  "me": zod.object({
+  "memberId": zod.string(),
+  "displayName": zod.string(),
+  "role": zod.enum(['host', 'member']),
+  "language": zod.enum(['ja', 'en']).describe('Language used for this member\'s push notifications'),
+  "pushRegistered": zod.boolean(),
+  "notifications": zod.boolean()
+}),
+  "members": zod.array(zod.object({
+  "id": zod.string(),
+  "displayName": zod.string(),
+  "role": zod.enum(['host', 'member'])
+})),
+  "invite": zod.union([zod.object({
+  "inviteToken": zod.string(),
+  "joinCode": zod.string(),
+  "rotatedAt": zod.coerce.date()
+}),zod.null()]).describe('Host only. Null for members, and for the host when the server cannot recover the current invite (rotate to get a fresh one).'),
+  "tonight": zod.object({
+  "active": zod.boolean(),
+  "serviceDate": zod.string().nullable().describe('Japan service day (04:00 JST boundary) as YYYY-MM-DD'),
+  "startedAt": zod.coerce.date().nullable(),
+  "endsAt": zod.coerce.date().nullable(),
+  "participants": zod.array(zod.object({
+  "memberId": zod.string(),
+  "displayName": zod.string(),
+  "leaveBy": zod.coerce.date().nullable(),
+  "missed": zod.boolean()
+}).describe('Privacy-minimal. No location, route, station, or destination data.')).describe('Sorted by leaveBy (unknown last)')
+})
+})
+
+
+/**
+ * @summary Remove a member from the group (host only)
+ */
+export const RemoveGroupMemberParams = zod.object({
+  "groupId": zod.uuid(),
+  "memberId": zod.uuid()
+})
+
+export const removeGroupMemberHeaderXMemberTokenMin = 32;
+export const removeGroupMemberHeaderXMemberTokenMax = 256;
+
+
+
+export const RemoveGroupMemberHeader = zod.object({
+  "X-Member-Token": zod.string().min(removeGroupMemberHeaderXMemberTokenMin).max(removeGroupMemberHeaderXMemberTokenMax)
+})
+
+export const RemoveGroupMemberResponse = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "memberLimit": zod.number(),
+  "me": zod.object({
+  "memberId": zod.string(),
+  "displayName": zod.string(),
+  "role": zod.enum(['host', 'member']),
+  "language": zod.enum(['ja', 'en']).describe('Language used for this member\'s push notifications'),
+  "pushRegistered": zod.boolean(),
+  "notifications": zod.boolean()
+}),
+  "members": zod.array(zod.object({
+  "id": zod.string(),
+  "displayName": zod.string(),
+  "role": zod.enum(['host', 'member'])
+})),
+  "invite": zod.union([zod.object({
+  "inviteToken": zod.string(),
+  "joinCode": zod.string(),
+  "rotatedAt": zod.coerce.date()
+}),zod.null()]).describe('Host only. Null for members, and for the host when the server cannot recover the current invite (rotate to get a fresh one).'),
+  "tonight": zod.object({
+  "active": zod.boolean(),
+  "serviceDate": zod.string().nullable().describe('Japan service day (04:00 JST boundary) as YYYY-MM-DD'),
+  "startedAt": zod.coerce.date().nullable(),
+  "endsAt": zod.coerce.date().nullable(),
+  "participants": zod.array(zod.object({
+  "memberId": zod.string(),
+  "displayName": zod.string(),
+  "leaveBy": zod.coerce.date().nullable(),
+  "missed": zod.boolean()
+}).describe('Privacy-minimal. No location, route, station, or destination data.')).describe('Sorted by leaveBy (unknown last)')
+})
+})
+
+
+/**
+ * @summary Change my display name, push token, notification language or notifications on/off
+ */
+export const UpdateMyGroupMembershipParams = zod.object({
+  "groupId": zod.uuid()
+})
+
+export const updateMyGroupMembershipHeaderXMemberTokenMin = 32;
+export const updateMyGroupMembershipHeaderXMemberTokenMax = 256;
+
+
+
+export const UpdateMyGroupMembershipHeader = zod.object({
+  "X-Member-Token": zod.string().min(updateMyGroupMembershipHeaderXMemberTokenMin).max(updateMyGroupMembershipHeaderXMemberTokenMax)
+})
+
+export const updateMyGroupMembershipBodyDisplayNameMax = 40;
+
+export const updateMyGroupMembershipBodyExpoPushTokenMin = 20;
+export const updateMyGroupMembershipBodyExpoPushTokenMax = 255;
+
+
+
+export const UpdateMyGroupMembershipBody = zod.object({
+  "displayName": zod.string().min(1).max(updateMyGroupMembershipBodyDisplayNameMax).optional(),
+  "expoPushToken": zod.string().min(updateMyGroupMembershipBodyExpoPushTokenMin).max(updateMyGroupMembershipBodyExpoPushTokenMax).nullish(),
+  "language": zod.enum(['ja', 'en']).optional().describe('Language used for this member\'s push notifications'),
+  "notifications": zod.boolean().optional().describe('Group notifications on/off for this member (default true); applies to all group pushes')
+}).describe('Omitted fields are unchanged. expoPushToken null unregisters push.')
+
+export const UpdateMyGroupMembershipResponse = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "memberLimit": zod.number(),
+  "me": zod.object({
+  "memberId": zod.string(),
+  "displayName": zod.string(),
+  "role": zod.enum(['host', 'member']),
+  "language": zod.enum(['ja', 'en']).describe('Language used for this member\'s push notifications'),
+  "pushRegistered": zod.boolean(),
+  "notifications": zod.boolean()
+}),
+  "members": zod.array(zod.object({
+  "id": zod.string(),
+  "displayName": zod.string(),
+  "role": zod.enum(['host', 'member'])
+})),
+  "invite": zod.union([zod.object({
+  "inviteToken": zod.string(),
+  "joinCode": zod.string(),
+  "rotatedAt": zod.coerce.date()
+}),zod.null()]).describe('Host only. Null for members, and for the host when the server cannot recover the current invite (rotate to get a fresh one).'),
+  "tonight": zod.object({
+  "active": zod.boolean(),
+  "serviceDate": zod.string().nullable().describe('Japan service day (04:00 JST boundary) as YYYY-MM-DD'),
+  "startedAt": zod.coerce.date().nullable(),
+  "endsAt": zod.coerce.date().nullable(),
+  "participants": zod.array(zod.object({
+  "memberId": zod.string(),
+  "displayName": zod.string(),
+  "leaveBy": zod.coerce.date().nullable(),
+  "missed": zod.boolean()
+}).describe('Privacy-minimal. No location, route, station, or destination data.')).describe('Sorted by leaveBy (unknown last)')
+})
+})
+
+
+/**
+ * @summary Leave the group (hosts must transfer or disband first)
+ */
+export const LeaveGroupParams = zod.object({
+  "groupId": zod.uuid()
+})
+
+export const leaveGroupHeaderXMemberTokenMin = 32;
+export const leaveGroupHeaderXMemberTokenMax = 256;
+
+
+
+export const LeaveGroupHeader = zod.object({
+  "X-Member-Token": zod.string().min(leaveGroupHeaderXMemberTokenMin).max(leaveGroupHeaderXMemberTokenMax)
+})
+
+export const LeaveGroupResponse = zod.void()
+
+
+/**
+ * @summary Activate the group for tonight and notify members (host only)
+ */
+export const StartGroupTonightParams = zod.object({
+  "groupId": zod.uuid()
+})
+
+export const startGroupTonightHeaderXMemberTokenMin = 32;
+export const startGroupTonightHeaderXMemberTokenMax = 256;
+
+
+
+export const StartGroupTonightHeader = zod.object({
+  "X-Member-Token": zod.string().min(startGroupTonightHeaderXMemberTokenMin).max(startGroupTonightHeaderXMemberTokenMax)
+})
+
+export const StartGroupTonightResponse = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "memberLimit": zod.number(),
+  "me": zod.object({
+  "memberId": zod.string(),
+  "displayName": zod.string(),
+  "role": zod.enum(['host', 'member']),
+  "language": zod.enum(['ja', 'en']).describe('Language used for this member\'s push notifications'),
+  "pushRegistered": zod.boolean(),
+  "notifications": zod.boolean()
+}),
+  "members": zod.array(zod.object({
+  "id": zod.string(),
+  "displayName": zod.string(),
+  "role": zod.enum(['host', 'member'])
+})),
+  "invite": zod.union([zod.object({
+  "inviteToken": zod.string(),
+  "joinCode": zod.string(),
+  "rotatedAt": zod.coerce.date()
+}),zod.null()]).describe('Host only. Null for members, and for the host when the server cannot recover the current invite (rotate to get a fresh one).'),
+  "tonight": zod.object({
+  "active": zod.boolean(),
+  "serviceDate": zod.string().nullable().describe('Japan service day (04:00 JST boundary) as YYYY-MM-DD'),
+  "startedAt": zod.coerce.date().nullable(),
+  "endsAt": zod.coerce.date().nullable(),
+  "participants": zod.array(zod.object({
+  "memberId": zod.string(),
+  "displayName": zod.string(),
+  "leaveBy": zod.coerce.date().nullable(),
+  "missed": zod.boolean()
+}).describe('Privacy-minimal. No location, route, station, or destination data.')).describe('Sorted by leaveBy (unknown last)')
+})
+})
+
+
+/**
+ * @summary End tonight early and delete every leave-by time (host only)
+ */
+export const EndGroupTonightParams = zod.object({
+  "groupId": zod.uuid()
+})
+
+export const endGroupTonightHeaderXMemberTokenMin = 32;
+export const endGroupTonightHeaderXMemberTokenMax = 256;
+
+
+
+export const EndGroupTonightHeader = zod.object({
+  "X-Member-Token": zod.string().min(endGroupTonightHeaderXMemberTokenMin).max(endGroupTonightHeaderXMemberTokenMax)
+})
+
+export const EndGroupTonightResponse = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "memberLimit": zod.number(),
+  "me": zod.object({
+  "memberId": zod.string(),
+  "displayName": zod.string(),
+  "role": zod.enum(['host', 'member']),
+  "language": zod.enum(['ja', 'en']).describe('Language used for this member\'s push notifications'),
+  "pushRegistered": zod.boolean(),
+  "notifications": zod.boolean()
+}),
+  "members": zod.array(zod.object({
+  "id": zod.string(),
+  "displayName": zod.string(),
+  "role": zod.enum(['host', 'member'])
+})),
+  "invite": zod.union([zod.object({
+  "inviteToken": zod.string(),
+  "joinCode": zod.string(),
+  "rotatedAt": zod.coerce.date()
+}),zod.null()]).describe('Host only. Null for members, and for the host when the server cannot recover the current invite (rotate to get a fresh one).'),
+  "tonight": zod.object({
+  "active": zod.boolean(),
+  "serviceDate": zod.string().nullable().describe('Japan service day (04:00 JST boundary) as YYYY-MM-DD'),
+  "startedAt": zod.coerce.date().nullable(),
+  "endsAt": zod.coerce.date().nullable(),
+  "participants": zod.array(zod.object({
+  "memberId": zod.string(),
+  "displayName": zod.string(),
+  "leaveBy": zod.coerce.date().nullable(),
+  "missed": zod.boolean()
+}).describe('Privacy-minimal. No location, route, station, or destination data.')).describe('Sorted by leaveBy (unknown last)')
+})
+})
+
+
+/**
+ * @summary Opt in to tonight (今夜参加する) and/or update my leave-by time
+ */
+export const JoinGroupTonightParams = zod.object({
+  "groupId": zod.uuid()
+})
+
+export const joinGroupTonightHeaderXMemberTokenMin = 32;
+export const joinGroupTonightHeaderXMemberTokenMax = 256;
+
+
+
+export const JoinGroupTonightHeader = zod.object({
+  "X-Member-Token": zod.string().min(joinGroupTonightHeaderXMemberTokenMin).max(joinGroupTonightHeaderXMemberTokenMax)
+})
+
+export const JoinGroupTonightBody = zod.object({
+  "leaveBy": zod.coerce.date().nullish()
+}).describe('Only a leave-by timestamp is ever synced; never location, station, route or destination.')
+
+export const JoinGroupTonightResponse = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "memberLimit": zod.number(),
+  "me": zod.object({
+  "memberId": zod.string(),
+  "displayName": zod.string(),
+  "role": zod.enum(['host', 'member']),
+  "language": zod.enum(['ja', 'en']).describe('Language used for this member\'s push notifications'),
+  "pushRegistered": zod.boolean(),
+  "notifications": zod.boolean()
+}),
+  "members": zod.array(zod.object({
+  "id": zod.string(),
+  "displayName": zod.string(),
+  "role": zod.enum(['host', 'member'])
+})),
+  "invite": zod.union([zod.object({
+  "inviteToken": zod.string(),
+  "joinCode": zod.string(),
+  "rotatedAt": zod.coerce.date()
+}),zod.null()]).describe('Host only. Null for members, and for the host when the server cannot recover the current invite (rotate to get a fresh one).'),
+  "tonight": zod.object({
+  "active": zod.boolean(),
+  "serviceDate": zod.string().nullable().describe('Japan service day (04:00 JST boundary) as YYYY-MM-DD'),
+  "startedAt": zod.coerce.date().nullable(),
+  "endsAt": zod.coerce.date().nullable(),
+  "participants": zod.array(zod.object({
+  "memberId": zod.string(),
+  "displayName": zod.string(),
+  "leaveBy": zod.coerce.date().nullable(),
+  "missed": zod.boolean()
+}).describe('Privacy-minimal. No location, route, station, or destination data.')).describe('Sorted by leaveBy (unknown last)')
+})
+})
+
+
+/**
+ * @summary Opt out of tonight and delete my leave-by time
+ */
+export const LeaveGroupTonightParams = zod.object({
+  "groupId": zod.uuid()
+})
+
+export const leaveGroupTonightHeaderXMemberTokenMin = 32;
+export const leaveGroupTonightHeaderXMemberTokenMax = 256;
+
+
+
+export const LeaveGroupTonightHeader = zod.object({
+  "X-Member-Token": zod.string().min(leaveGroupTonightHeaderXMemberTokenMin).max(leaveGroupTonightHeaderXMemberTokenMax)
+})
+
+export const LeaveGroupTonightResponse = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "memberLimit": zod.number(),
+  "me": zod.object({
+  "memberId": zod.string(),
+  "displayName": zod.string(),
+  "role": zod.enum(['host', 'member']),
+  "language": zod.enum(['ja', 'en']).describe('Language used for this member\'s push notifications'),
+  "pushRegistered": zod.boolean(),
+  "notifications": zod.boolean()
+}),
+  "members": zod.array(zod.object({
+  "id": zod.string(),
+  "displayName": zod.string(),
+  "role": zod.enum(['host', 'member'])
+})),
+  "invite": zod.union([zod.object({
+  "inviteToken": zod.string(),
+  "joinCode": zod.string(),
+  "rotatedAt": zod.coerce.date()
+}),zod.null()]).describe('Host only. Null for members, and for the host when the server cannot recover the current invite (rotate to get a fresh one).'),
+  "tonight": zod.object({
+  "active": zod.boolean(),
+  "serviceDate": zod.string().nullable().describe('Japan service day (04:00 JST boundary) as YYYY-MM-DD'),
+  "startedAt": zod.coerce.date().nullable(),
+  "endsAt": zod.coerce.date().nullable(),
+  "participants": zod.array(zod.object({
+  "memberId": zod.string(),
+  "displayName": zod.string(),
+  "leaveBy": zod.coerce.date().nullable(),
+  "missed": zod.boolean()
+}).describe('Privacy-minimal. No location, route, station, or destination data.')).describe('Sorted by leaveBy (unknown last)')
+})
+})
+
+
+/**
+ * @summary Tell tonight's participants and the host that I missed my train (乗り遅れた)
+ */
+export const ReportGroupTonightMissedParams = zod.object({
+  "groupId": zod.uuid()
+})
+
+export const reportGroupTonightMissedHeaderXMemberTokenMin = 32;
+export const reportGroupTonightMissedHeaderXMemberTokenMax = 256;
+
+
+
+export const ReportGroupTonightMissedHeader = zod.object({
+  "X-Member-Token": zod.string().min(reportGroupTonightMissedHeaderXMemberTokenMin).max(reportGroupTonightMissedHeaderXMemberTokenMax)
+})
+
+export const ReportGroupTonightMissedResponse = zod.object({
+  "id": zod.string(),
+  "name": zod.string(),
+  "memberLimit": zod.number(),
+  "me": zod.object({
+  "memberId": zod.string(),
+  "displayName": zod.string(),
+  "role": zod.enum(['host', 'member']),
+  "language": zod.enum(['ja', 'en']).describe('Language used for this member\'s push notifications'),
+  "pushRegistered": zod.boolean(),
+  "notifications": zod.boolean()
+}),
+  "members": zod.array(zod.object({
+  "id": zod.string(),
+  "displayName": zod.string(),
+  "role": zod.enum(['host', 'member'])
+})),
+  "invite": zod.union([zod.object({
+  "inviteToken": zod.string(),
+  "joinCode": zod.string(),
+  "rotatedAt": zod.coerce.date()
+}),zod.null()]).describe('Host only. Null for members, and for the host when the server cannot recover the current invite (rotate to get a fresh one).'),
+  "tonight": zod.object({
+  "active": zod.boolean(),
+  "serviceDate": zod.string().nullable().describe('Japan service day (04:00 JST boundary) as YYYY-MM-DD'),
+  "startedAt": zod.coerce.date().nullable(),
+  "endsAt": zod.coerce.date().nullable(),
+  "participants": zod.array(zod.object({
+  "memberId": zod.string(),
+  "displayName": zod.string(),
+  "leaveBy": zod.coerce.date().nullable(),
+  "missed": zod.boolean()
+}).describe('Privacy-minimal. No location, route, station, or destination data.')).describe('Sorted by leaveBy (unknown last)')
+})
+})
+
+

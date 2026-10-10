@@ -14,9 +14,9 @@ import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import { Platform } from 'react-native';
 import { syncEnterpriseLeaveBy } from '@/lib/enterpriseParticipation';
-import { recordNightPlan } from '@/lib/nightHistory';
 import { recommendedLeaveTime } from '@/lib/reliability';
 import { endLiveActivity, syncLiveActivity } from '@/lib/liveActivity';
+import { syncWidgets } from '@/lib/widgets';
 import { scheduleReminders } from '@/lib/notifications';
 import { buildReminderPlans, planNight, shouldReplan, trackingEndsAt, trackingHardStopAt, type NightPlan } from '@/lib/planner';
 import { hasCoordinates, readSettings } from '@/lib/settings';
@@ -60,16 +60,6 @@ async function recomputeFromLocation(coordinates: Coordinates): Promise<void> {
   const plan = await planNight(coordinates, settings.homeStation, settings.walkingSpeed, now, { pinned: settings.pinnedStation, homeAddress: settings.homeAddress });
   if (!(await isTrackingFlagOn())) return; // stopped while we were computing
   await AsyncStorage.setItem(SNAPSHOT_KEY, JSON.stringify(plan));
-  const activeDestination =
-    settings.destinations.find(
-      (destination) => destination.id === settings.activeDestinationId,
-    ) ?? settings.destinations[0];
-  if (activeDestination) {
-    await recordNightPlan(plan, {
-      id: activeDestination.id,
-      label: activeDestination.label,
-    }).catch(() => undefined);
-  }
   const language = settings.language ?? 'en';
   await scheduleReminders(buildReminderPlans(plan, settings.reminderIntervals, now, { missedCheckIn: settings.missedCheckIn }), {
     leaveBy: formatJstTime(recommendedLeaveTime(plan)),
@@ -77,6 +67,10 @@ async function recomputeFromLocation(coordinates: Coordinates): Promise<void> {
     language,
   });
   await syncLiveActivity(plan, language, now).catch(() => undefined);
+  const destinationLabel = settings.tonightDestination
+    ? language === 'ja' ? settings.tonightDestination.nameJa : settings.tonightDestination.name
+    : settings.destinations.find((destination) => destination.id === settings.activeDestinationId)?.label ?? (language === 'ja' ? plan.destination.nameJa : plan.destination.name);
+  await syncWidgets(plan, destinationLabel, language, now).catch(() => undefined);
   await syncEnterpriseLeaveBy(recommendedLeaveTime(plan)).catch(() => undefined);
 }
 
@@ -101,6 +95,22 @@ export async function hasBackgroundLocationPermission(): Promise<boolean> {
   if (Platform.OS === 'web') return false;
   try {
     return (await Location.getBackgroundPermissionsAsync()).granted;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Asks for location up front (onboarding step 3). "background" asks for
+ * foreground first, then "when closed"; returns whether that level was granted.
+ */
+export async function requestNightLocationPermission(level: 'foreground' | 'background'): Promise<boolean> {
+  if (Platform.OS === 'web') return false;
+  try {
+    const foreground = await Location.requestForegroundPermissionsAsync();
+    if (!foreground.granted) return false;
+    if (level === 'foreground') return true;
+    return (await Location.requestBackgroundPermissionsAsync()).granted;
   } catch {
     return false;
   }

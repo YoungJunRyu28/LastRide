@@ -6,16 +6,12 @@ import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { NotificationRouter } from '@/components/NotificationRouter';
-import {
-  Inter_400Regular,
-  Inter_500Medium,
-  Inter_600SemiBold,
-  Inter_700Bold,
-  useFonts,
-} from '@expo-google-fonts/inter';
+import { SpaceGrotesk_500Medium, SpaceGrotesk_700Bold, useFonts } from '@expo-google-fonts/space-grotesk';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { LastRideProvider } from '@/context/LastRideContext';
+import { PremiumProvider } from '@/context/PremiumContext';
+import { GroupsProvider } from '@/context/GroupsContext';
 import { initCrashReporting, reportError } from '@/lib/crashReporting';
 
 initCrashReporting();
@@ -32,8 +28,15 @@ function RootLayoutNav() {
       <Stack.Screen name="ride" />
       <Stack.Screen name="home-station" />
       <Stack.Screen name="destinations" />
-      <Stack.Screen name="history" />
       <Stack.Screen name="alternatives" />
+      <Stack.Screen name="groups" />
+      <Stack.Screen name="group/[id]" />
+      <Stack.Screen name="group-new" />
+      <Stack.Screen name="group-join" />
+      <Stack.Screen name="onboarding-notifications" />
+      <Stack.Screen name="onboarding-location" />
+      <Stack.Screen name="trial" />
+      <Stack.Screen name="paywall" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
       <Stack.Screen name="settings" />
       <Stack.Screen name="join" />
       <Stack.Screen name="business" />
@@ -45,10 +48,8 @@ function RootLayoutNav() {
 
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
-    Inter_400Regular,
-    Inter_500Medium,
-    Inter_600SemiBold,
-    Inter_700Bold,
+    SpaceGrotesk_500Medium,
+    SpaceGrotesk_700Bold,
   });
 
   useEffect(() => {
@@ -65,10 +66,14 @@ export default function RootLayout() {
         <QueryClientProvider client={queryClient}>
           <GestureHandlerRootView style={{ flex: 1 }}>
             <KeyboardProvider>
-              <LastRideProvider>
-                <RootLayoutNav />
-                {Platform.OS !== 'web' && <NotificationRouter />}
-              </LastRideProvider>
+              <PremiumProvider>
+                <LastRideProvider>
+                  <GroupsProvider>
+                    <RootLayoutNav />
+                    {Platform.OS !== 'web' && <NotificationRouter />}
+                  </GroupsProvider>
+                </LastRideProvider>
+              </PremiumProvider>
             </KeyboardProvider>
           </GestureHandlerRootView>
         </QueryClientProvider>

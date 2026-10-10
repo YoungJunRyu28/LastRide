@@ -20,6 +20,8 @@ import {
 import { purgeExpiredCacheEntries } from "./lib/cache";
 import { purgeExpiredRateLimits } from "./lib/rateLimit";
 import { purgeExpiredEnterpriseData } from "./lib/enterpriseStore";
+import { purgeEndedGroupNights } from "./lib/groupStore";
+import { dispatchGroupLeaveAlerts } from "./lib/groupNotifications";
 import { logger } from "./lib/logger";
 
 export type ScheduledTask = "cleanup" | "departureAlerts" | "pushReceipts";
@@ -37,23 +39,42 @@ export async function handler(event: ScheduledEvent) {
 
   switch (event.task) {
     case "cleanup": {
-      const [eventsPurged, cacheRowsPurged, rateLimitRowsPurged] =
+      const [eventsPurged, cacheRowsPurged, rateLimitRowsPurged, groupNightsPurged] =
         await Promise.all([
           purgeExpiredEnterpriseData(),
           purgeExpiredCacheEntries(),
           purgeExpiredRateLimits(),
+          // Deletes every group night past 08:00 JST with its leave-by rows.
+          purgeEndedGroupNights(),
         ]);
-      if (eventsPurged > 0 || cacheRowsPurged > 0 || rateLimitRowsPurged > 0) {
+      if (
+        eventsPurged > 0 ||
+        cacheRowsPurged > 0 ||
+        rateLimitRowsPurged > 0 ||
+        groupNightsPurged > 0
+      ) {
         logger.info(
-          { eventsPurged, cacheRowsPurged, rateLimitRowsPurged },
+          {
+            eventsPurged,
+            cacheRowsPurged,
+            rateLimitRowsPurged,
+            groupNightsPurged,
+          },
           "Purged expired application data",
         );
       }
       return;
     }
     case "departureAlerts": {
-      const sent = await dispatchEnterpriseDepartureAlerts();
+      // Group leave-time pushes ride on the same 1-minute schedule.
+      const [sent, groupLeaveAlerts] = await Promise.all([
+        dispatchEnterpriseDepartureAlerts(),
+        dispatchGroupLeaveAlerts(),
+      ]);
       if (sent > 0) logger.info({ sent }, "Sent enterprise departure alerts");
+      if (groupLeaveAlerts > 0) {
+        logger.info({ groupLeaveAlerts }, "Sent group leave-time alerts");
+      }
       return;
     }
     case "pushReceipts": {
