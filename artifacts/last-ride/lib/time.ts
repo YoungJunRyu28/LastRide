@@ -7,7 +7,7 @@
  */
 
 export const MINUTE_MS = 60_000;
-const HOUR_MS = 60 * MINUTE_MS;
+export const HOUR_MS = 60 * MINUTE_MS;
 const DAY_MS = 24 * HOUR_MS;
 const JST_OFFSET_MS = 9 * HOUR_MS;
 

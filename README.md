@@ -30,6 +30,11 @@ move during the evening the plan follows you, and reminders are rescheduled.
   display name and calculated leave-by time; organizer devices receive
   departure alerts without gaining access to participants' home, route or
   location.
+- **Groups** — persistent, accountless 飲み会 groups with a host. Premium
+  users create a group; anyone joins free by link or join code. When the host
+  starts tonight, members who opt in share only their leave-by time; the group
+  gets a push when someone's leave time arrives or they report 乗り遅れた, and
+  every leave-by is deleted when the night ends at 08:00 JST.
 - Japanese and English throughout, including romanized station and line names.
 
 Times come from [駅すぱあと API](https://api-info.ekispert.com/) (real

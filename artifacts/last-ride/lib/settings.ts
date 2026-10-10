@@ -28,8 +28,8 @@ export const STORAGE_KEYS = {
   homeAddress: 'lastride-home-address',
   destinations: 'lastride-destinations',
   activeDestinationId: 'lastride-active-destination-id',
-  nightHistory: 'lastride-night-history',
   nightLocationMode: 'lastride-night-location-mode',
+  tonightDestination: 'lastride-tonight-destination',
 } as const;
 
 /**
@@ -56,6 +56,8 @@ export type Settings = {
   destinations: SavedDestination[];
   activeDestinationId: string | null;
   nightLocationMode: NightLocationMode;
+  /** A station used for tonight only (not saved); it lapses at the next service day. */
+  tonightDestination: StationOption | null;
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -69,6 +71,7 @@ export const DEFAULT_SETTINGS: Settings = {
   destinations: [],
   activeDestinationId: null,
   nightLocationMode: 'ask',
+  tonightDestination: null,
 };
 
 function parseHomeStation(raw: string | null): StationOption | null {
@@ -147,13 +150,19 @@ function parsePinnedStation(raw: string | null): StationOption | null {
   }
 }
 
+/** Tonight-only destinations share the pinned station's one-night lifetime. */
+export async function writeTonightDestination(station: StationOption | null): Promise<void> {
+  if (station) await AsyncStorage.setItem(STORAGE_KEYS.tonightDestination, JSON.stringify({ station, serviceDate: serviceDate(Date.now()) }));
+  else await AsyncStorage.removeItem(STORAGE_KEYS.tonightDestination);
+}
+
 export async function writePinnedStation(station: StationOption | null): Promise<void> {
   if (station) await AsyncStorage.setItem(STORAGE_KEYS.pinnedStation, JSON.stringify({ station, serviceDate: serviceDate(Date.now()) }));
   else await AsyncStorage.removeItem(STORAGE_KEYS.pinnedStation);
 }
 
 export async function readSettings(): Promise<Settings> {
-  const [language, homeStation, walkingSpeed, reminders, pinnedStation, missedCheckIn, homeAddress, destinationsRaw, activeDestinationIdRaw, nightLocationMode] = await Promise.all([
+  const [language, homeStation, walkingSpeed, reminders, pinnedStation, missedCheckIn, homeAddress, destinationsRaw, activeDestinationIdRaw, nightLocationMode, tonightRaw] = await Promise.all([
     AsyncStorage.getItem(STORAGE_KEYS.language),
     AsyncStorage.getItem(STORAGE_KEYS.homeStation),
     AsyncStorage.getItem(STORAGE_KEYS.walkingSpeed),
@@ -164,7 +173,11 @@ export async function readSettings(): Promise<Settings> {
     AsyncStorage.getItem(STORAGE_KEYS.destinations),
     AsyncStorage.getItem(STORAGE_KEYS.activeDestinationId),
     AsyncStorage.getItem(STORAGE_KEYS.nightLocationMode),
+    AsyncStorage.getItem(STORAGE_KEYS.tonightDestination),
   ]);
+  // Night history was removed: plan times derived from map data aren't kept long-term.
+  void AsyncStorage.removeItem('lastride-night-history').catch(() => undefined);
+  const tonightDestination = parsePinnedStation(tonightRaw);
 
   const legacyStation = parseHomeStation(homeStation);
   const legacyAddress = parseHomeAddress(homeAddress);
@@ -192,16 +205,18 @@ export async function readSettings(): Promise<Settings> {
 
   return {
     language: language === 'ja' || language === 'en' ? language : null,
-    homeStation: activeDestination?.station ?? legacyStation,
+    // Tonight's one-off station, when set, is where every plan heads (foreground and background).
+    homeStation: tonightDestination ?? activeDestination?.station ?? legacyStation,
     walkingSpeed: walkingSpeed === 'relaxed' || walkingSpeed === 'fast' ? walkingSpeed : 'normal',
     reminderIntervals: parseReminders(reminders),
     pinnedStation: parsePinnedStation(pinnedStation),
     // Absent means never changed, and the check-in is on by default.
     missedCheckIn: missedCheckIn !== 'false',
-    homeAddress: activeDestination?.address ?? legacyAddress,
+    homeAddress: tonightDestination ? null : activeDestination?.address ?? legacyAddress,
     destinations,
     activeDestinationId,
     nightLocationMode: nightLocationMode === 'foreground' || nightLocationMode === 'background' ? nightLocationMode : 'ask',
+    tonightDestination,
   };
 }
 

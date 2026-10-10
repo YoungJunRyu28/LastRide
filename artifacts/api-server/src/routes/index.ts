@@ -8,6 +8,7 @@ import trainsRouter from "./trains";
 import usageRouter from "./usage";
 import walkRouter from "./walk";
 import enterpriseRouter from "./enterprise";
+import groupsRouter from "./groups";
 import { rateLimitMiddleware, requestAddress } from "../lib/rateLimit";
 
 const router: IRouter = Router();
@@ -39,5 +40,6 @@ router.use(placesRouter);
 router.use(usageRouter);
 router.use(walkRouter);
 router.use(enterpriseRouter);
+router.use(groupsRouter);
 
 export default router;

@@ -1,70 +1,28 @@
-import { BottomNav } from '@/components/BottomNav';
-import { RailwayMark } from '@/components/RideUI';
+import { Card, Chip, Divider, IconButton, Row, SectionLabel, Segmented } from '@/components/ui';
 import { REMINDER_CHOICES, useLastRide } from '@/context/LastRideContext';
+import { usePremium } from '@/context/PremiumContext';
+import { Feather } from '@expo/vector-icons';
 import { useColors } from '@/hooks/useColors';
-import { businessEnabled } from '@/lib/features';
 import { recommendedLeaveTime } from '@/lib/reliability';
 import { MINUTE_MS } from '@/lib/time';
-import { Feather } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import React from 'react';
-import { Platform, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-/** A labelled group of rows. */
+/** A labelled card of rows, with an optional note underneath. */
 function Section({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   const colors = useColors();
   return (
     <View style={styles.section}>
-      <Text style={[styles.sectionLabel, { color: colors.mutedForeground }]}>{label}</Text>
-      <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>{children}</View>
+      <SectionLabel>{label}</SectionLabel>
+      <Card style={styles.card}>{children}</Card>
       {hint ? <Text style={[styles.hint, { color: colors.mutedForeground }]}>{hint}</Text> : null}
     </View>
   );
 }
 
-/** One row inside a section: a title (with optional subtitle) on the left, a control on the right. */
-function Row({ title, subtitle, children, onPress, testID, destructive }: { title: string; subtitle?: string; children?: React.ReactNode; onPress?: () => void; testID?: string; destructive?: boolean }) {
-  const colors = useColors();
-  const body = (
-    <>
-      <View style={styles.rowCopy}>
-        <Text style={[styles.rowTitle, { color: destructive ? colors.destructive : colors.foreground }]}>{title}</Text>
-        {subtitle ? <Text style={[styles.rowSub, { color: colors.mutedForeground }]}>{subtitle}</Text> : null}
-      </View>
-      {children}
-      {onPress && !children ? <Feather name="chevron-right" color={colors.mutedForeground} size={18} /> : null}
-    </>
-  );
-  if (!onPress) return <View style={styles.row}>{body}</View>;
-  return (
-    <Pressable testID={testID} onPress={onPress} accessibilityRole="button" style={({ pressed }) => [styles.row, { opacity: pressed ? 0.6 : 1 }]}>
-      {body}
-    </Pressable>
-  );
-}
-
-/** Two or three mutually exclusive choices, shown side by side. */
-function Segmented<T extends string>({ options, value, onChange }: { options: Array<{ value: T; label: string }>; value: T; onChange: (value: T) => void }) {
-  const colors = useColors();
-  return (
-    <View style={[styles.segmented, { backgroundColor: colors.background }]}>
-      {options.map((option) => (
-        <Pressable
-          key={option.value}
-          testID={`choose-${option.value}`}
-          onPress={() => onChange(option.value)}
-          accessibilityRole="button"
-          accessibilityState={{ selected: option.value === value }}
-          style={[styles.segment, { backgroundColor: option.value === value ? colors.primary : 'transparent' }]}
-        >
-          <Text style={[styles.segmentText, { color: option.value === value ? colors.primaryForeground : colors.mutedForeground }]}>{option.label}</Text>
-        </Pressable>
-      ))}
-    </View>
-  );
-}
-
+/** Settings, pushed from the gear on Leave. */
 export default function SettingsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -74,17 +32,51 @@ export default function SettingsScreen() {
     missedCheckIn, setMissedCheckIn, nightLocationMode, setNightLocationMode,
     demoActive, setDemoNow, nowMs, plan, currentTime, leaveBy, triggerTestNotification, resetAll,
   } = useLastRide();
+  const { isPremium, live: premiumLive, setTestPremium } = usePremium();
   const ja = language === 'ja';
+  const back = () => (router.canGoBack() ? router.back() : router.replace('/ride'));
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
-      <ScrollView contentContainerStyle={[styles.content, { paddingTop: insets.top + (Platform.OS === 'web' ? 67 : 18), paddingBottom: 26 }]} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingTop: insets.top + (Platform.OS === 'web' ? 24 : 12), paddingBottom: insets.bottom + 28 }]}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.topbar}>
-          <View style={styles.brand}><RailwayMark size={22} /><Text style={[styles.brandText, { color: colors.foreground }]}>LastRide</Text></View>
+          <IconButton icon="chevron-left" label={ja ? '戻る' : 'Back'} onPress={back} testID="settings-back" />
+          <Text accessibilityRole="header" style={[styles.title, { color: colors.foreground }]}>{ja ? '設定' : 'Settings'}</Text>
+          <View style={styles.topbarSpacer} />
         </View>
-        <Text style={[styles.title, { color: colors.foreground }]}>{ja ? '設定' : 'Settings'}</Text>
 
-        <Section label={ja ? '帰り先' : 'DESTINATION'}>
+        {isPremium ? (
+          <Card style={styles.premiumBanner}>
+            <Feather name="star" size={18} color={colors.primary} />
+            <View style={styles.premiumText}>
+              <Text style={[styles.premiumTitle, { color: colors.foreground }]}>{ja ? 'プレミアム利用中' : 'Premium is on'}</Text>
+              <Text style={[styles.premiumBody, { color: colors.mutedForeground }]}>
+                {ja ? '解約は端末のサブスクリプション設定から行えます。' : 'Manage or cancel in your device’s subscription settings.'}
+              </Text>
+            </View>
+          </Card>
+        ) : (
+          <Pressable
+            testID="settings-premium"
+            onPress={() => router.push('/paywall')}
+            accessibilityRole="button"
+            style={({ pressed }) => [styles.premiumBanner, styles.premiumUpsell, { backgroundColor: colors.card, borderColor: colors.primary, opacity: pressed ? 0.85 : 1 }]}
+          >
+            <Feather name="star" size={18} color={colors.primary} />
+            <View style={styles.premiumText}>
+              <Text style={[styles.premiumTitle, { color: colors.foreground }]}>{ja ? 'プレミアムにアップグレード' : 'Upgrade to Premium'}</Text>
+              <Text style={[styles.premiumBody, { color: colors.mutedForeground }]}>
+                {ja ? 'グループ作成・ロック画面・ウィジェットなど' : 'Hosting groups, lock screen, widgets and more'}
+              </Text>
+            </View>
+            <Feather name="chevron-right" size={18} color={colors.mutedForeground} />
+          </Pressable>
+        )}
+
+        <Section label={ja ? '帰り先' : 'DESTINATIONS'}>
           <Row
             testID="edit-home-station"
             title={destination || (ja ? '未設定' : 'Not set')}
@@ -101,36 +93,50 @@ export default function SettingsScreen() {
                 ? 'ブラウザ版ではこのタブを開いている間のみ届きます。'
                 : 'In the browser, reminders only arrive while this tab is open.'
               : ja
-                ? '夜のトラッキング中に届きます。出発時刻ちょうどと、終電後の案内も送ります。'
-                : 'Sent while night-out tracking is on, including when it’s time to go and after the last train.'
+                ? '夜のトラッキング中に届きます。出発時刻ちょうどにも通知します。'
+                : 'Sent while night-out tracking is on, including when it’s time to go.'
           }
         >
-          <View style={styles.row}>
-            <View style={styles.chipRow}>
-              {REMINDER_CHOICES.map((minutes) => {
-                const active = reminderIntervals.includes(minutes);
-                return (
-                  <Pressable key={minutes} testID={`reminder-${minutes}`} onPress={() => toggleReminderInterval(minutes)} accessibilityRole="button" accessibilityState={{ selected: active }} style={[styles.chip, { backgroundColor: active ? colors.primary : colors.secondary }]}>
-                    <Text style={[styles.chipText, { color: active ? colors.primaryForeground : colors.mutedForeground }]}>{ja ? `${minutes}分前` : `${minutes} min`}</Text>
-                  </Pressable>
-                );
-              })}
-            </View>
+          <View style={styles.chipRow}>
+            {REMINDER_CHOICES.map((minutes) => (
+              <Chip
+                key={minutes}
+                testID={`reminder-${minutes}`}
+                label={ja ? `${minutes}分前` : `${minutes} min`}
+                selected={reminderIntervals.includes(minutes)}
+                onPress={() => toggleReminderInterval(minutes)}
+              />
+            ))}
           </View>
-          <View style={[styles.divider, { backgroundColor: colors.border }]} />
-          <Row title={ja ? '終電後の案内' : 'After the last train'} subtitle={ja ? '乗り遅れたときの選択肢を通知します' : 'A check-in with your other ways home'}>
-            <Switch
-              testID="toggle-missed-check-in"
-              accessibilityLabel={ja ? '終電後の案内' : 'After the last train'}
-              value={missedCheckIn}
-              onValueChange={setMissedCheckIn}
-              trackColor={{ false: colors.border, true: colors.primary }}
-              thumbColor={colors.card}
-            />
-          </Row>
+          <Divider />
+          <Row
+            testID="toggle-missed-check-in"
+            title={ja ? '終電後の案内' : 'After the last train'}
+            subtitle={ja ? '乗り遅れたときの選択肢を通知します' : 'A check-in with your other ways home'}
+            switchValue={missedCheckIn}
+            onSwitch={setMissedCheckIn}
+          />
           {notificationsAllowed === false && (
-            <Row title={ja ? '通知が許可されていません' : 'Notifications are off'} subtitle={ja ? '端末の設定から許可してください。' : 'Enable them in your device settings.'} destructive />
+            <>
+              <Divider />
+              <Row title={ja ? '通知が許可されていません' : 'Notifications are off'} subtitle={ja ? '端末の設定から許可してください。' : 'Enable them in your device settings.'} destructive />
+            </>
           )}
+        </Section>
+
+        <Section label={ja ? '夜の位置情報' : 'NIGHT LOCATION'} hint={ja ? '夜のトラッキング中だけ使います。' : 'Only used while night tracking is on.'}>
+          <View style={styles.block}>
+            <Segmented
+              stretch
+              value={nightLocationMode}
+              onChange={setNightLocationMode}
+              options={[
+                { value: 'ask', label: ja ? '毎回確認' : 'Ask' },
+                { value: 'foreground', label: ja ? 'アプリのみ' : 'App open' },
+                { value: 'background', label: ja ? '閉じても更新' : 'When closed' },
+              ]}
+            />
+          </View>
         </Section>
 
         <Section label={ja ? '好みの設定' : 'PREFERENCES'} hint={ja ? '歩くペースは出発時刻の計算に使います。' : 'Your walking pace sets how early you need to leave.'}>
@@ -145,7 +151,7 @@ export default function SettingsScreen() {
               ]}
             />
           </Row>
-          <View style={[styles.divider, { backgroundColor: colors.border }]} />
+          <Divider />
           <Row title={ja ? '言語' : 'Language'}>
             <Segmented
               value={language ?? 'en'}
@@ -156,61 +162,20 @@ export default function SettingsScreen() {
               ]}
             />
           </Row>
-          <View style={[styles.divider, { backgroundColor: colors.border }]} />
-          <Row title={ja ? '夜の位置情報' : 'Night location'}>
-            <Segmented
-              value={nightLocationMode}
-              onChange={setNightLocationMode}
-              options={[
-                { value: 'ask', label: ja ? '毎回確認' : 'Ask' },
-                { value: 'foreground', label: ja ? 'アプリのみ' : 'App open' },
-                { value: 'background', label: ja ? '常に' : 'Always' },
-              ]}
-            />
-          </Row>
         </Section>
 
-        {businessEnabled && (
-          <Section label={ja ? 'グループ' : 'GROUPS'}>
-            <Row
-              testID="join-group"
-              title={ja ? '飲み会に参加' : 'Join a group'}
-              subtitle={ja ? '幹事のコードで出発時刻を共有' : 'Share your leave time with an organizer'}
-              onPress={() => router.push('/join')}
-            />
-            <View style={[styles.divider, { backgroundColor: colors.border }]} />
-            <Row
-              testID="business-mode"
-              title={ja ? '幹事モード' : 'LastRide for Business'}
-              subtitle={ja ? '法人イベントを作成・管理' : 'Create and manage organization events'}
-              onPress={() => router.push('/business')}
-            />
-          </Section>
-        )}
-
-        <Section label={ja ? '通知とデータ' : 'NOTIFICATIONS & DATA'}>
-          <Row
-            testID="open-night-history"
-            title={ja ? '夜の履歴' : 'Night history'}
-            subtitle={ja ? 'この端末に保存された過去のプラン' : 'Past plans stored only on this device'}
-            onPress={() => router.push('/history')}
-          />
-          <View style={[styles.divider, { backgroundColor: colors.border }]} />
-          <Row testID="test-notification" title={ja ? 'テスト通知を送る' : 'Send test notification'} subtitle={ja ? '通知の見え方を確認します' : 'Check how reminders look'} onPress={() => void triggerTestNotification()}>
-            <Feather name="bell" color={colors.mutedForeground} size={18} />
-          </Row>
-          <View style={[styles.divider, { backgroundColor: colors.border }]} />
+        <Section label={ja ? 'その他' : 'MORE'}>
+          <Row testID="test-notification" title={ja ? 'テスト通知を送る' : 'Send test notification'} subtitle={ja ? '通知の見え方を確認します' : 'Check how reminders look'} onPress={() => void triggerTestNotification()} />
+          <Divider />
           <Row testID="open-privacy" title={ja ? 'プライバシー' : 'Privacy'} subtitle={ja ? '位置情報の扱いについて' : 'How your location is used'} onPress={() => router.push('/privacy')} />
-          <View style={[styles.divider, { backgroundColor: colors.border }]} />
+          <Divider />
           <Row
             testID="reset-all"
             title={ja ? '最初からやり直す' : 'Reset & start over'}
             subtitle={ja ? '言語・帰り先・設定を消去します' : 'Clears your language, destinations and settings'}
             onPress={() => void resetAll().then(() => router.replace('/'))}
             destructive
-          >
-            <Feather name="rotate-ccw" color={colors.destructive} size={18} />
-          </Row>
+          />
         </Section>
 
         {__DEV__ && (
@@ -218,55 +183,60 @@ export default function SettingsScreen() {
             label={ja ? 'デモモード（開発用）' : 'DEMO MODE (DEV ONLY)'}
             hint={ja ? 'デモ中は1分＝1秒で進みます。通知は夜のトラッキング中のみ届きます。' : 'While the demo clock runs, 1 minute = 1 second. Notifications need tracking on.'}
           >
-            <Row title={ja ? '時刻を動かす' : 'Shift the clock'} subtitle={ja ? `現在 ${currentTime} · 出発 ${leaveBy}` : `Now ${currentTime} · leave by ${leaveBy}`}>
-              {demoActive && (
-                <Pressable testID="demo-reset" onPress={() => setDemoNow(null)} accessibilityRole="button" style={[styles.chip, { backgroundColor: colors.secondary }]}>
-                  <Text style={[styles.chipText, { color: colors.secondaryForeground }]}>{ja ? 'リセット' : 'Reset'}</Text>
-                </Pressable>
+            {!premiumLive && (
+              <>
+                <Row
+                  testID="toggle-test-premium"
+                  title={ja ? 'プレミアム（テスト）' : 'Premium (test mode)'}
+                  subtitle={ja ? 'RevenueCatのキー設定前の確認用' : 'Until RevenueCat keys are set'}
+                  switchValue={isPremium}
+                  onSwitch={setTestPremium}
+                />
+                <Divider />
+              </>
+            )}
+            <Row title={ja ? '時刻を動かす' : 'Shift the clock'} subtitle={ja ? `現在 ${currentTime} · 出発 ${leaveBy}` : `Now ${currentTime} · leave by ${leaveBy}`} />
+            <View style={styles.chipRow}>
+              {[-30, -5, 5, 30].map((delta) => (
+                <Chip
+                  key={delta}
+                  testID={`demo-shift-${delta}`}
+                  label={`${delta > 0 ? `+${delta}` : delta}${ja ? '分' : 'm'}`}
+                  selected={false}
+                  onPress={() => setDemoNow(nowMs + delta * MINUTE_MS)}
+                />
+              ))}
+              {plan && (
+                <Chip
+                  testID="demo-jump-leave"
+                  label={ja ? '出発直前へ' : 'Jump near leave'}
+                  selected
+                  onPress={() => setDemoNow(recommendedLeaveTime(plan) - (Math.max(0, ...reminderIntervals) + 1) * MINUTE_MS)}
+                />
               )}
-            </Row>
-            <View style={styles.row}>
-              <View style={styles.chipRow}>
-                {[-30, -5, 5, 30].map((delta) => (
-                  <Pressable key={delta} testID={`demo-shift-${delta}`} onPress={() => setDemoNow(nowMs + delta * MINUTE_MS)} accessibilityRole="button" style={[styles.chip, { backgroundColor: colors.secondary }]}>
-                    <Text style={[styles.chipText, { color: colors.secondaryForeground }]}>{delta > 0 ? `+${delta}` : delta}{ja ? '分' : 'm'}</Text>
-                  </Pressable>
-                ))}
-                {plan && (
-                  <Pressable testID="demo-jump-leave" onPress={() => setDemoNow(recommendedLeaveTime(plan) - (Math.max(0, ...reminderIntervals) + 1) * MINUTE_MS)} accessibilityRole="button" style={[styles.chip, { backgroundColor: colors.primary }]}>
-                    <Text style={[styles.chipText, { color: colors.primaryForeground }]}>{ja ? '出発直前へ' : 'Jump near leave'}</Text>
-                  </Pressable>
-                )}
-              </View>
+              {demoActive && <Chip testID="demo-reset" label={ja ? 'リセット' : 'Reset'} selected={false} onPress={() => setDemoNow(null)} />}
             </View>
           </Section>
         )}
       </ScrollView>
-      <BottomNav language={language} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  content: { gap: 18, paddingHorizontal: 20 },
+  content: { gap: 20, paddingHorizontal: 20 },
   topbar: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
-  brand: { alignItems: 'center', flexDirection: 'row', gap: 7 },
-  brandText: { fontFamily: 'Inter_700Bold', fontSize: 17 },
-  title: { fontFamily: 'Inter_700Bold', fontSize: 34, letterSpacing: -1.3, marginTop: 2 },
+  topbarSpacer: { width: 44 },
+  title: { fontSize: 17, fontWeight: '800' },
   section: { gap: 8 },
-  sectionLabel: { fontFamily: 'Inter_700Bold', fontSize: 11, letterSpacing: 0.9 },
-  card: { borderRadius: 20, borderWidth: 1, overflow: 'hidden' },
-  row: { alignItems: 'center', flexDirection: 'row', gap: 12, paddingHorizontal: 16, paddingVertical: 14 },
-  rowCopy: { flex: 1, gap: 2 },
-  rowTitle: { fontFamily: 'Inter_700Bold', fontSize: 15 },
-  rowSub: { fontFamily: 'Inter_400Regular', fontSize: 12 },
-  divider: { height: 1, marginHorizontal: 16 },
-  hint: { fontFamily: 'Inter_400Regular', fontSize: 12, lineHeight: 17, paddingHorizontal: 2 },
-  chipRow: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chip: { alignItems: 'center', borderRadius: 13, paddingHorizontal: 13, paddingVertical: 9 },
-  chipText: { fontFamily: 'Inter_700Bold', fontSize: 12 },
-  segmented: { borderRadius: 14, flexDirection: 'row', padding: 3 },
-  segment: { alignItems: 'center', borderRadius: 11, paddingHorizontal: 12, paddingVertical: 8 },
-  segmentText: { fontFamily: 'Inter_700Bold', fontSize: 12 },
+  card: { overflow: 'hidden', padding: 0 },
+  block: { padding: 12 },
+  hint: { fontSize: 12, lineHeight: 17, paddingHorizontal: 2 },
+  premiumBanner: { alignItems: 'center', flexDirection: 'row', gap: 12, padding: 16 },
+  premiumUpsell: { borderRadius: 20, borderWidth: 1.5 },
+  premiumText: { flex: 1, gap: 2 },
+  premiumTitle: { fontSize: 15, fontWeight: '800' },
+  premiumBody: { fontSize: 12, lineHeight: 17 },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 16, paddingVertical: 14 },
 });

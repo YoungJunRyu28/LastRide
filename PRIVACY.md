@@ -38,6 +38,26 @@ user ID, organization membership and registered push-notification device token.
 Organizer push notifications are sent through Expo's Push Service and the
 underlying Apple or Google push service.
 
+## Groups
+
+Groups (飲み会 groups) are optional and accountless. Creating a group needs a
+LastRide Premium subscription; joining is free.
+
+**What the server stores:** the group name, each member's chosen display name
+for that group, their role (host or member), a random capability token per
+member (stored only as a one-way hash), notification language and on/off
+setting, and an Expo push token if the member turned on notifications. Invite
+links and join codes are stored as one-way hashes for lookup, plus an encrypted
+copy so the host can re-share the current invite.
+
+**Tonight:** when the host starts tonight and you choose 今夜参加する, the server
+stores **only your leave-by time** (and whether you reported 乗り遅れた). It
+never receives your location, station, route or destination. Other members of
+the group see your display name and leave-by time.
+
+When you create a group we check your subscription with RevenueCat using your
+RevenueCat app user ID; the server does not store that ID.
+
 ## When location is used
 
 - **While the app is open**, to calculate your leave-by time.
@@ -54,8 +74,8 @@ stop. Mobile operating systems do not guarantee an exact background wake at
 04:00, so the app enforces that stop on the first location wake at or after the
 deadline. You can stop tracking or revoke location access at any time.
 
-If you joined a Business event, a re-plan sends **only the resulting leave-by
-timestamp** to the Business event. It does not send the underlying location,
+If you joined a Business event, or opted in to tonight for a group, a re-plan
+sends **only the resulting leave-by timestamp** to the event or group. It does not send the underlying location,
 station, route or destination to the organizer.
 
 ## Service providers
@@ -70,7 +90,9 @@ to:
   routing data only in development or explicitly opted-in test builds; ordinary
   production builds keep these public fallbacks disabled.
 - **Supabase** — organizer authentication for LastRide for Business, when enabled.
-- **Expo / Apple / Google push services** — organizer departure alerts.
+- **Expo / Apple / Google push services** — organizer departure alerts and
+  group notifications (tonight started, a member's leave time, 乗り遅れた).
+- **RevenueCat** — subscription status, checked when you create a group.
 - **Sentry (Functional Software, Inc.)** — crash and error reports, when
   enabled in the build. A report contains the error and stack trace, the app
   version and the device/OS model. It does not include your location,
@@ -100,6 +122,11 @@ lookup, not the Business participant display name.
   Any participant data the server still holds is deleted when the event expires.
   Events created for a night out currently expire at 08:00 Japan time the
   following morning.
+- **Groups:** every leave-by time (and 乗り遅れた flag) is deleted when the
+  night ends — automatically at 08:00 Japan time the following morning, or
+  earlier if the host ends it. Your membership (display name, hashed token,
+  push token) is deleted when you leave, when the host removes you, or when the
+  host disbands the group, which deletes the group and everything in it.
 - **Organizer accounts:** organization membership remains until the Business
   account is deprovisioned. A registered push token is removed when the device
   signs out successfully or when it is identified as no longer registered.
@@ -112,6 +139,8 @@ lookup, not the Business participant display name.
 
 - Use Personal LastRide without creating an account.
 - Leave a Business event at any time to delete that participant record.
+- Opt out of tonight, turn group notifications off, or leave a group at any
+  time; leaving deletes your membership record.
 - Use **Reset & start over** to erase LastRide's local settings and leave the
   current Business event. If the server can't be reached, your phone's copy is
   still erased and the server-side participant record is removed when the

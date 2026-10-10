@@ -112,13 +112,18 @@ describe("app.config.js", () => {
     );
   });
 
-  it("adds the Live Activity extension only when enabled", () => {
+  it("adds the widget extension (Live Activity + LeaveWidget) only when enabled", () => {
+    const widgetsPlugin = (plugins: unknown[]) =>
+      plugins.find(
+        (plugin) => Array.isArray(plugin) && plugin[0] === "expo-widgets",
+      ) as [string, { widgets: Array<{ name: string }> }] | undefined;
+
     const off = resolveWith({ ENABLE_LIVE_ACTIVITY: undefined });
-    expect(off.plugins).not.toContain("expo-widgets");
+    expect(widgetsPlugin(off.plugins)).toBeUndefined();
     expect(off.extra.liveActivityEnabled).toBe(false);
 
     const on = resolveWith({ ENABLE_LIVE_ACTIVITY: "true" });
-    expect(on.plugins).toContain("expo-widgets");
+    expect(widgetsPlugin(on.plugins)?.[1].widgets.map((widget) => widget.name)).toEqual(["LeaveWidget"]);
     expect(on.extra.liveActivityEnabled).toBe(true);
   });
 });

@@ -12,6 +12,7 @@ import tsconfigPaths from 'vite-tsconfig-paths';
  * `@/lib/api` is the one exception: it pulls in react-native and
  * expo-constants at import time, which Vite cannot parse (Flow syntax). It is
  * swapped for a stub, since the functions under test never issue a request.
+ * The local native modules (modules/*) are stubbed the same way.
  */
 export default defineConfig({
   plugins: [tsconfigPaths()],
@@ -20,6 +21,10 @@ export default defineConfig({
       {
         find: /^@\/lib\/api$/,
         replacement: resolve(import.meta.dirname, 'tests/stubs/api.ts'),
+      },
+      {
+        find: /^@\/modules\/(apple-maps|countdown-notification)\/src$/,
+        replacement: resolve(import.meta.dirname, 'tests/stubs/nativeModules.ts'),
       },
     ],
   },

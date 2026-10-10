@@ -6,7 +6,10 @@
  *
  * Only active in iOS builds made with ENABLE_LIVE_ACTIVITY=true (app.config.js),
  * since the widget extension needs an App Group, which free signing rejects.
- * Everywhere else every call here is a no-op.
+ * On Android the same content drives an ongoing countdown notification
+ * (modules/countdown-notification), promoted to a Live Update on Android 16.
+ * Everywhere else every call here is a no-op. It is a premium feature: for
+ * free users sync ends any running activity instead.
  */
 import Constants from "expo-constants";
 import { Platform } from "react-native";
@@ -15,6 +18,12 @@ import {
   liveActivityContent,
 } from "@/lib/liveActivityContent";
 import type { NightPlan } from "@/lib/planner";
+import { readPremiumCache } from "@/lib/premiumCache";
+import {
+  countdownNotificationAvailable,
+  dismissCountdown,
+  showCountdown,
+} from "@/modules/countdown-notification/src";
 import { MINUTE_MS } from "@/lib/time";
 
 export const liveActivityEnabled =
@@ -36,11 +45,32 @@ export async function syncLiveActivity(
   plan: NightPlan,
   language: "ja" | "en",
   nowMs = Date.now(),
+  /** Known premium state; read from the on-disk cache when omitted (background task). */
+  premium?: boolean,
 ): Promise<void> {
-  if (!liveActivityEnabled) return;
+  if (!liveActivityEnabled && !countdownNotificationAvailable) return;
   const content = liveActivityContent(plan, language, nowMs);
-  if (!content) {
+  if (!content || !(premium ?? (await readPremiumCache()))) {
     await endLiveActivity();
+    return;
+  }
+  if (countdownNotificationAvailable) {
+    const signature = contentSignature(content);
+    if (shownSignature === signature) return;
+    const ja = language === "ja";
+    const { latitude, longitude } = plan.station;
+    showCountdown({
+      title: content.title,
+      body: content.subtitle,
+      countdownTo: content.countdownTo,
+      url: "last-ride://ride",
+      mapLabel: ja ? "地図" : "Map",
+      mapUrl: `geo:${latitude},${longitude}?q=${latitude},${longitude}`,
+      stopLabel: ja ? "トラッキングを停止" : "Stop tracking",
+      stopUrl: "last-ride://ride?stop=1",
+      channelName: ja ? "夜のカウントダウン" : "Night countdown",
+    });
+    shownSignature = signature;
     return;
   }
   const activities = factory();
@@ -61,6 +91,11 @@ export async function syncLiveActivity(
 
 /** Ends every LastRide activity, removing it from the lock screen immediately. */
 export async function endLiveActivity(): Promise<void> {
+  if (countdownNotificationAvailable) {
+    shownSignature = null;
+    dismissCountdown();
+    return;
+  }
   if (!liveActivityEnabled) return;
   shownSignature = null;
   await Promise.all(
