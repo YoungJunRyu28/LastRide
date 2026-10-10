@@ -8,12 +8,16 @@ import {
   GetTrainDisruptionsQueryParams,
   GetTrainDisruptionsResponse,
 } from "@workspace/api-zod";
-import { ProviderError } from "../lib/cache";
-import { searchTrain, trainDisruptionsForLines } from "../lib/ekispert";
 import { findPartwayTrainTaxi } from "../lib/partway";
-import { recordLastTrainShadowComparison } from "../lib/transitShadow";
+import { searchTrain, TimetableUnavailableError } from "../lib/timetableEngine";
+import { trainDisruptionsForLines } from "../lib/trainInformation";
 
 const router: IRouter = Router();
+
+/** The snapshot is missing or unreadable (already logged by the engine). */
+function timetableUnavailable(res: Response): void {
+  res.status(503).json({ error: "Timetable unavailable" });
+}
 
 function trainHandler(
   kind: "last" | "first",
@@ -29,6 +33,9 @@ function trainHandler(
     }
     const query = parsed.data;
     try {
+      // LastRide's own ODPT timetable engine. Stations it doesn't cover (JR,
+      // private railways, outside Tokyo) answer 404, and the app asks Apple
+      // Maps instead.
       const route = await searchTrain(
         kind,
         {
@@ -39,22 +46,6 @@ function trainHandler(
         { latitude: query.toLat, longitude: query.toLon, name: query.toName },
         query.date,
       );
-      if (kind === "last") {
-        // Not awaited: the shadow engine never changes the answer, so it must
-        // not add its snapshot load or scan to the user's wait. Best-effort on
-        // Lambda, which may pause it until the next invocation.
-        void recordLastTrainShadowComparison({
-          fromName: query.fromName,
-          toName: query.toName,
-          serviceDate: query.date,
-          provider: route,
-        }).catch((err) => {
-          req.log.debug(
-            { errorName: (err as Error).name },
-            "Transit shadow comparison failed",
-          );
-        });
-      }
       if (!route) {
         res.status(404).json({
           error: "No train route between these stations on that date",
@@ -63,9 +54,8 @@ function trainHandler(
       }
       res.json(GetLastTrainResponse.parse(route));
     } catch (err) {
-      if (err instanceof ProviderError) {
-        req.log.warn({ err: err.message }, "Timetable provider unavailable");
-        res.status(502).json({ error: "Timetable provider unavailable" });
+      if (err instanceof TimetableUnavailableError) {
+        timetableUnavailable(res);
         return;
       }
       throw err;
@@ -110,15 +100,10 @@ router.get("/trains/partway", async (req, res) => {
     }
     res.json(GetPartwayTrainTaxiResponse.parse(option));
   } catch (err) {
-    if (!(err instanceof ProviderError)) throw err;
-    req.log.warn({ err: err.message }, "Partway route provider unavailable");
-    res
-      .status(502)
-      .json({ error: "Timetable or routing provider unavailable" });
+    if (!(err instanceof TimetableUnavailableError)) throw err;
+    timetableUnavailable(res);
   }
 });
-
-export default router;
 
 router.get("/trains/disruptions", async (req, res) => {
   const parsed = GetTrainDisruptionsQueryParams.safeParse(req.query);
@@ -128,22 +113,15 @@ router.get("/trains/disruptions", async (req, res) => {
       .json({ error: "Invalid query", issues: parsed.error.issues });
     return;
   }
-  try {
-    const lines = parsed.data.lines
-      .split(":")
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .slice(0, 12);
-    const incidents = await trainDisruptionsForLines(lines);
-    res.json(GetTrainDisruptionsResponse.parse(incidents));
-  } catch (err) {
-    if (!(err instanceof ProviderError)) throw err;
-    // Operation information is an optional Ekispert product. A key without
-    // that entitlement must never break the core last-train experience.
-    req.log.info(
-      { err: err.message },
-      "Train disruption information unavailable",
-    );
-    res.json([]);
-  }
+  const lines = parsed.data.lines
+    .split(":")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 12);
+  // ODPT odpt:TrainInformation for the engine's operators. Never fails: no
+  // key or an ODPT outage gives [] so planning is unaffected.
+  const incidents = await trainDisruptionsForLines(lines);
+  res.json(GetTrainDisruptionsResponse.parse(incidents));
 });
+
+export default router;

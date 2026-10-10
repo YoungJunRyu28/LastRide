@@ -3,31 +3,34 @@ import { getDb, apiUsageTable } from "@workspace/db";
 import { ProviderError } from "./cache";
 import { logger } from "./logger";
 
-export type Provider =
-  | "ekispert"
-  | "navitime-transport"
-  | "navitime-route-car"
-  | "navitime-route-walk"
-  | "navitime-spot"
-  | "navitime-geocoding";
+/**
+ * Paid upstream providers, counted per day and capped per month. LastRide
+ * currently calls none (train data is ODPT, maps/routing are Apple MapKit on
+ * the device), so the list is empty; the accounting stays for any future
+ * paid provider. A provider's monthly cap can be set or overridden with
+ * `<PROVIDER>_MONTHLY_LIMIT` (upper case, non-alphanumerics as "_").
+ */
+export type Provider = string;
 
-/** Conservative defaults matching the current RapidAPI Basic allowances. */
-export const MONTHLY_LIMITS: Partial<Record<Provider, number>> = {
-  "navitime-transport": 500,
-  "navitime-route-car": 500,
-  "navitime-route-walk": 500,
-  "navitime-spot": 500,
-  "navitime-geocoding": 500,
-};
+/** Default monthly caps per paid provider (none at present). */
+export const MONTHLY_LIMITS: Partial<Record<Provider, number>> = {};
 
-const LIMIT_ENV: Record<Provider, string> = {
-  ekispert: "EKISPERT_MONTHLY_LIMIT",
-  "navitime-transport": "NAVITIME_TRANSPORT_MONTHLY_LIMIT",
-  "navitime-route-car": "NAVITIME_ROUTE_CAR_MONTHLY_LIMIT",
-  "navitime-route-walk": "NAVITIME_ROUTE_WALK_MONTHLY_LIMIT",
-  "navitime-spot": "NAVITIME_SPOT_MONTHLY_LIMIT",
-  "navitime-geocoding": "NAVITIME_GEOCODING_MONTHLY_LIMIT",
-};
+export function limitEnvName(provider: Provider): string {
+  return `${provider.toUpperCase().replace(/[^A-Z0-9]/g, "_")}_MONTHLY_LIMIT`;
+}
+
+function parseLimit(provider: Provider): number | undefined {
+  const name = limitEnvName(provider);
+  const raw = process.env[name]?.trim();
+  if (!raw) return MONTHLY_LIMITS[provider];
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed < 1) {
+    throw new UsageAccountingError(
+      `Invalid ${name}: expected a positive integer`,
+    );
+  }
+  return parsed;
+}
 
 export class ProviderQuotaExceededError extends ProviderError {
   constructor(
@@ -61,17 +64,10 @@ function monthBounds(month: string): { start: string; end: string } {
 }
 
 export function configuredMonthlyLimits(): Partial<Record<Provider, number>> {
-  const limits: Partial<Record<Provider, number>> = { ...MONTHLY_LIMITS };
-  for (const provider of Object.keys(LIMIT_ENV) as Provider[]) {
-    const raw = process.env[LIMIT_ENV[provider]]?.trim();
-    if (!raw) continue;
-    const parsed = Number(raw);
-    if (!Number.isInteger(parsed) || parsed < 1) {
-      throw new UsageAccountingError(
-        `Invalid ${LIMIT_ENV[provider]}: expected a positive integer`,
-      );
-    }
-    limits[provider] = parsed;
+  const limits: Partial<Record<Provider, number>> = {};
+  for (const provider of Object.keys(MONTHLY_LIMITS)) {
+    const limit = parseLimit(provider);
+    if (limit !== undefined) limits[provider] = limit;
   }
   return limits;
 }
@@ -87,7 +83,7 @@ export async function recordCall(
 ): Promise<void> {
   const day = jstDate();
   const month = day.slice(0, 7);
-  const limit = configuredMonthlyLimits()[provider];
+  const limit = parseLimit(provider);
   const { start, end } = monthBounds(month);
 
   let counts: { today: number; month: number | null };

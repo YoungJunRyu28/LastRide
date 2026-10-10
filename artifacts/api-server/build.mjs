@@ -3,7 +3,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { build as esbuild } from "esbuild";
 import esbuildPluginPino from "esbuild-plugin-pino";
-import { rm } from "node:fs/promises";
+import { copyFile, readFile, rm } from "node:fs/promises";
+import { gunzipSync } from "node:zlib";
 
 // Plugins (e.g. 'esbuild-plugin-pino') may use `require` to resolve dependencies
 globalThis.require = createRequire(import.meta.url);
@@ -131,7 +132,49 @@ globalThis.__dirname = __bannerPath.dirname(globalThis.__filename);
   });
 }
 
-buildAll().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+/**
+ * Train times are served from LastRide's own timetable snapshot (built with
+ * `pnpm run transit:build`, git-ignored provider data). It ships inside dist/
+ * next to the bundle, where src/lib/timetableEngine.ts looks for it, so the
+ * Lambda package (CodeUri: dist/) carries it. A deploy sets
+ * REQUIRE_TRANSIT_SNAPSHOT=1 so a missing snapshot fails the build instead of
+ * shipping a server that answers 503 to every train question; CI builds
+ * without it.
+ */
+async function bundleTransitSnapshot() {
+  const fileName = "transit-snapshot.json.gz";
+  const source = process.env.TRANSIT_SNAPSHOT_PATH?.trim()
+    ? path.resolve(process.env.TRANSIT_SNAPSHOT_PATH.trim())
+    : path.resolve(artifactDir, "data", fileName);
+  const required = ["1", "true"].includes(
+    (process.env.REQUIRE_TRANSIT_SNAPSHOT ?? "").trim().toLowerCase(),
+  );
+
+  let snapshot;
+  try {
+    snapshot = JSON.parse(gunzipSync(await readFile(source)).toString("utf8"));
+  } catch (err) {
+    const message =
+      `Timetable snapshot ${source} is missing or unreadable (${err.code ?? err.message}). ` +
+      "Build it with `cd artifacts/api-server && set -a; . ./.env; set +a; pnpm run transit:build` " +
+      "(needs ODPT_KEY), see docs/last-train-engine.md.";
+    if (required) throw new Error(message);
+    console.warn(`warning: ${message} The server will answer 503 to train requests.`);
+    return;
+  }
+  if (snapshot?.version !== 1 || !Array.isArray(snapshot.trips) || snapshot.trips.length === 0) {
+    throw new Error(`Timetable snapshot ${source} is not a usable version-1 snapshot.`);
+  }
+  await copyFile(source, path.resolve(artifactDir, "dist", fileName));
+  const ageDays = Math.floor((Date.now() - Date.parse(snapshot.generatedAt)) / 86_400_000);
+  console.log(
+    `Bundled timetable snapshot (${snapshot.trips.length} trains, generated ${snapshot.generatedAt}, ${ageDays} days ago).`,
+  );
+}
+
+buildAll()
+  .then(bundleTransitSnapshot)
+  .catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });

@@ -19,6 +19,7 @@ import {
   lastTrainLeftAt,
   missedCheckInAt,
   nightEndsAt,
+  freshPlanNightOf,
   repick,
   rideStatus,
   sameStation,
@@ -31,7 +32,7 @@ import {
 } from '@/lib/planner';
 import type { StationOption } from '@/lib/stations';
 import type { TrainTime } from '@/lib/timetable';
-import { MINUTE_MS } from '@/lib/time';
+import { MINUTE_MS, serviceDate } from '@/lib/time';
 
 /** A Japan wall-clock time as epoch ms. JST is UTC+9. */
 function jst(year: number, month: number, day: number, hours: number, minutes = 0, seconds = 0) {
@@ -171,8 +172,28 @@ describe('nightEndsAt', () => {
     expect(nightEndsAt(tonight, train(jst(2026, 9, 24, 3, 0)))).toBe(jst(2026, 9, 24, 4, 0));
   });
 
+  test('while the first train is still being looked up, the night stays open until 05:00', () => {
+    expect(nightEndsAt(tonight, null, { firstTrainPending: true })).toBe(jst(2026, 9, 24, 5, 0));
+  });
+
   test('and the night is over by 05:00 regardless', () => {
     expect(nightEndsAt(tonight, train(jst(2026, 9, 24, 6, 0)))).toBe(jst(2026, 9, 24, 5, 0));
+  });
+});
+
+describe('freshPlanNightOf', () => {
+  test('in the evening and after midnight, a fresh plan is for tonight', () => {
+    expect(freshPlanNightOf(jst(2026, 9, 23, 22, 0))).toBe(jst(2026, 9, 23, 22, 0));
+    expect(freshPlanNightOf(jst(2026, 9, 24, 1, 30))).toBe(jst(2026, 9, 24, 1, 30));
+  });
+
+  test('between 04:00 and 05:00 it is still the night just ending', () => {
+    // Opening the app at 04:20 while waiting for the first train shows last night, not tomorrow.
+    expect(serviceDate(freshPlanNightOf(jst(2026, 9, 24, 4, 20)))).toBe('20260923');
+  });
+
+  test('from 05:00 it is the coming night', () => {
+    expect(serviceDate(freshPlanNightOf(jst(2026, 9, 24, 5, 0)))).toBe('20260924');
   });
 });
 

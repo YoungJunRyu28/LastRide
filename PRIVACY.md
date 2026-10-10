@@ -1,10 +1,10 @@
 # LastRide Privacy Policy
 
-_Last updated: 4 October 2026_
+_Last updated: 11 October 2026_
 
-LastRide (帰り時) helps you catch the last train home. Personal LastRide works
-without an account. LastRide for Business adds optional organizer accounts and
-temporary event participation. This policy explains what data each mode uses.
+LastRide (帰り時) helps you catch the last train home. It works without an
+account. Optional groups, the Premium subscription and LastRide for Business
+(temporary events joined by invite link) are described below.
 
 **We do not sell personal data or use it for advertising.**
 
@@ -12,9 +12,19 @@ temporary event participation. This policy explains what data each mode uses.
 
 | What                                                                  | Why                                                     | Where it goes                                                       |
 | --------------------------------------------------------------------- | ------------------------------------------------------- | ------------------------------------------------------------------- |
-| **Your location** (GPS coordinates)                                   | Find nearby stations and calculate walking time         | Our API server and transit/routing providers                        |
+| **Your location** (GPS coordinates)                                   | Find nearby stations and calculate walking time         | Apple Maps on iPhone; our API server on Android                     |
 | **Your saved destinations** (nearest stations and optional addresses) | Last-train, walking and taxi calculations               | Stored on your phone; coordinates are sent when needed for a lookup |
+| **A “tonight only” station**                                          | Plan for somewhere else tonight without saving it       | Stored on your phone; cleared the next day                          |
 | **Your settings**                                                     | Language, walking pace, reminders and other preferences | Stored on your phone                                                |
+| **Tonight’s plan**                                                    | Show the plan offline, in widgets and on the lock screen | Stored on your phone; replaced by the next night’s plan              |
+
+LastRide keeps no movement history and no record of past nights. Widgets and
+the lock-screen countdown (iOS Live Activity, Android notification) display
+tonight's plan from your phone; nothing is sent to us for them.
+
+Location is used in the background only during night tracking, only if you
+chose **Update when closed**, and tracking stops by itself after the last train
+(by 04:00 Japan time at the latest).
 
 Personal mode does not require your name, email address, phone number, contacts,
 photos or a LastRide account.
@@ -58,6 +68,15 @@ the group see your display name and leave-by time.
 When you create a group we check your subscription with RevenueCat using your
 RevenueCat app user ID; the server does not store that ID.
 
+## Premium
+
+Purchases, billing and refunds are handled by Apple's App Store (or Google
+Play on Android); LastRide never receives your payment details. Subscription
+status is managed with **RevenueCat** under an anonymous app user ID, not your
+name or email. The app reads your subscription status from RevenueCat to
+unlock Premium features, and the server checks it with that ID when you create
+a group.
+
 ## When location is used
 
 - **While the app is open**, to calculate your leave-by time.
@@ -83,16 +102,23 @@ station, route or destination to the organizer.
 To provide core LastRide features, information needed for a query may be sent
 to:
 
-- **駅すぱあと API (Val Laboratory Co., Ltd.)** — train timetables, fares and routes.
-- **NAVITIME JAPAN Co., Ltd.** (via RapidAPI) — nearby stations, walking and
-  driving routes, and nearby places.
+- **Train timetables** are calculated on LastRide's own server from 公共交通オープンデータセンター
+  (ODPT) open data; the server sends no query to a third party for them.
+- **Apple MapKit** (iOS) — station search, nearby stations, walking and
+  driving routes, addresses and nearby places are looked up by Apple Maps
+  services from your iPhone, under Apple's privacy policy. On Android (and as
+  a fallback) LastRide's own server answers station searches from ODPT data and
+  estimates walking and taxi times itself, without sending the query to a
+  third party.
 - **OpenStreetMap-based community services** — fallback station/geocoding or
   routing data only in development or explicitly opted-in test builds; ordinary
   production builds keep these public fallbacks disabled.
 - **Supabase** — organizer authentication for LastRide for Business, when enabled.
 - **Expo / Apple / Google push services** — organizer departure alerts and
   group notifications (tonight started, a member's leave time, 乗り遅れた).
-- **RevenueCat** — subscription status, checked when you create a group.
+- **RevenueCat** — subscription status for Premium (anonymous app user ID),
+  read by the app and checked by the server when you create a group.
+- **Apple App Store / Google Play** — Premium purchases and billing.
 - **Sentry (Functional Software, Inc.)** — crash and error reports, when
   enabled in the build. A report contains the error and stack trace, the app
   version and the device/OS model. It does not include your location,
@@ -104,16 +130,13 @@ lookup, not the Business participant display name.
 
 ## How long data is kept
 
-- **Personal data on your phone:** settings, saved destinations, the latest
-  plan and local night history stay until you clear them, use **Reset & start
-  over**, or uninstall the app. Night history contains plan times and station /
-  destination labels, not a GPS trail.
-- **Provider-query cache:** server responses may be cached for no more than
-  24 hours and are never keyed by a user account. Cache lookup keys are stored
-  only as one-way SHA-256 digests, so raw coordinate, station-name and address
-  query keys are not persisted. Cached payloads may contain the public
-  station/place/address candidates returned by a provider. Expired cache rows
-  are physically deleted by the server maintenance job.
+- **Personal data on your phone:** settings and saved destinations stay until
+  you change them, use **Reset & start over**, or uninstall the app. A “tonight
+  only” station is cleared the next day; tonight's plan is replaced by the next
+  night's. Apple Maps results are not kept beyond the night they were used for,
+  except a station or address you choose to save as a destination.
+- **Lookups on our server:** train-time, station and estimate requests are
+  answered from the server's own data and are not stored.
 - **Business participants:** your display name, leave-by time and event
   capability are deleted immediately after a successful leave request or when
   the organizer closes the event. If a leave request cannot reach the server,

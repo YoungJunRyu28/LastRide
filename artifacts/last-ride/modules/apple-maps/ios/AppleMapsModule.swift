@@ -94,19 +94,78 @@ public class AppleMapsModule: Module {
       request.resultTypes = .pointOfInterest
       MKLocalSearch(request: request).start { response, error in
         guard let items = response?.mapItems else {
-          promise.reject("ERR_SEARCH", error?.localizedDescription ?? "No results")
+          if (error as? MKError)?.code == .placemarkNotFound { promise.resolve([]) } else {
+            promise.reject("ERR_SEARCH", error?.localizedDescription ?? "Place search failed")
+          }
+          return
+        }
+        promise.resolve(items.map(self.placeDictionary))
+      }
+    }
+
+    AsyncFunction("nearbyStations") { (center: Coordinate, radiusMeters: Double, promise: Promise) in
+      let request = MKLocalPointsOfInterestRequest(center: center.location, radius: radiusMeters)
+      request.pointOfInterestFilter = MKPointOfInterestFilter(including: [.publicTransport])
+      MKLocalSearch(request: request).start { response, error in
+        guard let items = response?.mapItems else {
+          // "No results" is an error in MapKit; treat it as an empty list.
+          if (error as? MKError)?.code == .placemarkNotFound { promise.resolve([]) } else {
+            promise.reject("ERR_STATIONS", error?.localizedDescription ?? "Station search failed")
+          }
+          return
+        }
+        promise.resolve(items.map(self.placeDictionary))
+      }
+    }
+
+    AsyncFunction("searchStations") { (query: String, promise: Promise) in
+      let request = MKLocalSearch.Request()
+      request.naturalLanguageQuery = query
+      request.resultTypes = .pointOfInterest
+      request.pointOfInterestFilter = MKPointOfInterestFilter(including: [.publicTransport])
+      request.region = self.japan
+      MKLocalSearch(request: request).start { response, error in
+        guard let items = response?.mapItems else {
+          if (error as? MKError)?.code == .placemarkNotFound { promise.resolve([]) } else {
+            promise.reject("ERR_STATIONS", error?.localizedDescription ?? "Station search failed")
+          }
+          return
+        }
+        promise.resolve(items.map(self.placeDictionary))
+      }
+    }
+
+    AsyncFunction("searchAddresses") { (query: String, promise: Promise) in
+      let request = MKLocalSearch.Request()
+      request.naturalLanguageQuery = query
+      request.resultTypes = .address
+      request.region = self.japan
+      MKLocalSearch(request: request).start { response, error in
+        guard let items = response?.mapItems else {
+          if (error as? MKError)?.code == .placemarkNotFound { promise.resolve([]) } else {
+            promise.reject("ERR_ADDRESSES", error?.localizedDescription ?? "Address search failed")
+          }
           return
         }
         promise.resolve(items.map { item -> [String: Any] in
-          let coordinate = item.placemark.coordinate
-          return [
-            "name": item.name ?? "",
-            "latitude": coordinate.latitude,
-            "longitude": coordinate.longitude,
-            "phone": item.phoneNumber ?? NSNull(),
-            "category": item.pointOfInterestCategory?.rawValue ?? NSNull(),
-          ]
+          var place = self.placeDictionary(item)
+          place["label"] = item.placemark.title ?? item.name ?? ""
+          return place
         })
+      }
+    }
+
+    AsyncFunction("drivingEta") { (from: Coordinate, to: Coordinate, promise: Promise) in
+      let request = MKDirections.Request()
+      request.source = MKMapItem(placemark: MKPlacemark(coordinate: from.location))
+      request.destination = MKMapItem(placemark: MKPlacemark(coordinate: to.location))
+      request.transportType = .automobile
+      MKDirections(request: request).calculateETA { response, error in
+        guard let eta = response else {
+          promise.reject("ERR_DRIVE", error?.localizedDescription ?? "No driving route")
+          return
+        }
+        promise.resolve(["seconds": eta.expectedTravelTime, "distanceMeters": eta.distance])
       }
     }
 
@@ -164,6 +223,27 @@ public class AppleMapsModule: Module {
         }
       }
     }
+  }
+
+  /** All of Japan, so searches don't drift to same-named places abroad. */
+  private var japan: MKCoordinateRegion {
+    MKCoordinateRegion(
+      center: CLLocationCoordinate2D(latitude: 36.2, longitude: 138.25),
+      span: MKCoordinateSpan(latitudeDelta: 22, longitudeDelta: 26)
+    )
+  }
+
+  private func placeDictionary(_ item: MKMapItem) -> [String: Any] {
+    let coordinate = item.placemark.coordinate
+    return [
+      "name": item.name ?? "",
+      "latitude": coordinate.latitude,
+      "longitude": coordinate.longitude,
+      "phone": item.phoneNumber ?? NSNull(),
+      "category": item.pointOfInterestCategory?.rawValue ?? NSNull(),
+      "locality": item.placemark.locality ?? NSNull(),
+      "administrativeArea": item.placemark.administrativeArea ?? NSNull(),
+    ]
   }
 
   private func directionsRequest(_ request: EtaRequest, transport: MKDirectionsTransportType) -> MKDirections.Request {

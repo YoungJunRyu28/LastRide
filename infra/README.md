@@ -35,8 +35,7 @@ Create one JSON secret per environment. It must contain non-empty values for:
 ```json
 {
   "DATABASE_URL": "...",
-  "RAPIDAPI_KEY": "...",
-  "EKISPERT_KEY": "...",
+  "ODPT_KEY": "...",
   "SUPABASE_URL": "...",
   "SUPABASE_ANON_KEY": "...",
   "USAGE_ADMIN_TOKEN": "...",
@@ -79,19 +78,10 @@ test suite at staging or production data.
 
 ## Deploy production
 
-Set provider quotas to the limits in the actual commercial contracts rather
-than assuming the safety defaults:
-
 ```bash
 export AWS_REGION=ap-northeast-1
 export CORS_ALLOWED_ORIGINS=https://app.example.com
 export ALARM_EMAIL=operations@example.com
-export EKISPERT_MONTHLY_LIMIT=...
-export NAVITIME_TRANSPORT_MONTHLY_LIMIT=...
-export NAVITIME_ROUTE_WALK_MONTHLY_LIMIT=...
-export NAVITIME_ROUTE_CAR_MONTHLY_LIMIT=...
-export NAVITIME_SPOT_MONTHLY_LIMIT=...
-export NAVITIME_GEOCODING_MONTHLY_LIMIT=...
 
 git checkout main && git pull --ff-only origin main
 ./infra/deploy.sh production last-ride/production --confirm
@@ -114,7 +104,7 @@ retired `artifacts/api-server/scripts/deploy-lambda.sh` (`lastride-api`,
 `lastride-api-scheduled`, the `lastride-api` HTTP API, three
 `lastride-*` schedules and two IAM roles). The SAM stack uses different
 names, so those keep running until removed: both sets of schedules hit the
-production database and paid-provider quotas, and the old functions hold
+production database, and the old functions hold
 production secrets in plaintext environment variables. Do the cut-over in
 this order:
 
@@ -136,7 +126,8 @@ this order:
    log groups. It is idempotent, never prints function configuration, and
    with `--confirm` refuses to run until `lastride-production` is deployed.
 4. **Rotate every secret that was in the old `.env.production`**: the
-   database password (`DATABASE_URL`), `RAPIDAPI_KEY`, `EKISPERT_KEY`, and the
+   database password (`DATABASE_URL`), `RAPIDAPI_KEY` and `EKISPERT_KEY` (both
+   no longer used; just revoke them), and the
    Supabase keys. They sat in plaintext Lambda configuration, so treat them as
    exposed. Update the `last-ride/production` secret in Secrets Manager with the
    new values (and revoke the old ones at each provider).
@@ -200,7 +191,6 @@ Do not deploy production unless all of these are true:
 - CI is green from a clean database migrated only with committed migrations.
 - The selected secret passes the deployment script's required-key check.
 - `/api/readyz` succeeds against staging.
-- Provider quotas match the purchased plans and expected traffic.
 - Production CORS origins are explicitly configured.
 - Organizer authentication and push have been tested on physical devices.
 - Background location has been tested on physical iOS and Android devices.
@@ -208,5 +198,6 @@ Do not deploy production unless all of these are true:
 - EAS/APNs/FCM credentials and universal/app-link domain files are configured
   before enabling those features publicly.
 
-The repository defaults are deliberately conservative. A default monthly
-provider quota of 500 is a safety cap, not capacity for a large public launch.
+The repository defaults are deliberately conservative. The API calls no paid
+provider (ODPT data and on-server estimates; iOS uses Apple MapKit), so there
+are no provider quotas to size; the public rate limits still apply.

@@ -39,7 +39,7 @@ export function liveActivityContent(
   const ja = language === "ja";
   const recommended = recommendedLeaveTime(plan);
   const leaveBy = formatJstTime(recommended);
-  const lastTrain = formatJstTime(plan.lastTrain.departsAt);
+  const lastTrain = `${formatJstTime(plan.lastTrain.departsAt)}${plan.lastTrain.approximate ? (ja ? "（目安）" : " (approx.)") : ""}`;
   const station = ja ? plan.station.nameJa : plan.station.name;
   const subtitle = ja
     ? `${station}まで徒歩${plan.walkingMinutes}分 · 終電 ${lastTrain}`

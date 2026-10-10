@@ -63,19 +63,24 @@ export function findStations(
   return key ? (byName.get(normalizeStationName(key)) ?? []) : [];
 }
 
-const timetables = new Map<string, Timetable>();
+/** Built timetables per snapshot object (a filtered copy is another snapshot). */
+const timetables = new WeakMap<TransitSnapshot, Map<string, Timetable>>();
 
-/** One built timetable per (snapshot, date); the last few are kept. */
+/** One built timetable per (snapshot, date); the last few dates are kept. */
 export function timetableFor(
   snapshot: TransitSnapshot,
   date: string,
 ): Timetable {
-  const key = `${snapshot.generatedAt}|${date}`;
-  let timetable = timetables.get(key);
+  let byDate = timetables.get(snapshot);
+  if (!byDate) {
+    byDate = new Map();
+    timetables.set(snapshot, byDate);
+  }
+  let timetable = byDate.get(date);
   if (!timetable) {
     timetable = buildTimetable(snapshot, date);
-    timetables.set(key, timetable);
-    if (timetables.size > 3) timetables.delete(timetables.keys().next().value!);
+    byDate.set(date, timetable);
+    if (byDate.size > 3) byDate.delete(byDate.keys().next().value!);
   }
   return timetable;
 }
@@ -94,6 +99,8 @@ export type JourneyAt = {
         arrivesAt: number;
         lines: { name: string; nameJa: string }[];
         headsign?: { name: string; nameJa: string };
+        /** Stations the train stops at between `from` and `to`. */
+        via: Station[];
       }
     | { kind: "walk"; from: Station; to: Station; minutes: number }
   >;
@@ -129,6 +136,7 @@ function withTimes(
             arrivesAt: at(leg.arrives),
             lines: leg.lines,
             headsign: leg.headsign,
+            via: leg.via.map((station) => snapshot.stations[station]),
           }
         : {
             kind: "walk" as const,
@@ -169,8 +177,23 @@ export function firstTrainBetween(
   const next = new Date(epochOf(date, MINUTES_PER_DAY + 9 * 60))
     .toISOString()
     .slice(0, 10);
-  const journey = firstTrain(timetableFor(snapshot, next), from, to, 4 * 60);
-  return journey ? withTimes(snapshot, next, journey) : null;
+  return earliestTrainBetween(snapshot, next, from, to, 4 * 60);
+}
+
+/**
+ * The earliest arrival from `from` to `to` leaving no earlier than
+ * `notBefore` (minutes after midnight of service day `date`, so 00:20 that
+ * night is 24*60+20).
+ */
+export function earliestTrainBetween(
+  snapshot: TransitSnapshot,
+  date: string,
+  from: number[],
+  to: number[],
+  notBefore: number,
+): JourneyAt | null {
+  const journey = firstTrain(timetableFor(snapshot, date), from, to, notBefore);
+  return journey ? withTimes(snapshot, date, journey) : null;
 }
 
 export function describeJourney(

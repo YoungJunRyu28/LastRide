@@ -92,7 +92,7 @@ describe('formatting', () => {
   test('times render in Japan time, not the device time zone', () => {
     expect(formatJstTime(jst(2026, 9, 24, 0, 31))).toBe('00:31');
     expect(formatJstTime(jst(2026, 9, 23, 23, 52))).toBe('23:52');
-    // NAVITIME wants local Japan time with no offset.
+    // The API's taxi startTime is local Japan time with no offset.
     expect(formatJstDateTime(jst(2026, 9, 24, 0, 31))).toBe('2026-09-24T00:31:00');
   });
 

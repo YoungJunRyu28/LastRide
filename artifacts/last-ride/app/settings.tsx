@@ -169,6 +169,8 @@ export default function SettingsScreen() {
           <Divider />
           <Row testID="open-privacy" title={ja ? 'プライバシー' : 'Privacy'} subtitle={ja ? '位置情報の扱いについて' : 'How your location is used'} onPress={() => router.push('/privacy')} />
           <Divider />
+          <Row testID="open-data-sources" title={ja ? 'データとライセンス' : 'Data & licences'} subtitle={ja ? '時刻データの提供元と注意事項' : 'Where train times come from'} onPress={() => router.push('/data-sources')} />
+          <Divider />
           <Row
             testID="reset-all"
             title={ja ? '最初からやり直す' : 'Reset & start over'}

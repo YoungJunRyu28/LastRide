@@ -1,5 +1,6 @@
 import { BottomNav } from "@/components/BottomNav";
 import { MapCard } from "@/components/MapCard";
+import { appleDrivingEta, appleNearbyStays } from "@/lib/applePlaces";
 import { DIGITS } from "@/constants/type";
 import { useLastRide } from "@/context/LastRideContext";
 import { useGroups } from "@/context/GroupsContext";
@@ -97,11 +98,11 @@ function isLateNight(nowMs: number) {
   );
 }
 
-/** Fallback when the API server is unavailable: Tokyo-area meter (¥500 first 1.096 km, ¥100 per 255 m). */
+/** Tokyo-area meter (¥500 first 1.096 km, ¥100 per 255 m), +20% late at night. Kept in step with the server's estimate. */
 function estimateTaxiFare(distanceMeters: number, lateNight: boolean) {
   const metered =
     500 + Math.ceil(Math.max(0, distanceMeters - 1096) / 255) * 100;
-  return lateNight ? metered * 1.2 : metered;
+  return Math.round(lateNight ? metered * 1.2 : metered);
 }
 
 /** Streets add roughly 30% to the straight-line distance; 80 m per minute is a normal pace. */
@@ -113,6 +114,24 @@ async function fetchNearbyStays(
   latitude: number,
   longitude: number,
 ): Promise<StayOption[]> {
+  // Apple Maps on iOS; the server (and OSM in development) otherwise.
+  const apple = await appleNearbyStays({ latitude, longitude }).catch(() => null);
+  if (apple) {
+    return apple
+      .map((place) => {
+        const distance = distanceBetween({ latitude, longitude }, place);
+        return {
+          name: place.name,
+          kind: place.kind,
+          latitude: place.latitude,
+          longitude: place.longitude,
+          distance,
+          walkMinutes: walkMinutesFor(distance),
+          ...(place.phone ? { phone: place.phone } : {}),
+        };
+      })
+      .sort((first, second) => first.distance - second.distance);
+  }
   if (apiBaseUrl) {
     try {
       const places = await getNearbyPlaces({ lat: latitude, lon: longitude });
@@ -165,9 +184,19 @@ async function fetchTaxiEstimate(
   nowMs: number,
 ): Promise<TaxiEstimate | null> {
   const lateNight = isLateNight(nowMs);
+  // Apple Maps driving time and distance on iOS, priced with the meter formula.
+  const drive = await appleDrivingEta(from, to).catch(() => null);
+  if (drive) {
+    return {
+      fareYen: estimateTaxiFare(drive.distanceMeters, lateNight),
+      durationMinutes: drive.minutes,
+      distanceKm: drive.distanceMeters / 1000,
+      lateNight,
+    };
+  }
   if (apiBaseUrl) {
     try {
-      // NAVITIME applies regional meter rates and the late-night surcharge itself.
+      // The server estimates from distance with the same meter formula.
       const route = await getTaxiEstimate({
         fromLat: from.latitude,
         fromLon: from.longitude,
@@ -448,7 +477,11 @@ export default function AlternativesScreen() {
       icon: "sunrise",
       label: ja ? "始発を待つ" : "Wait for the first train",
       detail:
-        minutesUntilFirstTrain === null
+        firstTrainRoute?.approximate && minutesUntilFirstTrain !== null
+          ? ja
+            ? `待ち${formatDuration(minutesUntilFirstTrain, true)}（目安）`
+            : `${formatDuration(minutesUntilFirstTrain, false)} wait (approx.)`
+          : minutesUntilFirstTrain === null
           ? ja
             ? "始発を確認中"
             : "checking"
@@ -818,6 +851,11 @@ export default function AlternativesScreen() {
               <Text style={[styles.panelTime, { color: colors.foreground }]}>
                 {firstTrain}
               </Text>
+              {firstTrainRoute?.approximate && (
+                <Text style={[styles.tagText, styles.approxTag, { color: colors.primary, borderColor: colors.primary }]}>
+                  {ja ? "目安" : "approx."}
+                </Text>
+              )}
               <View style={styles.panelHeadCopy}>
                 <Text style={[styles.panelTitle, { color: colors.foreground }]}>
                   {ja ? `${station}発` : `from ${station}`}
@@ -1480,6 +1518,7 @@ const styles = StyleSheet.create({
   phraseBox: { borderRadius: 15, gap: 3, padding: 12 },
   phrase: { fontWeight: "700", fontSize: 15 },
   chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 7 },
+  approxTag: { borderRadius: 6, borderWidth: 1, paddingHorizontal: 6, paddingVertical: 2 },
   chip: {
     alignItems: "center",
     borderRadius: 13,

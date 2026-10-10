@@ -63,9 +63,8 @@ the production SAM template keeps `ENTERPRISE_BOOTSTRAP_EMAILS` empty.
 The API requires:
 
 - `DATABASE_URL`
-- `RAPIDAPI_KEY`
-- `EKISPERT_KEY`
-- provider monthly quota ceilings matching the purchased contracts
+- `ODPT_KEY` (live operation information) and a bundled timetable snapshot
+  (`docs/last-train-engine.md`)
 - `USAGE_ADMIN_TOKEN`
 - Supabase server configuration
 - explicit production CORS origins
@@ -75,8 +74,11 @@ The public lookup and anonymous Business routes use Postgres-backed shared rate
 limits, so separate Lambda instances do not each grant a fresh allowance.
 API Gateway also provides an outer throttle.
 
-The default provider quota values are defensive caps, not a capacity plan. A
-large public launch must purchase/configure provider capacity first.
+The API calls no paid provider: train times, stations and live operation
+information come from ODPT data, and walking/taxi are estimated on the server
+(iOS uses Apple MapKit on the device). The per-provider usage accounting in
+`src/lib/usage.ts` stays in place, with no capped providers, for any future
+paid provider.
 
 ## 4. AWS deployment
 
@@ -189,7 +191,7 @@ Before public release, verify all of the following in staging:
 9. Real organizer push delivery and receipt reconciliation.
 10. Background tracking start/stop and denied-permission paths on iOS/Android.
 11. HTTPS join links on both platforms if enabled.
-12. Production provider quotas match the actual contracts.
+12. The bundled timetable snapshot is current (rebuilt after timetable changes).
 13. The privacy contact path and store privacy disclosures are current.
 
 ## 9. Generic container option

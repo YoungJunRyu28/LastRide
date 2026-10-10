@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   disruptionMatchesLine,
   normalizeRailLineName,
-} from "../src/lib/ekispert";
+} from "../src/lib/trainInformation";
 
 describe("rail disruption line matching", () => {
   it("ignores route direction suffixes", () => {

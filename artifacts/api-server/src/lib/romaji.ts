@@ -1,7 +1,7 @@
 /**
  * Kana reading → station-sign style romaji ("しぶや" → "Shibuya",
- * "とうきょう" → "Tokyo", "しんばし" → "Shimbashi", "おおつか" → "Otsuka"). NAVITIME only returns
- * Japanese names plus a kana reading, so English mode uses this.
+ * "とうきょう" → "Tokyo", "しんばし" → "Shimbashi", "おおつか" → "Otsuka"). Station search
+ * (odptStations.ts) uses this to match a kana query against English station names.
  */
 
 const DIGRAPHS: Record<string, string> = {

@@ -46,6 +46,8 @@ export type TrainLeg = {
   /** The lines ridden, more than one when the train through-runs onto another operator. */
   lines: { name: string; nameJa: string }[];
   headsign?: { name: string; nameJa: string };
+  /** Stations the train stops at between `from` and `to`, in riding order. */
+  via: number[];
 };
 export type WalkLeg = {
   kind: "walk";
@@ -111,10 +113,17 @@ function lineOf(timetable: Timetable, trip: number) {
 
 function trainLeg(
   timetable: Timetable,
-  board: Connection,
-  alight: Connection,
-  ridden: number[],
+  boardIndex: number,
+  alightIndex: number,
 ): TrainLeg {
+  const board = timetable.connections[boardIndex];
+  const alight = timetable.connections[alightIndex];
+  const ridden = tripsRidden(
+    timetable,
+    boardIndex,
+    alightIndex,
+    board.vehicle,
+  );
   const lines: TrainLeg["lines"] = [];
   for (const trip of ridden) {
     const line = lineOf(timetable, trip);
@@ -129,7 +138,28 @@ function trainLeg(
     arrives: alight.arr,
     lines,
     headsign: timetable.snapshot.trips[alight.trip].headsign,
+    via: stopsBetween(timetable, boardIndex, alightIndex, board.vehicle),
   };
+}
+
+/**
+ * Where one vehicle stops between boarding and alighting. Connections are
+ * sorted by departure and a train's own connections follow each other in
+ * time, so its connections in that index range are exactly the ride.
+ */
+function stopsBetween(
+  timetable: Timetable,
+  boardIndex: number,
+  alightIndex: number,
+  vehicle: number,
+): number[] {
+  const stops: number[] = [];
+  for (let i = boardIndex; i < alightIndex; i++) {
+    const connection = timetable.connections[i];
+    if (connection.vehicle === vehicle && !stops.includes(connection.to))
+      stops.push(connection.to);
+  }
+  return stops;
 }
 
 /** Trips of one vehicle between boarding and alighting, in riding order. */
@@ -235,21 +265,8 @@ export function lastTrains(
         }
         const board = connections[boardAt[station]];
         const alightIndex = alightAt.get(board.vehicle)!;
-        const alight = connections[alightIndex];
-        legs.push(
-          trainLeg(
-            timetable,
-            board,
-            alight,
-            tripsRidden(
-              timetable,
-              boardAt[station],
-              alightIndex,
-              board.vehicle,
-            ),
-          ),
-        );
-        station = alight.to;
+        legs.push(trainLeg(timetable, boardAt[station], alightIndex));
+        station = connections[alightIndex].to;
       }
       if (!isTarget[station]) return null;
       return journeyOf(legs, latest[origin]);
@@ -343,16 +360,8 @@ export function firstTrain(
     }
     const alight = connections[cameBy[station]];
     const boardIndex = boarded.get(alight.vehicle)!;
-    const board = connections[boardIndex];
-    legs.unshift(
-      trainLeg(
-        timetable,
-        board,
-        alight,
-        tripsRidden(timetable, boardIndex, cameBy[station], alight.vehicle),
-      ),
-    );
-    station = board.from;
+    legs.unshift(trainLeg(timetable, boardIndex, cameBy[station]));
+    station = connections[boardIndex].from;
   }
   if (!isOrigin.has(station)) return null;
   const firstTrainLeg = legs.find(

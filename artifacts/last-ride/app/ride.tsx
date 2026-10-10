@@ -365,6 +365,7 @@ export default function RideScreen() {
                   ? `遅くとも ${formatJstTime(plan.leaveByMs)} · 終電 ${lastTrain}`
                   : `Latest ${formatJstTime(plan.leaveByMs)} · last train ${lastTrain}`}
                 {lastTrainSource === "sample" ? (ja ? "（仮）" : "*") : ""}
+                {plan.lastTrain.approximate ? (ja ? "（目安）" : " (approx.)") : ""}
               </Text>
             )}
             {plan && freshness && (
@@ -545,6 +546,21 @@ export default function RideScreen() {
                   </Text>
                 </View>
               ))}
+
+            {plan.lastTrain.source === "live" && (
+              <Pressable
+                testID="odpt-credit"
+                onPress={() => router.push("/data-sources")}
+                accessibilityRole="link"
+                hitSlop={6}
+              >
+                <Text style={[styles.credit, { color: colors.mutedForeground }]}>
+                  {ja
+                    ? "時刻データ：公共交通オープンデータセンター（正確性は保証されません）"
+                    : "Timetable: Public Transportation Open Data Center (accuracy not guaranteed)"}
+                </Text>
+              </Pressable>
+            )}
 
             {otherStations.length > 0 && (
               <>
@@ -793,6 +809,18 @@ export default function RideScreen() {
           </Pressable>
         )}
 
+        {plan?.lastTrain.approximate && (
+          <Notice
+            icon="info"
+            title={ja ? "終電の時刻は目安です" : "The last train time is approximate"}
+            body={
+              ja
+                ? "この区間はApple Mapsの推定で、電車か徒歩かを確認できませんでした。乗換案内アプリでも確認してください。"
+                : "This route uses an Apple Maps estimate that couldn’t be confirmed as a train. Please double-check in a route app."
+            }
+          />
+        )}
+
         {lastTrainSource === "sample" && (
           <Notice
             icon="info"
@@ -838,6 +866,7 @@ const styles = StyleSheet.create({
   otherLabel: { fontSize: 12, fontWeight: "700" },
   rowTitle: { fontSize: 15, fontWeight: "700" },
   note: { fontSize: 12, lineHeight: 17 },
+  credit: { fontSize: 10, lineHeight: 14, textDecorationLine: "underline" },
   trackRow: { alignItems: "center", borderRadius: 18, borderWidth: 1, flexDirection: "row", gap: 12, padding: 14 },
   liveDot: { borderRadius: 5, height: 10, marginHorizontal: 4, width: 10 },
   smallButton: { borderRadius: 12, borderWidth: 1, borderColor: "transparent", paddingHorizontal: 14, paddingVertical: 9 },

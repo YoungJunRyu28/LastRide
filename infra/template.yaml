@@ -20,24 +20,6 @@ Parameters:
   AlarmEmail:
     Type: String
     Default: ""
-  EkispertMonthlyLimit:
-    Type: Number
-    Default: 500
-  NavitimeTransportMonthlyLimit:
-    Type: Number
-    Default: 500
-  NavitimeWalkMonthlyLimit:
-    Type: Number
-    Default: 500
-  NavitimeCarMonthlyLimit:
-    Type: Number
-    Default: 500
-  NavitimeSpotMonthlyLimit:
-    Type: Number
-    Default: 500
-  NavitimeGeocodingMonthlyLimit:
-    Type: Number
-    Default: 500
 
 Conditions:
   UseCanary: !Equals [!Ref EnableCanary, "true"]
@@ -145,15 +127,8 @@ Resources:
           PROVIDER_TIMEOUT_MS: "5000"
           REQUIRE_USAGE_ACCOUNTING: "true"
           CORS_ALLOWED_ORIGINS: !Ref CorsAllowedOrigins
-          EKISPERT_MONTHLY_LIMIT: !Ref EkispertMonthlyLimit
-          NAVITIME_TRANSPORT_MONTHLY_LIMIT: !Ref NavitimeTransportMonthlyLimit
-          NAVITIME_ROUTE_WALK_MONTHLY_LIMIT: !Ref NavitimeWalkMonthlyLimit
-          NAVITIME_ROUTE_CAR_MONTHLY_LIMIT: !Ref NavitimeCarMonthlyLimit
-          NAVITIME_SPOT_MONTHLY_LIMIT: !Ref NavitimeSpotMonthlyLimit
-          NAVITIME_GEOCODING_MONTHLY_LIMIT: !Ref NavitimeGeocodingMonthlyLimit
           DATABASE_URL: !Sub "{{resolve:secretsmanager:${AppSecretName}:SecretString:DATABASE_URL}}"
-          RAPIDAPI_KEY: !Sub "{{resolve:secretsmanager:${AppSecretName}:SecretString:RAPIDAPI_KEY}}"
-          EKISPERT_KEY: !Sub "{{resolve:secretsmanager:${AppSecretName}:SecretString:EKISPERT_KEY}}"
+          ODPT_KEY: !Sub "{{resolve:secretsmanager:${AppSecretName}:SecretString:ODPT_KEY}}"
           SUPABASE_URL: !Sub "{{resolve:secretsmanager:${AppSecretName}:SecretString:SUPABASE_URL}}"
           SUPABASE_ANON_KEY: !Sub "{{resolve:secretsmanager:${AppSecretName}:SecretString:SUPABASE_ANON_KEY}}"
           USAGE_ADMIN_TOKEN: !Sub "{{resolve:secretsmanager:${AppSecretName}:SecretString:USAGE_ADMIN_TOKEN}}"
@@ -205,15 +180,7 @@ Resources:
           PROVIDER_TIMEOUT_MS: "5000"
           REQUIRE_USAGE_ACCOUNTING: "true"
           CORS_ALLOWED_ORIGINS: !Ref CorsAllowedOrigins
-          EKISPERT_MONTHLY_LIMIT: !Ref EkispertMonthlyLimit
-          NAVITIME_TRANSPORT_MONTHLY_LIMIT: !Ref NavitimeTransportMonthlyLimit
-          NAVITIME_ROUTE_WALK_MONTHLY_LIMIT: !Ref NavitimeWalkMonthlyLimit
-          NAVITIME_ROUTE_CAR_MONTHLY_LIMIT: !Ref NavitimeCarMonthlyLimit
-          NAVITIME_SPOT_MONTHLY_LIMIT: !Ref NavitimeSpotMonthlyLimit
-          NAVITIME_GEOCODING_MONTHLY_LIMIT: !Ref NavitimeGeocodingMonthlyLimit
           DATABASE_URL: !Sub "{{resolve:secretsmanager:${AppSecretName}:SecretString:DATABASE_URL}}"
-          RAPIDAPI_KEY: !Sub "{{resolve:secretsmanager:${AppSecretName}:SecretString:RAPIDAPI_KEY}}"
-          EKISPERT_KEY: !Sub "{{resolve:secretsmanager:${AppSecretName}:SecretString:EKISPERT_KEY}}"
           SUPABASE_URL: !Sub "{{resolve:secretsmanager:${AppSecretName}:SecretString:SUPABASE_URL}}"
           SUPABASE_ANON_KEY: !Sub "{{resolve:secretsmanager:${AppSecretName}:SecretString:SUPABASE_ANON_KEY}}"
           USAGE_ADMIN_TOKEN: !Sub "{{resolve:secretsmanager:${AppSecretName}:SecretString:USAGE_ADMIN_TOKEN}}"

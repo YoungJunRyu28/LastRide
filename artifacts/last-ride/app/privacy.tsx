@@ -1,4 +1,4 @@
-import { PressableIcon, RailwayMark } from "@/components/RideUI";
+import { IconButton } from "@/components/ui";
 import { useLastRide } from "@/context/LastRideContext";
 import { useColors } from "@/hooks/useColors";
 import { router } from "expo-router";
@@ -6,72 +6,107 @@ import React from "react";
 import { Platform, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+/** Where privacy requests go; the same contact as the data notice. */
+const SUPPORT_CONTACT = process.env.EXPO_PUBLIC_SUPPORT_CONTACT?.trim() || null;
+
 /** Kept in step with PRIVACY.md at the repo root; this is the short version users see. */
 function copy(ja: boolean) {
   return ja
     ? {
         title: "プライバシー",
+        updated: "最終更新：2026年10月11日",
         intro:
-          "通常のLastRideはアカウントなしで使えます。法人向け機能では幹事のみログインし、参加者はアカウント不要です。データを広告目的で利用したり販売したりすることはありません。",
+          "LastRideはアカウントなしで使えます。データを広告目的で利用したり、販売したりすることはありません。",
         sections: [
           {
-            heading: "通常のLastRide",
-            body: "現在地、保存した帰り先の最寄り駅（設定した場合は住所も）、言語・歩くペース・リマインダーなどを使って移動プランを計算します。帰り先と個人設定、夜ごとのプラン時刻の履歴は端末内に保存されます。履歴はGPSの移動軌跡ではありません。",
+            heading: "端末に保存するもの",
+            body: "保存した帰り先（最寄り駅と、設定した場合は住所）、「今夜だけ別の場所へ」の駅（翌日に自動で消去）、言語・歩くペース・リマインダーなどの設定、今夜のプランです。今夜のプランは夜が終わると次の夜のものに置き換わります。移動履歴や過去の夜の記録は保存しません。",
           },
           {
-            heading: "飲み会に参加するとき",
-            body: "幹事に共有されるのは、あなたが入力した表示名とLastRideが計算した出発時刻だけです。現在地、自宅、最寄り駅、経路、目的地、歩くペースは法人イベントのデータとして保存・表示されません。",
+            heading: "位置情報",
+            body: "近くの駅と徒歩時間を調べ、出発時刻を計算するために使います。夜のトラッキングで「閉じても更新」を選んだ場合だけ、アプリを閉じている間も位置情報を使い、終電後（遅くとも午前4時）に自動で止まります。「アプリ使用中のみ」はいつでも設定から選べます。",
           },
           {
-            heading: "法人イベントの保存期間",
-            body: "イベントから退出すると、表示名・出発時刻・参加用トークンはサーバーから直ちに削除されます。退出しない場合も、イベント終了時刻になると自動削除されます。通常、夜のイベントは翌朝8時（日本時間）に期限切れになります。",
+            heading: "地図と時刻のデータ",
+            body: "iPhoneでは、近くの駅・徒歩時間・住所・周辺の施設・タクシーの所要時間、JRや私鉄の時刻をApple Mapsで調べるため、位置情報と検索内容がApple（Appleのプライバシーポリシーに従う）へ送信されます。地下鉄などの時刻は当社サーバーが公共交通オープンデータセンターのデータで計算するため、出発駅と到着駅（名前と位置）が当社サーバーへ送信されます。Androidでは、近くの駅を探すために位置情報も当社サーバーへ送信されます。これらは計算に使うだけで、アカウントや個人に結びつけて保存しません。",
           },
           {
-            heading: "幹事アカウント",
-            body: "幹事の法人ログインではメールアドレスを使います。設定されている場合、認証はSupabaseが処理します。幹事への出発通知のため、端末のプッシュ通知トークンを保存し、ExpoおよびApple/Googleの通知サービスを利用します。",
+            heading: "グループ",
+            body: "グループに参加すると、当社サーバーにはグループ名、あなたがグループごとに決めた表示名、ホストかメンバーか、通知の言語とオン・オフ、通知用のプッシュトークン、ランダムな参加用トークン（元に戻せない形で保存）が保存されます。「今夜参加する」を選んだ夜は、出発時刻（と「乗り遅れた」の連絡）だけが送られ、メンバーには表示名と出発時刻が見えます。現在地・自宅・駅・経路は共有されません。出発時刻は翌朝8時（日本時間）か、ホストが今夜を終了した時点で削除されます。グループから退出すると、あなたの参加データはすぐに削除されます。ホストがグループを解散すると、すべて削除されます。",
           },
           {
-            heading: "位置情報と外部サービス",
-            body: "経路計算に必要な位置・駅情報は駅すぱあと API、NAVITIME JAPAN（RapidAPI経由）へ送信されます。開発・明示的なテストビルドでは補助的にOpenStreetMap系サービスを利用する場合があります。法人イベント参加者の表示名がこれらの交通・地図サービスへ送られることはありません。",
+            heading: "プレミアム",
+            body: "購入と請求はApple（Androidの場合はGoogle）が行い、当社がカード情報などを受け取ることはありません。購読状態の管理にRevenueCatを使い、アカウント名やメールアドレスではなく、匿名のユーザーIDで管理します。グループを作るとき、当社サーバーはこのIDで購読状態を確認しますが、IDを保存しません。",
+          },
+          {
+            heading: "ウィジェットとロック画面",
+            body: "ウィジェットとロック画面のカウントダウン（ライブアクティビティ、Androidは通知）は、今夜の出発時刻を端末の中だけで表示します。当社に送信されることはありません。",
+          },
+          {
+            heading: "通知",
+            body: "出発のリマインダーは端末の中で予約されます。グループの通知（今夜の開始、メンバーの出発時刻、乗り遅れた）は、Expoのプッシュ配信とApple・Googleの通知サービスを通じて届きます。通知に広告は含まれません。",
+          },
+          {
+            heading: "法人向けイベント",
+            body: "法人向けイベントに招待リンクから参加した場合も、共有されるのは表示名と出発時刻だけで、イベント終了時（通常は翌朝8時）に削除されます。",
           },
           {
             heading: "クラッシュレポート",
-            body: "アプリの不具合を直すため、エラー内容・アプリのバージョン・端末とOSの機種をSentryに送信することがあります。位置情報、帰り先、駅、検索内容、表示名、参加リンクは含まれません。",
+            body: "アプリの不具合を直すため、エラー内容・アプリのバージョン・端末とOSの機種をSentryに送信することがあります。位置情報、帰り先、駅、検索内容、表示名、招待リンクは含まれず、90日後に削除されます。",
+          },
+          {
+            heading: "削除とお問い合わせ",
+            body: `設定の「最初からやり直す」で端末のデータを消去できます。グループからの退出はグループの「…」から行えます。${SUPPORT_CONTACT ? `プライバシーに関するお問い合わせ：${SUPPORT_CONTACT}` : "プライバシーに関するお問い合わせは、App Storeのアプリページのサポート窓口までお願いします。"}`,
           },
         ],
-        more: "詳細はリポジトリの PRIVACY.md をご覧ください。",
       }
     : {
         title: "Privacy",
+        updated: "Last updated: 11 October 2026",
         intro:
-          "Personal LastRide works without an account. In LastRide for Business, only organizers sign in; participants still do not need an account. We do not sell data or use it for advertising.",
+          "LastRide works without an account. We do not sell your data or use it for advertising.",
         sections: [
           {
-            heading: "Personal LastRide",
-            body: "Your location, saved destinations and their nearest stations (plus an address if you add one), language, walking pace and reminder settings are used to calculate your trip. Destinations, personal settings and a per-night summary of plan times stay on your device. History is not a GPS trail.",
+            heading: "Stored on your phone",
+            body: "Your saved destinations (nearest station, plus an address if you add one), a “tonight only” station (cleared the next day), your language, walking pace, reminder and other settings, and tonight’s plan, which is replaced by the next night’s. LastRide keeps no movement history or record of past nights.",
           },
           {
-            heading: "When you join a group",
-            body: "The organizer only receives the display name you enter and the leave-by time LastRide calculates. Your location, home, station, route, destination and walking pace are not stored in or shown through the Business event.",
+            heading: "Location",
+            body: "Used to find nearby stations and walking times and to work out when to leave. Only if you choose “Update when closed” for night tracking is location used while the app is closed, and tracking stops by itself after the last train (by 4:00 AM at the latest). You can switch to “Only while using the app” in Settings at any time.",
           },
           {
-            heading: "Business-event retention",
-            body: "Leaving a group immediately deletes your participant record, including your display name, leave time and participant token. Otherwise it is automatically deleted when the event expires, normally at 8:00 AM Japan time the following morning.",
+            heading: "Map and timetable data",
+            body: "On iPhone, nearby stations, walking times, addresses, nearby places, taxi times, and JR and private-railway times come from Apple Maps, so your location and searches are sent to Apple (under Apple’s privacy policy). Subway times are calculated by our server from Public Transportation Open Data Center data, so the departure and arrival stations (names and positions) are sent to our server. On Android your location is also sent to our server to find nearby stations. These are used for the calculation only and are not stored against you.",
           },
           {
-            heading: "Organizer accounts",
-            body: "Business organizers sign in with a work email. When configured, Supabase handles authentication. To send organizer departure alerts, LastRide stores the device push token and uses Expo plus Apple or Google notification services.",
+            heading: "Groups",
+            body: "When you join a group, our server stores the group name, the display name you choose for that group, whether you’re the host or a member, your notification language and on/off setting, a push token for notifications, and a random membership token (stored one-way). On nights you choose “Join tonight”, only your leave-by time (and a “missed it” report) is sent, and members see your display name and leave-by time. Your location, home, station and route are never shared. Leave-by times are deleted at 8:00 AM Japan time the next morning, or when the host ends tonight. Leaving a group deletes your membership right away; disbanding a group deletes everything in it.",
           },
           {
-            heading: "Location and providers",
-            body: "Location and station data needed for routing can be sent to 駅すぱあと API and NAVITIME JAPAN (via RapidAPI). Development or explicitly opted-in test builds may also use OpenStreetMap-based fallback services. Your Business display name is not sent to those transit or mapping providers.",
+            heading: "Premium",
+            body: "Purchases and billing are handled by Apple (or Google on Android); we never receive your card details. Subscription status is managed with RevenueCat using an anonymous user ID, not your name or email. When you create a group, our server checks your subscription with that ID but does not store it.",
+          },
+          {
+            heading: "Widgets and lock screen",
+            body: "Widgets and the lock-screen countdown (Live Activity, or a notification on Android) show tonight’s leave time from data on your phone. Nothing is sent to us for them.",
+          },
+          {
+            heading: "Notifications",
+            body: "Leave reminders are scheduled on your phone. Group notifications (tonight started, a member’s leave time, missed it) are delivered through Expo’s push service and Apple’s or Google’s notification services. Notifications never contain advertising.",
+          },
+          {
+            heading: "Business events",
+            body: "If you join a business event from an invite link, only your display name and leave-by time are shared, and they are deleted when the event ends (normally 8:00 AM the next morning).",
           },
           {
             heading: "Crash reports",
-            body: "To fix bugs, the app may send the error, app version and device/OS model to Sentry. Reports never include your location, destinations, stations, searches, display name or join links.",
+            body: "To fix bugs, the app may send the error, app version and device/OS model to Sentry. Reports never include your location, destinations, stations, searches, display name or invite links, and are deleted after 90 days.",
+          },
+          {
+            heading: "Deleting your data and contact",
+            body: `Use “Reset & start over” in Settings to erase LastRide’s data on your phone. Leave a group from its “…” menu. ${SUPPORT_CONTACT ? `Privacy questions: ${SUPPORT_CONTACT}` : "For privacy questions, use the support link on the App Store page."}`,
           },
         ],
-        more: "The full policy is in PRIVACY.md in the project repository.",
       };
 }
 
@@ -79,7 +114,8 @@ export default function PrivacyScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { language } = useLastRide();
-  const text = copy(language === "ja");
+  const ja = language !== "en";
+  const text = copy(ja);
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
@@ -87,41 +123,32 @@ export default function PrivacyScreen() {
         contentContainerStyle={[
           styles.content,
           {
-            paddingTop: insets.top + (Platform.OS === "web" ? 67 : 12),
-            paddingBottom: 40,
+            paddingTop: insets.top + (Platform.OS === "web" ? 24 : 12),
+            paddingBottom: insets.bottom + 40,
           },
         ]}
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.topbar}>
-          <PressableIcon
-            icon="arrow-left"
-            label={language === "ja" ? "戻る" : "Back"}
-            onPress={() => router.back()}
+          <IconButton
+            icon="chevron-left"
+            label={ja ? "戻る" : "Back"}
+            onPress={() => (router.canGoBack() ? router.back() : router.replace("/settings"))}
             testID="privacy-back"
           />
-          <RailwayMark size={22} />
+          <Text accessibilityRole="header" style={[styles.barTitle, { color: colors.foreground }]}>
+            {text.title}
+          </Text>
           <View style={styles.spacer} />
         </View>
-        <Text style={[styles.title, { color: colors.foreground }]}>
-          {text.title}
-        </Text>
-        <Text style={[styles.intro, { color: colors.foreground }]}>
-          {text.intro}
-        </Text>
+        <Text style={[styles.intro, { color: colors.foreground }]}>{text.intro}</Text>
         {text.sections.map((section) => (
-          <View key={section.heading} style={styles.section}>
-            <Text style={[styles.heading, { color: colors.foreground }]}>
-              {section.heading}
-            </Text>
-            <Text style={[styles.body, { color: colors.mutedForeground }]}>
-              {section.body}
-            </Text>
+          <View key={section.heading} style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Text style={[styles.heading, { color: colors.foreground }]}>{section.heading}</Text>
+            <Text style={[styles.body, { color: colors.subtle }]}>{section.body}</Text>
           </View>
         ))}
-        <Text style={[styles.body, { color: colors.mutedForeground }]}>
-          {text.more}
-        </Text>
+        <Text style={[styles.updated, { color: colors.mutedForeground }]}>{text.updated}</Text>
       </ScrollView>
     </View>
   );
@@ -129,16 +156,13 @@ export default function PrivacyScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  content: { gap: 18, paddingHorizontal: 20 },
-  topbar: {
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-  spacer: { width: 38 },
-  title: { fontWeight: "700", fontSize: 32, letterSpacing: -1.2 },
-  intro: { fontWeight: "500", fontSize: 15, lineHeight: 23 },
-  section: { gap: 6 },
-  heading: { fontWeight: "700", fontSize: 15 },
-  body: { fontWeight: "400", fontSize: 13, lineHeight: 20 },
+  content: { gap: 14, paddingHorizontal: 20 },
+  topbar: { alignItems: "center", flexDirection: "row", justifyContent: "space-between" },
+  spacer: { width: 44 },
+  barTitle: { fontSize: 17, fontWeight: "800" },
+  intro: { fontSize: 15, fontWeight: "600", lineHeight: 23 },
+  section: { borderRadius: 18, borderWidth: 1, gap: 6, padding: 16 },
+  heading: { fontSize: 15, fontWeight: "800" },
+  body: { fontSize: 13, lineHeight: 20 },
+  updated: { fontSize: 12, textAlign: "center" },
 });

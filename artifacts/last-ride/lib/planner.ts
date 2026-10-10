@@ -130,11 +130,29 @@ export function rideStatus(choice: Pick<StationChoice, 'leaveByMs' | 'recommende
  * When a night is over and the app should move on to the next one: once the
  * first train of the morning has left — never before the service day rolls over
  * at 04:00 (so a very early first train can't make it re-plan the same night),
- * and no later than 05:00.
+ * and no later than 05:00. While the first train is still being looked up the
+ * night stays open until 05:00, so an in-flight lookup can't end it early.
  */
-export function nightEndsAt(plan: Pick<NightPlan, 'lastTrain'>, firstTrain: TrainTime | null): number {
+export function nightEndsAt(
+  plan: Pick<NightPlan, 'lastTrain'>,
+  firstTrain: TrainTime | null,
+  { firstTrainPending = false }: { firstTrainPending?: boolean } = {},
+): number {
+  // Still looking the first train up: don't let "unknown" end the night at 04:00.
+  if (firstTrainPending) return nightClock(plan, NIGHT_OVER_BY);
   const serviceDayEnd = nightClock(plan, 24 * HOUR_MS);
   return Math.min(Math.max(serviceDayEnd, firstTrain?.departsAt ?? 0), nightClock(plan, NIGHT_OVER_BY));
+}
+
+/**
+ * Which night a fresh plan (no plan yet) is for. Between 04:00 and 05:00 it is
+ * the night just ending: someone opening the app then is almost certainly
+ * still out, waiting for the first train, not planning tomorrow night.
+ * nightEndsAt then moves on to the next night once the first train has left.
+ */
+export function freshPlanNightOf(nowMs: number): number {
+  const dayStart = serviceDayStart(nowMs);
+  return nowMs - dayStart < NIGHT_OVER_BY - 24 * HOUR_MS ? dayStart - 1 : nowMs;
 }
 
 export function sameStation(first: StationOption, second: StationOption) {

@@ -1,14 +1,21 @@
 import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
+import { rm } from "node:fs/promises";
+import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import app from "../src/app";
+import { resetTimetableEngine } from "../src/lib/timetableEngine";
+import { writeFixtureSnapshot } from "./helpers/transitFixture";
 
 let server: Server;
 let baseUrl: string;
+let snapshotPath: string;
 
 beforeAll(async () => {
-  process.env.EKISPERT_KEY = "test-ekispert-key";
-  process.env.RAPIDAPI_KEY = "test-rapidapi-key";
+  // Readiness requires a loadable timetable snapshot.
+  snapshotPath = await writeFixtureSnapshot();
+  process.env.TRANSIT_SNAPSHOT_PATH = snapshotPath;
+  resetTimetableEngine();
 
   server = app.listen(0);
   await new Promise<void>((resolve, reject) => {
@@ -20,8 +27,9 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  delete process.env.EKISPERT_KEY;
-  delete process.env.RAPIDAPI_KEY;
+  delete process.env.TRANSIT_SNAPSHOT_PATH;
+  resetTimetableEngine();
+  await rm(path.dirname(snapshotPath), { recursive: true, force: true });
   await new Promise<void>((resolve, reject) => {
     server.close((error) => (error ? reject(error) : resolve()));
   });
@@ -38,15 +46,27 @@ describe("HTTP runtime perimeter", () => {
     expect(await ready.json()).toEqual({ status: "ready" });
   });
 
-  it("fails readiness when required provider configuration is missing", async () => {
-    const key = process.env.RAPIDAPI_KEY;
-    delete process.env.RAPIDAPI_KEY;
+  it("fails readiness when required configuration is missing", async () => {
+    const databaseUrl = process.env.DATABASE_URL;
+    delete process.env.DATABASE_URL;
     try {
       const response = await fetch(`${baseUrl}/api/readyz`);
       expect(response.status).toBe(503);
       expect(await response.json()).toEqual({ status: "not-ready" });
     } finally {
-      process.env.RAPIDAPI_KEY = key;
+      process.env.DATABASE_URL = databaseUrl;
+    }
+  });
+
+  it("fails readiness without a timetable snapshot", async () => {
+    process.env.TRANSIT_SNAPSHOT_PATH = path.join(path.dirname(snapshotPath), "missing.json.gz");
+    resetTimetableEngine();
+    try {
+      const response = await fetch(`${baseUrl}/api/readyz`);
+      expect(response.status).toBe(503);
+    } finally {
+      process.env.TRANSIT_SNAPSHOT_PATH = snapshotPath;
+      resetTimetableEngine();
     }
   });
 

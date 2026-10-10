@@ -10,7 +10,7 @@ LastRide (Japanese subtitle: 帰り時) helps people enjoying a night out in Jap
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
 - Required env: `DATABASE_URL` — Postgres connection string
-- API server env (`artifacts/api-server/.env`, gitignored): `EKISPERT_KEY` (駅すぱあと API, train timetables), `RAPIDAPI_KEY` (NAVITIME via RapidAPI)
+- API server env (`artifacts/api-server/.env`, gitignored): `ODPT_KEY` (ODPT open data: building the timetable snapshot, live operation information)
 - Mobile app → API server: dev builds use the Metro host on port 8080; release builds need `EXPO_PUBLIC_API_URL`
 
 ## Stack
@@ -57,8 +57,8 @@ _Populate as you build — explicit user instructions worth remembering across s
 
 ## Gotchas
 
-- Train times come from 駅すぱあと API through the API server (`/api/trains/last`, `/api/trains/first`); the key must never ship in the app. The current key is an evaluation key (valid to end of Nov 2026): Val Laboratory must be consulted before any public release, as a timetable (ダイヤ) license may apply.
-- NAVITIME via RapidAPI cannot do last/first-train searches (`last_operation` and `train_data=timetable` need a direct contract); it only gives average-time routes.
+- Train times come from LastRide's own ODPT timetable engine on the API server (`/api/trains/last`, `/api/trains/first`; see docs/last-train-engine.md). Routes it doesn't cover answer 404 and the iOS app asks Apple Maps instead. 駅すぱあと (Ekispert) is no longer used.
+- NAVITIME is no longer used. Station search/nearby on the server come from the ODPT snapshot (licensed subway operators only; JR/private railways aren't found), `/walk` and `/taxi` are straight-line estimates, and `/places` and `/addresses` answer `[]`; iOS uses Apple MapKit on the device for all of these.
 - Without an API server the app falls back to sample train times, labelled as such in the UI.
 
 ## Pointers
