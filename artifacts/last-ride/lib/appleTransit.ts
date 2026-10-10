@@ -28,9 +28,12 @@ function point(station: StationOption) {
 
 export async function appleLastTrain(from: StationOption, to: StationOption, nowMs: number): Promise<TrainTime | null> {
   if (!AppleMaps) return null;
-  const eta = await AppleMaps.transitEta({ from: point(from), to: point(to), arriveBy: lastTrainArriveBy(nowMs) });
-  // A departure before this service day began is not tonight's train.
-  if (eta.departureMs < serviceDayStart(nowMs)) return null;
+  const arriveBy = lastTrainArriveBy(nowMs);
+  // Past the cutoff MapKit doesn't say "none"; it answers with a later trip. Use the server then.
+  if (nowMs >= arriveBy) return null;
+  const eta = await AppleMaps.transitEta({ from: point(from), to: point(to), arriveBy });
+  // Not tonight's last train: it left before this service day began, or misses the cutoff.
+  if (eta.departureMs < serviceDayStart(nowMs) || eta.arrivalMs > arriveBy) return null;
   return { departsAt: eta.departureMs, arrivesAt: eta.arrivalMs, source: 'apple' };
 }
 
