@@ -226,12 +226,12 @@ function RealOverlay({
           {walkLabel}
         </Text>
       ) : null}
-      {(pins ?? []).slice(0, 4).map((pin) => {
+      {(pins ?? []).slice(0, 4).map((pin, index) => {
         if (pin.latitude === undefined || pin.longitude === undefined) return null;
         const { x, y } = project(frame, { latitude: pin.latitude, longitude: pin.longitude });
         return (
           <Text
-            key={pin.label}
+            key={`${index}-${pin.label}`}
             numberOfLines={1}
             style={[
               styles.bubble,
@@ -311,7 +311,7 @@ function DrawnMap({
             ][index];
             return (
               <Text
-                key={pin.label}
+                key={`${index}-${pin.label}`}
                 numberOfLines={1}
                 style={[
                   styles.bubble,

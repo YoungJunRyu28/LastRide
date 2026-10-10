@@ -1147,7 +1147,9 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       language ?? "en",
       Date.now(),
       isPremium,
-    ).catch(() => undefined);
+    ).catch((error) => {
+      if (__DEV__) console.warn("[LastRide] widget sync failed", error);
+    });
   }, [plan, widgetDestination, language, isPremium, demoActive, isHydrated]);
 
   const value = useMemo<RideContextValue>(
