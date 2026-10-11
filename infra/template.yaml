@@ -20,6 +20,11 @@ Parameters:
   AlarmEmail:
     Type: String
     Default: ""
+  ReserveConcurrency:
+    Type: String
+    AllowedValues: ["true", "false"]
+    Default: "true"
+    Description: Reserve Lambda concurrency per function. New accounts start with a 10-execution limit that cannot fit any reservation; infra/deploy.sh turns this off until the limit is raised.
   EnableBusiness:
     Type: String
     AllowedValues: ["true", "false"]
@@ -31,6 +36,7 @@ Conditions:
   HasAlarmEmail: !Not [!Equals [!Ref AlarmEmail, ""]]
   IsProduction: !Equals [!Ref Stage, production]
   BusinessEnabled: !Equals [!Ref EnableBusiness, "true"]
+  ReservesConcurrency: !Equals [!Ref ReserveConcurrency, "true"]
 
 Globals:
   Function:
@@ -60,6 +66,8 @@ Resources:
   HttpApi:
     Type: AWS::Serverless::HttpApi
     Properties:
+      # Named so the post-traffic hook can find it at run time (see PostTrafficHook).
+      Name: !Sub "lastride-${Stage}-http"
       StageName: $default
       DefaultRouteSettings:
         ThrottlingBurstLimit: 100
@@ -102,15 +110,21 @@ Resources:
       MemorySize: 128
       LoggingConfig:
         LogGroup: !Ref PostTrafficHookLogGroup
+      # Looks the API up by name when it runs. Passing the API's ID here would
+      # make a cycle: HttpApi -> ApiFunction -> (DeploymentPreference) this hook.
       Environment:
         Variables:
-          API_URL: !Sub "https://${HttpApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}"
+          API_NAME: !Sub "lastride-${Stage}-http"
       Policies:
         - Statement:
             - Effect: Allow
               Action:
                 - codedeploy:PutLifecycleEventHookExecutionStatus
               Resource: "*"
+            - Effect: Allow
+              Action:
+                - apigateway:GET
+              Resource: !Sub "arn:${AWS::Partition}:apigateway:${AWS::Region}::/apis"
 
   ApiFunction:
     Type: AWS::Serverless::Function
@@ -119,13 +133,14 @@ Resources:
       CodeUri: ../artifacts/api-server/dist/
       Handler: lambda.handler
       Timeout: 15
-      ReservedConcurrentExecutions: 50
+      ReservedConcurrentExecutions: !If [ReservesConcurrency, 50, !Ref AWS::NoValue]
       AutoPublishAlias: live
       LoggingConfig:
         LogGroup: !Ref ApiLogGroup
       Environment:
         Variables:
           NODE_ENV: production
+          LASTRIDE_STAGE: !Ref Stage
           LOG_LEVEL: info
           DB_POOL_MAX: "2"
           DB_CONNECTION_TIMEOUT_MS: "5000"
@@ -172,13 +187,14 @@ Resources:
       CodeUri: ../artifacts/api-server/dist/
       Handler: scheduled.handler
       Timeout: 45
-      ReservedConcurrentExecutions: 5
+      ReservedConcurrentExecutions: !If [ReservesConcurrency, 5, !Ref AWS::NoValue]
       AutoPublishAlias: live
       LoggingConfig:
         LogGroup: !Ref ScheduledLogGroup
       Environment:
         Variables:
           NODE_ENV: production
+          LASTRIDE_STAGE: !Ref Stage
           LOG_LEVEL: info
           DB_POOL_MAX: "2"
           DB_CONNECTION_TIMEOUT_MS: "5000"
@@ -214,7 +230,8 @@ Resources:
           Type: ScheduleV2
           Properties:
             OmitName: true
-            ScheduleExpression: !If [IsProduction, rate(1 minute), rate(15 minutes)]
+            # Every minute on staging too: group leave-time alerts only fire within 10 minutes of the time.
+            ScheduleExpression: rate(1 minute)
             Input: '{"task":"departureAlerts"}'
             FlexibleTimeWindow:
               Mode: "OFF"

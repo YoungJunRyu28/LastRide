@@ -6,6 +6,9 @@
  * - unset outside production: allow (test/dev mode).
  * - unset in production: report "unavailable" so the route answers 503
  *   instead of silently giving premium away.
+ * - "test" on the staging stack (LASTRIDE_STAGE=staging): allow, so groups can
+ *   be tested before RevenueCat exists. infra/deploy.sh refuses "test" for
+ *   production, and it is ignored there regardless.
  *
  * Only positive answers are cached, briefly, so a purchase that just went
  * through is never stuck behind a cached "no".
@@ -53,6 +56,9 @@ export async function checkPremiumEntitlement(
   nowMs = Date.now(),
 ): Promise<EntitlementResult> {
   const secret = process.env.REVENUECAT_SECRET_KEY?.trim();
+  if (secret === "test") {
+    return process.env.LASTRIDE_STAGE === "staging" ? "active" : "unavailable";
+  }
   if (!secret) {
     return process.env.NODE_ENV === "production" ? "unavailable" : "active";
   }
