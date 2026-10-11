@@ -60,4 +60,11 @@ describe("widgetTimeline", () => {
     const apple = { ...plan, lastTrain: { ...plan.lastTrain, source: "apple" as const } };
     expect(widgetTimeline(apple, "自宅", "ja", jst(23, 0))[0].props.arrival).toBe("押上 00:24ごろ");
   });
+
+  test("shows the leave time until the last hour, then a live countdown", () => {
+    const entries = widgetTimeline(plan, "自宅", "ja", jst(21, 0));
+    expect(entries.map((entry) => entry.date.getTime())).toEqual([jst(21, 0), jst(22, 37), jst(23, 37), jst(23, 57)]);
+    expect(entries[0].props).toMatchObject({ phase: "time", bigTime: "23:37", from: "渋谷発" });
+    expect(entries[1].props).toMatchObject({ phase: "countdown", countdownTo: jst(23, 37), barFrom: jst(22, 37) });
+  });
 });

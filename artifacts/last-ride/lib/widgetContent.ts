@@ -31,10 +31,21 @@ export type LeaveWidgetProps = {
   /** Epoch ms: the timer counts down from shownAt to countdownTo. */
   shownAt: number;
   countdownTo: number;
+  /** Epoch ms the progress bar starts draining (the last hour); full before it. */
+  barFrom: number;
+  /** "time": show the leave time large (more than an hour out); "countdown": show the live countdown. */
+  phase: "time" | "countdown";
+  /** Where the train leaves from, e.g. "渋谷発". */
+  from: string;
+  /** Label over the big number: "この時刻に出発", "出発まで" or "終電まで". */
+  bigLabel: string;
   message: string;
 };
 
 export type WidgetEntry = { date: Date; props: LeaveWidgetProps };
+
+/** The widget switches from showing the leave time to a live countdown this long before it. */
+const COUNTDOWN_WINDOW_MS = 60 * MINUTE_MS;
 
 const EMPTY = {
   heading: "",
@@ -47,6 +58,10 @@ const EMPTY = {
   countdownLabel: "",
   shownAt: 0,
   countdownTo: 0,
+  barFrom: 0,
+  phase: "time" as const,
+  from: "",
+  bigLabel: "",
 };
 
 export function widgetMessage(
@@ -112,9 +127,10 @@ export function widgetTimeline(
     kind: "plan" as const,
     heading: ja ? `帰り時 · ${destinationLabel}へ` : `LastRide · to ${destinationLabel}`,
     short,
+    // The station is shown separately ("渋谷発"), so the detail is the deadline and the walk.
     detail: ja
-      ? `${station}から · 終電 ${lastTrain} · 徒歩${plan.walkingMinutes}分`
-      : `From ${station} · last ${lastTrain} · ${plan.walkingMinutes} min walk`,
+      ? `終電 ${lastTrain} · 徒歩${plan.walkingMinutes}分`
+      : `Last ${lastTrain} · ${plan.walkingMinutes} min walk`,
     footer: `${leave} ${station}`,
     arrival: arriveMs
       ? plan.lastTrain.source === "apple" && !plan.walkHomeMinutes
@@ -129,17 +145,37 @@ export function widgetTimeline(
   };
 
   const entries: WidgetEntry[] = [];
+  const from = ja ? `${station}発` : `from ${station}`;
   if (nowMs < leaveAt) {
+    const leaveProps = {
+      ...base,
+      from,
+      bigTime: leave,
+      inline: ja ? `${leave} 出発 · 終電 ${lastTrain}` : `Leave ${leave} · last ${lastTrain}`,
+      countdownLabel: ja ? "出発まで" : "Leave in",
+      countdownTo: leaveAt,
+      barFrom: leaveAt - COUNTDOWN_WINDOW_MS,
+    };
+    // More than an hour out, the leave time itself is the useful number; a
+    // live countdown takes over for the last hour.
+    const countdownFrom = leaveAt - COUNTDOWN_WINDOW_MS;
+    if (nowMs < countdownFrom) {
+      entries.push({
+        date: new Date(nowMs),
+        props: {
+          ...leaveProps,
+          phase: "time",
+          shownAt: nowMs,
+          bigLabel: ja ? "この時刻に出発" : "Leave at",
+          // The leave time is already the big number; the footer says where and how late.
+          footer: ja ? `${from} · 終電 ${lastTrain}` : `${from} · last ${lastTrain}`,
+        },
+      });
+    }
+    const countdownStart = Math.max(nowMs, countdownFrom);
     entries.push({
-      date: new Date(nowMs),
-      props: {
-        ...base,
-        bigTime: leave,
-        inline: ja ? `${leave} 出発 · 終電 ${lastTrain}` : `Leave ${leave} · last ${lastTrain}`,
-        countdownLabel: ja ? "出発まで" : "Leave in",
-        shownAt: nowMs,
-        countdownTo: leaveAt,
-      },
+      date: new Date(countdownStart),
+      props: { ...leaveProps, phase: "countdown", shownAt: countdownStart, bigLabel: leaveProps.countdownLabel },
     });
   }
   const urgentFrom = Math.max(nowMs, leaveAt);
@@ -147,11 +183,15 @@ export function widgetTimeline(
     date: new Date(urgentFrom),
     props: {
       ...base,
+      from,
       bigTime: lastTrain,
       inline: ja ? `今すぐ出発 · 終電 ${lastTrain}` : `Leave now · last ${lastTrain}`,
       countdownLabel: ja ? "終電まで" : "Last train in",
       shownAt: urgentFrom,
       countdownTo: lastTrainAt,
+      barFrom: urgentFrom,
+      phase: "countdown",
+      bigLabel: ja ? "終電まで" : "Last train in",
     },
   });
   entries.push({ date: new Date(endedAt), props: widgetMessage(language, "ended") });

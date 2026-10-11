@@ -27,8 +27,8 @@ export default function WelcomeScreen() {
       <View style={[styles.orbitTwo, { borderColor: colors.primary }]} />
       <View style={styles.hero}>
         <Image source={require('@/assets/images/icon.png')} style={styles.mark} accessibilityIgnoresInvertColors />
-        <Text style={[styles.appName, { color: colors.mutedForeground }]}>LASTRIDE</Text>
-        <Text style={[styles.appNameJa, { color: colors.mutedForeground }]}>帰り時</Text>
+        <Text maxFontSizeMultiplier={1.3} style={[styles.appName, { color: colors.foreground }]}>LASTRIDE</Text>
+        <Text maxFontSizeMultiplier={1.3} style={[styles.appNameJa, { color: colors.primary }]}>帰り時</Text>
       </View>
       <View style={styles.copy}>
         <Text maxFontSizeMultiplier={1.5} style={[styles.headline, { color: colors.foreground }]}>
@@ -54,10 +54,10 @@ const styles = StyleSheet.create({
   screen: { flex: 1, justifyContent: 'space-between', overflow: 'hidden', paddingBottom: Platform.OS === 'web' ? 34 : 28, paddingHorizontal: 24 },
   orbitOne: { borderRadius: 240, borderWidth: 18, height: 380, position: 'absolute', right: -155, top: -145, width: 380 },
   orbitTwo: { borderRadius: 125, borderWidth: 2, bottom: 95, height: 250, left: -165, opacity: 0.35, position: 'absolute', width: 250 },
-  hero: { alignItems: 'center', gap: 3, marginTop: 18 },
-  mark: { borderRadius: 18, height: 80, marginBottom: 10, width: 80 },
-  appName: { fontWeight: '800', fontSize: 15, letterSpacing: 3 },
-  appNameJa: { fontWeight: '600', fontSize: 13, letterSpacing: 4 },
+  hero: { alignItems: 'center', gap: 6, marginTop: 18 },
+  mark: { borderRadius: 22, height: 88, marginBottom: 12, width: 88 },
+  appName: { fontWeight: '900', fontSize: 30, letterSpacing: 6 },
+  appNameJa: { fontWeight: '800', fontSize: 24, letterSpacing: 8 },
   copy: { gap: 14 },
   headline: { fontWeight: '800', fontSize: 28, letterSpacing: -0.6, lineHeight: 40 },
   subhead: { fontWeight: '500', fontSize: 15, lineHeight: 22 },
