@@ -2,34 +2,36 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import type { ReminderPlan } from '@/lib/planner';
+import { DEFAULT_REMINDER_PREFERENCES, deliveryFor, type ReminderPreferences } from '@/lib/settings';
+import { alarmKit, alarmKitAvailable, type AlarmAuthorization } from '../modules/last-ride-alarm/src';
 
 let configured = false;
 let channelReady = false;
 const webTimers: ReturnType<typeof setTimeout>[] = [];
-// Owned notification IDs are persisted so the headless background-location task
-// and the foreground app (separate JS runtimes) replace each other's reminders
-// instead of stacking duplicates.
+// Both the foreground app and the separate headless location-task JS runtime
+// use these keys to replace, not accumulate, locally scheduled notifications.
 const OWNED_IDS_KEY = 'lastride-owned-notification-ids';
-// What is currently scheduled, so an identical reschedule can be skipped.
 const SIGNATURE_KEY = 'lastride-reminder-signature';
+const SCHEDULER_VERSION = 3;
+
+export { alarmKitAvailable };
+export const alarmAuthorizationStatus = (): Promise<AlarmAuthorization> => alarmKit.status();
+/** Called from an explicit user action, never from a headless background task. */
+export const requestAlarmAuthorization = (): Promise<AlarmAuthorization> => alarmKit.request();
 
 async function readOwnedIds(): Promise<string[]> {
   try {
     const raw = await AsyncStorage.getItem(OWNED_IDS_KEY);
-    const parsed = raw ? (JSON.parse(raw) as string[]) : [];
-    return Array.isArray(parsed) ? parsed.filter((id) => typeof id === 'string') : [];
-  } catch {
-    return [];
-  }
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : [];
+  } catch { return []; }
 }
 
 async function writeOwnedIds(ids: string[]): Promise<void> {
   await AsyncStorage.setItem(OWNED_IDS_KEY, JSON.stringify(ids)).catch(() => undefined);
 }
-// Serializes all schedule/cancel operations so an older reschedule can never
-// cancel or overwrite a newer one.
-let queue: Promise<void> = Promise.resolve();
 
+let queue: Promise<void> = Promise.resolve();
 function enqueue(operation: () => Promise<void>): Promise<void> {
   queue = queue.then(operation, operation);
   return queue;
@@ -50,12 +52,16 @@ function configure() {
 
 async function ensureChannel() {
   if (channelReady || Platform.OS !== 'android') return;
-  await Notifications.setNotificationChannelAsync('leave-reminders', {
-    name: 'Leave reminders',
-    importance: Notifications.AndroidImportance.HIGH,
-    sound: 'default',
-    vibrationPattern: [0, 250, 250, 250],
-  });
+  await Promise.all([
+    Notifications.setNotificationChannelAsync('leave-reminders', {
+      name: 'Leave reminders', importance: Notifications.AndroidImportance.HIGH,
+      sound: 'default', enableVibrate: true, vibrationPattern: [0, 250, 250, 250],
+    }),
+    Notifications.setNotificationChannelAsync('leave-reminders-no-vibrate', {
+      name: 'Leave reminders (no vibration)', importance: Notifications.AndroidImportance.HIGH,
+      sound: 'default', enableVibrate: false, vibrationPattern: [0],
+    }),
+  ]);
   channelReady = true;
 }
 
@@ -63,21 +69,21 @@ export async function ensureNotificationPermission(): Promise<boolean> {
   if (Platform.OS === 'web') {
     if (typeof Notification === 'undefined') return false;
     if (Notification.permission === 'granted') return true;
-    const result = await Notification.requestPermission();
-    return result === 'granted';
+    return (await Notification.requestPermission()) === 'granted';
   }
   configure();
   await ensureChannel();
   const existing = await Notifications.getPermissionsAsync();
   if (existing.granted) return true;
-  const requested = await Notifications.requestPermissionsAsync();
-  return requested.granted;
+  return (await Notifications.requestPermissionsAsync()).granted;
 }
 
-/** Screen to open when a notification is tapped; read by NotificationRouter. */
 export type NotificationTarget = '/ride' | '/alternatives' | '/business-event';
 
-async function present(title: string, body: string, fireAt: number | null, target: NotificationTarget = '/ride') {
+async function present(
+  title: string, body: string, fireAt: number | null,
+  target: NotificationTarget = '/ride', vibrate = true,
+) {
   const delayMs = fireAt === null ? 0 : Math.max(0, fireAt - Date.now());
   if (Platform.OS === 'web') {
     const timer = setTimeout(() => {
@@ -95,13 +101,16 @@ async function present(title: string, body: string, fireAt: number | null, targe
   configure();
   await ensureChannel();
   const id = await Notifications.scheduleNotificationAsync({
-    // timeSensitive lets the alert break through Focus modes once the app has the
-    // Time Sensitive Notifications entitlement (paid developer account); ignored otherwise.
+    // On iOS, vibration follows the user's iOS sound/haptics settings;
+    // iOS offers no per-notification independent vibration switch.
     content: { title, body, sound: true, interruptionLevel: 'timeSensitive', data: { target } },
-    trigger:
-      delayMs < 1000
-        ? null
-        : { type: Notifications.SchedulableTriggerInputTypes.DATE, date: new Date(Date.now() + delayMs), channelId: 'leave-reminders' },
+    trigger: delayMs < 1000
+      ? null
+      : {
+          type: Notifications.SchedulableTriggerInputTypes.DATE,
+          date: new Date(Date.now() + delayMs),
+          channelId: vibrate ? 'leave-reminders' : 'leave-reminders-no-vibrate',
+        },
   });
   const ids = await readOwnedIds();
   ids.push(id);
@@ -115,6 +124,9 @@ async function cancelOwned() {
   configure();
   const ids = await readOwnedIds();
   await writeOwnedIds([]);
+  // Cancel native alarms even when the JS runtime died before persisting the
+  // schedule. AlarmKit only exposes alarms belonging to our app.
+  await alarmKit.cancelAll().catch((error) => console.warn('[LastRide] Could not cancel alarms', error));
   await Promise.all(ids.map((id) => Notifications.cancelScheduledNotificationAsync(id).catch(() => undefined)));
 }
 
@@ -123,10 +135,8 @@ export function cancelAllReminders(): Promise<void> {
 }
 
 export type ReminderText = { leaveBy: string; station: string; language: 'ja' | 'en' };
-
 function reminderText({ leaveBy, station, language }: ReminderText, { minutesBefore, missedCheckIn }: ReminderPlan) {
   if (missedCheckIn) {
-    // The app can't tell whether the user boarded, so this asks rather than asserts.
     return language === 'ja'
       ? { title: 'LastRide — 終電に間に合いませんでしたか？', body: 'タップして始発・タクシー・近くで朝まで過ごせる場所を確認。' }
       : { title: 'LastRide — missed the last train?', body: 'Tap to see the first train, a taxi estimate, and places to wait nearby.' };
@@ -141,19 +151,50 @@ function reminderText({ leaveBy, station, language }: ReminderText, { minutesBef
     : { title: `LastRide — ${minutesBefore} min to go`, body: `Leave for ${station} by ${leaveBy}. Time to wrap up.` };
 }
 
+function newAlarmId(): string {
+  // AlarmKit identifiers are UUIDs. These aren't authorization/security tokens.
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (char) => {
+    const r = Math.floor(Math.random() * 16);
+    return (char === 'x' ? r : (r & 3) | 8).toString(16);
+  });
+}
+
 /**
- * Replaces all app-owned reminders with `plans` (fire times are real epoch ms).
- * Skips the work when the same set is already scheduled, so frequent location
- * updates from the app and the background task don't churn the OS schedule.
+ * Replaces all reminders for a tracking plan. Native alarms and Expo notifications
+ * share the same lifecycle and use the same local departure timestamps. Never
+ * request alarm permission from the headless location task.
+ *
+ * When AlarmKit is unavailable or not authorized, we fall back to a standard
+ * notification rather than silently pretending to deliver a full system alarm.
  */
-export function scheduleReminders(plans: ReminderPlan[], text: ReminderText): Promise<void> {
+export function scheduleReminders(
+  plans: ReminderPlan[],
+  text: ReminderText,
+  preferences: ReminderPreferences = DEFAULT_REMINDER_PREFERENCES,
+): Promise<void> {
   return enqueue(async () => {
-    const signature = JSON.stringify([plans, text]);
-    if ((await AsyncStorage.getItem(SIGNATURE_KEY).catch(() => null)) === signature && Platform.OS !== 'web') return;
+    const alarmAuthorization = alarmKitAvailable ? await alarmKit.status().catch(() => 'denied') : 'unsupported';
+    // Permission can change in iOS Settings without the selected reminders changing.
+    // A schedule made as fallback notifications must be replaced after approval.
+    const signature = JSON.stringify([SCHEDULER_VERSION, plans, text, preferences, alarmAuthorization]);
+    if (Platform.OS !== 'web' && (await AsyncStorage.getItem(SIGNATURE_KEY).catch(() => null)) === signature) return;
     await cancelOwned();
+    const alarmAuthorized = alarmAuthorization === 'authorized';
     for (const plan of plans) {
+      // A delayed background task must never turn an expired scheduled alarm
+      // into an unexpected instant notification.
+      if (plan.fireAt < Date.now() - 1000) continue;
       const { title, body } = reminderText(text, plan);
-      await present(title, body, plan.fireAt, plan.missedCheckIn ? '/alternatives' : '/ride');
+      const pref = deliveryFor(preferences, plan.minutesBefore);
+      if (!plan.missedCheckIn && pref.mode === 'alarm' && alarmAuthorized && plan.fireAt > Date.now() + 1000) {
+        try {
+          await alarmKit.schedule(newAlarmId(), plan.fireAt, title, pref.sound);
+          continue;
+        } catch (error) {
+          console.warn('[LastRide] AlarmKit failed; falling back to notification', error);
+        }
+      }
+      await present(title, body, plan.fireAt, plan.missedCheckIn ? '/alternatives' : '/ride', pref.vibrate);
     }
     await AsyncStorage.setItem(SIGNATURE_KEY, signature).catch(() => undefined);
   });
@@ -161,10 +202,17 @@ export function scheduleReminders(plans: ReminderPlan[], text: ReminderText): Pr
 
 export function sendTestNotification(language: 'ja' | 'en'): Promise<void> {
   return enqueue(async () => {
-    const text =
-      language === 'ja'
-        ? { title: 'LastRide — テスト通知', body: '通知はこのように届きます。' }
-        : { title: 'LastRide — test notification', body: 'This is how your reminders will look.' };
+    const text = language === 'ja'
+      ? { title: 'LastRide — テスト通知', body: '通知はこのように届きます。' }
+      : { title: 'LastRide — test notification', body: 'This is how your reminders will look.' };
     await present(text.title, text.body, Date.now() + 2000);
   });
+}
+
+/** Schedules an actual system alarm 15 seconds ahead for device testing. */
+export async function sendTestAlarm(language: 'ja' | 'en', sound: string = 'default'): Promise<boolean> {
+  if (!alarmKitAvailable || (await alarmKit.status()) !== 'authorized') return false;
+  await alarmKit.schedule(newAlarmId(), Date.now() + 15000,
+    language === 'ja' ? 'LastRide — アラームテスト' : 'LastRide — alarm test', sound);
+  return true;
 }

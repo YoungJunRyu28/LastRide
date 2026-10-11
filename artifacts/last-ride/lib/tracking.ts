@@ -65,7 +65,7 @@ async function recomputeFromLocation(coordinates: Coordinates): Promise<void> {
     leaveBy: formatJstTime(recommendedLeaveTime(plan)),
     station: language === 'ja' ? plan.station.nameJa : plan.station.name,
     language,
-  });
+  }, settings.reminderPreferences);
   await syncLiveActivity(plan, language, now).catch(() => undefined);
   const destinationLabel = settings.tonightDestination
     ? language === 'ja' ? settings.tonightDestination.nameJa : settings.tonightDestination.name

@@ -49,6 +49,8 @@ import {
   type HomeAddress,
   type Language,
   type NightLocationMode,
+  type ReminderDelivery,
+  type ReminderPreferences,
   type SavedDestination,
 } from "@/lib/settings";
 import { clearSavedPlan, readSavedPlan, writeSavedPlan } from "@/lib/savedPlan";
@@ -88,6 +90,7 @@ import {
 export type { HomeAddress, Language, SavedDestination } from "@/lib/settings";
 export type { StationOption } from "@/lib/stations";
 export { REMINDER_CHOICES } from "@/lib/settings";
+import { REMINDER_CHOICES } from "@/lib/settings";
 export type LocationErrorCode = LocationError["code"];
 
 /**
@@ -189,6 +192,8 @@ type RideContextValue = {
   isLocating: boolean;
   locationError: LocationErrorCode | null;
   reminderIntervals: number[];
+  reminderPreferences: ReminderPreferences;
+  setReminderPreference: (minute: number, value: Partial<ReminderDelivery>) => void;
   /** Send the "missed the last train?" check-in after the last train has gone. */
   missedCheckIn: boolean;
   setMissedCheckIn: (enabled: boolean) => void;
@@ -412,6 +417,9 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
   const [reminderIntervals, setReminderIntervals] = useState<number[]>(
     DEFAULT_SETTINGS.reminderIntervals,
   );
+  const [reminderPreferences, setReminderPreferences] = useState<ReminderPreferences>(
+    DEFAULT_SETTINGS.reminderPreferences,
+  );
   const [missedCheckIn, setMissedCheckInState] = useState(
     DEFAULT_SETTINGS.missedCheckIn,
   );
@@ -445,6 +453,15 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     null,
   );
   const scheduleToken = useRef(0);
+  // Recheck alarm authorization when returning from iOS Settings, even if the
+  // chosen route and preferences are unchanged.
+  const [alarmPermissionRevision, setAlarmPermissionRevision] = useState(0);
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') setAlarmPermissionRevision((revision) => revision + 1);
+    });
+    return () => subscription.remove();
+  }, []);
   const foregroundWatch = useRef<Location.LocationSubscription | null>(null);
   const webWatchId = useRef<number | null>(null);
   // Serializes start/stop tracking: any await inside startTracking re-checks this
@@ -476,6 +493,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
         setHomeStationOption(saved.homeStation);
         setLeaveMarginState(saved.leaveMargin);
         setReminderIntervals(saved.reminderIntervals);
+        setReminderPreferences(saved.reminderPreferences);
         setPinnedStationState(saved.pinnedStation);
         setMissedCheckInState(saved.missedCheckIn);
         setNightLocationModeState(saved.nightLocationMode);
@@ -525,7 +543,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
   useEffect(() => {
     const token = ++scheduleToken.current;
     if (demoActive) return;
-    if (!trackingMode || !plan || reminderIntervals.length === 0) {
+    if (!trackingMode || !plan) {
       void cancelAllReminders();
       return;
     }
@@ -533,7 +551,6 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       const allowed = await ensureNotificationPermission();
       if (token !== scheduleToken.current) return;
       setNotificationsAllowed(allowed);
-      if (!allowed) return;
       const plans = buildReminderPlans(plan, reminderIntervals, Date.now(), {
         missedCheckIn,
       });
@@ -541,16 +558,18 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
         leaveBy: formatJstTime(recommendedLeaveTime(plan)),
         station: stationLabel,
         language: language ?? "en",
-      });
+      }, reminderPreferences);
     })();
   }, [
     trackingMode,
     plan,
     stationLabel,
     reminderIntervals,
+    reminderPreferences,
     missedCheckIn,
     language,
     demoActive,
+    alarmPermissionRevision,
   ]);
 
   // The lock-screen countdown follows night-out tracking. Re-synced when the plan
@@ -784,6 +803,17 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     [activeDestinationId, destinations, clearPlan],
   );
 
+  const setReminderPreference = useCallback((minute: number, value: Partial<ReminderDelivery>) => {
+    if (![...REMINDER_CHOICES, 0].includes(minute)) return;
+    setReminderPreferences((previous) => {
+      const updated = {
+        ...previous, [minute]: { ...previous[minute], ...value },
+      };
+      void AsyncStorage.setItem(STORAGE_KEYS.reminderDelivery, JSON.stringify(updated));
+      return updated;
+    });
+  }, []);
+
   const toggleReminderInterval = useCallback((minutes: number) => {
     setReminderIntervals((current) => {
       const next = current.includes(minutes)
@@ -857,11 +887,10 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       // Schedule demo reminders with the OS (compressed to demo speed) so they
       // arrive even when the app is backgrounded or the phone is locked.
       scheduleToken.current += 1; // invalidate any in-flight real-mode scheduling
-      if (!trackingMode || !plan || reminderIntervals.length === 0) return;
+      if (!trackingMode || !plan) return;
       void (async () => {
         const allowed = await ensureNotificationPermission();
         setNotificationsAllowed(allowed);
-        if (!allowed) return;
         const plans = buildReminderPlans(plan, reminderIntervals, virtualMs, {
           missedCheckIn,
         }).map((reminder) => ({
@@ -872,7 +901,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
           leaveBy: formatJstTime(recommendedLeaveTime(plan)),
           station: stationLabel,
           language: language ?? "en",
-        });
+        }, reminderPreferences);
       })();
     },
     [
@@ -880,6 +909,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       plan,
       language,
       reminderIntervals,
+      reminderPreferences,
       missedCheckIn,
       stationLabel,
     ],
@@ -1206,6 +1236,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     setHomeStationOption(DEFAULT_SETTINGS.homeStation);
     setLeaveMarginState(DEFAULT_SETTINGS.leaveMargin);
     setReminderIntervals(DEFAULT_SETTINGS.reminderIntervals);
+    setReminderPreferences(DEFAULT_SETTINGS.reminderPreferences);
     setPinnedStationState(null);
     setHomeAddressState(null);
     setDestinations(DEFAULT_SETTINGS.destinations);
@@ -1295,6 +1326,8 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       isLocating,
       locationError,
       reminderIntervals,
+      reminderPreferences,
+      setReminderPreference,
       missedCheckIn,
       setMissedCheckIn,
       nightLocationMode,
@@ -1345,6 +1378,8 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       nowMs,
       plan,
       reminderIntervals,
+      reminderPreferences,
+      setReminderPreference,
       requestLocation,
       resetAll,
       resetLanguage,
