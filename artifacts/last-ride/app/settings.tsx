@@ -7,7 +7,7 @@ import { recommendedLeaveTime } from '@/lib/reliability';
 import { MINUTE_MS } from '@/lib/time';
 import { router } from 'expo-router';
 import React from 'react';
-import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 /** A labelled card of rows, with an optional note underneath. */
@@ -29,7 +29,7 @@ export default function SettingsScreen() {
   const {
     language, homeStation, destination, walkingSpeed, setWalkingSpeed, setLanguage,
     reminderIntervals, toggleReminderInterval, notificationsAllowed,
-    missedCheckIn, setMissedCheckIn, nightLocationMode, setNightLocationMode,
+    missedCheckIn, setMissedCheckIn, nightLocationMode, setNightLocationMode, backgroundAllowed, requestBackgroundLocation,
     demoActive, setDemoNow, nowMs, plan, currentTime, leaveBy, triggerTestNotification, resetAll,
   } = useLastRide();
   const { isPremium, live: premiumLive, setTestPremium } = usePremium();
@@ -124,19 +124,49 @@ export default function SettingsScreen() {
           )}
         </Section>
 
-        <Section label={ja ? '夜の位置情報' : 'NIGHT LOCATION'} hint={ja ? '夜のトラッキング中だけ使います。' : 'Only used while night tracking is on.'}>
+        <Section
+          label={ja ? '夜の位置情報' : 'NIGHT LOCATION'}
+          hint={
+            nightLocationMode === 'ask'
+              ? ja
+                ? '夜のトラッキング中だけ使います。まだ選ばれていないため、次にトラッキングを始めるときに確認します。'
+                : 'Only used while night tracking is on. Not chosen yet, so you’ll be asked when you next start tracking.'
+              : ja
+                ? '夜のトラッキング中だけ使います。'
+                : 'Only used while night tracking is on.'
+          }
+        >
           <View style={styles.block}>
             <Segmented
               stretch
               value={nightLocationMode}
-              onChange={setNightLocationMode}
+              onChange={(mode) => {
+                setNightLocationMode(mode);
+                // 閉じても更新 needs iOS "Always": ask now, while the choice is fresh.
+                if (mode === 'background' && Platform.OS !== 'web') void requestBackgroundLocation();
+              }}
               options={[
-                { value: 'ask', label: ja ? '毎回確認' : 'Ask' },
                 { value: 'foreground', label: ja ? 'アプリのみ' : 'App open' },
                 { value: 'background', label: ja ? '閉じても更新' : 'When closed' },
               ]}
             />
           </View>
+          {nightLocationMode === 'background' && backgroundAllowed === false && (
+            <>
+              <Divider />
+              <Row
+                testID="background-location-settings"
+                title={ja ? 'iPhoneの設定が「常に」ではありません' : 'iPhone Settings isn’t “Always”'}
+                subtitle={
+                  ja
+                    ? 'このままでは、アプリを閉じている間は更新されません。タップして位置情報を「常に」にしてください。'
+                    : 'Until then, LastRide can’t update while closed. Tap to set location access to “Always”.'
+                }
+                onPress={() => void Linking.openSettings()}
+                destructive
+              />
+            </>
+          )}
         </Section>
 
         <Section label={ja ? '好みの設定' : 'PREFERENCES'} hint={ja ? '歩くペースは出発時刻の計算に使います。' : 'Your walking pace sets how early you need to leave.'}>

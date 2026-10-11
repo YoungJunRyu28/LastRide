@@ -11,7 +11,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { Alert, AppState, Platform } from "react-native";
+import { Alert, AppState, Linking, Platform } from "react-native";
 import { apiBaseUrl, communityFallbacksEnabled } from "@/lib/api";
 import {
   clearEnterpriseParticipation,
@@ -76,7 +76,8 @@ import { appleSearchAddresses, appleSearchStations, syncAppleLanguage } from "@/
 import { syncWidgets } from "@/lib/widgets";
 import {
   clearTrackingSnapshot,
-  hasBackgroundLocationPermission,
+  backgroundLocationState,
+  requestNightLocationPermission,
   isTrackingFlagOn,
   markTrackingStarted,
   readTrackingSnapshot,
@@ -101,11 +102,34 @@ async function chooseNightTrackingLocation(
   saved: NightLocationMode,
 ): Promise<{ mode: 'foreground' | 'background'; asked: boolean } | null> {
   if (Platform.OS === 'web') return { mode: 'foreground', asked: false };
-  const resolved = resolveNightLocationMode(
-    saved,
-    saved === 'background' && (await hasBackgroundLocationPermission()),
-  );
+  const background = await backgroundLocationState();
+  const resolved = resolveNightLocationMode(saved, saved === 'background' && background.granted);
   if (resolved !== 'ask') return { mode: resolved, asked: false };
+  if (!background.granted && !background.canAskAgain) {
+    // iOS won't ask for "Always" again; only Settings can change it. Say so,
+    // instead of a choice that would silently fall back to app-open-only.
+    const ja = language === 'ja';
+    return new Promise((resolve) => {
+      Alert.alert(
+        ja ? '閉じても更新するには' : 'To update when closed',
+        ja
+          ? 'iPhoneの設定で、LastRideの位置情報を「常に」にしてください（夜のトラッキング中だけ使います）。今夜はアプリを開いている間だけ更新することもできます。'
+          : 'In iPhone Settings, set LastRide’s location access to “Always” (used only during night tracking). Or track tonight while the app is open.',
+        [
+          { text: ja ? 'キャンセル' : 'Cancel', style: 'cancel', onPress: () => resolve(null) },
+          { text: ja ? 'アプリ使用中のみで開始' : 'Track while open', onPress: () => resolve({ mode: 'foreground', asked: true }) },
+          {
+            text: ja ? '設定を開く' : 'Open Settings',
+            onPress: () => {
+              void Linking.openSettings();
+              resolve(null);
+            },
+          },
+        ],
+        { cancelable: true, onDismiss: () => resolve(null) },
+      );
+    });
+  }
   const disclosure = trackingDisclosure(language);
   return new Promise((resolve) => {
     Alert.alert(
@@ -172,6 +196,10 @@ type RideContextValue = {
   /** Night tracking's location choice; "ask" shows the disclosure next time. */
   nightLocationMode: NightLocationMode;
   setNightLocationMode: (mode: NightLocationMode) => void;
+  /** Whether iOS allows location while the app is closed ("Always"); null until known. */
+  backgroundAllowed: boolean | null;
+  /** Asks iOS for "Always" if it still can; resolves to whether it's allowed now. */
+  requestBackgroundLocation: () => Promise<boolean>;
   notificationsAllowed: boolean | null;
   /** Asks the OS for notification permission (onboarding step 2). */
   requestNotifications: () => Promise<boolean>;
@@ -796,6 +824,29 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     void AsyncStorage.setItem(STORAGE_KEYS.nightLocationMode, mode);
   }, []);
 
+  // The app's 閉じても更新 only works if iOS allows "Always"; keep track so the UI
+  // can say when it doesn't (rechecked when returning from the Settings app).
+  const [backgroundAllowed, setBackgroundAllowed] = useState<boolean | null>(null);
+  const refreshBackgroundAllowed = useCallback(async () => {
+    if (Platform.OS === "web") return false;
+    const { granted } = await backgroundLocationState();
+    setBackgroundAllowed(granted);
+    return granted;
+  }, []);
+  useEffect(() => {
+    void refreshBackgroundAllowed();
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") void refreshBackgroundAllowed();
+    });
+    return () => subscription.remove();
+  }, [refreshBackgroundAllowed]);
+  const requestBackgroundLocation = useCallback(async () => {
+    if (Platform.OS === "web") return false;
+    const state = await backgroundLocationState();
+    if (!state.granted && state.canAskAgain) await requestNightLocationPermission("background");
+    return refreshBackgroundAllowed();
+  }, [refreshBackgroundAllowed]);
+
   const setDemoNow = useCallback(
     (virtualMs: number | null) => {
       const realAt = Date.now();
@@ -1017,8 +1068,24 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       }
       setTrackingMode(backgroundActive ? "background" : "foreground");
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      if (locationMode === "background" && !backgroundActive) {
+        // Chosen 閉じても更新, but iOS isn't set to "Always": say so rather than
+        // quietly tracking only while the app is open.
+        void refreshBackgroundAllowed();
+        const ja = language === "ja";
+        Alert.alert(
+          ja ? "アプリを閉じている間は更新されません" : "Won’t update while closed",
+          ja
+            ? "iPhoneの設定で、LastRideの位置情報が「常に」になっていません。今夜はアプリを開いている間だけ更新します。閉じても更新するには、設定で「常に」を選んでください。"
+            : "LastRide’s location access in iPhone Settings isn’t “Always”, so tonight it updates only while the app is open. Choose “Always” in Settings to update when closed.",
+          [
+            { text: "OK", style: "cancel" },
+            { text: ja ? "設定を開く" : "Open Settings", onPress: () => void Linking.openSettings() },
+          ],
+        );
+      }
     },
-    [planFrom, applyPlan, removeWatches, getNow, language, nightLocationMode, setNightLocationMode],
+    [planFrom, applyPlan, removeWatches, getNow, language, nightLocationMode, setNightLocationMode, refreshBackgroundAllowed],
   );
 
   // Once the night is over (the first train has left), move on to the next night
@@ -1233,6 +1300,8 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       setMissedCheckIn,
       nightLocationMode,
       setNightLocationMode,
+      backgroundAllowed,
+      requestBackgroundLocation,
       notificationsAllowed,
       requestNotifications,
       currentTime: formatJstTime(nowMs),
@@ -1265,6 +1334,8 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       setMissedCheckIn,
       nightLocationMode,
       setNightLocationMode,
+      backgroundAllowed,
+      requestBackgroundLocation,
       homeStationOption,
       isHydrated,
       isLocating,

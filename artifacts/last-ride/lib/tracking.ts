@@ -101,6 +101,31 @@ export async function hasBackgroundLocationPermission(): Promise<boolean> {
 }
 
 /**
+ * Background ("Always") location state. iOS shows its prompt for it only once:
+ * after a refusal `canAskAgain` is false and only the Settings app can change it.
+ */
+export async function backgroundLocationState(): Promise<{ granted: boolean; canAskAgain: boolean }> {
+  if (Platform.OS === 'web') return { granted: false, canAskAgain: false };
+  try {
+    const permission = await Location.getBackgroundPermissionsAsync();
+    return { granted: permission.granted, canAskAgain: permission.canAskAgain };
+  } catch {
+    return { granted: false, canAskAgain: true };
+  }
+}
+
+/** Whether the user turned off Precise Location for the app (iOS), so positions are only approximate. */
+export async function isLocationApproximate(): Promise<boolean> {
+  if (Platform.OS !== 'ios') return false;
+  try {
+    const permission = await Location.getForegroundPermissionsAsync();
+    return permission.granted && permission.ios?.accuracy === 'reduced';
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Asks for location up front (onboarding step 3). "background" asks for
  * foreground first, then "when closed"; returns whether that level was granted.
  */

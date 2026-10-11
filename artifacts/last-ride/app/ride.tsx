@@ -26,6 +26,8 @@ import {
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
+  AppState,
+  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -34,6 +36,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { isLocationApproximate } from "@/lib/tracking";
 
 /** The ring empties over the last hour before leave-by. */
 const RING_WINDOW_MS = 60 * 60 * 1000;
@@ -88,6 +91,8 @@ export default function RideScreen() {
     trackingMode,
     startTracking,
     stopTracking,
+    nightLocationMode,
+    backgroundAllowed,
   } = useLastRide();
   const ja = language === "ja";
   const station = ja ? stationNameJa : stationName;
@@ -104,6 +109,16 @@ export default function RideScreen() {
   const { isPremium } = usePremium();
   const { tonightGroup } = useGroups();
   const leaveCard = useLeaveCardOpening();
+  // Precise Location off (iOS): positions are only approximate. Rechecked on return from Settings.
+  const [approximateLocation, setApproximateLocation] = useState(false);
+  useEffect(() => {
+    const check = () => void isLocationApproximate().then(setApproximateLocation);
+    check();
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") check();
+    });
+    return () => subscription.remove();
+  }, [isLocationReady]);
 
   const freshness = plan ? planFreshness(plan.computedAt, nowMs) : null;
   const planAge = plan ? planAgeMinutes(plan.computedAt, nowMs) : null;
@@ -760,9 +775,13 @@ export default function RideScreen() {
                     ? ja
                       ? "閉じても更新。終電後に自動で停止。"
                       : "Updates when closed; stops after the last train."
-                    : ja
-                      ? "アプリを開いている間だけ更新します。"
-                      : "Updates while the app is open."}
+                    : nightLocationMode === "background" && backgroundAllowed === false
+                      ? ja
+                        ? "iPhoneの位置情報が「常に」ではないため、アプリを開いている間だけ更新します。"
+                        : "iPhone location isn’t “Always”, so this updates only while the app is open."
+                      : ja
+                        ? "アプリを開いている間だけ更新します。"
+                        : "Updates while the app is open."}
                 </Text>
               </View>
               <View style={[styles.smallButton, { borderColor: colors.input }]}>
@@ -773,10 +792,27 @@ export default function RideScreen() {
             </Pressable>
           ))}
 
+        {trackingMode === "foreground" && nightLocationMode === "background" && backgroundAllowed === false && (
+          <Pressable
+            testID="open-location-settings"
+            onPress={() => void Linking.openSettings()}
+            accessibilityRole="link"
+            hitSlop={8}
+            style={styles.settingsLink}
+          >
+            <Text style={[styles.settingsLinkText, { color: colors.primary }]}>
+              {ja ? "設定で位置情報を「常に」にする ›" : "Set location to “Always” in Settings ›"}
+            </Text>
+          </Pressable>
+        )}
+
         {!isLocationReady && (
           <Pressable
             testID="enable-location"
-            onPress={() => void requestLocation()}
+            // After a refusal iOS won't ask again: only Settings can turn location on.
+            onPress={() =>
+              locationError === "permission" ? void Linking.openSettings() : void requestLocation()
+            }
             accessibilityRole="button"
             style={({ pressed }) => [
               styles.trackRow,
@@ -819,6 +855,31 @@ export default function RideScreen() {
                 : "This route uses an Apple Maps estimate that couldn’t be confirmed as a train. Please double-check in a route app."
             }
           />
+        )}
+
+        {approximateLocation && (
+          <Pressable
+            testID="precise-location"
+            onPress={() => void Linking.openSettings()}
+            accessibilityRole="button"
+            style={({ pressed }) => [
+              styles.trackRow,
+              { backgroundColor: colors.card, borderColor: colors.primary, opacity: pressed ? 0.8 : 1 },
+            ]}
+          >
+            <Feather name="crosshair" color={colors.primary} size={18} />
+            <View style={styles.flex}>
+              <Text style={[styles.rowTitle, { color: colors.foreground }]}>
+                {ja ? "正確な位置情報がオフです" : "Precise Location is off"}
+              </Text>
+              <Text style={[styles.note, { color: colors.mutedForeground }]}>
+                {ja
+                  ? "おおよその位置しか分からないため、最寄り駅や徒歩時間がずれることがあります。設定で「正確な位置情報」をオンにしてください。"
+                  : "LastRide only knows your rough area, so the nearest station and walking time may be off. Turn on Precise Location in Settings."}
+              </Text>
+            </View>
+            <Feather name="chevron-right" color={colors.mutedForeground} size={18} />
+          </Pressable>
         )}
 
         {lastTrainSource === "sample" && (
@@ -867,6 +928,8 @@ const styles = StyleSheet.create({
   rowTitle: { fontSize: 15, fontWeight: "700" },
   note: { fontSize: 12, lineHeight: 17 },
   credit: { fontSize: 10, lineHeight: 14, textDecorationLine: "underline" },
+  settingsLink: { alignSelf: "flex-start", marginTop: -6, paddingHorizontal: 4 },
+  settingsLinkText: { fontSize: 13, fontWeight: "700" },
   trackRow: { alignItems: "center", borderRadius: 18, borderWidth: 1, flexDirection: "row", gap: 12, padding: 14 },
   liveDot: { borderRadius: 5, height: 10, marginHorizontal: 4, width: 10 },
   smallButton: { borderRadius: 12, borderWidth: 1, borderColor: "transparent", paddingHorizontal: 14, paddingVertical: 9 },

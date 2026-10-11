@@ -3,6 +3,7 @@ import { router } from 'expo-router';
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { PremiumTag } from '@/components/ui';
+import { trialLabel, useTrialDays } from '@/context/PremiumContext';
 import { DIGITS } from '@/constants/type';
 import { useColors } from '@/hooks/useColors';
 import type { LeaveCardVariant } from '@/lib/premiumPrompts';
@@ -31,6 +32,7 @@ export function PremiumCard({
 }) {
   const colors = useColors();
   const lock = variant === 'lock';
+  const trial = trialLabel(useTrialDays(), ja) ?? '';
   return (
     <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
       <Pressable
@@ -40,11 +42,11 @@ export function PremiumCard({
         accessibilityLabel={
           lock
             ? ja
-              ? 'プレミアム：ロック画面で残り時間を表示。1週間無料で試す'
-              : 'Premium: countdown on your lock screen. Try a week free'
+              ? `プレミアム：ロック画面で残り時間を表示。${trial}で試す`
+              : `Premium: countdown on your lock screen. Try ${trial}`
             : ja
-              ? 'プレミアム：ホーム画面で出発時刻をひと目で。1週間無料で試す'
-              : 'Premium: leave time on your home screen. Try a week free'
+              ? `プレミアム：ホーム画面で出発時刻をひと目で。${trial}で試す`
+              : `Premium: leave time on your home screen. Try ${trial}`
         }
         style={({ pressed }) => [styles.body, { opacity: pressed ? 0.85 : 1 }]}
       >
@@ -77,7 +79,7 @@ export function PremiumCard({
                 ? 'ホーム画面で出発時刻をひと目で'
                 : 'Your leave time on the home screen'}
           </Text>
-          <Text style={[styles.cta, { color: colors.primary }]}>{ja ? '1週間無料で試す ›' : 'Try a week free ›'}</Text>
+          <Text style={[styles.cta, { color: colors.primary }]}>{ja ? `${trial}で試す ›` : `Try ${trial} ›`}</Text>
         </View>
       </Pressable>
       <Pressable

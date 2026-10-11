@@ -1,6 +1,7 @@
 import { PremiumOffer } from '@/components/PremiumOffer';
 import { TextButton } from '@/components/ui';
 import { useLastRide } from '@/context/LastRideContext';
+import { trialLabel, useTrialDays } from '@/context/PremiumContext';
 import { useColors } from '@/hooks/useColors';
 import { markTrialOfferShown } from '@/lib/premiumPrompts';
 import { router } from 'expo-router';
@@ -15,6 +16,8 @@ export default function TrialScreen() {
   const { language } = useLastRide();
   const ja = language !== 'en';
   const done = () => router.replace('/ride');
+  const days = useTrialDays();
+  const weeks = days % 7 === 0 ? days / 7 : null;
 
   useEffect(() => {
     void markTrialOfferShown();
@@ -27,7 +30,9 @@ export default function TrialScreen() {
         <View style={styles.heading}>
           <Text style={[styles.kicker, { color: colors.primary }]}>LASTRIDE PREMIUM</Text>
           <Text accessibilityRole="header" style={[styles.title, { color: colors.foreground }]}>
-            {ja ? 'プレミアムを\n1週間無料で。' : 'Try Premium\nfree for a week.'}
+            {ja
+              ? `プレミアムを\n${weeks ? `${weeks}週間` : `${days}日間`}無料で。`
+              : `Try Premium\nfree for ${weeks === 1 ? 'a week' : weeks ? `${weeks} weeks` : `${days} days`}.`}
           </Text>
         </View>
         <PremiumOffer ja={ja} onDone={done} secondary={<TextButton label={ja ? 'あとで（無料で使う）' : 'Not now (keep it free)'} onPress={done} testID="skip-trial" />} />

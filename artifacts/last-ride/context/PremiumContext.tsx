@@ -32,7 +32,7 @@ export const premiumLive = !!apiKey;
 
 export type PlanChoice = {
   id: 'monthly' | 'annual';
-  /** Store-formatted price, e.g. "¥400"; a placeholder in test mode. */
+  /** Store-formatted price, e.g. "¥290"; the planned price in test mode. */
   price: string;
   /** Free-trial length in days, when the product has an introductory trial. */
   trialDays: number | null;
@@ -59,8 +59,8 @@ type PremiumValue = {
 const PremiumContext = createContext<PremiumValue | null>(null);
 
 const TEST_PLANS: PlanChoice[] = [
-  { id: 'annual', price: '[価格]', trialDays: 7, pkg: null },
-  { id: 'monthly', price: '[価格]', trialDays: 7, pkg: null },
+  { id: 'annual', price: '¥1,980', trialDays: 14, pkg: null },
+  { id: 'monthly', price: '¥290', trialDays: 14, pkg: null },
 ];
 
 function hasEntitlement(info: CustomerInfo) {
@@ -174,4 +174,17 @@ export function usePremium() {
   const value = useContext(PremiumContext);
   if (!value) throw new Error('usePremium must be used inside PremiumProvider');
   return value;
+}
+
+/** "2週間無料" / "14 days free" for a trial of `days` days; null without a trial. */
+export function trialLabel(days: number | null, ja: boolean): string | null {
+  if (!days) return null;
+  if (days % 7 === 0) return ja ? `${days / 7}週間無料` : days === 7 ? '1 week free' : `${days / 7} weeks free`;
+  return ja ? `${days}日間無料` : `${days} days free`;
+}
+
+/** The trial length on offer (the store's introductory offer; 14 days planned). */
+export function useTrialDays(): number {
+  const { plans } = usePremium();
+  return plans.find((plan) => plan.trialDays)?.trialDays ?? 14;
 }

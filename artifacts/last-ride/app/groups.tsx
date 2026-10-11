@@ -8,7 +8,7 @@ import { Card, PremiumTag, PrimaryButton, SecondaryButton } from '@/components/u
 import { DIGITS } from '@/constants/type';
 import { useGroups, type GroupEntry } from '@/context/GroupsContext';
 import { useLastRide } from '@/context/LastRideContext';
-import { usePremium } from '@/context/PremiumContext';
+import { trialLabel, usePremium, useTrialDays } from '@/context/PremiumContext';
 import { useColors } from '@/hooks/useColors';
 import { formatJstTime } from '@/lib/time';
 
@@ -87,6 +87,7 @@ export default function GroupsScreen() {
   const { language } = useLastRide();
   const { groups, loading, available } = useGroups();
   const { isPremium } = usePremium();
+  const trialDays = useTrialDays();
   const ja = language !== 'en';
   const empty = groups.length === 0;
 
@@ -143,7 +144,7 @@ export default function GroupsScreen() {
               </Card>
             </View>
             <PrimaryButton
-              label={isPremium ? (ja ? 'グループを作る' : 'Create a group') : ja ? '1週間無料でグループを作る' : 'Create a group — try a week free'}
+              label={isPremium ? (ja ? 'グループを作る' : 'Create a group') : ja ? `${trialLabel(trialDays, true)}でグループを作る` : `Create a group — ${trialLabel(trialDays, false)}`}
               onPress={() => goCreateGroup(isPremium)}
               testID="groups-create"
             />

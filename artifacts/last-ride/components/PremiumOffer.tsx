@@ -5,7 +5,7 @@ import React, { useEffect, useState } from 'react';
 import { Alert, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { PrimaryButton, TextButton } from '@/components/ui';
 import { DIGITS } from '@/constants/type';
-import { usePremium, type PlanChoice } from '@/context/PremiumContext';
+import { trialLabel, usePremium, type PlanChoice } from '@/context/PremiumContext';
 import { useColors } from '@/hooks/useColors';
 
 type IconName = React.ComponentProps<typeof Feather>['name'];
@@ -27,11 +27,7 @@ export function premiumFeatures(ja: boolean): Array<{ icon: IconName; title: str
   ];
 }
 
-function trialText(days: number | null, ja: boolean) {
-  if (!days) return null;
-  if (ja) return days === 7 ? '1週間無料' : `${days}日間無料`;
-  return days === 7 ? '1 week free' : `${days} days free`;
-}
+const trialText = trialLabel;
 
 /** Paywall body shared by the paywall and the one-time trial offer. */
 export function PremiumOffer({
