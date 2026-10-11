@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { kanaToRomaji } from "../src/lib/romaji";
 
 /**
- * NAVITIME and Ekispert return Japanese names with a kana reading; English mode
- * shows these romanized. The target is what station signs print, not strict
+ * Station search converts kana queries to romaji to match the snapshot's
+ * English station names. The target is what station signs print, not strict
  * Hepburn: long vowels are dropped rather than marked.
  */
 describe("kanaToRomaji", () => {

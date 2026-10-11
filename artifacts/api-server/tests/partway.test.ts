@@ -1,134 +1,110 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ProviderError } from "../src/lib/cache";
-import {
-  searchDepartureTrain,
-  searchTrain,
-  stationByCode,
-} from "../src/lib/ekispert";
-import { taxiEstimate } from "../src/lib/navitime";
-import {
-  findPartwayTrainTaxi,
-  partwayCandidateStops,
-} from "../src/lib/partway";
+/**
+ * Train partway, then taxi, on the fixture snapshot (渋谷 → 押上, changing
+ * at 大手町). The last through connection leaves 渋谷 at 23:50; the 24:00
+ * still reaches 表参道 and 大手町 but misses the last Toei train.
+ */
+import { rm } from "node:fs/promises";
+import path from "node:path";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { taxiEstimate } from "../src/lib/estimates";
+import { findPartwayTrainTaxi, partwayCandidateStops } from "../src/lib/partway";
+import { filterLicensedOperators, matchStations, resetTimetableEngine } from "../src/lib/timetableEngine";
+import { lastTrainBetween } from "../src/lib/transit/snapshot";
+import { fixtureSnapshot, STATION, writeFixtureSnapshot } from "./helpers/transitFixture";
 
-vi.mock("../src/lib/ekispert", () => ({
-  searchTrain: vi.fn(),
-  searchDepartureTrain: vi.fn(),
-  stationByCode: vi.fn(),
-}));
-vi.mock("../src/lib/navitime", () => ({ taxiEstimate: vi.fn() }));
+const from = { name: "渋谷", latitude: STATION.shibuya.lat, longitude: STATION.shibuya.lon };
+const to = { name: "押上", latitude: STATION.oshiage.lat, longitude: STATION.oshiage.lon };
 
-const route = {
-  stopRefs: [
-    { code: "1", name: "渋谷", nameEn: "Shibuya" },
-    { code: "2", name: "新宿", nameEn: "Shinjuku" },
-    { code: "3", name: "中野", nameEn: "Nakano" },
-    { code: "4", name: "吉祥寺", nameEn: "Kichijoji" },
-    { code: "5", name: "三鷹", nameEn: "Mitaka" },
-  ],
-};
+let fixturePath: string;
+const savedPath = process.env.TRANSIT_SNAPSHOT_PATH;
+
+beforeAll(async () => {
+  fixturePath = await writeFixtureSnapshot();
+  process.env.TRANSIT_SNAPSHOT_PATH = fixturePath;
+  resetTimetableEngine();
+});
+afterAll(async () => {
+  if (savedPath === undefined) delete process.env.TRANSIT_SNAPSHOT_PATH;
+  else process.env.TRANSIT_SNAPSHOT_PATH = savedPath;
+  resetTimetableEngine();
+  await rm(path.dirname(fixturePath), { recursive: true, force: true });
+});
 
 describe("partway train candidates", () => {
-  it("tries the farthest intermediate stop first", () => {
-    expect(
-      partwayCandidateStops(route, "渋谷", "三鷹").map((stop) => stop.name),
-    ).toEqual(["吉祥寺", "中野", "新宿"]);
+  const snapshot = filterLicensedOperators(fixtureSnapshot);
+  const journey = lastTrainBetween(
+    snapshot,
+    "2026-10-09",
+    matchStations(snapshot, from),
+    matchStations(snapshot, to),
+  )!;
+
+  it("lists the stops along the route, farthest first, without the ends", () => {
+    expect(partwayCandidateStops(journey, "渋谷", "押上").map((stop) => stop.nameJa)).toEqual([
+      "日本橋",
+      "大手町",
+      "表参道",
+    ]);
   });
 
-  it("excludes provider-decorated origin and destination names", () => {
+  it("excludes decorated origin and destination names", () => {
     expect(
-      partwayCandidateStops(route, "渋谷(東京都)", "三鷹（東京都）").map(
-        (stop) => stop.name,
-      ),
-    ).toEqual(["吉祥寺", "中野", "新宿"]);
+      partwayCandidateStops(journey, "渋谷駅", "押上（スカイツリー前）").map((stop) => stop.nameJa),
+    ).toEqual(["日本橋", "大手町", "表参道"]);
   });
 
-  it("caps paid route-search attempts", () => {
-    const many = {
-      stopRefs: Array.from({ length: 12 }, (_, index) => ({
-        code: String(index),
-        name: `駅${index}`,
-        nameEn: `Station ${index}`,
-      })),
-    };
-    expect(partwayCandidateStops(many, "駅0", "駅11")).toHaveLength(4);
+  it("caps the number of attempts", () => {
+    expect(partwayCandidateStops(journey, "渋谷", "押上", 2)).toHaveLength(2);
   });
 });
 
 describe("partway train + taxi search", () => {
-  const from = { name: "渋谷", latitude: 35.658, longitude: 139.701 };
-  const to = { name: "三鷹", latitude: 35.702, longitude: 139.56 };
-  const train = (arrivesAt: string) => ({
-    departsAt: "2026-10-03T00:10:00+09:00",
-    arrivesAt,
-    transfers: 0,
-    fareYen: 300,
-    legs: [],
-    stopRefs: [],
-  });
-
-  beforeEach(() => {
-    vi.mocked(searchTrain).mockReset().mockResolvedValue({
-      ...train("2026-10-03T00:30:00+09:00"),
-      stopRefs: route.stopRefs,
-    });
-    // First call: the full rail route is gone. Later calls: partway trains.
-    vi.mocked(searchDepartureTrain)
-      .mockReset()
-      .mockResolvedValueOnce(null)
-      .mockResolvedValue(train("2026-10-03T00:40:00+09:00"));
-    vi.mocked(stationByCode)
-      .mockReset()
-      .mockImplementation(async (stop) => ({
-        code: stop.code,
-        name: stop.name,
-        latitude: 35.7,
-        longitude: 139.6,
-      }));
-    vi.mocked(taxiEstimate)
-      .mockReset()
-      .mockResolvedValue({ distanceMeters: 4_000, minutes: 12, fareYen: 2_000 });
-  });
-
-  const search = () =>
+  const search = (earliestBoard = "2026-10-09T23:55:00+09:00") =>
     findPartwayTrainTaxi({
       from,
       to,
-      taxiTo: to,
-      serviceDate: "20261002",
-      earliestBoardAtMs: Date.parse("2026-10-03T00:05:00+09:00"),
+      taxiTo: { latitude: STATION.oshiage.lat, longitude: STATION.oshiage.lon },
+      serviceDate: "20261009",
+      earliestBoardAtMs: Date.parse(earliestBoard),
     });
 
-  it("stops at the first workable candidate, making one set of paid calls", async () => {
+  it("rides to the farthest reachable stop and estimates one taxi from there", async () => {
     const option = await search();
 
-    expect(option?.taxiFrom.nameJa).toBe("吉祥寺");
-    expect(option?.totalFareYen).toBe(2_300);
-    expect(searchTrain).toHaveBeenCalledTimes(1);
-    // One full-route check plus one partway search for the first candidate.
-    expect(searchDepartureTrain).toHaveBeenCalledTimes(2);
-    expect(stationByCode).toHaveBeenCalledTimes(1);
-    expect(taxiEstimate).toHaveBeenCalledTimes(1);
+    // 日本橋 is unreachable by train, so the taxi starts at 大手町.
+    expect(option?.taxiFrom).toEqual({
+      name: "Otemachi",
+      nameJa: "大手町",
+      latitude: STATION.otemachiMetro.lat,
+      longitude: STATION.otemachiMetro.lon,
+    });
+    expect(option?.train.departsAt).toBe("2026-10-10T00:00:00+09:00");
+    expect(option?.train.arrivesAt).toBe("2026-10-10T00:20:00+09:00");
+    expect(option?.train.legs[0].line).toBe("東京メトロ半蔵門線");
+    expect(option?.totalFareYen).toBeNull();
+    // Priced at the train's arrival time (00:20, so with the late-night surcharge).
+    expect(option?.taxi).toEqual(
+      taxiEstimate(
+        { latitude: STATION.otemachiMetro.lat, longitude: STATION.otemachiMetro.lon },
+        { latitude: STATION.oshiage.lat, longitude: STATION.oshiage.lon },
+        "2026-10-10T00:20:00",
+      ),
+    );
+    expect(option?.taxi.fareYen).toBeGreaterThan(0);
   });
 
-  it("moves on when a candidate's provider call fails", async () => {
-    vi.mocked(taxiEstimate)
-      .mockReset()
-      .mockRejectedValueOnce(new ProviderError("NAVITIME responded 503"))
-      .mockResolvedValue({ distanceMeters: 6_000, minutes: 15, fareYen: 2_800 });
-
-    const option = await search();
-
-    expect(option?.taxiFrom.nameJa).toBe("中野");
-    expect(taxiEstimate).toHaveBeenCalledTimes(2);
+  it("returns nothing while the full rail route can still be caught", async () => {
+    expect(await search("2026-10-09T23:45:00+09:00")).toBeNull();
   });
 
-  it("surfaces the provider error when no candidate works", async () => {
-    vi.mocked(taxiEstimate)
-      .mockReset()
-      .mockRejectedValue(new ProviderError("NAVITIME responded 503"));
-
-    await expect(search()).rejects.toBeInstanceOf(ProviderError);
-    expect(taxiEstimate).toHaveBeenCalledTimes(3);
+  it("returns nothing for stations the engine doesn't cover", async () => {
+    const option = await findPartwayTrainTaxi({
+      from: { name: "吉祥寺", latitude: 35.7031, longitude: 139.5798 },
+      to,
+      taxiTo: { latitude: STATION.oshiage.lat, longitude: STATION.oshiage.lon },
+      serviceDate: "20261009",
+      earliestBoardAtMs: Date.parse("2026-10-09T23:55:00+09:00"),
+    });
+    expect(option).toBeNull();
   });
 });

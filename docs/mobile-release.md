@@ -154,8 +154,9 @@ they open in the browser instead.
 ## Before store submission
 
 - Confirm the privacy-policy repository contact is replaced with the production support/privacy channel if one is available.
-- Use licensed production Ekispert credentials.
-- Confirm the chosen replacement/contract for NAVITIME-backed routing.
+- Show the ODPT data notices in the app (source 公共交通オープンデータセンター, no accuracy guarantee, app contact, Toei CC BY credit; see `docs/last-train-engine.md`).
+- Deploy with a current timetable snapshot (rebuild after the March timetable changes).
+- Verify Apple MapKit station search, walking and driving times on a physical iPhone, and the server's ODPT/estimate fallbacks on Android.
 - Apply production DB migrations.
 - Verify organizer OTP login and push notifications on physical devices.
 - Verify background tracking on both iOS and Android.

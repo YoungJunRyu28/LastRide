@@ -39,7 +39,7 @@ export function formatJstTime(ms: number): string {
   return `${pad(hours)}:${pad(minutes)}`;
 }
 
-/** Japan local date-time without offset, "YYYY-MM-DDThh:mm:ss" — the format NAVITIME expects. */
+/** Japan local date-time without offset, "YYYY-MM-DDThh:mm:ss" (the API's taxi `startTime` format). */
 export function formatJstDateTime(ms: number): string {
   const { year, month, day, hours, minutes } = jstParts(ms);
   return `${year}-${pad(month + 1)}-${pad(day)}T${pad(hours)}:${pad(minutes)}:00`;

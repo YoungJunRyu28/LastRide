@@ -1,6 +1,7 @@
 /**
  * Train timetable lookups. This is the only place the app gets last/first
- * train times from. Real times come from the LastRide API server (駅すぱあと API);
+ * train times from. Real times come from the LastRide API server (its ODPT
+ * timetable) and, on iOS, Apple Maps for routes ODPT doesn't cover;
  * in development builds with no server it falls back to fixed sample times
  * flagged `source: 'sample'`, which the UI labels so they are never mistaken
  * for a real schedule. Production builds never use sample times: without a
@@ -35,6 +36,8 @@ export type TrainTime = {
   legs?: TrainLeg[];
   /** 'apple': MapKit transit ETA — times only, no legs, line or fare. */
   source: 'sample' | 'live' | 'apple';
+  /** Apple's answer may be a walk rather than a train (see lib/appleTransit.ts); shown as 目安. */
+  approximate?: boolean;
 };
 
 const SAMPLE_LAST_TRAIN = '23:52';
@@ -78,37 +81,69 @@ async function lookup(request: () => Promise<TrainRoute>): Promise<TrainTime | n
   }
 }
 
+/**
+ * Asks the server (LastRide's ODPT timetable) first: exact times with lines,
+ * for the operators it covers. A route it doesn't cover (404), or a server
+ * that can't be reached, goes to Apple Maps where available. Returns
+ * `undefined` when the server couldn't answer at all, `null` for "no route".
+ */
+async function fromServer(request: () => Promise<TrainRoute>): Promise<TrainTime | null | undefined> {
+  if (!apiBaseUrl) return undefined;
+  try {
+    return await lookup(request);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * ODPT covers only some operators, so its route can be earlier than one on JR
+ * or a private railway (渋谷→池袋: 00:08 on the 副都心線, 00:33 on JR). Apple's
+ * answer wins when it is later — unless it may be a walk (目安): then the exact
+ * ODPT time stays, since leaving too early is the safe mistake.
+ */
+export function laterLastTrain(server: TrainTime, apple: TrainTime | null): TrainTime {
+  return apple && !apple.approximate && apple.departsAt > server.departsAt ? apple : server;
+}
+
+/** Same for the first train: Apple's wins when it is earlier and not 目安. */
+export function earlierFirstTrain(server: TrainTime, apple: TrainTime | null): TrainTime {
+  return apple && !apple.approximate && apple.departsAt < server.departsAt ? apple : server;
+}
+
 /** The last departure from `from` tonight that still reaches `to`, or null if no train goes there. */
 export async function getLastTrain(from: StationOption, to: StationOption, nowMs: number): Promise<TrainTime | null> {
-  if (appleTransitEnabled) {
-    const apple = await appleLastTrain(from, to, nowMs).catch(() => null);
-    if (apple) return apple;
-  }
+  const [server, apple] = await Promise.all([
+    fromServer(() => fetchLastTrain(toParams(from, to, nowMs))),
+    appleTransitEnabled ? appleLastTrain(from, to, nowMs).catch(() => null) : Promise.resolve(null),
+  ]);
+  if (server) return laterLastTrain(server, apple);
+  if (apple) return apple;
+  if (server === null) return null;
   if (!apiBaseUrl) {
     requireServer();
     return { departsAt: serviceTimeToMs(SAMPLE_LAST_TRAIN, nowMs), source: 'sample' };
   }
-  return lookup(() => fetchLastTrain(toParams(from, to, nowMs)));
+  throw new Error('Train times are unavailable right now.');
 }
 
 /** The next first train from `from` toward `to` after `nowMs`, or null if no train goes there. */
 export async function getFirstTrain(from: StationOption, to: StationOption, nowMs: number): Promise<TrainTime | null> {
-  if (appleTransitEnabled) {
-    const apple = await appleFirstTrain(from, to, nowMs).catch(() => null);
-    if (apple) return apple;
-  }
+  // Usually today's first train has already left, so this is the next service day's.
+  const nextServiceDay = serviceDayStart(nowMs) + 24 * 60 * 60 * 1000;
+  let server = await fromServer(() => fetchFirstTrain(toParams(from, to, nowMs)));
+  if (server && server.departsAt <= nowMs) server = await fromServer(() => fetchFirstTrain(toParams(from, to, nextServiceDay)));
+  const apple = appleTransitEnabled ? await appleFirstTrain(from, to, nowMs).catch(() => null) : null;
+  if (server) return earlierFirstTrain(server, apple);
+  if (apple) return apple;
+  if (server === null) return null;
   if (!apiBaseUrl) {
     requireServer();
     return { departsAt: nextOccurrence(SAMPLE_FIRST_TRAIN, nowMs), source: 'sample' };
   }
-  // Usually today's first train has already left, so this is the next service day's.
-  const today = await lookup(() => fetchFirstTrain(toParams(from, to, nowMs)));
-  if (today && today.departsAt > nowMs) return today;
-  const nextServiceDay = serviceDayStart(nowMs) + 24 * 60 * 60 * 1000;
-  return lookup(() => fetchFirstTrain(toParams(from, to, nextServiceDay)));
+  throw new Error('Train times are unavailable right now.');
 }
 
-/** Short line name for display: "ＪＲ山手線外回り・新宿・池袋方面" → "ＪＲ山手線外回り". */
 export function shortLineName(line: string): string {
   return line.split('・')[0];
 }

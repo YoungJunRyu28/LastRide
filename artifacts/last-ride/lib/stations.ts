@@ -2,12 +2,14 @@
  * Shared station/geo helpers usable from both React context and the
  * background-location task (which runs headless, without React).
  *
- * Stations and walking times come from the LastRide API server (NAVITIME) when
- * it is available, falling back to free OpenStreetMap services otherwise.
+ * Stations and walking times come from Apple Maps on iOS (lib/applePlaces.ts),
+ * then the LastRide API server (ODPT stations, distance-based walking), then —
+ * in development only — free OpenStreetMap services.
  */
 import { getNearbyStations, getWalkRoute } from "@workspace/api-client-react";
 import { apiBaseUrl, communityFallbacksEnabled } from "@/lib/api";
 import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
+import { appleNearbyStations, appleWalkingRoute } from "@/lib/applePlaces";
 
 export type Coordinates = { latitude: number; longitude: number };
 
@@ -112,15 +114,18 @@ function stationsQuery(
 }
 
 /**
- * The closest distinct stations to `coordinates`, nearest first. From the API
- * server they come with walking routes already worked out; the OpenStreetMap
- * fallback is ordered by straight-line distance and has no walk.
+ * The closest distinct stations to `coordinates`, nearest first, with walking
+ * routes: from Apple Maps on iOS, otherwise the API server (ODPT stations,
+ * which miss JR and private railways). The OpenStreetMap fallback
+ * (development only) is ordered by straight-line distance and has no walk.
  */
 export async function findNearbyStations(
   coordinates: Coordinates,
   walkingSpeed: WalkingSpeed,
   limit = 3,
 ): Promise<NearbyStation[]> {
+  const apple = await appleNearbyStations(coordinates, walkingSpeed, limit).catch(() => null);
+  if (apple && apple.length > 0) return apple;
   if (apiBaseUrl) {
     try {
       const stations = await getNearbyStations({
@@ -224,8 +229,9 @@ function distinctStations(
 }
 
 /**
- * Walking distance and time: from the API server (NAVITIME) when available,
- * then the free OpenStreetMap router, then a straight-line estimate.
+ * Walking distance and time: Apple Maps on iOS, then the API server's
+ * estimate, then (development only) the OpenStreetMap router, then a
+ * straight-line estimate.
  */
 export async function walkingRoute(
   from: Coordinates,
@@ -233,6 +239,8 @@ export async function walkingRoute(
   walkingSpeed: WalkingSpeed,
 ): Promise<WalkingRoute> {
   const multiplier = SPEED_MULTIPLIER[walkingSpeed];
+  const apple = await appleWalkingRoute(from, to, walkingSpeed).catch(() => null);
+  if (apple) return apple;
   if (apiBaseUrl) {
     try {
       const route = await getWalkRoute({

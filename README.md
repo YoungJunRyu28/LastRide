@@ -21,8 +21,8 @@ move during the evening the plan follows you, and reminders are rescheduled.
   time to go, and once more just after the last train has gone, in case you
   missed it. They run while night-out tracking is on, which switches itself off
   once the night's alerts are done.
-- **If missed** — the first train and its route, a taxi estimate with regional
-  late-night rates, walking home when it's close, and net cafés, karaoke,
+- **If missed** — the first train and its route, a taxi estimate with the
+  late-night surcharge, walking home when it's close, and net cafés, karaoke,
   capsule hotels and hotels nearby, compared by what you'd pay and when you'd
   get home.
 - **LastRide for Business** — organizers can create a nomikai event and share
@@ -37,11 +37,17 @@ move during the evening the plan follows you, and reminders are rescheduled.
   every leave-by is deleted when the night ends at 08:00 JST.
 - Japanese and English throughout, including romanized station and line names.
 
-Times come from [駅すぱあと API](https://api-info.ekispert.com/) (real
-timetables, including weekends and holidays) and stations, walking routes, taxi
-estimates and places from [NAVITIME](https://api-sdk.navitime.co.jp/api/) via
-RapidAPI. Both are called by the API server in this repo, so provider keys stay off
-people's phones and answers are cached. Production builds require an HTTPS API
+Train times come from LastRide's own timetable engine on the API server, built
+from [ODPT](https://www.odpt.org/) open data (Tokyo Metro, Toei, Tsukuba
+Express, Rinkai Line, Tama Monorail, Yokohama Municipal Subway; weekends and
+holidays included, see [docs/last-train-engine.md](docs/last-train-engine.md)).
+For trips on other railways (JR, private lines) the iOS app asks Apple Maps on
+the phone. On iOS, station search, nearby stations, walking routes, addresses,
+places and driving times come from Apple MapKit on the device. The API server
+answers the same endpoints for Android and as a fallback without any paid
+provider: stations from the ODPT snapshot (subway and other licensed operators
+only), walking and taxi as straight-line estimates, and no places or addresses.
+Production builds require an HTTPS API
 origin and keep public OpenStreetMap/Photon community fallbacks disabled by
 default; those fallbacks remain available only for development or explicitly
 opted-in test builds.

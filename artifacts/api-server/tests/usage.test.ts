@@ -16,8 +16,8 @@ import {
   type Provider,
 } from "../src/lib/usage";
 
-const TEST_PROVIDER = "navitime-transport" as Provider;
-const LIMIT_ENV = "NAVITIME_TRANSPORT_MONTHLY_LIMIT";
+const TEST_PROVIDER: Provider = "test-provider";
+const LIMIT_ENV = "TEST_PROVIDER_MONTHLY_LIMIT";
 
 async function clearTestUsage() {
   await getDb()

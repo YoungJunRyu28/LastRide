@@ -28,6 +28,7 @@ import { recommendedLeaveTime } from "@/lib/reliability";
 import {
   buildReminderPlans,
   nightEndsAt,
+  freshPlanNightOf,
   planNight,
   repick,
   rideStatus,
@@ -71,6 +72,7 @@ import {
 import { getFirstTrain, type TrainTime } from "@/lib/timetable";
 import { endLiveActivity, syncLiveActivity } from "@/lib/liveActivity";
 import { usePremium } from "@/context/PremiumContext";
+import { appleSearchAddresses, appleSearchStations } from "@/lib/applePlaces";
 import { syncWidgets } from "@/lib/widgets";
 import {
   clearTrackingSnapshot,
@@ -247,13 +249,15 @@ type PhotonFeature = {
 };
 
 /**
- * Searches Japanese railway stations by name. Japanese/kana queries go to the
- * API server (NAVITIME); romaji queries — and any server failure — use the
- * Photon geocoder (OSM data), which also understands English names.
+ * Searches Japanese railway stations by name: Apple Maps on iOS, then the API
+ * server (ODPT stations — subways only), then in development the Photon
+ * geocoder (OSM data), which also understands English names.
  */
 export async function searchStations(query: string): Promise<StationOption[]> {
   const trimmed = query.trim();
   if (trimmed.length < 2) return [];
+  const apple = await appleSearchStations(trimmed).catch(() => null);
+  if (apple && apple.length > 0) return apple;
   if (apiBaseUrl) {
     try {
       const stations = await searchStationsApi({ q: trimmed });
@@ -343,10 +347,13 @@ async function searchStationsPhoton(trimmed: string): Promise<StationOption[]> {
   return options.slice(0, 8);
 }
 
-/** Searches Japanese addresses through the API server; empty when no server is configured. */
+/** Searches Japanese addresses: Apple Maps on iOS; the API server otherwise (currently returns none). */
 export async function searchAddresses(query: string): Promise<HomeAddress[]> {
   const trimmed = query.trim();
-  if (trimmed.length < 2 || !apiBaseUrl) return [];
+  if (trimmed.length < 2) return [];
+  const apple = await appleSearchAddresses(trimmed).catch(() => null);
+  if (apple) return apple;
+  if (!apiBaseUrl) return [];
   const results = await searchAddressesApi({ q: trimmed });
   return results.map((address) => ({
     label: address.name,
@@ -538,19 +545,26 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
   const firstTrainKey = plan
     ? `${plan.station.nameJa}|${serviceDate(plan.lastTrain.departsAt)}`
     : null;
+  /** Which firstTrainKey `firstTrain` was looked up for; differs while a lookup is in flight. */
+  const [firstTrainFor, setFirstTrainFor] = useState<string | null>(null);
   useEffect(() => {
     const station = planRef.current?.station;
     if (!station || !homeStationOption) {
       setFirstTrain(null);
+      setFirstTrainFor(firstTrainKey);
       return;
     }
     let cancelled = false;
     getFirstTrain(station, homeStationOption, getNow())
       .then((train) => {
-        if (!cancelled) setFirstTrain(train);
+        if (cancelled) return;
+        setFirstTrain(train);
+        setFirstTrainFor(firstTrainKey);
       })
       .catch(() => {
-        if (!cancelled) setFirstTrain(null);
+        if (cancelled) return;
+        setFirstTrain(null);
+        setFirstTrainFor(firstTrainKey);
       });
     return () => {
       cancelled = true;
@@ -558,7 +572,11 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
   }, [firstTrainKey, homeStationOption, getNow]);
 
   // The night is over once the first train has left (not before 04:00).
-  const nightEnd = plan ? nightEndsAt(plan, firstTrain) : null;
+  const nightEnd = plan
+    ? nightEndsAt(plan, firstTrain, {
+        firstTrainPending: firstTrainFor !== firstTrainKey,
+      })
+    : null;
   const nightEndRef = useRef(nightEnd);
   nightEndRef.current = nightEnd;
 
@@ -831,9 +849,11 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       const now = getNow();
       // Until tonight is over, keep planning for it: someone waiting for the first
       // train at 04:30 should still see tonight, not tomorrow night.
+      // Without a plan yet (first open after 04:00), freshPlanNightOf decides.
       const current = planRef.current;
-      const nightOf =
-        current && nightEndRef.current !== null && now < nightEndRef.current
+      const nightOf = !current
+        ? freshPlanNightOf(now)
+        : nightEndRef.current !== null && now < nightEndRef.current
           ? current.lastTrain.departsAt
           : now;
       return planNight(coordinates, home, speed, now, {

@@ -1,15 +1,14 @@
 # LastRide's own last-train engine
 
-LastRide normally asks a provider for "the last train from A to B". Timetable
-search from the commercial providers (駅すぱあと, NAVITIME, ジョルダン) is
-licensed separately and is expensive, so this engine answers the same question
-from raw timetables we can hold ourselves: ODPT open data today, and
-nationwide GTFS (e.g. 交通新聞社) later.
+Timetable search from the commercial providers (駅すぱあと, NAVITIME,
+ジョルダン) is licensed separately and is expensive, so LastRide answers "the
+last train from A to B" from raw timetables it holds itself: ODPT open data
+today, and nationwide GTFS (e.g. 交通新聞社) later if licensed.
 
-It is **not yet allowed to serve API answers**. It can, however, run in
-optional shadow mode beside Ekispert so we can measure accuracy before any
-traffic switch. Without a configured shadow snapshot the running server does
-nothing differently.
+**This engine serves the API's train endpoints** (`/api/trains/last`,
+`/api/trains/first`, `/api/trains/partway`). Ekispert is no longer used. A
+trip the engine doesn't cover (JR, private railways, outside Tokyo) answers
+404, and the iOS app then asks Apple Maps on the phone.
 
 ## How it works
 
@@ -25,7 +24,18 @@ Code: `artifacts/api-server/src/lib/transit/`.
 | `importers/gtfs.ts` | GTFS / GTFS-JP (JR East publishes its timetable on ODPT in this format). Platforms merge into stations; English names come from `translations.txt`.                                                                                                  |
 | `snapshot.ts`       | Writing and reading the gzipped snapshot, finding stations by name (Japanese or English), and `lastTrainBetween` / `firstTrainBetween` returning epoch times.                                                                                        |
 
-Tests: `tests/transit.test.ts`, `tests/transitImporters.test.ts` and `tests/transitShadow.test.ts`.
+Serving it: `src/lib/timetableEngine.ts` loads the snapshot once per process,
+drops unlicensed operators, matches the app's stations and converts journeys
+to the API's `TrainRoute`; `src/lib/partway.ts` (train partway + taxi, the
+taxi being a straight-line estimate from `src/lib/estimates.ts`),
+`src/lib/odptStations.ts` (`/api/stations/search` and `/api/stations/nearby`:
+the snapshot's stations, so subway/licensed operators only) and
+`src/lib/trainInformation.ts` (live operation information from ODPT
+`odpt:TrainInformation`) build on it.
+
+Tests: `tests/transit.test.ts`, `tests/transitImporters.test.ts`,
+`tests/timetableEngine.test.ts`, `tests/partway.test.ts` and
+`tests/trainsRoute.test.ts`.
 
 ## Building and querying a snapshot
 
@@ -47,6 +57,44 @@ pnpm run transit:last-train -- --from Akihabara --to Tsukuba --date 2026-10-09 -
 none is not in ODPT's public data dump.
 The snapshot goes to `data/` (git-ignored: it is provider data).
 
+## Serving it
+
+- **Where the server finds the snapshot:** `TRANSIT_SNAPSHOT_PATH` (the old
+  `TRANSIT_SHADOW_SNAPSHOT_PATH` still works), otherwise
+  `transit-snapshot.json.gz` next to the server bundle (`dist/`), otherwise
+  `data/transit-snapshot.json.gz` under the working directory. If none can be
+  read, train endpoints answer 503, `/api/readyz` reports not-ready, and the
+  error is logged.
+- **Packaging:** `pnpm run build` (build.mjs) copies
+  `data/transit-snapshot.json.gz` (or `TRANSIT_SNAPSHOT_PATH`) into `dist/`,
+  which is the Lambda package. Without a snapshot it only warns, so CI builds
+  work; `infra/deploy.sh` checks it exists and builds with
+  `REQUIRE_TRANSIT_SNAPSHOT=1`, which fails the build if it is missing or
+  unreadable. So **build the snapshot on the deploying machine before
+  deploying.**
+- **Keeping it current:** timetables change, most of all at the March
+  timetable revision (ダイヤ改正), and operators also change them at other
+  times. Rebuild with `pnpm run transit:build` and redeploy after each
+  revision; the build prints the snapshot's age.
+- **Licensing at load time:** `LICENSED_OPERATORS` in
+  `src/lib/timetableEngine.ts` lists the operators from the table below that
+  may be used commercially. Anything else in a snapshot is dropped when it is
+  loaded: the current snapshot also contains Yurikamome's stations, which is
+  not in the table and so is never served. Keep the constant and the table in
+  step.
+- **Matching stations:** the app's station names come from other sources, so
+  the Japanese name is tried first (ignoring "駅" and bracketed alternate
+  names) among stations within 2 km of the given coordinates, then the nearest
+  snapshot station within 400 m, with the other operators' platforms of that
+  station.
+- **Answers:** line names get their operator in front (都営新宿線,
+  東京メトロ半蔵門線, 横浜市営地下鉄ブルーライン), walks between operators'
+  platforms are part of a change rather than a leg, and `fareYen` is always
+  null (ODPT has no fares for these operators).
+- **Operation information:** `/api/trains/disruptions` reads ODPT
+  `odpt:TrainInformation` for the licensed operators with `ODPT_KEY`, cached
+  for a minute; no key or an ODPT failure gives an empty list.
+
 ## What the data covers (checked October 2026)
 
 | Operator                                                   | Trains  | Licence                                        | Usable commercially       |
@@ -58,6 +106,7 @@ The snapshot goes to `data/` (git-ignored: it is provider data).
 | Tama Monorail                                              | ~470    | 基本ライセンス                                 | Yes, with notices         |
 | Yokohama Municipal Subway                                  | ~1,300  | 基本ライセンス                                 | Yes, with notices         |
 | JR East, Tokyu, Odakyu, Keio, Keikyu, Seibu, Tobu, Sotetsu | —       | 公共交通オープンデータチャレンジ限定ライセンス | **No** (contest use only) |
+| Yurikamome (in the snapshot, stations only)                | —       | not checked                                    | **No** until checked: dropped at load |
 
 The Basic Licence allows commercial and non-commercial use on three
 conditions. The app must show that the data comes from 公共交通オープンデータセンター,
@@ -90,40 +139,15 @@ last-train search:
 Where both use the same operators the times match to the minute; every
 difference is JR or a private railway that is missing from the data.
 
-## Shadow mode against Ekispert
+## Still to do
 
-Set `TRANSIT_SHADOW_SNAPSHOT_PATH` on a development or staging API server to
-the path of a built `.json.gz` snapshot. Each last-train request still returns
-the Ekispert answer, but the server also evaluates the same named origin and
-destination with LastRide's engine when both stations exist in the snapshot.
-
-The comparison log contains only:
-
-- whether each engine found a route;
-- departure-time delta in minutes;
-- arrival-time delta in minutes;
-- transfer-count delta.
-
-It deliberately does **not** log station names, coordinates, route legs,
-destination, or service date. A missing/malformed snapshot or a station outside
-the open-data coverage never changes the user response.
-
-Use staging shadow results to build a route/date regression corpus before
-enabling this engine as a serving provider.
-
-## Before using it in production
-
-1. **Licences and notices.** Use only the operators in the table above, and
-   show the notices their licences require in the app (data source, no
-   accuracy guarantee, contact, Toei credit). Re-check the catalogue when
-   adding operators.
-2. **Accuracy.** While the 駅すぱあと evaluation key works (to end of November
-   2026), compare the engine with it on 20–30 real routes, weekday and
-   weekend. Watch interchange times at big stations; `transfers.ts` estimates
-   them from distance.
-3. **Coverage.** ODPT covers the Tokyo area only. Outside it, the app needs
-   another source or an "area not supported" message.
-4. **Wiring.** Load the snapshot at server start (from S3 or the deployment
-   bundle), serve `/api/trains` from `lastTrainBetween` behind a feature
-   switch, and rebuild the snapshot on a schedule (timetables change, usually
-   in March).
+1. **Notices.** Show the notices the licences require in the app (data
+   source 公共交通オープンデータセンター, no accuracy guarantee, app contact,
+   Toei credit). Re-check the catalogue when adding operators.
+2. **Accuracy.** The table above matches 駅すぱあと to the minute on the
+   operators we have. Watch interchange times at big stations;
+   `transfers.ts` estimates them from distance.
+3. **Coverage.** ODPT covers the Tokyo area only, and without JR and the
+   private railways; the app relies on Apple Maps (iOS) for everything else.
+4. **Refresh.** Rebuilding the snapshot is manual (see "Serving it");
+   automate it if timetable changes are missed.

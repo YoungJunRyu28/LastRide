@@ -49,4 +49,10 @@ describe("widgetTimeline", () => {
     expect(entries).toHaveLength(1);
     expect(entries[0].props.kind).toBe("message");
   });
+
+  test("marks an approximate (Apple, maybe-walking) last train as 目安", () => {
+    const approx = { ...plan, lastTrain: { ...plan.lastTrain, source: "apple" as const, approximate: true } };
+    const entries = widgetTimeline(approx, "自宅", "ja", jst(23, 0));
+    expect(entries[0].props.inline).toBe("23:37 出発 · 終電 23:52（目安）");
+  });
 });

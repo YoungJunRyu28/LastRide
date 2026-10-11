@@ -102,7 +102,7 @@ export function widgetTimeline(
     return [{ date: new Date(nowMs), props: widgetMessage(language, "ended") }];
 
   const leave = formatJstTime(leaveAt);
-  const lastTrain = formatJstTime(lastTrainAt);
+  const lastTrain = `${formatJstTime(lastTrainAt)}${plan.lastTrain.approximate ? (ja ? "（目安）" : " (approx.)") : ""}`;
   const station = ja ? plan.station.nameJa : plan.station.name;
   const arriveMs = plan.arriveHomeMs ?? plan.lastTrain.arrivesAt;
   const arrivalStation = ja ? plan.destination.nameJa : plan.destination.name;

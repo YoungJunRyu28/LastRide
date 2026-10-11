@@ -76,13 +76,26 @@ if [[ "$STAGE" == "production" ]]; then
   echo "Deploying production from origin/main at $HEAD_SHA."
 fi
 
+# Train times are served from the ODPT timetable snapshot bundled into the
+# Lambda package (git-ignored provider data). Check it before anything mutates;
+# the build below fails too (REQUIRE_TRANSIT_SNAPSHOT=1) if it is unusable.
+TRANSIT_SNAPSHOT="${TRANSIT_SNAPSHOT_PATH:-artifacts/api-server/data/transit-snapshot.json.gz}"
+if [[ ! -s "$TRANSIT_SNAPSHOT" ]]; then
+  echo "Timetable snapshot not found at $TRANSIT_SNAPSHOT." >&2
+  echo "Build it first (needs ODPT_KEY in artifacts/api-server/.env):" >&2
+  echo "  cd artifacts/api-server && set -a; . ./.env; set +a; pnpm run transit:build" >&2
+  exit 1
+fi
+# Absolute, because the api-server build runs from its own directory.
+export TRANSIT_SNAPSHOT_PATH="$(cd "$(dirname "$TRANSIT_SNAPSHOT")" && pwd)/$(basename "$TRANSIT_SNAPSHOT")"
+
 STACK_NAME="lastride-$STAGE"
 echo "Validating secret contract..."
 SECRET_JSON="$(aws secretsmanager get-secret-value   --region "$AWS_REGION"   --secret-id "$SECRET_ID"   --query SecretString   --output text)"
 printf '%s' "$SECRET_JSON" | python3 -c '
 import json, sys
 data=json.load(sys.stdin)
-required=["DATABASE_URL","RAPIDAPI_KEY","EKISPERT_KEY","SUPABASE_URL","SUPABASE_ANON_KEY","USAGE_ADMIN_TOKEN","EXPO_ACCESS_TOKEN","REVENUECAT_SECRET_KEY","GROUP_INVITE_ENCRYPTION_KEY"]
+required=["DATABASE_URL","ODPT_KEY","SUPABASE_URL","SUPABASE_ANON_KEY","USAGE_ADMIN_TOKEN","EXPO_ACCESS_TOKEN","REVENUECAT_SECRET_KEY","GROUP_INVITE_ENCRYPTION_KEY"]
 missing=[k for k in required if not isinstance(data.get(k), str) or not data[k].strip()]
 if missing:
     raise SystemExit("Secret is missing required keys: " + ", ".join(missing))
@@ -97,7 +110,7 @@ CI=true pnpm run typecheck
 CI=true pnpm run verify:migrations
 CI=true pnpm run verify:codegen
 CI=true pnpm audit --prod --audit-level=critical
-EXPO_PUBLIC_API_URL="https://api.invalid.example" CI=true pnpm run build:ci
+REQUIRE_TRANSIT_SNAPSHOT=1 EXPO_PUBLIC_API_URL="https://api.invalid.example" CI=true pnpm run build:ci
 
 # Never run integration tests against the target environment database. CI owns
 # those tests using an ephemeral Postgres service. The target DATABASE_URL is
@@ -122,7 +135,7 @@ if [[ "$STAGE" == "production" ]] && aws cloudformation describe-stacks   --regi
 fi
 
 echo "Deploying $STACK_NAME (canary=$ENABLE_CANARY)..."
-sam deploy   --region "$AWS_REGION"   --stack-name "$STACK_NAME"   --template-file .aws-sam/build/template.yaml   --resolve-s3   --capabilities CAPABILITY_IAM   --no-fail-on-empty-changeset   --on-failure ROLLBACK   --parameter-overrides     "Stage=$STAGE"     "AppSecretName=$SECRET_ID"     "EnableCanary=$ENABLE_CANARY"     "CorsAllowedOrigins=$CORS_ALLOWED_ORIGINS"     "AlarmEmail=$ALARM_EMAIL"     "EkispertMonthlyLimit=${EKISPERT_MONTHLY_LIMIT:-500}"     "NavitimeTransportMonthlyLimit=${NAVITIME_TRANSPORT_MONTHLY_LIMIT:-500}"     "NavitimeWalkMonthlyLimit=${NAVITIME_ROUTE_WALK_MONTHLY_LIMIT:-500}"     "NavitimeCarMonthlyLimit=${NAVITIME_ROUTE_CAR_MONTHLY_LIMIT:-500}"     "NavitimeSpotMonthlyLimit=${NAVITIME_SPOT_MONTHLY_LIMIT:-500}"     "NavitimeGeocodingMonthlyLimit=${NAVITIME_GEOCODING_MONTHLY_LIMIT:-500}"
+sam deploy   --region "$AWS_REGION"   --stack-name "$STACK_NAME"   --template-file .aws-sam/build/template.yaml   --resolve-s3   --capabilities CAPABILITY_IAM   --no-fail-on-empty-changeset   --on-failure ROLLBACK   --parameter-overrides     "Stage=$STAGE"     "AppSecretName=$SECRET_ID"     "EnableCanary=$ENABLE_CANARY"     "CorsAllowedOrigins=$CORS_ALLOWED_ORIGINS"     "AlarmEmail=$ALARM_EMAIL"
 
 API_URL="$(aws cloudformation describe-stacks   --region "$AWS_REGION"   --stack-name "$STACK_NAME"   --query "Stacks[0].Outputs[?OutputKey=='ApiUrl'].OutputValue"   --output text)"
 
