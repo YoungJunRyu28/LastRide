@@ -15,12 +15,7 @@ import {
   planFreshness,
   recommendedLeaveTime,
 } from "@/lib/reliability";
-import {
-  dismissLeaveCard,
-  leaveCardFor,
-  readPromptState,
-  type PromptState,
-} from "@/lib/premiumPrompts";
+import { leaveCardFor, useLeaveCardOpening } from "@/lib/premiumPrompts";
 import { formatJstTime, serviceDate } from "@/lib/time";
 import { shortLineName } from "@/lib/timetable";
 import { Feather } from "@expo/vector-icons";
@@ -108,10 +103,7 @@ export default function RideScreen() {
   }, [stop, trackingMode, stopTracking]);
   const { isPremium } = usePremium();
   const { tonightGroup } = useGroups();
-  const [promptState, setPromptState] = useState<PromptState | null>(null);
-  useEffect(() => {
-    void readPromptState().then(setPromptState);
-  }, []);
+  const leaveCard = useLeaveCardOpening();
 
   const freshness = plan ? planFreshness(plan.computedAt, nowMs) : null;
   const planAge = plan ? planAgeMinutes(plan.computedAt, nowMs) : null;
@@ -203,7 +195,7 @@ export default function RideScreen() {
   // Tonight's group takes the card slot; the premium card only shows without one.
   const premiumCard = tonightGroup
     ? null
-    : leaveCardFor({ isPremium, status, state: promptState, nowMs });
+    : leaveCardFor({ isPremium, opens: leaveCard.opens, dismissed: leaveCard.dismissed });
   const nextInGroup = tonightGroup?.tonight.participants.find(
     (participant) =>
       participant.memberId !== tonightGroup.me.memberId &&
@@ -506,7 +498,10 @@ export default function RideScreen() {
                     ? ja
                       ? ` ${firstLeg.to}方面`
                       : ` to ${firstLeg.toEn ?? firstLeg.to}`
-                    : ""}
+                    : // No line details (Apple Maps): at least say where it leaves from.
+                      ja
+                      ? `  ${station}発`
+                      : `  from ${station}`}
                 </Text>
                 <Text style={[styles.note, { color: colors.mutedForeground }]}>
                   {[
@@ -704,12 +699,7 @@ export default function RideScreen() {
             countdown={ringValue}
             station={station}
             destination={destination}
-            onDismiss={() => {
-              void dismissLeaveCard(nowMs);
-              setPromptState((state) =>
-                state ? { ...state, cardDismissedNight: serviceDate(nowMs) } : state,
-              );
-            }}
+            onDismiss={leaveCard.dismiss}
           />
         )}
 

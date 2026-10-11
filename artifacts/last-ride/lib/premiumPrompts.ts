@@ -1,78 +1,106 @@
 /**
- * When to suggest premium. The rules (see the design notes):
- * - at most one prompt per night (service day);
- * - the one-time trial offer after onboarding counts as that night's prompt;
- * - the Leave card alternates nightly between the lock-screen and the
- *   home-widget preview, and a dismissal hides it for the rest of the night;
- * - never close to leave-by or after the last train (status must be "relaxed");
+ * When to suggest premium. The rules:
+ * - the Leave card shows to free users every time the app is opened;
+ * - closing it hides it until the app is next opened (coming back from the
+ *   background counts as opening);
+ * - each opening switches between the lock-screen and the home-widget preview;
  * - never in notifications or on the lock screen (App Review 4.5.4).
+ * The trial offer is shown once, at the end of setup.
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { RideStatus } from '@/lib/planner';
-import { serviceDate } from '@/lib/time';
+import { useSyncExternalStore } from 'react';
+import { AppState } from 'react-native';
 
 const TRIAL_OFFER_KEY = 'lastride-trial-offer-shown';
-/** Service date of the last night a prompt was shown or dismissed. */
-const PROMPT_NIGHT_KEY = 'lastride-premium-prompt-night';
-const CARD_DISMISSED_KEY = 'lastride-premium-card-dismissed';
+/** How many times the app has been opened; its parity picks the card. */
+const OPENS_KEY = 'lastride-app-opens';
 
 export type LeaveCardVariant = 'lock' | 'widget';
 
-export type PromptState = {
-  trialOfferShown: boolean;
-  /** Service date a non-card prompt (the trial offer) was shown on. */
-  promptNight: string | null;
-  /** Service date the Leave card was dismissed on. */
-  cardDismissedNight: string | null;
-};
+/** Records the one-time trial offer at the end of setup. */
+export async function markTrialOfferShown(): Promise<void> {
+  await AsyncStorage.setItem(TRIAL_OFFER_KEY, 'true').catch(() => undefined);
+}
 
-export async function readPromptState(): Promise<PromptState> {
+/** Lock-screen preview on even openings, widget preview on odd ones. */
+export function leaveCardVariant(opens: number): LeaveCardVariant {
+  return opens % 2 === 0 ? 'lock' : 'widget';
+}
+
+/** Which Leave card to show now, or null for none. */
+export function leaveCardFor({
+  isPremium,
+  opens,
+  dismissed,
+}: {
+  isPremium: boolean;
+  /** Null until the opening count has loaded. */
+  opens: number | null;
+  dismissed: boolean;
+}): LeaveCardVariant | null {
+  if (isPremium || dismissed || opens === null) return null;
+  return leaveCardVariant(opens);
+}
+
+async function recordOpening(): Promise<number> {
   try {
-    const [trial, night, dismissed] = await Promise.all([
-      AsyncStorage.getItem(TRIAL_OFFER_KEY),
-      AsyncStorage.getItem(PROMPT_NIGHT_KEY),
-      AsyncStorage.getItem(CARD_DISMISSED_KEY),
-    ]);
-    return { trialOfferShown: trial === 'true', promptNight: night, cardDismissedNight: dismissed };
+    const opens = Number((await AsyncStorage.getItem(OPENS_KEY)) ?? '0') + 1;
+    await AsyncStorage.setItem(OPENS_KEY, String(opens));
+    return opens;
   } catch {
-    // If storage fails, behave as if tonight's prompt was already used.
-    return { trialOfferShown: true, promptNight: serviceDate(Date.now()), cardDismissedNight: null };
+    return 0;
   }
 }
 
-/** Records the one-time trial offer; it is tonight's prompt. */
-export async function markTrialOfferShown(nowMs: number): Promise<void> {
-  await Promise.all([
-    AsyncStorage.setItem(TRIAL_OFFER_KEY, 'true'),
-    AsyncStorage.setItem(PROMPT_NIGHT_KEY, serviceDate(nowMs)),
-  ]).catch(() => undefined);
+/*
+ * App-wide, not per screen: the Leave screen remounts on every tab switch,
+ * which must not count as opening the app. Held outside React and read with
+ * useSyncExternalStore (immutable snapshots, so the React Compiler sees changes).
+ */
+type CardState = { opens: number | null; dismissed: boolean };
+let cardState: CardState = { opens: null, dismissed: false };
+let started = false;
+const listeners = new Set<() => void>();
+
+function setCardState(next: Partial<CardState>) {
+  cardState = { ...cardState, ...next };
+  listeners.forEach((listener) => listener());
 }
 
-export async function dismissLeaveCard(nowMs: number): Promise<void> {
-  await AsyncStorage.setItem(CARD_DISMISSED_KEY, serviceDate(nowMs)).catch(() => undefined);
+function startTracking() {
+  if (started) return;
+  started = true;
+  const open = () => {
+    void recordOpening().then((opens) => setCardState({ opens, dismissed: false }));
+  };
+  open();
+  let wasBackground = false;
+  AppState.addEventListener('change', (state) => {
+    if (state === 'background') wasBackground = true;
+    if (state === 'active' && wasBackground) {
+      wasBackground = false;
+      open();
+    }
+  });
 }
 
-/** Lock-screen preview on even service days, widget preview on odd ones. */
-export function leaveCardVariant(nowMs: number): LeaveCardVariant {
-  const date = serviceDate(nowMs);
-  const day = Date.UTC(Number(date.slice(0, 4)), Number(date.slice(4, 6)) - 1, Number(date.slice(6, 8))) / 86_400_000;
-  return day % 2 === 0 ? 'lock' : 'widget';
+function subscribe(listener: () => void) {
+  startTracking();
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
 }
 
-/** Which Leave card to show tonight, or null for none. */
-export function leaveCardFor({
-  isPremium,
-  status,
-  state,
-  nowMs,
-}: {
-  isPremium: boolean;
-  status: RideStatus | null;
-  state: PromptState | null;
-  nowMs: number;
-}): LeaveCardVariant | null {
-  if (isPremium || !state || status !== 'relaxed') return null;
-  const tonight = serviceDate(nowMs);
-  if (state.promptNight === tonight || state.cardDismissedNight === tonight) return null;
-  return leaveCardVariant(nowMs);
+const getSnapshot = () => cardState;
+const dismiss = () => setCardState({ dismissed: true });
+
+/**
+ * The card's state for this opening of the app: which variant, whether it has
+ * been closed, and a way to close it. A new opening (launch, or returning from
+ * the background) counts up and brings a closed card back.
+ */
+export function useLeaveCardOpening() {
+  const { opens, dismissed } = useSyncExternalStore(subscribe, getSnapshot);
+  return { opens, dismissed, dismiss };
 }

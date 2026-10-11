@@ -17,7 +17,7 @@ export default function TrialScreen() {
   const done = () => router.replace('/ride');
 
   useEffect(() => {
-    void markTrialOfferShown(Date.now());
+    void markTrialOfferShown();
   }, []);
 
   return (

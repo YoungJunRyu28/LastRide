@@ -98,7 +98,7 @@ const styles = StyleSheet.create({
   card: { borderRadius: 20, borderWidth: 1 },
   body: { alignItems: 'center', flexDirection: 'row', gap: 14, padding: 14, paddingRight: 36 },
   preview: { borderWidth: 1, justifyContent: 'center', paddingHorizontal: 8 },
-  lockPreview: { borderRadius: 14, height: 64, width: 96 },
+  lockPreview: { borderRadius: 14, height: 64, width: 118 },
   widgetPreview: { borderRadius: 18, height: 84, width: 84 },
   previewSmall: { fontSize: 10, fontWeight: '700' },
   previewBig: { fontFamily: DIGITS, fontSize: 22, lineHeight: 26 },

@@ -161,3 +161,23 @@ export async function appleDrivingEta(from: Coordinates, to: Coordinates): Promi
   const eta = await AppleMaps.drivingEta(from, to);
   return { minutes: Math.max(1, Math.round(eta.seconds / 60)), distanceMeters: eta.distanceMeters };
 }
+
+export type TaxiStand = Coordinates & { name: string; meters: number };
+
+/** Taxi stands (タクシー乗り場) near `coordinates`, nearest first. */
+export async function appleNearbyTaxiStands(coordinates: Coordinates, radiusMeters = 800, limit = 3): Promise<TaxiStand[] | null> {
+  if (!AppleMaps) return null;
+  const places = await AppleMaps.searchPlaces('タクシー乗り場', coordinates, radiusMeters);
+  const seen = new Set<string>();
+  return places
+    .filter((place) => /タクシー|taxi/i.test(place.name))
+    .map((place) => ({ name: place.name, latitude: place.latitude, longitude: place.longitude, meters: distance(coordinates, place) }))
+    .filter((stand) => stand.meters <= radiusMeters * 1.2)
+    .sort((first, second) => first.meters - second.meters)
+    .filter((stand) => {
+      if (seen.has(stand.name)) return false;
+      seen.add(stand.name);
+      return true;
+    })
+    .slice(0, limit);
+}

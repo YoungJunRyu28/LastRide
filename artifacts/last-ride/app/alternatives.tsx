@@ -1,6 +1,6 @@
 import { BottomNav } from "@/components/BottomNav";
 import { MapCard } from "@/components/MapCard";
-import { appleDrivingEta, appleNearbyStays } from "@/lib/applePlaces";
+import { appleDrivingEta, appleNearbyStays, appleNearbyTaxiStands, type TaxiStand } from "@/lib/applePlaces";
 import { DIGITS } from "@/constants/type";
 import { useLastRide } from "@/context/LastRideContext";
 import { useGroups } from "@/context/GroupsContext";
@@ -298,6 +298,7 @@ export default function AlternativesScreen() {
   const [partway, setPartway] = useState<PartwayTrainTaxi | null>(null);
   const [isLoadingPartway, setIsLoadingPartway] = useState(false);
   const [walkHome, setWalkHome] = useState<WalkingRoute | null>(null);
+  const [taxiStands, setTaxiStands] = useState<TaxiStand[] | null>(null);
   const [selected, setSelected] = useState<OptionKey>("train");
   const [kindFilter, setKindFilter] = useState<StayKind | null>(null);
   const [sortBy, setSortBy] = useState<"distance" | "price">("distance");
@@ -431,6 +432,22 @@ export default function AlternativesScreen() {
     taxiTarget?.longitude,
     retryCount,
   ]);
+
+  // Taxi stands (Apple Maps, iOS) — looked up only when the taxi option is open.
+  useEffect(() => {
+    if (selected !== "taxi" || !userCoordinates) return;
+    let active = true;
+    void appleNearbyTaxiStands(userCoordinates)
+      .then((stands) => {
+        if (active) setTaxiStands(stands);
+      })
+      .catch(() => {
+        if (active) setTaxiStands(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [selected, userCoordinates?.latitude, userCoordinates?.longitude]);
 
   useEffect(() => {
     if (selected === "partway" && !partway && !isLoadingPartway)
@@ -847,6 +864,24 @@ export default function AlternativesScreen() {
               { backgroundColor: colors.card, borderColor: colors.border },
             ]}
           >
+            {plan && (
+              <MapCard
+                height={160}
+                you={userCoordinates}
+                target={plan.station}
+                stationTag={station}
+                walkLabel={ja ? `徒歩${plan.walkingMinutes}分` : `${plan.walkingMinutes} min walk`}
+                onPress={() =>
+                  openMaps(plan.station.latitude, plan.station.longitude, station)
+                }
+                accessibilityLabel={
+                  ja
+                    ? `始発の${station}駅まで徒歩${plan.walkingMinutes}分。地図アプリで開く`
+                    : `${plan.walkingMinutes} min walk to ${station} for the first train. Open in Maps`
+                }
+                openLabel={ja ? "地図アプリで開く" : "Open in Maps"}
+              />
+            )}
             <View style={styles.panelHead}>
               <Text style={[styles.panelTime, { color: colors.foreground }]}>
                 {firstTrain}
@@ -1223,6 +1258,51 @@ export default function AlternativesScreen() {
               { backgroundColor: colors.card, borderColor: colors.border },
             ]}
           >
+            {userCoordinates &&
+              (taxiStands && taxiStands.length > 0 ? (
+                <MapCard
+                  height={160}
+                  you={userCoordinates}
+                  pins={taxiStands.map((stand, index) => ({
+                    label: ja
+                      ? `乗り場 徒歩${walkMinutesFor(stand.meters)}分`
+                      : `Taxi stand ${walkMinutesFor(stand.meters)} min`,
+                    emphasis: index === 0,
+                    latitude: stand.latitude,
+                    longitude: stand.longitude,
+                  }))}
+                  onPress={() =>
+                    openMaps(taxiStands[0].latitude, taxiStands[0].longitude, taxiStands[0].name)
+                  }
+                  accessibilityLabel={
+                    ja
+                      ? `近くのタクシー乗り場${taxiStands.length}か所。いちばん近い乗り場を地図アプリで開く`
+                      : `${taxiStands.length} taxi stands nearby. Open the nearest in Maps`
+                  }
+                  openLabel={ja ? "地図アプリで開く" : "Open in Maps"}
+                />
+              ) : taxiTarget ? (
+                <MapCard
+                  height={160}
+                  you={userCoordinates}
+                  target={taxiTarget}
+                  stationTag={homeLabel}
+                  walkLabel={
+                    taxi
+                      ? ja
+                        ? `車で約${taxi.durationMinutes}分`
+                        : `~${taxi.durationMinutes} min by car`
+                      : undefined
+                  }
+                  onPress={() =>
+                    openMaps(taxiTarget.latitude, taxiTarget.longitude, taxiTargetName, true)
+                  }
+                  accessibilityLabel={
+                    ja ? `${homeLabel}までの地図。地図アプリで開く` : `Map to ${homeLabel}. Open in Maps`
+                  }
+                  openLabel={ja ? "地図アプリで開く" : "Open in Maps"}
+                />
+              ) : null)}
             <View style={styles.panelHead}>
               <Text style={[styles.panelTime, { color: colors.foreground }]}>
                 {taxi ? formatYen(taxi.fareYen) : "—"}
@@ -1328,6 +1408,24 @@ export default function AlternativesScreen() {
               { backgroundColor: colors.card, borderColor: colors.border },
             ]}
           >
+            {userCoordinates && taxiTarget && (
+              <MapCard
+                height={160}
+                you={userCoordinates}
+                target={taxiTarget}
+                stationTag={homeLabel}
+                walkLabel={ja ? `徒歩${walkHome.walkingMinutes}分` : `${walkHome.walkingMinutes} min walk`}
+                onPress={() =>
+                  openMaps(taxiTarget.latitude, taxiTarget.longitude, taxiTargetName || homeLabel)
+                }
+                accessibilityLabel={
+                  ja
+                    ? `${homeLabel}まで徒歩${walkHome.walkingMinutes}分。地図アプリで開く`
+                    : `${walkHome.walkingMinutes} min walk to ${homeLabel}. Open in Maps`
+                }
+                openLabel={ja ? "地図アプリで開く" : "Open in Maps"}
+              />
+            )}
             <View style={styles.panelHead}>
               <Text style={[styles.panelTime, { color: colors.foreground }]}>
                 {ja
