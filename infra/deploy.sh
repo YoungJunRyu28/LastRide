@@ -108,7 +108,9 @@ if sys.argv[1] == "true":
 missing=[k for k in required if not isinstance(data.get(k), str) or not data[k].strip()]
 if missing:
     raise SystemExit("Secret is missing required keys: " + ", ".join(missing))
-' "$ENABLE_BUSINESS"
+if sys.argv[2] == "production" and data.get("REVENUECAT_SECRET_KEY", "").strip() == "test":
+    raise SystemExit("REVENUECAT_SECRET_KEY is \"test\" (staging only). Put the real RevenueCat secret key in the production secret.")
+' "$ENABLE_BUSINESS" "$STAGE"
 
 DATABASE_URL="$(printf '%s' "$SECRET_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["DATABASE_URL"])')"
 unset SECRET_JSON
@@ -144,7 +146,29 @@ if [[ "$STAGE" == "production" ]] && aws cloudformation describe-stacks   --regi
 fi
 
 echo "Deploying $STACK_NAME (canary=$ENABLE_CANARY)..."
-sam deploy   --region "$AWS_REGION"   --stack-name "$STACK_NAME"   --template-file .aws-sam/build/template.yaml   --resolve-s3   --capabilities CAPABILITY_IAM   --no-fail-on-empty-changeset   --on-failure ROLLBACK   --parameter-overrides     "Stage=$STAGE"     "AppSecretName=$SECRET_ID"     "EnableCanary=$ENABLE_CANARY"     "CorsAllowedOrigins=$CORS_ALLOWED_ORIGINS"     "AlarmEmail=$ALARM_EMAIL"     "EnableBusiness=$ENABLE_BUSINESS"
+# Reserved concurrency (50 + 5) needs the account limit raised from the 10 a
+# new AWS account starts with; skip it until then (request an increase to 1000
+# in Service Quotas: Lambda "Concurrent executions").
+RESERVE_CONCURRENCY=true
+ACCOUNT_CONCURRENCY="$(aws lambda get-account-settings --region "$AWS_REGION" --query AccountLimit.ConcurrentExecutions --output text 2>/dev/null || echo 0)"
+if [[ "$ACCOUNT_CONCURRENCY" -lt 100 ]]; then
+  echo "Lambda concurrency limit is $ACCOUNT_CONCURRENCY: deploying without reserved concurrency until it is raised." >&2
+  RESERVE_CONCURRENCY=false
+fi
+
+# SAM rejects empty parameter values ("Key="), so optional ones are passed only
+# when set; the template defaults them to "".
+PARAMETER_OVERRIDES=(
+  "Stage=$STAGE"
+  "AppSecretName=$SECRET_ID"
+  "EnableCanary=$ENABLE_CANARY"
+  "EnableBusiness=$ENABLE_BUSINESS"
+  "ReserveConcurrency=$RESERVE_CONCURRENCY"
+)
+if [[ -n "$CORS_ALLOWED_ORIGINS" ]]; then PARAMETER_OVERRIDES+=("CorsAllowedOrigins=$CORS_ALLOWED_ORIGINS"); fi
+if [[ -n "$ALARM_EMAIL" ]]; then PARAMETER_OVERRIDES+=("AlarmEmail=$ALARM_EMAIL"); fi
+
+sam deploy   --region "$AWS_REGION"   --stack-name "$STACK_NAME"   --template-file .aws-sam/build/template.yaml   --resolve-s3   --capabilities CAPABILITY_IAM   --no-fail-on-empty-changeset   --on-failure ROLLBACK   --parameter-overrides "${PARAMETER_OVERRIDES[@]}"
 
 API_URL="$(aws cloudformation describe-stacks   --region "$AWS_REGION"   --stack-name "$STACK_NAME"   --query "Stacks[0].Outputs[?OutputKey=='ApiUrl'].OutputValue"   --output text)"
 

@@ -39,3 +39,4 @@ android/
 # Python tooling
 __pycache__/
 *.pyc
+.aws-sam/

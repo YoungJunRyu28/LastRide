@@ -33,6 +33,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllGlobals();
   delete process.env.REVENUECAT_SECRET_KEY;
+  delete process.env.LASTRIDE_STAGE;
   process.env.NODE_ENV = ORIGINAL_NODE_ENV;
 });
 
@@ -129,5 +130,16 @@ describe("checkPremiumEntitlement", () => {
     delete process.env.REVENUECAT_SECRET_KEY;
     process.env.NODE_ENV = "production";
     expect(await checkPremiumEntitlement("anyone", NOW)).toBe("unavailable");
+  });
+
+  it("treats the \"test\" key as premium on the staging stack only", async () => {
+    process.env.REVENUECAT_SECRET_KEY = "test";
+    process.env.NODE_ENV = "production";
+    const fetchMock = stubFetch(200, {});
+    process.env.LASTRIDE_STAGE = "staging";
+    expect(await checkPremiumEntitlement("anyone", NOW)).toBe("active");
+    process.env.LASTRIDE_STAGE = "production";
+    expect(await checkPremiumEntitlement("anyone", NOW)).toBe("unavailable");
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
