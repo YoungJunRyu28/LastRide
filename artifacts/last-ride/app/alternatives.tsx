@@ -274,7 +274,6 @@ export default function AlternativesScreen() {
     destination,
     nowMs,
     lastTrain,
-    walkingSpeed,
     plan,
     firstTrain,
     firstTrainRoute,
@@ -362,7 +361,7 @@ export default function AlternativesScreen() {
       // Walking is only worth offering when the actual destination is close enough.
       const walkTarget = taxiTarget ?? homeStationOption;
       if (distanceBetween(userCoordinates, walkTarget) <= WALKABLE_METERS) {
-        walkingRoute(userCoordinates, walkTarget, walkingSpeed)
+        walkingRoute(userCoordinates, walkTarget, "normal")
           .then((route) => {
             if (
               token === requestToken.current &&
@@ -380,7 +379,6 @@ export default function AlternativesScreen() {
     homeHasCoordinates,
     taxiTarget?.latitude,
     taxiTarget?.longitude,
-    walkingSpeed,
     retryCount,
   ]);
 

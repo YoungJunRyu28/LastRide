@@ -57,7 +57,7 @@ async function recomputeFromLocation(coordinates: Coordinates): Promise<void> {
     return;
   }
   if (!shouldReplan(previous, coordinates, now)) return;
-  const plan = await planNight(coordinates, settings.homeStation, settings.walkingSpeed, now, { pinned: settings.pinnedStation, homeAddress: settings.homeAddress });
+  const plan = await planNight(coordinates, settings.homeStation, settings.leaveMargin, now, { pinned: settings.pinnedStation, homeAddress: settings.homeAddress });
   if (!(await isTrackingFlagOn())) return; // stopped while we were computing
   await AsyncStorage.setItem(SNAPSHOT_KEY, JSON.stringify(plan));
   const language = settings.language ?? 'en';

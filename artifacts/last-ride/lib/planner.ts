@@ -5,13 +5,15 @@
  */
 import { getTrainDisruptions } from '@workspace/api-client-react';
 import type { HomeAddress } from '@/lib/settings';
-import { matchingDisruptionLines, recommendedLeaveTime, recommendedSafetyMarginMinutes, riskAdjustedLeaveTime } from '@/lib/reliability';
+import { matchingDisruptionLines, recommendedLeaveTime, type LeaveMargin, recommendedSafetyMarginMinutes, riskAdjustedLeaveTime } from '@/lib/reliability';
 import { distanceBetween, findNearbyStations, LocationError, walkingRoute, type Coordinates, type NearbyStation, type StationOption, type WalkingSpeed } from '@/lib/stations';
 import { MINUTE_MS, serviceDayStart } from '@/lib/time';
 import { getLastTrain, type TrainTime } from '@/lib/timetable';
 
 /** Time from the station entrance to the platform (gates, stairs, finding the right line). */
 export const STATION_BUFFER_MINUTES = 3;
+/** Walking times use an ordinary pace; how much time to spare is the user's 余裕 setting. */
+const WALKING_PACE: WalkingSpeed = 'normal';
 const CANDIDATE_STATIONS_INITIAL = 3;
 const CANDIDATE_STATIONS_EXPANDED = 6;
 /** While tracking, re-plan only after moving this far from the last plan, or once it is this old. */
@@ -164,14 +166,14 @@ export function sameStation(first: StationOption, second: StationOption) {
  * station; with one, nearby stations are worth comparing too, since a line that
  * runs later can be worth a longer walk at the other end.
  */
-async function destinationOptions(home: StationOption, homeAddress: HomeAddress | null, walkingSpeed: WalkingSpeed): Promise<Array<{ station: StationOption; walkHomeMinutes?: number }>> {
+async function destinationOptions(home: StationOption, homeAddress: HomeAddress | null): Promise<Array<{ station: StationOption; walkHomeMinutes?: number }>> {
   if (!homeAddress) return [{ station: home }];
-  const nearHome = await findNearbyStations(homeAddress, walkingSpeed, DESTINATION_CANDIDATES + 1).catch(() => []);
+  const nearHome = await findNearbyStations(homeAddress, WALKING_PACE, DESTINATION_CANDIDATES + 1).catch(() => []);
   const homeWalk = nearHome.find((candidate) => sameStation(candidate.station, home))?.walk;
   const options = [
     {
       station: home,
-      walkHomeMinutes: homeWalk?.walkingMinutes ?? (await walkingRoute(homeAddress, home, walkingSpeed).catch(() => null))?.walkingMinutes,
+      walkHomeMinutes: homeWalk?.walkingMinutes ?? (await walkingRoute(homeAddress, home, WALKING_PACE).catch(() => null))?.walkingMinutes,
     },
   ];
   for (const candidate of nearHome) {
@@ -257,14 +259,14 @@ async function evaluateCandidates(
   candidates: NearbyStation[],
   destinations: DestinationOption[],
   coordinates: Coordinates,
-  walkingSpeed: WalkingSpeed,
+  leaveMargin: LeaveMargin,
   nightOf: number,
 ): Promise<{ options: StationChoice[]; lookupFailed: boolean }> {
   let lookupFailed = false;
   const evaluated = await Promise.all(
     candidates.map(async ({ station, walk: knownWalk }) => {
       try {
-        const walk = knownWalk ?? (await walkingRoute(coordinates, station, walkingSpeed));
+        const walk = knownWalk ?? (await walkingRoute(coordinates, station, WALKING_PACE));
         const legs = await Promise.all(
           destinations.map(async (destination): Promise<StationChoice | null> => {
             const lastTrain = await getLastTrain(station, destination.station, nightOf);
@@ -279,7 +281,7 @@ async function evaluateCandidates(
               leaveByMs,
               ...walk,
             };
-            const safetyMarginMinutes = recommendedSafetyMarginMinutes(base);
+            const safetyMarginMinutes = recommendedSafetyMarginMinutes(base, leaveMargin);
             return {
               ...base,
               safetyMarginMinutes,
@@ -341,7 +343,7 @@ export function shouldExpandStationSearch(options: StationChoice[]): boolean {
 export async function planNight(
   coordinates: Coordinates,
   home: StationOption,
-  walkingSpeed: WalkingSpeed,
+  leaveMargin: LeaveMargin,
   nowMs: number,
   {
     pinned = null,
@@ -353,8 +355,8 @@ export async function planNight(
     homeAddress?: HomeAddress | null;
   } = {},
 ): Promise<NightPlan> {
-  const destinations = await destinationOptions(home, homeAddress, walkingSpeed);
-  let candidates = await findNearbyStations(coordinates, walkingSpeed, CANDIDATE_STATIONS_INITIAL);
+  const destinations = await destinationOptions(home, homeAddress);
+  let candidates = await findNearbyStations(coordinates, WALKING_PACE, CANDIDATE_STATIONS_INITIAL);
   if (pinned && !candidates.some((candidate) => sameStation(candidate.station, pinned))) {
     candidates.push({
       station: pinned,
@@ -362,16 +364,16 @@ export async function planNight(
     });
   }
 
-  const firstPass = await evaluateCandidates(candidates, destinations, coordinates, walkingSpeed, nightOf);
+  const firstPass = await evaluateCandidates(candidates, destinations, coordinates, leaveMargin, nightOf);
   let lookupFailed = firstPass.lookupFailed;
   let options = await annotateDisruptions(firstPass.options);
 
   if (shouldExpandStationSearch(options)) {
-    const expanded = await findNearbyStations(coordinates, walkingSpeed, CANDIDATE_STATIONS_EXPANDED).catch(() => []);
+    const expanded = await findNearbyStations(coordinates, WALKING_PACE, CANDIDATE_STATIONS_EXPANDED).catch(() => []);
     const known = new Set(candidates.map((candidate) => candidate.station.nameJa));
     const extra = expanded.filter((candidate) => !known.has(candidate.station.nameJa));
     if (extra.length > 0) {
-      const secondPass = await evaluateCandidates(extra, destinations, coordinates, walkingSpeed, nightOf);
+      const secondPass = await evaluateCandidates(extra, destinations, coordinates, leaveMargin, nightOf);
       lookupFailed ||= secondPass.lookupFailed;
       options = await annotateDisruptions([...options, ...secondPass.options]);
     }

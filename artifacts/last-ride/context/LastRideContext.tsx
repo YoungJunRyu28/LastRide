@@ -24,7 +24,7 @@ import {
   scheduleReminders,
   sendTestNotification,
 } from "@/lib/notifications";
-import { recommendedLeaveTime } from "@/lib/reliability";
+import { recommendedLeaveTime, type LeaveMargin } from "@/lib/reliability";
 import {
   buildReminderPlans,
   nightEndsAt,
@@ -61,7 +61,6 @@ import {
   LocationError,
   type Coordinates,
   type StationOption,
-  type WalkingSpeed,
 } from "@/lib/stations";
 import {
   formatJstTime,
@@ -167,7 +166,7 @@ type RideContextValue = {
   tonightDestination: StationOption | null;
   setTonightDestination: (station: StationOption | null) => void;
   deleteDestination: (id: string) => void;
-  walkingSpeed: WalkingSpeed;
+  leaveMargin: LeaveMargin;
   plan: NightPlan | null;
   stationName: string;
   stationNameJa: string;
@@ -209,7 +208,7 @@ type RideContextValue = {
   demoActive: boolean;
   setLanguage: (language: Language) => void;
   saveHomeStation: (station: StationOption) => void;
-  setWalkingSpeed: (speed: WalkingSpeed) => void;
+  setLeaveMargin: (margin: LeaveMargin) => void;
   requestLocation: () => Promise<void>;
   resetLanguage: () => void;
   toggleReminderInterval: (minutes: number) => void;
@@ -407,8 +406,8 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
   const [activeDestinationId, setActiveDestinationId] = useState<string | null>(
     DEFAULT_SETTINGS.activeDestinationId,
   );
-  const [walkingSpeed, setWalkingSpeedState] = useState<WalkingSpeed>(
-    DEFAULT_SETTINGS.walkingSpeed,
+  const [leaveMargin, setLeaveMarginState] = useState<LeaveMargin>(
+    DEFAULT_SETTINGS.leaveMargin,
   );
   const [reminderIntervals, setReminderIntervals] = useState<number[]>(
     DEFAULT_SETTINGS.reminderIntervals,
@@ -453,15 +452,15 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
   const trackingOp = useRef(0);
   // Incremented on resetAll so in-flight async work from a previous session cannot commit state.
   const sessionRef = useRef(0);
-  // Latest settings for long-lived location callbacks, so a pace or home change applies mid-tracking.
+  // Latest settings for long-lived location callbacks, so a 余裕 or home change applies mid-tracking.
   const settingsRef = useRef({
-    walkingSpeed,
+    leaveMargin,
     homeStationOption,
     pinnedStation,
     homeAddress,
   });
   settingsRef.current = {
-    walkingSpeed,
+    leaveMargin,
     homeStationOption,
     pinnedStation,
     homeAddress,
@@ -475,7 +474,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       .then((saved) => {
         setLanguageState(saved.language);
         setHomeStationOption(saved.homeStation);
-        setWalkingSpeedState(saved.walkingSpeed);
+        setLeaveMarginState(saved.leaveMargin);
         setReminderIntervals(saved.reminderIntervals);
         setPinnedStationState(saved.pinnedStation);
         setMissedCheckInState(saved.missedCheckIn);
@@ -634,11 +633,11 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     setLocationError(null);
   }, []);
 
-  const setWalkingSpeed = useCallback(
-    (speed: WalkingSpeed) => {
-      setWalkingSpeedState(speed);
-      void AsyncStorage.setItem(STORAGE_KEYS.walkingSpeed, speed);
-      clearPlan(); // the leave screen re-plans with the new pace
+  const setLeaveMargin = useCallback(
+    (margin: LeaveMargin) => {
+      setLeaveMarginState(margin);
+      void AsyncStorage.setItem(STORAGE_KEYS.leaveMargin, margin);
+      clearPlan(); // the leave screen re-plans with the new margin
       void Haptics.selectionAsync();
     },
     [clearPlan],
@@ -905,7 +904,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     async (coordinates: Coordinates, { dropPin = false } = {}) => {
       const {
         homeStationOption: home,
-        walkingSpeed: speed,
+        leaveMargin: margin,
         pinnedStation,
       } = settingsRef.current;
       if (!home) return null;
@@ -919,7 +918,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
         : nightEndRef.current !== null && now < nightEndRef.current
           ? current.lastTrain.departsAt
           : now;
-      return planNight(coordinates, home, speed, now, {
+      return planNight(coordinates, home, margin, now, {
         pinned: dropPin ? null : pinnedStation,
         nightOf,
         homeAddress: settingsRef.current.homeAddress,
@@ -1205,7 +1204,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     await clearSavedPlan();
     setLanguageState(DEFAULT_SETTINGS.language);
     setHomeStationOption(DEFAULT_SETTINGS.homeStation);
-    setWalkingSpeedState(DEFAULT_SETTINGS.walkingSpeed);
+    setLeaveMarginState(DEFAULT_SETTINGS.leaveMargin);
     setReminderIntervals(DEFAULT_SETTINGS.reminderIntervals);
     setPinnedStationState(null);
     setHomeAddressState(null);
@@ -1264,7 +1263,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       saveDestination,
       selectDestination,
       deleteDestination,
-      walkingSpeed,
+      leaveMargin,
       plan,
       stationName:
         plan?.station.name ??
@@ -1309,7 +1308,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       demoActive,
       setLanguage,
       saveHomeStation,
-      setWalkingSpeed,
+      setLeaveMargin,
       requestLocation,
       resetLanguage,
       toggleReminderInterval,
@@ -1357,14 +1356,14 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       setDemoNow,
       setPinnedStation,
       setLanguage,
-      setWalkingSpeed,
+      setLeaveMargin,
       startTracking,
       stopTracking,
       toggleReminderInterval,
       trackingMode,
       triggerTestNotification,
       userCoordinates,
-      walkingSpeed,
+      leaveMargin,
     ],
   );
 

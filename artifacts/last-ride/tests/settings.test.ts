@@ -76,3 +76,21 @@ describe("saved destinations", () => {
     );
   });
 });
+
+describe("余裕 (time to spare)", () => {
+  beforeEach(() => storage.clear());
+
+  it("reads the saved choice and falls back to normal", async () => {
+    expect((await readSettings()).leaveMargin).toBe("normal");
+    storage.set(STORAGE_KEYS.leaveMargin, "relaxed");
+    expect((await readSettings()).leaveMargin).toBe("relaxed");
+    storage.set(STORAGE_KEYS.leaveMargin, "nonsense");
+    expect((await readSettings()).leaveMargin).toBe("normal");
+  });
+
+  it("drops the old walking-pace setting", async () => {
+    storage.set("lastride-walking-speed", "fast");
+    await readSettings();
+    expect(storage.has("lastride-walking-speed")).toBe(false);
+  });
+});

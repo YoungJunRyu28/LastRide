@@ -20,7 +20,7 @@ function copy(ja: boolean) {
         sections: [
           {
             heading: "端末に保存するもの",
-            body: "保存した帰り先（最寄り駅と、設定した場合は住所）、「今夜だけ別の場所へ」の駅（翌日に自動で消去）、言語・歩くペース・リマインダーなどの設定、今夜のプランです。今夜のプランは夜が終わると次の夜のものに置き換わります。移動履歴や過去の夜の記録は保存しません。",
+            body: "保存した帰り先（最寄り駅と、設定した場合は住所）、「今夜だけ別の場所へ」の駅（翌日に自動で消去）、言語・余裕・リマインダーなどの設定、今夜のプランです。今夜のプランは夜が終わると次の夜のものに置き換わります。移動履歴や過去の夜の記録は保存しません。",
           },
           {
             heading: "位置情報",
@@ -68,7 +68,7 @@ function copy(ja: boolean) {
         sections: [
           {
             heading: "Stored on your phone",
-            body: "Your saved destinations (nearest station, plus an address if you add one), a “tonight only” station (cleared the next day), your language, walking pace, reminder and other settings, and tonight’s plan, which is replaced by the next night’s. LastRide keeps no movement history or record of past nights.",
+            body: "Your saved destinations (nearest station, plus an address if you add one), a “tonight only” station (cleared the next day), your language, time-to-spare, reminder and other settings, and tonight’s plan, which is replaced by the next night’s. LastRide keeps no movement history or record of past nights.",
           },
           {
             heading: "Location",

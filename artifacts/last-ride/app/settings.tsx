@@ -27,7 +27,7 @@ export default function SettingsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const {
-    language, homeStation, destination, walkingSpeed, setWalkingSpeed, setLanguage,
+    language, homeStation, destination, leaveMargin, setLeaveMargin, setLanguage,
     reminderIntervals, toggleReminderInterval, notificationsAllowed,
     missedCheckIn, setMissedCheckIn, nightLocationMode, setNightLocationMode, backgroundAllowed, requestBackgroundLocation,
     demoActive, setDemoNow, nowMs, plan, currentTime, leaveBy, triggerTestNotification, resetAll,
@@ -169,15 +169,15 @@ export default function SettingsScreen() {
           )}
         </Section>
 
-        <Section label={ja ? '好みの設定' : 'PREFERENCES'} hint={ja ? '歩くペースは出発時刻の計算に使います。' : 'Your walking pace sets how early you need to leave.'}>
-          <Row title={ja ? '歩くペース' : 'Walking pace'}>
+        <Section label={ja ? '好みの設定' : 'PREFERENCES'} hint={ja ? '余裕：「遅くとも」の何分前に出発を勧めるか。ぎりぎり 0分・ふつう 4分・余裕あり 10分（乗り換えや長い徒歩はさらに追加）。' : 'Time to spare: how long before the latest leave time we tell you to go. Tight 0 min, Normal 4, Relaxed 10 (more for transfers and long walks).'}>
+          <Row title={ja ? '余裕' : 'Time to spare'}>
             <Segmented
-              value={walkingSpeed}
-              onChange={setWalkingSpeed}
+              value={leaveMargin}
+              onChange={setLeaveMargin}
               options={[
-                { value: 'relaxed', label: ja ? 'ゆっくり' : 'Relaxed' },
+                { value: 'tight', label: ja ? 'ぎりぎり' : 'Tight' },
                 { value: 'normal', label: ja ? 'ふつう' : 'Normal' },
-                { value: 'fast', label: ja ? '速め' : 'Fast' },
+                { value: 'relaxed', label: ja ? '余裕あり' : 'Relaxed' },
               ]}
             />
           </Row>
