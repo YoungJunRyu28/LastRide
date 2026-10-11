@@ -72,7 +72,7 @@ import {
 import { getFirstTrain, type TrainTime } from "@/lib/timetable";
 import { endLiveActivity, syncLiveActivity } from "@/lib/liveActivity";
 import { usePremium } from "@/context/PremiumContext";
-import { appleSearchAddresses, appleSearchStations } from "@/lib/applePlaces";
+import { appleSearchAddresses, appleSearchStations, syncAppleLanguage } from "@/lib/applePlaces";
 import { syncWidgets } from "@/lib/widgets";
 import {
   clearTrackingSnapshot,
@@ -548,14 +548,21 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
   /** Which firstTrainKey `firstTrain` was looked up for; differs while a lookup is in flight. */
   const [firstTrainFor, setFirstTrainFor] = useState<string | null>(null);
   useEffect(() => {
-    const station = planRef.current?.station;
+    const current = planRef.current;
+    const station = current?.station;
     if (!station || !homeStationOption) {
       setFirstTrain(null);
       setFirstTrainFor(firstTrainKey);
       return;
     }
     let cancelled = false;
-    getFirstTrain(station, homeStationOption, getNow())
+    // The first train after tonight's last one — tomorrow morning's 始発 — or,
+    // while still waiting for this morning's, the next one from now.
+    getFirstTrain(
+      station,
+      homeStationOption,
+      Math.max(getNow(), current!.lastTrain.departsAt),
+    )
       .then((train) => {
         if (cancelled) return;
         setFirstTrain(train);
@@ -608,6 +615,11 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     },
     [clearPlan],
   );
+
+  // Apple Maps place names follow the app's iOS language; keep it on LastRide's choice.
+  useEffect(() => {
+    if (language) syncAppleLanguage(language);
+  }, [language]);
 
   const setLanguage = useCallback((nextLanguage: Language) => {
     setLanguageState(nextLanguage);

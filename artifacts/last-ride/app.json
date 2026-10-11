@@ -16,6 +16,10 @@
       "infoPlist": {
         "UIBackgroundModes": [
           "location"
+        ],
+        "CFBundleLocalizations": [
+          "ja",
+          "en"
         ]
       }
     },
@@ -54,6 +58,10 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "locales": {
+      "ja": "./locales/ja.json",
+      "en": "./locales/en.json"
     }
   }
 }

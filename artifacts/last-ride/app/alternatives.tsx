@@ -865,9 +865,13 @@ export default function AlternativesScreen() {
                     waitNote,
                     trainFare === null ? null : `${formatYen(trainFare)}`,
                     homeByTrain
-                      ? ja
-                        ? `${formatJstTime(homeByTrain)}着`
-                        : `arrives ${formatJstTime(homeByTrain)}`
+                      ? firstTrainRoute?.source === "apple"
+                        ? ja
+                          ? `${formatJstTime(homeByTrain)}ごろ駅を出る`
+                          : `out of the station ~${formatJstTime(homeByTrain)}`
+                        : ja
+                          ? `${formatJstTime(homeByTrain)}着`
+                          : `arrives ${formatJstTime(homeByTrain)}`
                       : null,
                   ]
                     .filter(Boolean)

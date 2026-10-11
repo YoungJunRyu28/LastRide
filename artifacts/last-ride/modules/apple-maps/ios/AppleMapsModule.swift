@@ -47,6 +47,15 @@ public class AppleMapsModule: Module {
   public func definition() -> ModuleDefinition {
     Name("AppleMaps")
 
+    // MapKit names places in the app's iOS language. Keep that in step with the
+    // language chosen in LastRide (iOS's per-app language setting; it takes
+    // effect the next time the app starts). Returns whether a restart is needed.
+    Function("setPreferredLanguage") { (language: String) -> Bool in
+      let current = Locale.preferredLanguages.first ?? ""
+      UserDefaults.standard.set([language], forKey: "AppleLanguages")
+      return !current.hasPrefix(language)
+    }
+
     AsyncFunction("transitEta") { (request: EtaRequest, promise: Promise) in
       let directions = MKDirections(request: self.directionsRequest(request, transport: .transit))
       directions.calculateETA { response, error in

@@ -55,4 +55,9 @@ describe("widgetTimeline", () => {
     const entries = widgetTimeline(approx, "自宅", "ja", jst(23, 0));
     expect(entries[0].props.inline).toBe("23:37 出発 · 終電 23:52（目安）");
   });
+
+  test("labels an Apple arrival as roughly when you leave the station", () => {
+    const apple = { ...plan, lastTrain: { ...plan.lastTrain, source: "apple" as const } };
+    expect(widgetTimeline(apple, "自宅", "ja", jst(23, 0))[0].props.arrival).toBe("押上 00:24ごろ");
+  });
 });

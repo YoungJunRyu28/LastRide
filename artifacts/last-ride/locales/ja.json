@@ -1,0 +1,7 @@
+{
+  "ios": {
+    "NSLocationWhenInUseUsageDescription": "近くの駅と、駅までの徒歩時間を調べるために位置情報を使います。",
+    "NSLocationAlwaysAndWhenInUseUsageDescription": "夜のトラッキング中だけ、アプリを閉じている間も位置情報を使い、近くの駅・徒歩時間・出発のリマインダーを更新します。",
+    "NSLocationAlwaysUsageDescription": "夜のトラッキング中だけ、アプリを閉じている間も位置情報を使い、近くの駅・徒歩時間・出発のリマインダーを更新します。"
+  }
+}

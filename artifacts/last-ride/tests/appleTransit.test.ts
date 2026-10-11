@@ -5,7 +5,7 @@
  * "leave at").
  */
 import { describe, expect, it } from "vitest";
-import { lastTrainArriveBy, searchFirstTrain, searchLastTrain, type EtaQuery } from "@/lib/appleTransit";
+import { firstTrainSearchStart, lastTrainArriveBy, searchFirstTrain, searchLastTrain, type EtaQuery } from "@/lib/appleTransit";
 
 /** Epoch ms for a JST clock time on the night of 10 Oct 2026; hours past midnight as 24, 25… */
 function jst(hours: number, minutes = 0) {
@@ -89,5 +89,17 @@ describe("searchFirstTrain", () => {
     const query = simulatedMapKit([{ dep: jst(28, 50), arr: jst(29, 18) }], null);
     expect(await searchFirstTrain(query, jst(28, 25))).toEqual({ departsAt: jst(28, 50), arrivesAt: jst(29, 18) });
     expect(query.calls).toBe(1);
+  });
+});
+
+describe("firstTrainSearchStart", () => {
+  it("looks from 04:00 when asked during the night", () => {
+    expect(firstTrainSearchStart(jst(23, 30))).toBe(jst(28));
+    expect(firstTrainSearchStart(jst(24, 40))).toBe(jst(28));
+  });
+
+  it("looks from now once trains are running again", () => {
+    expect(firstTrainSearchStart(jst(28, 20))).toBe(jst(28, 20));
+    expect(firstTrainSearchStart(jst(29, 29))).toBe(jst(29, 29));
   });
 });

@@ -88,6 +88,7 @@ export function widgetTimeline(
     | "walkingMinutes"
     | "station"
     | "arriveHomeMs"
+    | "walkHomeMinutes"
     | "destination"
   >,
   destinationLabel: string,
@@ -116,9 +117,13 @@ export function widgetTimeline(
       : `From ${station} · last ${lastTrain} · ${plan.walkingMinutes} min walk`,
     footer: `${leave} ${station}`,
     arrival: arriveMs
-      ? ja
-        ? `${arrivalStation}着 ${formatJstTime(arriveMs)}`
-        : `${arrivalStation} ${formatJstTime(arriveMs)}`
+      ? plan.lastTrain.source === "apple" && !plan.walkHomeMinutes
+        ? ja
+          ? `${arrivalStation} ${formatJstTime(arriveMs)}ごろ`
+          : `${arrivalStation} ~${formatJstTime(arriveMs)}`
+        : ja
+          ? `${arrivalStation}着 ${formatJstTime(arriveMs)}`
+          : `${arrivalStation} ${formatJstTime(arriveMs)}`
       : "",
     message: "",
   };

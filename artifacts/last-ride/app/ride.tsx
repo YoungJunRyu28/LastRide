@@ -463,7 +463,8 @@ export default function RideScreen() {
 
         {plan && (
           <MapCard
-            you={userCoordinates}
+            // The plan's own position until fresh GPS arrives (e.g. right after relaunch).
+            you={userCoordinates ?? plan.coordinates}
             target={plan.station}
             stationTag={station}
             walkLabel={
@@ -510,11 +511,20 @@ export default function RideScreen() {
                 <Text style={[styles.note, { color: colors.mutedForeground }]}>
                   {[
                     arrivalMs
-                      ? ja
-                        ? `${formatJstTime(arrivalMs)} ${destination}着`
-                        : `${destination} ${formatJstTime(arrivalMs)}`
+                      ? // Apple's arrival is at the station's map point (often a street
+                        // exit), not the platform: say so rather than look minutes late.
+                        plan.lastTrain.source === "apple" && !plan.walkHomeMinutes
+                        ? ja
+                          ? `${formatJstTime(arrivalMs)}ごろ ${destination}（駅を出る時刻）`
+                          : `${destination} ~${formatJstTime(arrivalMs)} (out of the station)`
+                        : ja
+                          ? `${formatJstTime(arrivalMs)} ${destination}着`
+                          : `${destination} ${formatJstTime(arrivalMs)}`
                       : null,
-                    plan.lastTrain.transfers
+                    // Apple doesn't say how many changes a route has.
+                    plan.lastTrain.source === "apple"
+                      ? null
+                      : plan.lastTrain.transfers
                       ? ja
                         ? `乗換${plan.lastTrain.transfers}回`
                         : `${plan.lastTrain.transfers} transfer${plan.lastTrain.transfers > 1 ? "s" : ""}`

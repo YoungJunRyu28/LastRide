@@ -19,6 +19,8 @@ export type Place = {
 export type AddressPlace = Place & { label: string };
 
 type NativeModule = {
+  /** Sets the app's iOS language (applies from the next launch); true if a restart is needed for it. */
+  setPreferredLanguage(language: 'ja' | 'en'): boolean;
   transitEta(request: { from: Coordinate; to: Coordinate; arriveBy?: number; departAt?: number }): Promise<TransitEta>;
   walkingRoute(from: Coordinate, to: Coordinate): Promise<WalkingRoute>;
   searchPlaces(query: string, center: Coordinate, radiusMeters: number): Promise<Place[]>;

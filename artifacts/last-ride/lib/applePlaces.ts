@@ -18,6 +18,18 @@ const NEARBY_RADIUS_METERS = 2500;
 
 export const appleMapsAvailable = AppleMaps !== null;
 
+/**
+ * MapKit names places in the app's iOS language, not LastRide's in-app one.
+ * Keeps the two in step (from the next launch); true when a restart is needed.
+ */
+export function syncAppleLanguage(language: 'ja' | 'en'): boolean {
+  try {
+    return AppleMaps?.setPreferredLanguage(language) ?? false;
+  } catch {
+    return false;
+  }
+}
+
 /** "渋谷駅 (東京メトロ)" → "渋谷": one name per station complex. */
 export function stationBaseName(name: string): string {
   return name

@@ -84,9 +84,21 @@ export async function searchLastTrain(query: EtaQuery, nowMs: number): Promise<O
   return null;
 }
 
+/**
+ * When to start looking for a first train from `ms`: no earlier than 04:00,
+ * since nothing runs between the last trains and then (and asking MapKit at
+ * 01:00 would only find walks).
+ */
+export function firstTrainSearchStart(ms: number): number {
+  const dayStart = serviceDayStart(ms);
+  // From 20:00 (around the earliest last trains) until 04:00, the next first train is the morning's.
+  const morning = dayStart + 24 * HOUR_MS;
+  return ms >= dayStart + 16 * HOUR_MS ? Math.max(ms, morning) : ms;
+}
+
 /** The next first train by asking `query`, stepping the start forward past walking answers. */
 export async function searchFirstTrain(query: EtaQuery, nowMs: number): Promise<Omit<TrainTime, 'source'> | null> {
-  let departAt = nowMs;
+  let departAt = firstTrainSearchStart(nowMs);
   for (let step = 0; step < MAX_STEPS; step++) {
     const eta = await query({ departAt });
     const walk = await isWalkLeaving(query, eta, departAt);
