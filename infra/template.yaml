@@ -20,11 +20,17 @@ Parameters:
   AlarmEmail:
     Type: String
     Default: ""
+  EnableBusiness:
+    Type: String
+    AllowedValues: ["true", "false"]
+    Default: "false"
+    Description: LastRide for Business (organizer sign-in via Supabase). Off for v1; the Supabase keys are only read from the secret when on.
 
 Conditions:
   UseCanary: !Equals [!Ref EnableCanary, "true"]
   HasAlarmEmail: !Not [!Equals [!Ref AlarmEmail, ""]]
   IsProduction: !Equals [!Ref Stage, production]
+  BusinessEnabled: !Equals [!Ref EnableBusiness, "true"]
 
 Globals:
   Function:
@@ -129,8 +135,8 @@ Resources:
           CORS_ALLOWED_ORIGINS: !Ref CorsAllowedOrigins
           DATABASE_URL: !Sub "{{resolve:secretsmanager:${AppSecretName}:SecretString:DATABASE_URL}}"
           ODPT_KEY: !Sub "{{resolve:secretsmanager:${AppSecretName}:SecretString:ODPT_KEY}}"
-          SUPABASE_URL: !Sub "{{resolve:secretsmanager:${AppSecretName}:SecretString:SUPABASE_URL}}"
-          SUPABASE_ANON_KEY: !Sub "{{resolve:secretsmanager:${AppSecretName}:SecretString:SUPABASE_ANON_KEY}}"
+          SUPABASE_URL: !If [BusinessEnabled, !Sub "{{resolve:secretsmanager:${AppSecretName}:SecretString:SUPABASE_URL}}", ""]
+          SUPABASE_ANON_KEY: !If [BusinessEnabled, !Sub "{{resolve:secretsmanager:${AppSecretName}:SecretString:SUPABASE_ANON_KEY}}", ""]
           USAGE_ADMIN_TOKEN: !Sub "{{resolve:secretsmanager:${AppSecretName}:SecretString:USAGE_ADMIN_TOKEN}}"
           EXPO_ACCESS_TOKEN: !Sub "{{resolve:secretsmanager:${AppSecretName}:SecretString:EXPO_ACCESS_TOKEN}}"
           REVENUECAT_SECRET_KEY: !Sub "{{resolve:secretsmanager:${AppSecretName}:SecretString:REVENUECAT_SECRET_KEY}}"
@@ -181,8 +187,8 @@ Resources:
           REQUIRE_USAGE_ACCOUNTING: "true"
           CORS_ALLOWED_ORIGINS: !Ref CorsAllowedOrigins
           DATABASE_URL: !Sub "{{resolve:secretsmanager:${AppSecretName}:SecretString:DATABASE_URL}}"
-          SUPABASE_URL: !Sub "{{resolve:secretsmanager:${AppSecretName}:SecretString:SUPABASE_URL}}"
-          SUPABASE_ANON_KEY: !Sub "{{resolve:secretsmanager:${AppSecretName}:SecretString:SUPABASE_ANON_KEY}}"
+          SUPABASE_URL: !If [BusinessEnabled, !Sub "{{resolve:secretsmanager:${AppSecretName}:SecretString:SUPABASE_URL}}", ""]
+          SUPABASE_ANON_KEY: !If [BusinessEnabled, !Sub "{{resolve:secretsmanager:${AppSecretName}:SecretString:SUPABASE_ANON_KEY}}", ""]
           USAGE_ADMIN_TOKEN: !Sub "{{resolve:secretsmanager:${AppSecretName}:SecretString:USAGE_ADMIN_TOKEN}}"
           EXPO_ACCESS_TOKEN: !Sub "{{resolve:secretsmanager:${AppSecretName}:SecretString:EXPO_ACCESS_TOKEN}}"
           ENTERPRISE_BOOTSTRAP_EMAILS: ""

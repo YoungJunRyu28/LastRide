@@ -4,9 +4,10 @@
  */
 
 /**
- * LastRide for Business: joining groups, organizer events and organizer
- * alerts. On unless the build sets EXPO_PUBLIC_ENABLE_BUSINESS=false, which
- * hides every entry point and sends deep links (e.g. last-ride://join) home.
+ * LastRide for Business: organizer events and organizer alerts (consumer
+ * groups are separate and always on). Not in v1: off unless the build sets
+ * EXPO_PUBLIC_ENABLE_BUSINESS=true. While off, every entry point is hidden and
+ * its deep links (e.g. last-ride://join) go home.
  */
 export const businessEnabled =
-  process.env.EXPO_PUBLIC_ENABLE_BUSINESS !== "false";
+  process.env.EXPO_PUBLIC_ENABLE_BUSINESS === "true";

@@ -36,14 +36,16 @@ Create one JSON secret per environment. It must contain non-empty values for:
 {
   "DATABASE_URL": "...",
   "ODPT_KEY": "...",
-  "SUPABASE_URL": "...",
-  "SUPABASE_ANON_KEY": "...",
   "USAGE_ADMIN_TOKEN": "...",
   "EXPO_ACCESS_TOKEN": "...",
   "REVENUECAT_SECRET_KEY": "...",
   "GROUP_INVITE_ENCRYPTION_KEY": "..."
 }
 ```
+
+`SUPABASE_URL` and `SUPABASE_ANON_KEY` are needed only for LastRide for
+Business (organizer sign-in), which is off for v1. Deploy with
+`ENABLE_BUSINESS=true` to require them and pass them to the API.
 
 Use the pooled production database URL for serverless execution. Enable Expo
 Push Security for the production EAS project and store its access token as

@@ -34,6 +34,13 @@ SECRET_ID="${SECRET_ARG:-${LASTRIDE_SECRET_ID:-}}"
 AWS_REGION="${AWS_REGION:-ap-northeast-1}"
 CORS_ALLOWED_ORIGINS="${CORS_ALLOWED_ORIGINS:-}"
 ALARM_EMAIL="${ALARM_EMAIL:-}"
+# LastRide for Business (Supabase organizer sign-in). Off for v1; set
+# ENABLE_BUSINESS=true to require and pass through the SUPABASE_* secrets.
+ENABLE_BUSINESS="${ENABLE_BUSINESS:-false}"
+if [[ "$ENABLE_BUSINESS" != "true" && "$ENABLE_BUSINESS" != "false" ]]; then
+  echo "ENABLE_BUSINESS must be true or false" >&2
+  exit 2
+fi
 
 if [[ "$STAGE" != "staging" && "$STAGE" != "production" ]]; then
   echo "stage must be staging or production" >&2
@@ -95,11 +102,13 @@ SECRET_JSON="$(aws secretsmanager get-secret-value   --region "$AWS_REGION"   --
 printf '%s' "$SECRET_JSON" | python3 -c '
 import json, sys
 data=json.load(sys.stdin)
-required=["DATABASE_URL","ODPT_KEY","SUPABASE_URL","SUPABASE_ANON_KEY","USAGE_ADMIN_TOKEN","EXPO_ACCESS_TOKEN","REVENUECAT_SECRET_KEY","GROUP_INVITE_ENCRYPTION_KEY"]
+required=["DATABASE_URL","ODPT_KEY","USAGE_ADMIN_TOKEN","EXPO_ACCESS_TOKEN","REVENUECAT_SECRET_KEY","GROUP_INVITE_ENCRYPTION_KEY"]
+if sys.argv[1] == "true":
+    required += ["SUPABASE_URL","SUPABASE_ANON_KEY"]
 missing=[k for k in required if not isinstance(data.get(k), str) or not data[k].strip()]
 if missing:
     raise SystemExit("Secret is missing required keys: " + ", ".join(missing))
-'
+' "$ENABLE_BUSINESS"
 
 DATABASE_URL="$(printf '%s' "$SECRET_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["DATABASE_URL"])')"
 unset SECRET_JSON
@@ -135,7 +144,7 @@ if [[ "$STAGE" == "production" ]] && aws cloudformation describe-stacks   --regi
 fi
 
 echo "Deploying $STACK_NAME (canary=$ENABLE_CANARY)..."
-sam deploy   --region "$AWS_REGION"   --stack-name "$STACK_NAME"   --template-file .aws-sam/build/template.yaml   --resolve-s3   --capabilities CAPABILITY_IAM   --no-fail-on-empty-changeset   --on-failure ROLLBACK   --parameter-overrides     "Stage=$STAGE"     "AppSecretName=$SECRET_ID"     "EnableCanary=$ENABLE_CANARY"     "CorsAllowedOrigins=$CORS_ALLOWED_ORIGINS"     "AlarmEmail=$ALARM_EMAIL"
+sam deploy   --region "$AWS_REGION"   --stack-name "$STACK_NAME"   --template-file .aws-sam/build/template.yaml   --resolve-s3   --capabilities CAPABILITY_IAM   --no-fail-on-empty-changeset   --on-failure ROLLBACK   --parameter-overrides     "Stage=$STAGE"     "AppSecretName=$SECRET_ID"     "EnableCanary=$ENABLE_CANARY"     "CorsAllowedOrigins=$CORS_ALLOWED_ORIGINS"     "AlarmEmail=$ALARM_EMAIL"     "EnableBusiness=$ENABLE_BUSINESS"
 
 API_URL="$(aws cloudformation describe-stacks   --region "$AWS_REGION"   --stack-name "$STACK_NAME"   --query "Stacks[0].Outputs[?OutputKey=='ApiUrl'].OutputValue"   --output text)"
 
