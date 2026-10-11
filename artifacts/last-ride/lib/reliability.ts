@@ -9,6 +9,15 @@
 import { MINUTE_MS } from "@/lib/time";
 
 export const BASE_SAFETY_MARGIN_MINUTES = 4;
+
+/** How much time to spare the user wants (Settings → 余裕): ぎりぎり, ふつう or 余裕あり. */
+export type LeaveMargin = "tight" | "normal" | "relaxed";
+/** Minutes between the recommended and latest leave times, before transfers and long walks. */
+export const LEAVE_MARGIN_MINUTES: Record<LeaveMargin, number> = {
+  tight: 0,
+  normal: BASE_SAFETY_MARGIN_MINUTES,
+  relaxed: 10,
+};
 export const TRANSFER_SAFETY_MARGIN_MINUTES = 2;
 export const MAX_TRANSFER_SAFETY_MARGIN_MINUTES = 6;
 export const LONG_WALK_MINUTES = 15;
@@ -34,6 +43,7 @@ export type PlanFreshness = "fresh" | "aging" | "stale";
 
 export function recommendedSafetyMarginMinutes(
   choice: Pick<DeadlineChoice, "walkingMinutes" | "lastTrain">,
+  leaveMargin: LeaveMargin = "normal",
 ): number {
   const transfers = Math.max(0, choice.lastTrain.transfers ?? 0);
   const transferMargin = Math.min(
@@ -44,7 +54,7 @@ export function recommendedSafetyMarginMinutes(
     choice.walkingMinutes >= LONG_WALK_MINUTES
       ? LONG_WALK_SAFETY_MARGIN_MINUTES
       : 0;
-  return BASE_SAFETY_MARGIN_MINUTES + transferMargin + walkMargin;
+  return LEAVE_MARGIN_MINUTES[leaveMargin] + transferMargin + walkMargin;
 }
 
 export function recommendedLeaveTime(choice: DeadlineChoice): number {

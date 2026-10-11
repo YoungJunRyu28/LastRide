@@ -46,6 +46,15 @@ describe("recommended deadline", () => {
     ).toBe(12);
   });
 
+  test("the 余裕 setting sets the base margin; transfers and long walks still add to it", () => {
+    expect(recommendedSafetyMarginMinutes(choice(), "tight")).toBe(0);
+    expect(recommendedSafetyMarginMinutes(choice(), "normal")).toBe(4);
+    expect(recommendedSafetyMarginMinutes(choice(), "relaxed")).toBe(10);
+    expect(
+      recommendedSafetyMarginMinutes(choice({ lastTrain: { transfers: 1 } }), "tight"),
+    ).toBe(2);
+  });
+
   test("a persisted explicit recommendation wins but can never exceed the hard deadline", () => {
     expect(
       recommendedLeaveTime(

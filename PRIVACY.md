@@ -15,7 +15,7 @@ account. Optional groups, the Premium subscription and LastRide for Business
 | **Your location** (GPS coordinates)                                   | Find nearby stations and calculate walking time         | Apple Maps on iPhone; our API server on Android                     |
 | **Your saved destinations** (nearest stations and optional addresses) | Last-train, walking and taxi calculations               | Stored on your phone; coordinates are sent when needed for a lookup |
 | **A “tonight only” station**                                          | Plan for somewhere else tonight without saving it       | Stored on your phone; cleared the next day                          |
-| **Your settings**                                                     | Language, walking pace, reminders and other preferences | Stored on your phone                                                |
+| **Your settings**                                                     | Language, time to spare, reminders and other preferences | Stored on your phone                                                |
 | **Tonight’s plan**                                                    | Show the plan offline, in widgets and on the lock screen | Stored on your phone; replaced by the next night’s plan              |
 
 LastRide keeps no movement history and no record of past nights. Widgets and
@@ -40,7 +40,7 @@ leave-by time, and a random capability token used by your device to update or
 leave that event. The organizer can see your display name and leave-by time.
 
 The Business event record does **not** store your GPS location, home address,
-home station, walking pace, route, destination or personal LastRide settings.
+home station, time-to-spare setting, route, destination or personal LastRide settings.
 
 **Organizers:** organizer sign-in uses a work email address. Authentication is
 handled by Supabase when configured. We store the organizer's authentication

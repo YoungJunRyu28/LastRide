@@ -3,7 +3,8 @@
  * background-location task, which runs in a separate JS runtime.
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { Coordinates, StationOption, WalkingSpeed } from '@/lib/stations';
+import type { LeaveMargin } from '@/lib/reliability';
+import type { Coordinates, StationOption } from '@/lib/stations';
 import { serviceDate } from '@/lib/time';
 
 export type Language = 'ja' | 'en';
@@ -21,7 +22,7 @@ export type SavedDestination = {
 export const STORAGE_KEYS = {
   language: 'lastride-language',
   homeStation: 'lastride-home-station',
-  walkingSpeed: 'lastride-walking-speed',
+  leaveMargin: 'lastride-leave-margin',
   reminders: 'lastride-reminder-intervals',
   pinnedStation: 'lastride-pinned-station',
   missedCheckIn: 'lastride-missed-check-in',
@@ -44,7 +45,8 @@ export const DEFAULT_REMINDERS = [15];
 export type Settings = {
   language: Language | null;
   homeStation: StationOption | null;
-  walkingSpeed: WalkingSpeed;
+  /** How much time to spare before the latest leave time. */
+  leaveMargin: LeaveMargin;
   reminderIntervals: number[];
   /** Station the user chose over the automatic pick; valid for one night only. */
   pinnedStation: StationOption | null;
@@ -63,7 +65,7 @@ export type Settings = {
 export const DEFAULT_SETTINGS: Settings = {
   language: null,
   homeStation: null,
-  walkingSpeed: 'normal',
+  leaveMargin: 'normal',
   reminderIntervals: DEFAULT_REMINDERS,
   pinnedStation: null,
   missedCheckIn: true,
@@ -162,10 +164,10 @@ export async function writePinnedStation(station: StationOption | null): Promise
 }
 
 export async function readSettings(): Promise<Settings> {
-  const [language, homeStation, walkingSpeed, reminders, pinnedStation, missedCheckIn, homeAddress, destinationsRaw, activeDestinationIdRaw, nightLocationMode, tonightRaw] = await Promise.all([
+  const [language, homeStation, leaveMargin, reminders, pinnedStation, missedCheckIn, homeAddress, destinationsRaw, activeDestinationIdRaw, nightLocationMode, tonightRaw] = await Promise.all([
     AsyncStorage.getItem(STORAGE_KEYS.language),
     AsyncStorage.getItem(STORAGE_KEYS.homeStation),
-    AsyncStorage.getItem(STORAGE_KEYS.walkingSpeed),
+    AsyncStorage.getItem(STORAGE_KEYS.leaveMargin),
     AsyncStorage.getItem(STORAGE_KEYS.reminders),
     AsyncStorage.getItem(STORAGE_KEYS.pinnedStation),
     AsyncStorage.getItem(STORAGE_KEYS.missedCheckIn),
@@ -177,6 +179,8 @@ export async function readSettings(): Promise<Settings> {
   ]);
   // Night history was removed: plan times derived from map data aren't kept long-term.
   void AsyncStorage.removeItem('lastride-night-history').catch(() => undefined);
+  // The walking-pace setting was replaced by 余裕 (leaveMargin).
+  void AsyncStorage.removeItem('lastride-walking-speed').catch(() => undefined);
   const tonightDestination = parsePinnedStation(tonightRaw);
 
   const legacyStation = parseHomeStation(homeStation);
@@ -207,7 +211,7 @@ export async function readSettings(): Promise<Settings> {
     language: language === 'ja' || language === 'en' ? language : null,
     // Tonight's one-off station, when set, is where every plan heads (foreground and background).
     homeStation: tonightDestination ?? activeDestination?.station ?? legacyStation,
-    walkingSpeed: walkingSpeed === 'relaxed' || walkingSpeed === 'fast' ? walkingSpeed : 'normal',
+    leaveMargin: leaveMargin === 'tight' || leaveMargin === 'relaxed' ? leaveMargin : 'normal',
     reminderIntervals: parseReminders(reminders),
     pinnedStation: parsePinnedStation(pinnedStation),
     // Absent means never changed, and the check-in is on by default.
