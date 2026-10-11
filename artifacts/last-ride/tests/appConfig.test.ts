@@ -8,9 +8,12 @@ const appConfig = require("../app.config.js") as (input: {
 }) => ExpoConfig;
 const baseConfig = (require("../app.json") as { expo: ExpoConfig }).expo;
 
-function resolveWith(env: Record<string, string | undefined>): ExpoConfig {
+function resolveWith(
+  env: Record<string, string | undefined>,
+  config: ExpoConfig = baseConfig,
+): ExpoConfig {
   for (const [key, value] of Object.entries(env)) vi.stubEnv(key, value);
-  return appConfig({ config: baseConfig });
+  return appConfig({ config });
 }
 
 describe("app.config.js", () => {
@@ -79,12 +82,20 @@ describe("app.config.js", () => {
   });
 
   it("enables over-the-air updates only with an EAS project", () => {
-    const local = resolveWith({ EAS_PROJECT_ID: undefined });
+    const { eas: _eas, ...extraWithoutProject } = baseConfig.extra ?? {};
+    const local = resolveWith({ EAS_PROJECT_ID: undefined }, { ...baseConfig, extra: extraWithoutProject });
     expect(local.updates).toEqual({ enabled: false });
     expect(local.runtimeVersion).toEqual({ policy: "fingerprint" });
 
-    const eas = resolveWith({ EAS_PROJECT_ID: "project-123" });
-    expect(eas.updates).toMatchObject({
+    // The project ID that `eas init` saved in app.json.
+    const fromAppJson = resolveWith({ EAS_PROJECT_ID: undefined });
+    expect(fromAppJson.updates).toMatchObject({
+      enabled: true,
+      url: "https://u.expo.dev/da307cab-09bc-43d3-a0dd-79c836c4ef97",
+    });
+
+    const override = resolveWith({ EAS_PROJECT_ID: "project-123" });
+    expect(override.updates).toMatchObject({
       enabled: true,
       url: "https://u.expo.dev/project-123",
       fallbackToCacheTimeout: 0,

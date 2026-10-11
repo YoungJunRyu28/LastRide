@@ -129,22 +129,24 @@ module.exports = ({ config }) => {
       : {}),
   };
 
+  // The EAS project ID lives in app.json (set by `eas init`); EAS_PROJECT_ID
+  // can override it, e.g. for a separate project.
+  const easProjectId =
+    process.env.EAS_PROJECT_ID || config.extra?.eas?.projectId || null;
   const extra = {
     ...(config.extra || {}),
     liveActivityEnabled: enableLiveActivity,
-    ...(process.env.EAS_PROJECT_ID
-      ? { eas: { projectId: process.env.EAS_PROJECT_ID } }
-      : {}),
+    ...(easProjectId ? { eas: { projectId: easProjectId } } : {}),
   };
 
   // Over-the-air JS updates (expo-updates) need an EAS project to publish to.
   // Without one (local and free-signing builds) the app only ever runs the
   // JS bundled into the build. The fingerprint runtime version keeps an
   // update from reaching a build whose native code it wasn't made for.
-  const updates = process.env.EAS_PROJECT_ID
+  const updates = easProjectId
     ? {
         enabled: true,
-        url: `https://u.expo.dev/${process.env.EAS_PROJECT_ID}`,
+        url: `https://u.expo.dev/${easProjectId}`,
         // Never hold up launch waiting for a download: check in the
         // background and apply the update on the next launch.
         checkAutomatically: "ON_LOAD",

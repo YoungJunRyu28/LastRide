@@ -62,6 +62,12 @@
     "locales": {
       "ja": "./locales/ja.json",
       "en": "./locales/en.json"
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "da307cab-09bc-43d3-a0dd-79c836c4ef97"
+      }
+    },
+    "owner": "lastride"
   }
 }
