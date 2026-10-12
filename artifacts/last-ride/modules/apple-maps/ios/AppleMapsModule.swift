@@ -5,6 +5,13 @@ import UIKit
 struct Coordinate: Record {
   @Field var latitude: Double = 0
   @Field var longitude: Double = 0
+  /**
+   * Set when this point is a station (its names, e.g. ["渋谷", "Shibuya"]): the
+   * station is then looked up as an Apple place, so a transit ETA ends when the
+   * train arrives (not after a walk out to the map point) and a walk ends at
+   * the station itself.
+   */
+  @Field var stationNames: [String] = []
 
   var location: CLLocationCoordinate2D { CLLocationCoordinate2D(latitude: latitude, longitude: longitude) }
 }
@@ -57,25 +64,32 @@ public class AppleMapsModule: Module {
     }
 
     AsyncFunction("transitEta") { (request: EtaRequest, promise: Promise) in
-      let directions = MKDirections(request: self.directionsRequest(request, transport: .transit))
-      directions.calculateETA { response, error in
-        guard let eta = response else {
-          promise.reject("ERR_ETA", error?.localizedDescription ?? "No transit route")
-          return
+      self.mapItem(for: request.from) { source, _ in
+        self.mapItem(for: request.to) { destination, destinationIsStation in
+          let directions = MKDirections(request: self.directionsRequest(request, source: source, destination: destination, transport: .transit))
+          directions.calculateETA { response, error in
+            guard let eta = response else {
+              promise.reject("ERR_ETA", error?.localizedDescription ?? "No transit route")
+              return
+            }
+            promise.resolve([
+              "departureMs": eta.expectedDepartureDate.timeIntervalSince1970 * 1000,
+              "arrivalMs": eta.expectedArrivalDate.timeIntervalSince1970 * 1000,
+              "travelSeconds": eta.expectedTravelTime,
+              "distanceMeters": eta.distance,
+              // True when the destination was the station place: arrival is then the train's.
+              "arrivesAtStation": destinationIsStation,
+            ])
+          }
         }
-        promise.resolve([
-          "departureMs": eta.expectedDepartureDate.timeIntervalSince1970 * 1000,
-          "arrivalMs": eta.expectedArrivalDate.timeIntervalSince1970 * 1000,
-          "travelSeconds": eta.expectedTravelTime,
-          "distanceMeters": eta.distance,
-        ])
       }
     }
 
     AsyncFunction("walkingRoute") { (from: Coordinate, to: Coordinate, promise: Promise) in
+      self.mapItem(for: to) { destination, _ in
       let request = MKDirections.Request()
       request.source = MKMapItem(placemark: MKPlacemark(coordinate: from.location))
-      request.destination = MKMapItem(placemark: MKPlacemark(coordinate: to.location))
+      request.destination = destination
       request.transportType = .walking
       MKDirections(request: request).calculate { response, error in
         guard let route = response?.routes.first else {
@@ -93,6 +107,7 @@ public class AppleMapsModule: Module {
           "seconds": route.expectedTravelTime,
           "path": path,
         ])
+      }
       }
     }
 
@@ -255,10 +270,76 @@ public class AppleMapsModule: Module {
     ]
   }
 
-  private func directionsRequest(_ request: EtaRequest, transport: MKDirectionsTransportType) -> MKDirections.Request {
+  /// Stations already looked up this session, so repeated ETA questions for a
+  /// night (the last-train search asks several) cost one search each. Kept in
+  /// memory only, never stored (Apple's terms: no long-term caching).
+  private var stationItems: [String: MKMapItem?] = [:]
+  private let stationItemsLock = NSLock()
+
+  /// The station at `point` as an Apple place when it is named and Apple has a
+  /// railway station of that name close by; otherwise the bare map point. The
+  /// flag says which. Never guesses: a nearby station with another name (浜松町
+  /// next to 大門, a bus terminal "at Tokyo Station") leaves the bare point.
+  private func mapItem(for point: Coordinate, completion: @escaping (MKMapItem, Bool) -> Void) {
+    let bare = MKMapItem(placemark: MKPlacemark(coordinate: point.location))
+    let wanted = point.stationNames.map(Self.baseName).filter { !$0.isEmpty }
+    guard !wanted.isEmpty else {
+      completion(bare, false)
+      return
+    }
+    let key = String(format: "%@|%.4f|%.4f", wanted.joined(separator: "/"), point.latitude, point.longitude)
+    stationItemsLock.lock()
+    let cached = stationItems[key]
+    stationItemsLock.unlock()
+    if let cached {
+      completion(cached ?? bare, cached != nil)
+      return
+    }
+    // Nearby places rather than a text search: a search for 東京駅 can rank 横浜駅 first.
+    let request = MKLocalPointsOfInterestRequest(center: point.location, radius: Self.stationSearchMeters)
+    request.pointOfInterestFilter = MKPointOfInterestFilter(including: [.publicTransport])
+    MKLocalSearch(request: request).start { response, _ in
+      let here = CLLocation(latitude: point.latitude, longitude: point.longitude)
+      // Public transport includes bus stops and taxi ranks: keep railway stations.
+      let stations = (response?.mapItems ?? [])
+        .filter { Self.isRailwayStation($0.name ?? "") }
+        .map { (item: $0, meters: here.distance(from: CLLocation(latitude: $0.placemark.coordinate.latitude, longitude: $0.placemark.coordinate.longitude))) }
+        .filter { $0.meters <= Self.stationSearchMeters }
+        .sorted { $0.meters < $1.meters }
+      let exact = stations.first { wanted.contains(Self.baseName($0.item.name ?? "")) }
+      // "Oshiage 'SKYTREE' Station" for 押上 / Oshiage.
+      let prefixed = stations.first { candidate in
+        let found = Self.baseName(candidate.item.name ?? "")
+        return wanted.contains { found.hasPrefix($0) }
+      }
+      let item = (exact ?? prefixed)?.item
+      self.stationItemsLock.lock()
+      self.stationItems[key] = item
+      self.stationItemsLock.unlock()
+      completion(item ?? bare, item != nil)
+    }
+  }
+
+  private static let stationSearchMeters: Double = 600
+
+  private static func isRailwayStation(_ name: String) -> Bool {
+    let trimmed = name.trimmingCharacters(in: .whitespaces).lowercased()
+    return trimmed.hasSuffix("駅") || trimmed.hasSuffix("station")
+  }
+
+  /// "渋谷駅" / "Ōmiya Station" / "元町・中華街" → "渋谷" / "omiya" / "元町中華街", for matching names.
+  private static func baseName(_ name: String) -> String {
+    var base = name.folding(options: [.diacriticInsensitive, .caseInsensitive, .widthInsensitive], locale: nil).lowercased()
+    for suffix in ["駅", "station"] where base.hasSuffix(suffix) {
+      base = String(base.dropLast(suffix.count))
+    }
+    return String(base.unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) })
+  }
+
+  private func directionsRequest(_ request: EtaRequest, source: MKMapItem, destination: MKMapItem, transport: MKDirectionsTransportType) -> MKDirections.Request {
     let directions = MKDirections.Request()
-    directions.source = MKMapItem(placemark: MKPlacemark(coordinate: request.from.location))
-    directions.destination = MKMapItem(placemark: MKPlacemark(coordinate: request.to.location))
+    directions.source = source
+    directions.destination = destination
     directions.transportType = transport
     if let arriveBy = request.arriveBy {
       directions.arrivalDate = Date(timeIntervalSince1970: arriveBy / 1000)

@@ -26,7 +26,7 @@ import { HOUR_MS, MINUTE_MS, serviceDayStart } from '@/lib/time';
 
 export const appleTransitEnabled = AppleMaps !== null && process.env.EXPO_PUBLIC_TRANSIT_PROVIDER !== 'server';
 
-export type Eta = { departureMs: number; arrivalMs: number };
+export type Eta = { departureMs: number; arrivalMs: number; arrivesAtStation?: boolean };
 export type EtaQuery = (when: { arriveBy?: number; departAt?: number }) => Promise<Eta>;
 
 /** How far apart the two questions are when checking for a walk. */
@@ -76,8 +76,8 @@ export async function searchLastTrain(query: EtaQuery, nowMs: number): Promise<O
     // Not tonight's: it left before this service day began, or misses the deadline.
     if (eta.departureMs < dayStart || eta.arrivalMs > arriveBy + SLACK_MS) return null;
     const walk = await isWalkArriving(query, eta, arriveBy);
-    if (walk === null) return { departsAt: eta.departureMs, arrivesAt: eta.arrivalMs, approximate: true };
-    if (!walk) return { departsAt: eta.departureMs, arrivesAt: eta.arrivalMs };
+    if (walk === null) return { ...times(eta), approximate: true };
+    if (!walk) return times(eta);
     // A train must arrive before this walk would have to set out.
     arriveBy = eta.departureMs;
   }
@@ -102,19 +102,29 @@ export async function searchFirstTrain(query: EtaQuery, nowMs: number): Promise<
   for (let step = 0; step < MAX_STEPS; step++) {
     const eta = await query({ departAt });
     const walk = await isWalkLeaving(query, eta, departAt);
-    if (walk === null) return { departsAt: eta.departureMs, arrivesAt: eta.arrivalMs, approximate: true };
-    if (!walk) return { departsAt: eta.departureMs, arrivesAt: eta.arrivalMs };
+    if (walk === null) return { ...times(eta), approximate: true };
+    if (!walk) return times(eta);
     // A walk beats any train leaving soon; a train only wins once it leaves well after now.
     departAt += 15 * MINUTE_MS;
   }
   return null;
 }
 
+/** Both names, so MapKit can match the station whatever language it answers in. */
+export function stationNames(station: { name?: string; nameJa?: string }): string[] {
+  return [station.nameJa, station.name].filter((name): name is string => !!name?.trim());
+}
+
+function times(eta: Eta): Omit<TrainTime, 'source'> {
+  return { departsAt: eta.departureMs, arrivesAt: eta.arrivalMs, ...(eta.arrivesAtStation ? { arrivesAtStation: true } : {}) };
+}
+
 function etaQuery(from: StationOption, to: StationOption): EtaQuery | null {
   const maps = AppleMaps;
   if (!maps) return null;
-  const origin = { latitude: from.latitude, longitude: from.longitude };
-  const destination = { latitude: to.latitude, longitude: to.longitude };
+  // Named, so MapKit routes between the station places: arrival is then when the train gets in.
+  const origin = { latitude: from.latitude, longitude: from.longitude, stationNames: stationNames(from) };
+  const destination = { latitude: to.latitude, longitude: to.longitude, stationNames: stationNames(to) };
   return (when) => maps.transitEta({ from: origin, to: destination, ...when });
 }
 

@@ -9,6 +9,7 @@
  * don't keep them long-term. Saved destinations keep only the station the user
  * chose (a name and a point), as they would type it in themselves.
  */
+import { stationNames } from '@/lib/appleTransit';
 import { AppleMaps, type Place } from '@/modules/apple-maps/src';
 import type { Coordinates, NearbyStation, StationOption, WalkingRoute, WalkingSpeed } from '@/lib/stations';
 
@@ -85,9 +86,17 @@ export function distinctStations(origin: Coordinates, places: Place[], limit: nu
     .slice(0, limit);
 }
 
-export async function appleWalkingRoute(from: Coordinates, to: Coordinates, walkingSpeed: WalkingSpeed): Promise<WalkingRoute | null> {
+export async function appleWalkingRoute(
+  from: Coordinates,
+  to: Coordinates & { name?: string; nameJa?: string },
+  walkingSpeed: WalkingSpeed,
+): Promise<WalkingRoute | null> {
   if (!AppleMaps) return null;
-  const route = await AppleMaps.walkingRoute(from, to);
+  // A station (it has a name): walk to the station place itself, as Apple Maps would.
+  const route = await AppleMaps.walkingRoute(
+    { latitude: from.latitude, longitude: from.longitude },
+    { latitude: to.latitude, longitude: to.longitude, stationNames: stationNames(to) },
+  );
   return {
     distanceMeters: route.distanceMeters,
     // Apple's times assume an ordinary pace.

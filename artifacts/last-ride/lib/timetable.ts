@@ -38,6 +38,12 @@ export type TrainTime = {
   source: 'sample' | 'live' | 'apple';
   /** Apple's answer may be a walk rather than a train (see lib/appleTransit.ts); shown as 目安. */
   approximate?: boolean;
+  /**
+   * Apple only: `arrivesAt` is the train's arrival at the station. Without it,
+   * Apple's arrival may include a walk out to the station's map point (shown
+   * as "out of the station").
+   */
+  arrivesAtStation?: boolean;
 };
 
 const SAMPLE_LAST_TRAIN = '23:52';

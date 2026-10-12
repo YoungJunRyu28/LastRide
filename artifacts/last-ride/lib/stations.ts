@@ -237,7 +237,7 @@ function distinctStations(
  */
 export async function walkingRoute(
   from: Coordinates,
-  to: Coordinates,
+  to: Coordinates & { name?: string; nameJa?: string },
   walkingSpeed: WalkingSpeed,
 ): Promise<WalkingRoute> {
   const multiplier = SPEED_MULTIPLIER[walkingSpeed];

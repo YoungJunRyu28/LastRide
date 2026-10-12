@@ -516,9 +516,9 @@ export default function RideScreen() {
                 <Text style={[styles.note, { color: colors.mutedForeground }]}>
                   {[
                     arrivalMs
-                      ? // Apple's arrival is at the station's map point (often a street
-                        // exit), not the platform: say so rather than look minutes late.
-                        plan.lastTrain.source === "apple" && !plan.walkHomeMinutes
+                      ? // Apple's arrival can be at the station's map point (a walk out
+                        // past the gates) when the station place wasn't found: say so.
+                        plan.lastTrain.source === "apple" && !plan.lastTrain.arrivesAtStation && !plan.walkHomeMinutes
                         ? ja
                           ? `${formatJstTime(arrivalMs)}ごろ ${destination}（駅を出る時刻）`
                           : `${destination} ~${formatJstTime(arrivalMs)} (out of the station)`

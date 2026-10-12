@@ -909,7 +909,7 @@ export default function AlternativesScreen() {
                     waitNote,
                     trainFare === null ? null : `${formatYen(trainFare)}`,
                     homeByTrain
-                      ? firstTrainRoute?.source === "apple"
+                      ? firstTrainRoute?.source === "apple" && !firstTrainRoute.arrivesAtStation
                         ? ja
                           ? `${formatJstTime(homeByTrain)}ごろ駅を出る`
                           : `out of the station ~${formatJstTime(homeByTrain)}`

@@ -73,6 +73,18 @@ describe("searchLastTrain", () => {
   });
 });
 
+describe("arrival at the station place", () => {
+  it("passes on that the arrival is the train's when MapKit found the station", async () => {
+    const atStation: EtaQuery = async () => ({ departureMs: jst(23, 45), arrivalMs: jst(24, 37), arrivesAtStation: true });
+    expect(await searchLastTrain(atStation, jst(22))).toEqual({ departsAt: jst(23, 45), arrivesAt: jst(24, 37), arrivesAtStation: true });
+  });
+
+  it("leaves it unset for a bare map point", async () => {
+    const atPoint: EtaQuery = async () => ({ departureMs: jst(23, 45), arrivalMs: jst(24, 42) });
+    expect(await searchLastTrain(atPoint, jst(22))).toEqual({ departsAt: jst(23, 45), arrivesAt: jst(24, 42) });
+  });
+});
+
 describe("searchFirstTrain", () => {
   it("skips the walk Apple offers before a faster first train", async () => {
     // First train 04:50→04:56; walking takes 22 minutes, so before ~04:35 Apple suggests walking.
