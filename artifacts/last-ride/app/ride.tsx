@@ -199,7 +199,7 @@ export default function RideScreen() {
   const destinationLabel = destinationName
     ? ja
       ? `${destinationName}へ`
-      : `to ${destinationName}`
+      : `To ${destinationName}`
     : ja
       ? "帰り先を設定"
       : "Set destination";
@@ -498,9 +498,8 @@ export default function RideScreen() {
             <Text
               testID="leave-time"
               maxFontSizeMultiplier={1.3}
-              // Never wraps: on narrow iPhones it shrinks to fit beside the circle.
+              // One line: at 66pt it fits beside the circle even on an iPhone SE (375pt wide).
               numberOfLines={1}
-              adjustsFontSizeToFit
               style={[
                 styles.leaveTime,
                 { color: departed ? colors.mutedForeground : colors.primary },
@@ -945,16 +944,20 @@ export default function RideScreen() {
               },
             ]}
           >
-            <Feather name="crosshair" color={colors.primary} size={18} />
+            <Feather name={locationError === "near-home" && !isLocating ? "home" : "crosshair"} color={colors.primary} size={18} />
             <View style={styles.flex}>
               <Text style={[styles.rowTitle, { color: colors.foreground }]}>
                 {isLocating
                   ? ja
                     ? "最寄り駅を検索中…"
                     : "Finding your closest station…"
-                  : ja
-                    ? "位置情報を使う"
-                    : "Use my location"}
+                  : locationError === "near-home"
+                    ? ja
+                      ? "帰り先の近くにいます"
+                      : "You're near home"
+                    : ja
+                      ? "位置情報を使う"
+                      : "Use my location"}
               </Text>
               <Text style={[styles.note, { color: colors.mutedForeground }]}>
                 {locationError

@@ -17,6 +17,8 @@ export const STATION_BUFFER_MINUTES = 3;
 const WALKING_PACE: WalkingSpeed = 'normal';
 const CANDIDATE_STATIONS_INITIAL = 3;
 const CANDIDATE_STATIONS_EXPANDED = 6;
+/** Closer than this to the home station and with no train found, the user is simply near home. */
+const NEAR_HOME_METERS = 1500;
 /** While tracking, re-plan only after moving this far from the last plan, or once it is this old. */
 const REPLAN_DISTANCE_METERS = 300;
 const REPLAN_AFTER_MS = 10 * MINUTE_MS;
@@ -168,6 +170,21 @@ export function nightEndsAt(
 export function freshPlanNightOf(nowMs: number): number {
   const dayStart = serviceDayStart(nowMs);
   return nowMs - dayStart < NIGHT_OVER_BY - 24 * HOUR_MS ? dayStart - 1 : nowMs;
+}
+
+/** The latest a night's last train can arrive (03:00 after it): past this, the night is over. */
+const NIGHT_DEADLINE = 23 * HOUR_MS;
+
+/**
+ * The coming night, when the one being planned is already over (after 03:00).
+ * Apple Maps only answers about future trips, so routes it alone covers can't
+ * be looked up for a night that has ended; planning the coming night beats
+ * showing no train at all.
+ */
+export function nextNightOf(nightOf: number, nowMs: number): number | null {
+  const dayStart = serviceDayStart(nightOf);
+  if (nowMs < dayStart + NIGHT_DEADLINE) return null;
+  return Math.max(nowMs, dayStart + 24 * HOUR_MS);
 }
 
 export function sameStation(first: StationOption, second: StationOption) {
@@ -411,7 +428,20 @@ export async function planNight(
     }
   }
 
-  if (options.length === 0) throw new LocationError(lookupFailed ? 'unavailable' : 'no-route');
+  if (options.length === 0) {
+    // That night is over and only Apple Maps covers this route: plan the coming night.
+    const comingNight = lookupFailed ? null : nextNightOf(nightOf, nowMs);
+    if (comingNight !== null)
+      return planNight(coordinates, home, leaveMargin, nowMs, { pinned, nightOf: comingNight, homeAddress });
+    if (lookupFailed) throw new LocationError('unavailable');
+    // At (or a walk from) the home station there is no train to take: say so instead of an error.
+    const nearHome = destinations.some(
+      ({ station }) =>
+        candidates.some((candidate) => sameStation(candidate.station, station)) ||
+        distanceBetween(coordinates, station) <= NEAR_HOME_METERS,
+    );
+    throw new LocationError(nearHome ? 'near-home' : 'no-route');
+  }
   return withTrainsBefore(assemble(options, pinned, coordinates, nowMs), nowMs);
 }
 

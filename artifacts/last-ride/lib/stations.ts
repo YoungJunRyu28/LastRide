@@ -40,7 +40,12 @@ export type NearbyStation = {
 export class LocationError extends Error {
   constructor(
     public code:
-      "permission" | "unsupported" | "no-station" | "no-route" | "unavailable",
+      | "permission"
+      | "unsupported"
+      | "no-station"
+      | "no-route"
+      | "near-home"
+      | "unavailable",
   ) {
     super(code);
   }

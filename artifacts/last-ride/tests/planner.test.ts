@@ -20,6 +20,7 @@ import {
   missedCheckInAt,
   nightEndsAt,
   freshPlanNightOf,
+  nextNightOf,
   repick,
   rideStatus,
   sameStation,
@@ -178,6 +179,25 @@ describe('nightEndsAt', () => {
 
   test('and the night is over by 05:00 regardless', () => {
     expect(nightEndsAt(tonight, train(jst(2026, 9, 24, 6, 0)))).toBe(jst(2026, 9, 24, 5, 0));
+  });
+});
+
+describe('nextNightOf', () => {
+  test('while the night can still have a last train, there is no next night to try', () => {
+    expect(nextNightOf(jst(2026, 9, 23, 22, 0), jst(2026, 9, 23, 23, 0))).toBeNull();
+    expect(nextNightOf(jst(2026, 9, 23, 22, 0), jst(2026, 9, 24, 2, 30))).toBeNull();
+  });
+
+  test('from 03:00 to 04:00 the coming night starts at 04:00', () => {
+    const next = nextNightOf(jst(2026, 9, 23, 22, 0), jst(2026, 9, 24, 3, 30));
+    expect(next).toBe(jst(2026, 9, 24, 4, 0));
+    expect(serviceDate(next!)).toBe('20260924');
+  });
+
+  test('from 04:00, while last night is still shown, the coming night is now', () => {
+    // 04:20: freshPlanNightOf picked last night; its last train can no longer be looked up.
+    const now = jst(2026, 9, 24, 4, 20);
+    expect(nextNightOf(freshPlanNightOf(now), now)).toBe(now);
   });
 });
 

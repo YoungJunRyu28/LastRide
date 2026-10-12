@@ -1523,6 +1523,10 @@ export function locationErrorText(
       return ja
         ? "近くの駅から帰り先の最寄り駅へ行ける電車が見つかりませんでした。"
         : "No train from the stations near you reaches your destination's station.";
+    case "near-home":
+      return ja
+        ? "ここからは電車に乗る必要はありません。帰り先から離れると、終電と出発時刻を表示します。"
+        : "No train needed from here. Once you're further from home, your last train and leave time will show.";
     case "unavailable":
       return ja
         ? "駅の検索に失敗しました。通信状況を確認して再試行してください。"
