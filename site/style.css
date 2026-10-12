@@ -253,3 +253,10 @@ th { color: var(--muted); font-weight: 700; width: 32%; background: #fbfcfe; }
 .about-outro-actions .btn { min-width:12rem; justify-content:center; }
 @media(max-width:700px) { .about-founders { grid-template-columns:1fr; } .founder-media { min-height:16.5rem; } .about-beliefs { grid-template-columns:1fr; } .about-hero { padding-top:4.5rem; } .about-scroll { margin-top:3rem; } }
 @media(prefers-reduced-motion:reduce) { .founder { transition:none; } .founder:hover { transform:none; } }
+
+/* Social profile links, shared by both founder cards */
+.founder-social-link { display:inline-flex; align-items:center; gap:.52rem; margin-top:1.25rem; padding:.52rem .83rem .52rem .52rem; border:1px solid #d8e3f0; background:#f3f7fc; border-radius:999px; color:#24486f; text-decoration:none; font-size:.82rem; font-weight:800; line-height:1.25; transition:background .2s ease; }
+.founder-social-link:hover { background:#dfecfc; }
+.founder-social-link:focus-visible { outline:3px solid var(--amber); outline-offset:3px; }
+.founder-linkedin-mark { display:inline-grid; place-items:center; width:1.32rem; height:1.32rem; border-radius:.22rem; background:#0a66c2; color:white; font:bold .73rem Arial,sans-serif; }
+@media(prefers-reduced-motion:reduce) { .founder-social-link { transition:none; } }
