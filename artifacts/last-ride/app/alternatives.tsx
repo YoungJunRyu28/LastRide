@@ -1,5 +1,5 @@
 import { BottomNav } from "@/components/BottomNav";
-import { MapCard } from "@/components/MapCard";
+import { MapCard, openTransitRoute, openWalkingRoute } from "@/components/MapCard";
 import { appleDrivingEta, appleNearbyStays, appleNearbyTaxiStands, type TaxiStand } from "@/lib/applePlaces";
 import { DIGITS } from "@/constants/type";
 import { useLastRide } from "@/context/LastRideContext";
@@ -39,6 +39,7 @@ import {
 import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Linking,
   Platform,
   Pressable,
@@ -232,6 +233,18 @@ async function fetchTaxiEstimate(
     distanceKm: route.distance / 1000,
     lateNight,
   };
+}
+
+/**
+ * Calls a place. Apple Maps gives numbers like "+81 45-123-4567", and spaces
+ * break a tel: link, so only digits and + are kept. Where calls aren't possible
+ * (iPad, simulator), the number is shown instead.
+ */
+function callPlace(phone: string, name: string, ja: boolean) {
+  const digits = phone.replace(/[^\d+]/g, "");
+  Linking.openURL(`tel:${digits}`).catch(() =>
+    Alert.alert(name, ja ? `電話番号：${phone}` : `Phone: ${phone}`),
+  );
 }
 
 function openMaps(
@@ -869,15 +882,13 @@ export default function AlternativesScreen() {
                 target={plan.station}
                 stationTag={station}
                 walkLabel={ja ? `徒歩${plan.walkingMinutes}分` : `${plan.walkingMinutes} min walk`}
-                onPress={() =>
-                  openMaps(plan.station.latitude, plan.station.longitude, station)
-                }
+                onPress={() => openTransitRoute(plan.destination)}
                 accessibilityLabel={
                   ja
-                    ? `始発の${station}駅まで徒歩${plan.walkingMinutes}分。地図アプリで開く`
-                    : `${plan.walkingMinutes} min walk to ${station} for the first train. Open in Maps`
+                    ? `始発の${station}駅まで徒歩${plan.walkingMinutes}分。帰りの経路を地図アプリで開く`
+                    : `${plan.walkingMinutes} min walk to ${station} for the first train. Open the route home in Maps`
                 }
-                openLabel={ja ? "地図アプリで開く" : "Open in Maps"}
+                openLabel={ja ? "経路を地図アプリで開く" : "Open route in Maps"}
               />
             )}
             <View style={styles.panelHead}>
@@ -941,11 +952,30 @@ export default function AlternativesScreen() {
                 ))}
               </View>
             )}
-            <Text style={[styles.note, { color: colors.mutedForeground }]}>
-              {ja
-                ? "運賃のほかに、始発まで待つ場所の料金がかかります。"
-                : "The fare above is the train only — you’ll also need somewhere to wait."}
-            </Text>
+            {plan && (
+              <>
+                <Pressable
+                  testID="first-train-route"
+                  onPress={() => openTransitRoute(plan.destination)}
+                  accessibilityRole="button"
+                  style={({ pressed }) => [
+                    styles.actionButton,
+                    { backgroundColor: colors.primary, opacity: pressed ? 0.85 : 1 },
+                  ]}
+                >
+                  <Feather name="map" color={colors.primaryForeground} size={16} />
+                  <Text style={[styles.actionText, { color: colors.primaryForeground }]}>
+                    {ja ? "地図で経路を見る" : "Route in Maps"}
+                  </Text>
+                </Pressable>
+                {status !== "departed" && (
+                  // Maps plans from now (its links can't set a time), so it only shows first trains once tonight's have gone.
+                  <Text style={[styles.note, { color: colors.mutedForeground }]}>
+                    {ja ? "始発の経路は終電後に地図アプリで表示されます" : "Maps shows the first-train route after the last train"}
+                  </Text>
+                )}
+              </>
+            )}
           </View>
         )}
 
@@ -1185,9 +1215,7 @@ export default function AlternativesScreen() {
                       <View style={styles.stayActions}>
                         {stay.phone && (
                           <Pressable
-                            onPress={() =>
-                              void Linking.openURL(`tel:${stay.phone}`)
-                            }
+                            onPress={() => callPlace(stay.phone!, stay.name, ja)}
                             hitSlop={8}
                             accessibilityRole="button"
                             accessibilityLabel={
@@ -1413,9 +1441,7 @@ export default function AlternativesScreen() {
                 target={taxiTarget}
                 stationTag={homeLabel}
                 walkLabel={ja ? `徒歩${walkHome.walkingMinutes}分` : `${walkHome.walkingMinutes} min walk`}
-                onPress={() =>
-                  openMaps(taxiTarget.latitude, taxiTarget.longitude, taxiTargetName || homeLabel)
-                }
+                onPress={() => openWalkingRoute(taxiTarget)}
                 accessibilityLabel={
                   ja
                     ? `${homeLabel}まで徒歩${walkHome.walkingMinutes}分。地図アプリで開く`
@@ -1446,14 +1472,7 @@ export default function AlternativesScreen() {
             </View>
             <Pressable
               testID="walk-home"
-              onPress={() =>
-                taxiTarget &&
-                openMaps(
-                  taxiTarget.latitude,
-                  taxiTarget.longitude,
-                  taxiTargetName || homeLabel,
-                )
-              }
+              onPress={() => taxiTarget && openWalkingRoute(taxiTarget)}
               accessibilityRole="button"
               style={({ pressed }) => [
                 styles.actionButton,

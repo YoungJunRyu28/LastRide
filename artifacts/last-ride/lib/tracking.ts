@@ -25,6 +25,7 @@ import { formatJstTime } from '@/lib/time';
 
 export const LOCATION_TASK = 'lastride-night-tracking';
 const SNAPSHOT_KEY = 'lastride-tracking-snapshot';
+const SNAPSHOT_MAX_AGE_MS = 36 * 60 * 60 * 1000;
 // Durable on/off flag — the headless task checks it before committing anything,
 // so a location callback still in flight after "stop" cannot resurrect reminders.
 const TRACKING_ACTIVE_KEY = 'lastride-tracking-active';
@@ -47,7 +48,7 @@ export async function isTrackingFlagOn(): Promise<boolean> {
 
 async function recomputeFromLocation(coordinates: Coordinates): Promise<void> {
   const settings = await readSettings();
-  if (!hasCoordinates(settings.homeStation)) return;
+  if (!settings.homeStation) return; // planNight finds its position
   const now = Date.now();
   const [previous, startedAt] = await Promise.all([readTrackingSnapshot(), readTrackingStartedAt()]);
   // The night's notifications are all sent (or it's past 04:00): switch tracking off.
@@ -186,7 +187,13 @@ export async function readTrackingSnapshot(): Promise<NightPlan | null> {
     const raw = await AsyncStorage.getItem(SNAPSHOT_KEY);
     if (!raw) return null;
     const plan = JSON.parse(raw) as NightPlan;
-    return typeof plan?.leaveByMs === 'number' ? plan : null; // ignore snapshots from older app versions
+    if (typeof plan?.leaveByMs !== 'number') return null; // ignore snapshots from older app versions
+    // Snapshots hold positions from Apple Maps: drop one left over from a past night.
+    if (Date.now() - plan.computedAt > SNAPSHOT_MAX_AGE_MS) {
+      await AsyncStorage.removeItem(SNAPSHOT_KEY).catch(() => undefined);
+      return null;
+    }
+    return plan;
   } catch {
     return null;
   }

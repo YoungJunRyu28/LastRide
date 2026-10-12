@@ -1,7 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Haptics from "expo-haptics";
 import * as Location from "expo-location";
-import { searchStations as searchStationsApi } from "@workspace/api-client-react";
 import React, {
   createContext,
   useCallback,
@@ -12,7 +11,6 @@ import React, {
   useState,
 } from "react";
 import { Alert, AppState, Linking, Platform } from "react-native";
-import { apiBaseUrl, communityFallbacksEnabled } from "@/lib/api";
 import {
   clearEnterpriseParticipation,
   leaveCurrentEnterpriseEvent,
@@ -57,7 +55,6 @@ import {
   resolveNightLocationMode,
   trackingDisclosure,
 } from "@/lib/trackingDisclosure";
-import { searchAddresses as searchAddressesApi } from "@workspace/api-client-react";
 import {
   LocationError,
   type Coordinates,
@@ -72,7 +69,16 @@ import {
 import { getFirstTrain, type TrainTime } from "@/lib/timetable";
 import { endLiveActivity, syncLiveActivity } from "@/lib/liveActivity";
 import { usePremium } from "@/context/PremiumContext";
-import { appleSearchAddresses, appleSearchStations, syncAppleLanguage } from "@/lib/applePlaces";
+import { syncAppleLanguage } from "@/lib/applePlaces";
+import { stationForStorage } from "@/lib/savedStation";
+import {
+  clearPlaceCache,
+  hasPosition,
+  rememberTonight,
+  resolveAddress,
+  resolveStation,
+  stationForDisk,
+} from "@/lib/storedPlaces";
 import { syncWidgets } from "@/lib/widgets";
 import {
   clearTrackingSnapshot,
@@ -89,6 +95,7 @@ import {
 export type { HomeAddress, Language, SavedDestination } from "@/lib/settings";
 export type { StationOption } from "@/lib/stations";
 export { REMINDER_CHOICES } from "@/lib/settings";
+export { searchAddresses, searchStations } from "@/lib/placeSearch";
 export type LocationErrorCode = LocationError["code"];
 
 /**
@@ -161,7 +168,7 @@ type RideContextValue = {
     label: string;
     station: StationOption;
     address: HomeAddress | null;
-  }) => void;
+  }) => Promise<void>;
   selectDestination: (id: string) => void;
   /** A station for tonight only (not saved; back to the saved destination tomorrow). */
   tonightDestination: StationOption | null;
@@ -220,7 +227,7 @@ type RideContextValue = {
   nowMs: number;
   demoActive: boolean;
   setLanguage: (language: Language) => void;
-  saveHomeStation: (station: StationOption) => void;
+  saveHomeStation: (station: StationOption) => Promise<void>;
   setLeaveMargin: (margin: LeaveMargin) => void;
   requestLocation: () => Promise<void>;
   resetLanguage: () => void;
@@ -275,131 +282,6 @@ async function getCurrentCoordinates(): Promise<Coordinates> {
 
 function errorCode(error: unknown): LocationErrorCode {
   return error instanceof LocationError ? error.code : "unavailable";
-}
-
-type PhotonFeature = {
-  properties?: {
-    osm_id?: number;
-    name?: string;
-    state?: string;
-    city?: string;
-    district?: string;
-  };
-  geometry?: { coordinates?: [number, number] };
-};
-
-/**
- * Searches Japanese railway stations by name: Apple Maps on iOS, then the API
- * server (ODPT stations — subways only), then in development the Photon
- * geocoder (OSM data), which also understands English names.
- */
-export async function searchStations(query: string): Promise<StationOption[]> {
-  const trimmed = query.trim();
-  if (trimmed.length < 2) return [];
-  const apple = await appleSearchStations(trimmed).catch(() => null);
-  if (apple && apple.length > 0) return apple;
-  if (apiBaseUrl) {
-    try {
-      const stations = await searchStationsApi({ q: trimmed });
-      if (stations.length > 0) {
-        return stations.map(
-          ({
-            id: _id,
-            walkingMeters: _meters,
-            walkingMinutes: _minutes,
-            region,
-            ...station
-          }) => ({ ...station, regionJa: region }),
-        );
-      }
-      if (!communityFallbacksEnabled) return [];
-    } catch {
-      if (!communityFallbacksEnabled) {
-        throw new Error("Station search is temporarily unavailable.");
-      }
-    }
-  }
-  // Only reached without a configured server in production builds.
-  if (!communityFallbacksEnabled) {
-    throw new Error("Station search is temporarily unavailable.");
-  }
-  return searchStationsPhoton(trimmed);
-}
-
-async function searchStationsPhoton(trimmed: string): Promise<StationOption[]> {
-  // Japan bounding box keeps results domestic; two requests give local + English names.
-  const base = `https://photon.komoot.io/api/?q=${encodeURIComponent(trimmed)}&osm_tag=railway:station&limit=12&bbox=122,24,154,46`;
-  const [defaultResponse, englishResponse] = await Promise.all([
-    fetch(`${base}&lang=default`),
-    fetch(`${base}&lang=en`),
-  ]);
-  if (!defaultResponse.ok)
-    throw new Error("Station search is temporarily unavailable.");
-  const defaultPayload = (await defaultResponse.json()) as {
-    features?: PhotonFeature[];
-  };
-  const englishFeatures = new Map<number, PhotonFeature["properties"]>();
-  if (englishResponse.ok) {
-    const englishPayload = (await englishResponse.json()) as {
-      features?: PhotonFeature[];
-    };
-    for (const feature of englishPayload.features ?? []) {
-      if (feature.properties?.osm_id !== undefined && feature.properties.name) {
-        englishFeatures.set(feature.properties.osm_id, feature.properties);
-      }
-    }
-  }
-  const seen = new Set<string>();
-  const options: StationOption[] = [];
-  for (const feature of defaultPayload.features ?? []) {
-    const coordinates = feature.geometry?.coordinates;
-    const props = feature.properties;
-    const localName = props?.name;
-    if (!coordinates || !localName) continue;
-    const [longitude, latitude] = coordinates;
-    const english =
-      (props?.osm_id !== undefined && englishFeatures.get(props.osm_id)) ||
-      undefined;
-    const englishName = english?.name || localName;
-    const regionJa =
-      [props?.state, props?.city, props?.district].filter(Boolean).join("") ||
-      undefined;
-    const region =
-      [english?.city || props?.city, english?.state || props?.state]
-        .filter(Boolean)
-        .join(", ") || undefined;
-    // Collapse duplicate entries for the same station complex (multiple operators / entrances):
-    // same name within the same city+district is one station to the user.
-    const key = props?.city
-      ? `${localName}|${props.city}|${props.district ?? ""}`
-      : `${localName}|${latitude.toFixed(2)}|${longitude.toFixed(2)}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    options.push({
-      name: englishName,
-      nameJa: localName,
-      latitude,
-      longitude,
-      region,
-      regionJa,
-    });
-  }
-  return options.slice(0, 8);
-}
-
-/** Searches Japanese addresses: Apple Maps on iOS; the API server otherwise (currently returns none). */
-export async function searchAddresses(query: string): Promise<HomeAddress[]> {
-  const trimmed = query.trim();
-  if (trimmed.length < 2) return [];
-  const apple = await appleSearchAddresses(trimmed).catch(() => null);
-  if (apple) return apple;
-  if (!apiBaseUrl) return [];
-  const results = await searchAddressesApi({ q: trimmed });
-  return results.map((address) => ({
-    label: address.name,
-    latitude: address.latitude,
-    longitude: address.longitude,
-  }));
 }
 
 export function LastRideProvider({ children }: React.PropsWithChildren) {
@@ -667,6 +549,23 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     setLocationError(null);
   }, []);
 
+  // Saved places are stored by name (lib/storedPlaces). When the active one has no
+  // position yet (just switched to it, or offline at launch), look it up.
+  useEffect(() => {
+    let cancelled = false;
+    if (homeStationOption && !hasPosition(homeStationOption))
+      void resolveStation(homeStationOption).then((resolved) => {
+        if (!cancelled && hasPosition(resolved)) setHomeStationOption(resolved);
+      });
+    if (homeAddress && !hasPosition(homeAddress))
+      void resolveAddress(homeAddress).then((resolved) => {
+        if (!cancelled && hasPosition(resolved)) setHomeAddressState(resolved);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [homeStationOption, homeAddress]);
+
   const setLeaveMargin = useCallback(
     (margin: LeaveMargin) => {
       setLeaveMarginState(margin);
@@ -725,7 +624,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
   );
 
   const saveDestination = useCallback(
-    (input: {
+    async (input: {
       id?: string;
       label: string;
       station: StationOption;
@@ -735,7 +634,8 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       const item: SavedDestination = {
         id,
         label: input.label.trim() || input.station.name,
-        station: input.station,
+        // Kept long-term, so stored from our ODPT data where possible (see lib/savedStation).
+        station: await stationForStorage(input.station),
         address: input.address,
       };
       const exists = destinations.some((destination) => destination.id === id);
@@ -779,18 +679,20 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
   );
 
   const saveHomeStation = useCallback(
-    (station: StationOption) => {
+    async (picked: StationOption) => {
       const current = destinations.find(
         (destination) => destination.id === activeDestinationId,
       );
       if (current) {
-        saveDestination({ ...current, station });
+        await saveDestination({ ...current, station: picked });
         return;
       }
+      const station = await stationForStorage(picked);
       setHomeStationOption(station);
+      void rememberTonight([station], []);
       void AsyncStorage.setItem(
         STORAGE_KEYS.homeStation,
-        JSON.stringify(station),
+        JSON.stringify(stationForDisk(station)),
       );
       setPinnedStationState(null);
       void writePinnedStation(null);
@@ -1286,6 +1188,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
   /** Clears every saved preference and returns the app to first-launch state. */
   const resetAll = useCallback(async () => {
     sessionRef.current += 1;
+    await clearPlaceCache();
     await stopTracking();
     await cancelAllReminders();
     // Try to leave on the server first; if that fails (e.g. offline), still

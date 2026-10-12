@@ -1,5 +1,5 @@
 import { BottomNav } from "@/components/BottomNav";
-import { MapCard, openInMaps } from "@/components/MapCard";
+import { MapCard, openTransitRoute } from "@/components/MapCard";
 import { PremiumCard } from "@/components/PremiumCard";
 import { Notice } from "@/components/RideUI";
 import { Card, CountdownRing, IconButton } from "@/components/ui";
@@ -481,19 +481,14 @@ export default function RideScreen() {
                   : `${walkingMinutes} min walk`
                 : undefined
             }
-            onPress={() =>
-              openInMaps({
-                latitude: plan.station.latitude,
-                longitude: plan.station.longitude,
-                name: ja ? plan.station.nameJa : plan.station.name,
-              })
-            }
+            // The whole trip home (transfers and walks included), not just the walk to the station.
+            onPress={() => openTransitRoute(plan.destination)}
             accessibilityLabel={
               ja
-                ? `${station}駅まで徒歩${walkingMinutes ?? "—"}分。地図アプリで開く`
-                : `${walkingMinutes ?? "—"} min walk to ${station}. Open in Maps`
+                ? `${station}駅まで徒歩${walkingMinutes ?? "—"}分。帰りの経路を地図アプリで開く`
+                : `${walkingMinutes ?? "—"} min walk to ${station}. Open the route home in Maps`
             }
-            openLabel={ja ? "地図アプリで開く" : "Open in Maps"}
+            openLabel={ja ? "経路を地図アプリで開く" : "Open route in Maps"}
           />
         )}
 

@@ -22,6 +22,8 @@ export type StationOption = {
   region?: string;
   /** Japanese locality, e.g. "神奈川県横浜市西区". */
   regionJa?: string;
+  /** "odpt": position from our server's ODPT data, which may be kept long-term (see lib/storedPlaces). */
+  source?: "odpt";
 };
 
 export type WalkingSpeed = "relaxed" | "normal" | "fast";

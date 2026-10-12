@@ -70,10 +70,12 @@ export function widgetMessage(
 ): LeaveWidgetProps {
   const ja = language === "ja";
   const message =
+    // No upsell: extensions may not show product promotion or purchase offers
+    // (Apple Developer Program License Agreement 3.3.7(E)).
     reason === "premium"
       ? ja
-        ? "ウィジェットはプレミアムの機能です"
-        : "Widgets are part of Premium"
+        ? "帰り時を開いてウィジェットを設定してください"
+        : "Open LastRide to set up this widget"
       : reason === "ended"
         ? ja
           ? "今夜の終電は発車しました"

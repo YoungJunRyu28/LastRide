@@ -22,14 +22,28 @@ export type MapPin = { label: string; emphasis?: boolean } & Partial<Point>;
 const APPLE_LEGAL_URL = 'https://gspe21-ssl.ls.apple.com/html/attribution.html';
 const METERS_PER_DEGREE = 111_320;
 
-/** Opens walking directions to `to` (or just shows the place) in the maps app. */
-export function openInMaps(to: Point & { name?: string }, walking = true) {
-  const { latitude, longitude, name } = to;
-  const label = encodeURIComponent(name ?? '');
+/**
+ * Opens public-transport directions from the current location to `to` in the
+ * maps app: the whole trip, with transfers and walks, not just the boarding
+ * station. Apple Maps' URL scheme can't set a departure time; it plans from
+ * now, which after the last train means the morning's first trains.
+ */
+export function openTransitRoute(to: Point) {
+  const { latitude, longitude } = to;
   const url =
     Platform.OS === 'ios'
-      ? `http://maps.apple.com/?daddr=${latitude},${longitude}${walking ? '&dirflg=w' : ''}${name ? `&q=${label}` : ''}`
-      : `geo:${latitude},${longitude}?q=${latitude},${longitude}${name ? `(${label})` : ''}`;
+      ? `http://maps.apple.com/?daddr=${latitude},${longitude}&dirflg=r`
+      : `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}&travelmode=transit`;
+  void Linking.openURL(url).catch(() => undefined);
+}
+
+/** Opens walking directions from the current location to `to` in the maps app. */
+export function openWalkingRoute(to: Point) {
+  const { latitude, longitude } = to;
+  const url =
+    Platform.OS === 'ios'
+      ? `http://maps.apple.com/?daddr=${latitude},${longitude}&dirflg=w`
+      : `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}&travelmode=walking`;
   void Linking.openURL(url).catch(() => undefined);
 }
 

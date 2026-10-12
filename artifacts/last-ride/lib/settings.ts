@@ -5,6 +5,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { LeaveMargin } from '@/lib/reliability';
 import type { Coordinates, StationOption } from '@/lib/stations';
+import { addressForDisk, hasPosition, rememberTonight, resolveAddress, resolveStation, stationForDisk } from '@/lib/storedPlaces';
 import { serviceDate } from '@/lib/time';
 
 export type Language = 'ja' | 'en';
@@ -135,7 +136,10 @@ function parseHomeAddress(raw: string | null): HomeAddress | null {
 }
 
 export async function writeHomeAddress(address: HomeAddress | null): Promise<void> {
-  if (address) await AsyncStorage.setItem(STORAGE_KEYS.homeAddress, JSON.stringify(address));
+  if (address) {
+    await rememberTonight([], [address]);
+    await AsyncStorage.setItem(STORAGE_KEYS.homeAddress, JSON.stringify(addressForDisk(address)));
+  }
   else await AsyncStorage.removeItem(STORAGE_KEYS.homeAddress);
 }
 
@@ -154,14 +158,27 @@ function parseDestinations(raw: string | null): SavedDestination[] {
   }
 }
 
+/**
+ * Saves the destinations by name only (lib/storedPlaces): positions found
+ * through Apple Maps go to tonight's cache, not long-term storage.
+ */
 export async function writeDestinationState(destinations: SavedDestination[], activeDestinationId: string | null): Promise<void> {
   const active = destinations.find((destination) => destination.id === activeDestinationId) ?? destinations[0] ?? null;
-  if (destinations.length > 0) await AsyncStorage.setItem(STORAGE_KEYS.destinations, JSON.stringify(destinations));
+  await rememberTonight(
+    destinations.map((destination) => destination.station),
+    destinations.flatMap((destination) => (destination.address ? [destination.address] : [])),
+  );
+  const stored = destinations.map((destination) => ({
+    ...destination,
+    station: stationForDisk(destination.station),
+    address: addressForDisk(destination.address),
+  }));
+  if (stored.length > 0) await AsyncStorage.setItem(STORAGE_KEYS.destinations, JSON.stringify(stored));
   else await AsyncStorage.removeItem(STORAGE_KEYS.destinations);
   if (active) {
     await AsyncStorage.setItem(STORAGE_KEYS.activeDestinationId, active.id);
     // Keep the legacy active keys synchronized so older background tasks/builds degrade safely.
-    await AsyncStorage.setItem(STORAGE_KEYS.homeStation, JSON.stringify(active.station));
+    await AsyncStorage.setItem(STORAGE_KEYS.homeStation, JSON.stringify(stationForDisk(active.station)));
     await writeHomeAddress(active.address);
   } else {
     await AsyncStorage.multiRemove([STORAGE_KEYS.activeDestinationId, STORAGE_KEYS.homeStation, STORAGE_KEYS.homeAddress]);
@@ -239,6 +256,10 @@ export async function readSettings(): Promise<Settings> {
   // Replaced by lastride-reminder-times (which includes the leave time) and the alarm keys.
   void AsyncStorage.multiRemove(['lastride-reminder-intervals', 'lastride-reminder-delivery']).catch(() => undefined);
   const tonightDestination = parsePinnedStation(tonightRaw);
+  // One-night stations are dropped once their night is over.
+  if (tonightRaw && !tonightDestination) void AsyncStorage.removeItem(STORAGE_KEYS.tonightDestination).catch(() => undefined);
+  const pinned = parsePinnedStation(pinnedStation);
+  if (pinnedStation && !pinned) void AsyncStorage.removeItem(STORAGE_KEYS.pinnedStation).catch(() => undefined);
 
   const legacyStation = parseHomeStation(homeStation);
   const legacyAddress = parseHomeAddress(homeAddress);
@@ -256,6 +277,15 @@ export async function readSettings(): Promise<Settings> {
     destinations = [home];
     activeDestinationId = home.id;
     await writeDestinationState(destinations, activeDestinationId);
+  } else if (
+    destinations.some(
+      (destination) => (destination.station.source !== 'odpt' && hasPosition(destination.station)) || hasPosition(destination.address),
+    ) ||
+    (legacyStation?.source !== 'odpt' && hasPosition(legacyStation)) ||
+    hasPosition(legacyAddress)
+  ) {
+    // Saved by an older build with Apple positions: keep them for tonight only and store names.
+    await writeDestinationState(destinations, activeDestinationId);
   }
 
   const activeDestination = destinations.find((destination) => destination.id === activeDestinationId) ?? destinations[0] ?? null;
@@ -264,18 +294,27 @@ export async function readSettings(): Promise<Settings> {
     await AsyncStorage.setItem(STORAGE_KEYS.activeDestinationId, activeDestinationId);
   }
 
+  // Saved places are stored by name; find tonight's positions (cached after the first lookup).
+  const savedStation = activeDestination?.station ?? legacyStation;
+  const savedAddress = activeDestination?.address ?? legacyAddress;
+  const [homeStationResolved, homeAddressResolved] = await Promise.all([
+    !tonightDestination && savedStation ? resolveStation(savedStation) : Promise.resolve(savedStation),
+    !tonightDestination && savedAddress ? resolveAddress(savedAddress) : Promise.resolve(savedAddress),
+  ]);
+
   return {
     language: language === 'ja' || language === 'en' ? language : null,
     // Tonight's one-off station, when set, is where every plan heads (foreground and background).
-    homeStation: tonightDestination ?? activeDestination?.station ?? legacyStation,
+    // A saved station may still lack a position (offline); planning looks it up again.
+    homeStation: tonightDestination ?? homeStationResolved,
     leaveMargin: leaveMargin === 'tight' || leaveMargin === 'relaxed' ? leaveMargin : 'normal',
     ...parseReminderTimes(reminders, alarmsEnabled, alarmTimes),
     alarmSound: REMINDER_SOUNDS.includes(alarmSound as ReminderSound) ? (alarmSound as ReminderSound) : 'default',
     reminderVibrate: reminderVibrate !== 'false',
-    pinnedStation: parsePinnedStation(pinnedStation),
+    pinnedStation: pinned,
     // Absent means never changed, and the check-in is on by default.
     missedCheckIn: missedCheckIn !== 'false',
-    homeAddress: tonightDestination ? null : activeDestination?.address ?? legacyAddress,
+    homeAddress: tonightDestination ? null : homeAddressResolved,
     destinations,
     activeDestinationId,
     nightLocationMode: nightLocationMode === 'foreground' || nightLocationMode === 'background' ? nightLocationMode : 'ask',

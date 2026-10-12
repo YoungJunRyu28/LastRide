@@ -71,9 +71,12 @@ describe("saved destinations", () => {
 
     expect(settings.activeDestinationId).toBe("work");
     expect(settings.homeStation).toEqual(workStation);
-    expect(JSON.parse(storage.get(STORAGE_KEYS.homeStation) || "null")).toEqual(
-      workStation,
-    );
+    // Long-term storage keeps the name only (lib/storedPlaces); the position comes from tonight's cache.
+    expect(JSON.parse(storage.get(STORAGE_KEYS.homeStation) || "null")).toMatchObject({
+      nameJa: "東京",
+      latitude: 0,
+      longitude: 0,
+    });
   });
 });
 

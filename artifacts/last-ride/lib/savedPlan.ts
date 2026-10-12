@@ -26,7 +26,10 @@ export async function readSavedPlan(): Promise<NightPlan | null> {
     if (!raw) return null;
     const plan = JSON.parse(raw) as NightPlan;
     if (typeof plan?.leaveByMs !== 'number' || !plan.lastTrain) return null;
-    return serviceDate(plan.lastTrain.departsAt) === serviceDate(Date.now()) ? plan : null;
+    if (serviceDate(plan.lastTrain.departsAt) === serviceDate(Date.now())) return plan;
+    // Plans hold positions from Apple Maps: don't keep a past night's.
+    await AsyncStorage.removeItem(SAVED_PLAN_KEY).catch(() => undefined);
+    return null;
   } catch {
     return null;
   }

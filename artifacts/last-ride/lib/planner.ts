@@ -9,6 +9,7 @@ import { matchingDisruptionLines, recommendedLeaveTime, type LeaveMargin, recomm
 import { distanceBetween, findNearbyStations, LocationError, walkingRoute, type Coordinates, type NearbyStation, type StationOption, type WalkingSpeed } from '@/lib/stations';
 import { MINUTE_MS, serviceDayStart } from '@/lib/time';
 import { getLastTrain, type TrainTime } from '@/lib/timetable';
+import { hasPosition, resolveAddress, resolveStation } from '@/lib/storedPlaces';
 
 /** Time from the station entrance to the platform (gates, stairs, finding the right line). */
 export const STATION_BUFFER_MINUTES = 3;
@@ -355,7 +356,11 @@ export async function planNight(
     homeAddress?: HomeAddress | null;
   } = {},
 ): Promise<NightPlan> {
-  const destinations = await destinationOptions(home, homeAddress);
+  // Saved places are stored by name (lib/storedPlaces): find their positions first.
+  const destination = await resolveStation(home);
+  if (!hasPosition(destination)) throw new LocationError('unavailable');
+  const address = homeAddress ? await resolveAddress(homeAddress) : null;
+  const destinations = await destinationOptions(destination, address && hasPosition(address) ? address : null);
   let candidates = await findNearbyStations(coordinates, WALKING_PACE, CANDIDATE_STATIONS_INITIAL);
   if (pinned && !candidates.some((candidate) => sameStation(candidate.station, pinned))) {
     candidates.push({

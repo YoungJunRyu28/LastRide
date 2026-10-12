@@ -105,19 +105,23 @@ export default function HomeStationScreen() {
 
   const canSave = !!selected && (setup || tonight || !!label.trim());
 
-  const save = () => {
-    if (!selected || !canSave) return;
+  const [saving, setSaving] = useState(false);
+  const save = async () => {
+    if (!selected || !canSave || saving) return;
     if (tonight) {
       setTonightDestination(selected);
       router.dismissTo('/ride');
       return;
     }
-    saveDestination({
+    // Saving looks the station up on our server first (see lib/savedStation), so wait for it.
+    setSaving(true);
+    await saveDestination({
       ...(editingId ? { id: editingId } : {}),
       label: setup ? editingDestination?.label ?? defaultLabel : label.trim(),
       station: selected,
       address: selectedAddress,
     });
+    setSaving(false);
     if (setup) router.replace('/onboarding-notifications');
     else router.dismissTo('/ride');
   };
@@ -259,7 +263,7 @@ export default function HomeStationScreen() {
         step={1}
         backLabel={ja ? '戻る' : 'Back'}
         onBack={back}
-        actions={<PrimaryButton label={ja ? '次へ' : 'Next'} icon="arrow-right" onPress={save} disabled={!canSave} testID="save-home-station" />}
+        actions={<PrimaryButton label={ja ? '次へ' : 'Next'} icon="arrow-right" onPress={() => void save()} disabled={!canSave || saving} testID="save-home-station" />}
       >
         <OnboardingHeading kicker={ja ? 'まずは帰る場所' : 'WHERE’S HOME'} title={ja ? '自宅の最寄り駅を\n教えてください。' : 'What’s your\nhome station?'} />
         {stationField}
@@ -312,8 +316,8 @@ export default function HomeStationScreen() {
         <PrimaryButton
           label={tonight ? (ja ? '今夜はここへ帰る' : 'Head here tonight') : ja ? '帰り先を保存' : 'Save destination'}
           icon="arrow-right"
-          onPress={save}
-          disabled={!canSave}
+          onPress={() => void save()}
+          disabled={!canSave || saving}
           testID="save-home-station"
         />
       </ScrollView>
