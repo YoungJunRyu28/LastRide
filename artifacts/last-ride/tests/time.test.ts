@@ -16,6 +16,7 @@ import {
   formatDuration,
   formatJstDateTime,
   formatJstTime,
+  jstDate,
   minutesUntil,
   nextOccurrence,
   serviceDate,
@@ -52,6 +53,14 @@ describe('the service day', () => {
     expect(serviceDate(jst(2026, 9, 23, 2, 0))).toBe('20260922');
     expect(serviceDate(jst(2026, 9, 23, 5, 0))).toBe('20260923');
     expect(serviceDate(jst(2026, 9, 23, 23, 30))).toBe('20260923');
+  });
+});
+
+describe('the calendar date in Japan', () => {
+  test('changes at midnight, not at the 04:00 service-day start', () => {
+    expect(jstDate(jst(2026, 10, 13, 23, 59))).toBe('2026-10-13');
+    expect(jstDate(jst(2026, 10, 14, 0, 30))).toBe('2026-10-14');
+    expect(serviceDate(jst(2026, 10, 14, 0, 30))).toBe('20261013');
   });
 });
 

@@ -71,6 +71,7 @@ import {
   MINUTE_MS,
   minutesUntil,
   serviceDate,
+  jstDate,
 } from "@/lib/time";
 import { getFirstTrain, type TrainTime } from "@/lib/timetable";
 import { endLiveActivity, syncLiveActivity } from "@/lib/liveActivity";
@@ -539,8 +540,14 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
 
   // First train from the chosen station, for the "if missed" screen. Keyed on the
   // station and night rather than the plan, so re-plans that keep them don't refetch.
+  // Before 05:00 it is this morning's 始発; once that has left (the morning is
+  // over, as when last night's plan ends) it is the one after tonight's last train.
+  const [morningOverOn, setMorningOverOn] = useState<string | null>(null);
+  const morningOver = morningOverOn === jstDate(nowMs);
+  const morningOverRef = useRef(morningOver);
+  morningOverRef.current = morningOver;
   const firstTrainKey = plan
-    ? `${plan.station.nameJa}|${serviceDate(plan.lastTrain.departsAt)}`
+    ? `${plan.station.nameJa}|${serviceDate(plan.lastTrain.departsAt)}|${morningOver}`
     : null;
   /** Which firstTrainKey `firstTrain` was looked up for; differs while a lookup is in flight. */
   const [firstTrainFor, setFirstTrainFor] = useState<string | null>(null);
@@ -558,7 +565,9 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     getFirstTrain(
       station,
       homeStationOption,
-      firstTrainSearchFrom(current!.lastTrain.departsAt, getNow()),
+      morningOverRef.current
+        ? Math.max(getNow(), current!.lastTrain.departsAt)
+        : firstTrainSearchFrom(current!.lastTrain.departsAt, getNow()),
     )
       .then((train) => {
         if (cancelled) return;
@@ -574,6 +583,15 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       cancelled = true;
     };
   }, [firstTrainKey, homeStationOption, getNow]);
+
+  // This morning's 始発 has left while the plan is already for the coming night:
+  // the morning is over, so show tomorrow's (last night's plan moves on by itself).
+  useEffect(() => {
+    if (morningOver || !firstTrain || firstTrainFor !== firstTrainKey) return;
+    if (firstTrain.departsAt > nowMs) return;
+    if (!planRef.current || planRef.current.lastTrain.departsAt <= nowMs) return;
+    setMorningOverOn(jstDate(nowMs));
+  }, [firstTrain, firstTrainFor, firstTrainKey, morningOver, nowMs]);
 
   // The night is over once the first train has left (not before 04:00).
   const nightEnd = basePlan

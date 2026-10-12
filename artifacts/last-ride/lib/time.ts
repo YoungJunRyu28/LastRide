@@ -52,6 +52,12 @@ export function serviceDayStart(nowMs: number): number {
   return nowMs < start ? start - DAY_MS : start;
 }
 
+/** The calendar date in Japan (YYYY-MM-DD), not the service day. */
+export function jstDate(ms: number): string {
+  const { year, month, day } = jstParts(ms);
+  return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
 /** Service date as YYYYMMDD — the date a timetable query should use. */
 export function serviceDate(nowMs: number): string {
   const { year, month, day } = jstParts(serviceDayStart(nowMs));
