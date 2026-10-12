@@ -81,6 +81,20 @@ export async function ensureNotificationPermission(): Promise<boolean> {
   return (await Notifications.requestPermissionsAsync()).granted;
 }
 
+/**
+ * Whether notifications are allowed, without asking: 'denied' means the user
+ * turned them off (iOS won't ask again; only Settings can turn them back on).
+ */
+export async function notificationPermissionStatus(): Promise<'granted' | 'denied' | 'undetermined'> {
+  if (Platform.OS === 'web') {
+    if (typeof Notification === 'undefined') return 'denied';
+    return Notification.permission === 'granted' ? 'granted' : Notification.permission === 'denied' ? 'denied' : 'undetermined';
+  }
+  const { status, granted } = await Notifications.getPermissionsAsync();
+  if (granted) return 'granted';
+  return status === 'denied' ? 'denied' : 'undetermined';
+}
+
 export type NotificationTarget = '/ride' | '/alternatives' | '/business-event';
 
 /** The bundled tone's file name, for alarms and for notifications standing in for them. */
@@ -228,15 +242,6 @@ export function scheduleReminders(
 
 function stopLabel(language: 'ja' | 'en'): string {
   return language === 'ja' ? '停止' : 'Stop';
-}
-
-export function sendTestNotification(language: 'ja' | 'en'): Promise<void> {
-  return enqueue(async () => {
-    const text = language === 'ja'
-      ? { title: 'LastRide — テスト通知', body: '通知はこのように届きます。' }
-      : { title: 'LastRide — test notification', body: 'This is how your reminders will look.' };
-    await present(text.title, text.body, Date.now() + 2000);
-  });
 }
 
 /** How long the "check with a real alarm" test waits: time to lock the phone and see the full alarm. */

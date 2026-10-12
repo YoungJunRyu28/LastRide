@@ -25,6 +25,12 @@ public class LastRideAlarmModule: Module {
       }
     }
 
+    /** Whether Live Activities are allowed for the app (Settings › LastRide › ライブアクティビティ). */
+    AsyncFunction("liveActivitiesEnabled") { () -> Bool in
+      guard #available(iOS 16.2, *) else { return false }
+      return ActivityAuthorizationInfo().areActivitiesEnabled
+    }
+
     AsyncFunction("requestAuthorization") { () async throws -> String in
       guard #available(iOS 26.0, *) else { return "unsupported" }
       let state = try await AlarmManager.shared.requestAuthorization()

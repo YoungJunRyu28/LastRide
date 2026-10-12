@@ -3,10 +3,12 @@ import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { IconButton } from '@/components/ui';
 import { useColors } from '@/hooks/useColors';
-import { alarmKitAvailable } from '@/lib/notifications';
-
-/** The alarm step only shows where alarms work (iOS 26+, AlarmKit). */
-export const SETUP_HAS_ALARMS = Platform.OS === 'ios' && alarmKitAvailable;
+/**
+ * The alarm step shows on every iPhone: on iOS 26+ it sets up real alarms; on
+ * older iOS it explains that updating unlocks them (until then alarm times
+ * arrive as notifications with the chosen sound).
+ */
+export const SETUP_HAS_ALARMS = Platform.OS === 'ios';
 /** Step numbers: 帰り先, 通知, (アラーム), 早めに出る時間, 位置情報. */
 export const SETUP_STEPS = {
   destination: 1,

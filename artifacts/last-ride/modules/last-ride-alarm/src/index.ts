@@ -9,6 +9,7 @@ type NativeAlarmModule = {
   scheduleAlarm(id: string, fireAtMs: number, title: string, sound: string, stopLabel: string): Promise<void>;
   cancelAll(): Promise<void>;
   previewSound(fileName: string): Promise<void>;
+  liveActivitiesEnabled?(): Promise<boolean>;
 };
 
 /** The iOS major version (e.g. 18), or null off iOS. */
@@ -25,3 +26,11 @@ export const alarmKit = {
   cancelAll: (): Promise<void> => (alarmKitAvailable && native ? native.cancelAll() : Promise.resolve()),
   preview: (fileName: string): Promise<void> => native?.previewSound(fileName) ?? Promise.resolve(),
 };
+
+/**
+ * Whether iOS allows LastRide's Live Activities; null when unknown (other
+ * platforms, or a build from before this check existed).
+ */
+export function liveActivitiesAllowed(): Promise<boolean | null> {
+  return native?.liveActivitiesEnabled ? native.liveActivitiesEnabled().catch(() => null) : Promise.resolve(null);
+}

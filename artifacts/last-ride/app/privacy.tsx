@@ -55,7 +55,7 @@ function copy(ja: boolean) {
           },
           {
             heading: "削除とお問い合わせ",
-            body: `アプリを削除すると、端末に保存された本アプリのデータはすべて消えます。設定の「最初からやり直す」でも端末のデータを消去でき、その際は参加中のグループからも退出します（ホストの場合はグループを解散し、全員の参加データを削除します）。アプリを削除してもサーバーには伝わらないため、グループのデータは本アプリから6か月間アクセスがないと（通知が届かなくなった場合は30日間で）自動で削除されます（ホストの場合はグループごと削除されます）。すぐに削除したい場合は、アプリを削除する前にグループの「…」から退出してください。プライバシーに関するお問い合わせ：${SUPPORT_EMAIL}`,
+            body: `アプリを削除すると、端末に保存された本アプリのデータはすべて消えます。設定の「データを消去」でも端末のデータを消去でき、その際は参加中のグループからも退出します（ホストの場合はグループを解散し、全員の参加データを削除します）。アプリを削除してもサーバーには伝わらないため、グループのデータは本アプリから6か月間アクセスがないと（通知が届かなくなった場合は30日間で）自動で削除されます（ホストの場合はグループごと削除されます）。すぐに削除したい場合は、アプリを削除する前にグループの「…」から退出してください。プライバシーに関するお問い合わせ：${SUPPORT_EMAIL}`,
           },
         ],
       }
@@ -103,7 +103,7 @@ function copy(ja: boolean) {
           },
           {
             heading: "Deleting your data and contact",
-            body: `Deleting the app erases all of LastRide’s data on your phone. “Reset & start over” in Settings also erases it and leaves your groups (a host’s group is disbanded, deleting everyone’s membership). Deleting the app can’t tell our server, so group data is deleted automatically once your app hasn’t contacted the group for 6 months (30 days if notifications can no longer reach your phone); a host’s whole group is deleted. To remove it straight away, leave your groups from their “…” menu before deleting the app. Privacy questions: ${SUPPORT_EMAIL}`,
+            body: `Deleting the app erases all of LastRide’s data on your phone. “Erase data” in Settings also erases it and leaves your groups (a host’s group is disbanded, deleting everyone’s membership). Deleting the app can’t tell our server, so group data is deleted automatically once your app hasn’t contacted the group for 6 months (30 days if notifications can no longer reach your phone); a host’s whole group is deleted. To remove it straight away, leave your groups from their “…” menu before deleting the app. Privacy questions: ${SUPPORT_EMAIL}`,
           },
         ],
       };

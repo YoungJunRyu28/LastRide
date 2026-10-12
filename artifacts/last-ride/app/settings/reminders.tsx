@@ -16,7 +16,7 @@ export default function ReminderSettingsScreen() {
     language, trackingMode,
     reminderIntervals, toggleReminderInterval, alarmsEnabled, setAlarmsEnabled, alarmIntervals, toggleAlarmInterval,
     alarmSound, reminderVibrate, setReminderVibrate, notificationsAllowed,
-    missedCheckIn, setMissedCheckIn, triggerTestNotification,
+    missedCheckIn, setMissedCheckIn,
   } = useLastRide();
   const [alarmStatus, setAlarmStatus] = useAlarmStatus(alarmsEnabled);
   const ja = language === 'ja';
@@ -176,13 +176,6 @@ export default function ReminderSettingsScreen() {
             <Row testID="reminder-vibrate" title={ja ? 'バイブレーション' : 'Vibration'} switchValue={reminderVibrate} onSwitch={setReminderVibrate} />
           </>
         )}
-        <Divider />
-        <Row
-          testID="test-notification"
-          title={ja ? 'テスト通知を送る' : 'Send a test notification'}
-          subtitle={ja ? '通知の見え方を確認' : 'See how reminders look'}
-          onPress={() => void triggerTestNotification()}
-        />
       </Section>
     </SettingsPage>
   );

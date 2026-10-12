@@ -45,6 +45,7 @@ function RootLayoutNav() {
       <Stack.Screen name="settings/location" />
       <Stack.Screen name="settings/margin" />
       <Stack.Screen name="settings/language" />
+      <Stack.Screen name="settings/reset" />
       <Stack.Screen name="join" />
       <Stack.Screen name="business" />
       <Stack.Screen name="business-event" />

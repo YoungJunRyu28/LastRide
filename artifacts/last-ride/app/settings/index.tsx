@@ -1,6 +1,5 @@
 import { reminderSummary, marginLabel, nightLocationLabel, Section, SettingsPage, useAlarmStatus } from '@/components/SettingsUI';
 import { Card, Chip, Divider, Row } from '@/components/ui';
-import { useGroups } from '@/context/GroupsContext';
 import { useLastRide } from '@/context/LastRideContext';
 import { usePremium } from '@/context/PremiumContext';
 import { useColors } from '@/hooks/useColors';
@@ -12,7 +11,7 @@ import { Feather } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import React from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 /** Settings, pushed from the gear on Leave. Each row opens a page for that setting. */
 export default function SettingsScreen() {
@@ -21,32 +20,15 @@ export default function SettingsScreen() {
     language, destination, leaveMargin,
     reminderIntervals, alarmsEnabled, alarmIntervals, alarmSound, notificationsAllowed,
     nightLocationMode, backgroundAllowed,
-    demoActive, setDemoNow, nowMs, plan, currentTime, leaveBy, resetAll,
+    demoActive, setDemoNow, nowMs, plan, currentTime, leaveBy,
   } = useLastRide();
   const { isPremium, live: premiumLive, setTestPremium } = usePremium();
-  const { leaveAll } = useGroups();
   const [alarmStatus] = useAlarmStatus(alarmsEnabled);
   const ja = language === 'ja';
 
   const remindersNeedAttention =
     notificationsAllowed === false || (alarmsEnabled && alarmKitAvailable && alarmStatus === 'denied');
   const locationNeedsAttention = nightLocationMode === 'background' && backgroundAllowed === false;
-
-  const confirmReset = () =>
-    Alert.alert(
-      ja ? '最初からやり直しますか？' : 'Reset and start over?',
-      ja
-        ? '言語・帰り先・設定が消去され、参加中のグループからも退出します（ホストのグループは解散されます）。'
-        : 'This clears your language, destinations and settings, and leaves your groups (groups you host are disbanded).',
-      [
-        { text: ja ? 'キャンセル' : 'Cancel', style: 'cancel' },
-        {
-          text: ja ? '消去する' : 'Reset',
-          style: 'destructive',
-          onPress: () => void leaveAll().then(resetAll).then(() => router.replace('/')),
-        },
-      ],
-    );
 
   return (
     <SettingsPage
@@ -157,7 +139,8 @@ export default function SettingsScreen() {
       </Section>
 
       <Section>
-        <Row testID="reset-all" icon="rotate-ccw" title={ja ? '最初からやり直す' : 'Reset & start over'} onPress={confirmReset} destructive />
+        {/* What's erased is spelled out on its own page, which still asks once more. */}
+        <Row testID="open-reset" icon="trash-2" title={ja ? 'データを消去' : 'Erase data'} onPress={() => router.push('/settings/reset')} />
       </Section>
 
       {__DEV__ && (

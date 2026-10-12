@@ -5,6 +5,7 @@ import { Notice } from "@/components/RideUI";
 import { Card, CountdownRing, IconButton } from "@/components/ui";
 import { DIGITS } from "@/constants/type";
 import { locationErrorText, useLastRide } from "@/context/LastRideContext";
+import { LocationOffCard } from "@/components/LocationOffCard";
 import { usePremium } from "@/context/PremiumContext";
 import { useGroups } from "@/context/GroupsContext";
 import { useColors } from "@/hooks/useColors";
@@ -42,6 +43,8 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { isLocationApproximate } from "@/lib/tracking";
+import { liveActivityEnabled } from "@/lib/liveActivity";
+import { liveActivitiesAllowed } from "@/modules/last-ride-alarm/src";
 
 /** The ring empties over the last hour before leave-by. */
 const RING_WINDOW_MS = 60 * 60 * 1000;
@@ -77,6 +80,7 @@ export default function RideScreen() {
     stopTracking,
     nightLocationMode,
     backgroundAllowed,
+    notificationsAllowed,
     trainChoice,
     effectiveTrainChoice,
     trainChoices,
@@ -126,6 +130,22 @@ export default function RideScreen() {
     });
     return () => subscription.remove();
   }, [isLocationReady]);
+
+  // Premium's lock-screen countdown needs Live Activities allowed for the app.
+  // Only looked at while tracking, the one time the countdown would be shown.
+  const [liveActivitiesOff, setLiveActivitiesOff] = useState(false);
+  useEffect(() => {
+    if (!liveActivityEnabled || !isPremium || trackingMode === null) {
+      setLiveActivitiesOff(false);
+      return;
+    }
+    const check = () => void liveActivitiesAllowed().then((allowed) => setLiveActivitiesOff(allowed === false));
+    check();
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") check();
+    });
+    return () => subscription.remove();
+  }, [isPremium, trackingMode]);
 
   const freshness = plan ? planFreshness(plan.computedAt, nowMs) : null;
   const planAge = plan ? planAgeMinutes(plan.computedAt, nowMs) : null;
@@ -342,6 +362,35 @@ export default function RideScreen() {
             );
           })()}
 
+        {/* Notifications are the core of the app: say so as soon as they're off */}
+        {notificationsAllowed === false && (
+          <Pressable
+            testID="notifications-off"
+            onPress={() => void Linking.openSettings()}
+            accessibilityRole="button"
+            style={({ pressed }) => [
+              styles.trackRow,
+              { backgroundColor: colors.card, borderColor: colors.destructive, opacity: pressed ? 0.8 : 1 },
+            ]}
+          >
+            <Feather name="bell-off" color={colors.destructive} size={18} />
+            <View style={styles.flex}>
+              <Text style={[styles.rowTitle, { color: colors.foreground }]}>
+                {ja ? "通知がオフになっています" : "Notifications are off"}
+              </Text>
+              <Text style={[styles.note, { color: colors.mutedForeground }]}>
+                {ja
+                  ? "出発時刻のお知らせが届きません。タップして設定で許可してください。"
+                  : "You won’t be told when to leave. Tap to allow them in Settings."}
+              </Text>
+            </View>
+            <Feather name="chevron-right" color={colors.mutedForeground} size={18} />
+          </Pressable>
+        )}
+
+        {/* Location turned off: shown up top, even while a saved plan is still on screen */}
+        {locationError === "permission" && <LocationOffCard ja={ja} />}
+
         {/* 終電 / 1本前 / 2本前: kept for tonight; a train that can't be made any more is greyed out */}
         {plan && !departed && trainChoices.length > 1 && (
           <View>
@@ -449,6 +498,9 @@ export default function RideScreen() {
             <Text
               testID="leave-time"
               maxFontSizeMultiplier={1.3}
+              // Never wraps: on narrow iPhones it shrinks to fit beside the circle.
+              numberOfLines={1}
+              adjustsFontSizeToFit
               style={[
                 styles.leaveTime,
                 { color: departed ? colors.mutedForeground : colors.primary },
@@ -587,25 +639,27 @@ export default function RideScreen() {
                 <Feather name="navigation-2" size={14} color="#FFFFFF" />
               </View>
               <View style={styles.flex}>
-                <Text style={[styles.rowTitle, { color: colors.foreground }]}>
+                {/* The train's time is the one to make in the end: shown large. */}
+                <View style={styles.trainTimeRow}>
+                  <Text style={[styles.trainTime, { color: colors.foreground }]}>{lastTrain}</Text>
+                  <Text style={[styles.trainTimeUnit, { color: colors.foreground }]}>{ja ? "発" : "dep."}</Text>
+                  <Text style={[styles.trainStation, { color: colors.foreground }]} numberOfLines={1}>
+                    {ja ? `${station}駅` : station}
+                  </Text>
                   {effectiveTrainChoice > 0 ? (
-                    <Text style={{ color: colors.primary }}>{`${trainChoiceLabel(effectiveTrainChoice, ja)}  `}</Text>
+                    <Text style={[styles.trainChoiceTag, { color: colors.primary, borderColor: colors.primary }]}>
+                      {trainChoiceLabel(effectiveTrainChoice, ja)}
+                    </Text>
                   ) : null}
-                  <Text style={styles.digits}>{lastTrain}</Text>
-                  {firstLeg
-                    ? `  ${ja ? shortLineName(firstLeg.line) : (firstLeg.lineEn ?? shortLineName(firstLeg.line))}`
-                    : ""}
-                  {firstLeg
-                    ? ja
-                      ? ` ${firstLeg.to}方面`
-                      : ` to ${firstLeg.toEn ?? firstLeg.to}`
-                    : // No line details (Apple Maps): at least say where it leaves from.
-                      ja
-                      ? `  ${station}発`
-                      : `  from ${station}`}
-                </Text>
-                <Text style={[styles.note, { color: colors.mutedForeground }]}>
+                </View>
+                <Text style={[styles.heroMeta, { color: colors.mutedForeground }]}>
                   {[
+                    // The line, when known (Apple Maps doesn't say).
+                    firstLeg
+                      ? ja
+                        ? `${shortLineName(firstLeg.line)} ${firstLeg.to}方面`
+                        : `${firstLeg.lineEn ?? shortLineName(firstLeg.line)} to ${firstLeg.toEn ?? firstLeg.to}`
+                      : null,
                     arrivalMs
                       ? // Apple's arrival can be at the station's map point (a walk out
                         // past the gates) when the station place wasn't found: say so.
@@ -876,13 +930,10 @@ export default function RideScreen() {
           </Pressable>
         )}
 
-        {!isLocationReady && (
+        {locationError !== "permission" && !isLocationReady && (
           <Pressable
             testID="enable-location"
-            // After a refusal iOS won't ask again: only Settings can turn location on.
-            onPress={() =>
-              locationError === "permission" ? void Linking.openSettings() : void requestLocation()
-            }
+            onPress={() => void requestLocation()}
             accessibilityRole="button"
             style={({ pressed }) => [
               styles.trackRow,
@@ -976,6 +1027,31 @@ export default function RideScreen() {
             onDismiss={leaveCard.dismiss}
           />
         )}
+
+        {liveActivitiesOff && !departed && (
+          <Pressable
+            testID="live-activities-off"
+            onPress={() => void Linking.openSettings()}
+            accessibilityRole="button"
+            style={({ pressed }) => [
+              styles.trackRow,
+              { backgroundColor: colors.card, borderColor: colors.primary, opacity: pressed ? 0.8 : 1 },
+            ]}
+          >
+            <Feather name="lock" color={colors.primary} size={18} />
+            <View style={styles.flex}>
+              <Text style={[styles.rowTitle, { color: colors.foreground }]}>
+                {ja ? "ロック画面のカウントダウンがオフです" : "Lock-screen countdown is off"}
+              </Text>
+              <Text style={[styles.note, { color: colors.mutedForeground }]}>
+                {ja
+                  ? "タップして設定で「ライブアクティビティ」をオンにしてください。戻ると自動で表示されます。"
+                  : "Tap and turn on Live Activities in Settings. It appears by itself when you come back."}
+              </Text>
+            </View>
+            <Feather name="chevron-right" color={colors.mutedForeground} size={18} />
+          </Pressable>
+        )}
       </ScrollView>
       <BottomNav language={language} />
     </View>
@@ -1013,7 +1089,7 @@ const styles = StyleSheet.create({
   trackingFooter: { alignItems: "center", flexDirection: "row", gap: 10 },
   heroCopy: { flex: 1, gap: 2 },
   heroLabel: { fontSize: 12, fontWeight: "700" },
-  leaveTime: { fontFamily: DIGITS, fontSize: 60, letterSpacing: -1.5, lineHeight: 64 },
+  leaveTime: { fontFamily: DIGITS, fontSize: 66, letterSpacing: -1.5, lineHeight: 70 },
   heroMeta: { fontSize: 13, fontWeight: "600" },
   freshness: { alignItems: "center", flexDirection: "row", gap: 5, marginTop: 4 },
   promptRow: { alignItems: "center", borderRadius: 18, flexDirection: "row", gap: 12, padding: 15 },
@@ -1021,6 +1097,11 @@ const styles = StyleSheet.create({
   trainRow: { alignItems: "center", flexDirection: "row", gap: 12 },
   lineBadge: { alignItems: "center", borderRadius: 8, height: 30, justifyContent: "center", width: 30 },
   digits: { fontFamily: DIGITS },
+  trainTimeRow: { alignItems: "baseline", flexDirection: "row", gap: 4 },
+  trainTime: { fontFamily: DIGITS, fontSize: 34, fontWeight: "800", letterSpacing: -0.5 },
+  trainTimeUnit: { fontSize: 15, fontWeight: "700" },
+  trainChoiceTag: { borderRadius: 6, borderWidth: 1, fontSize: 11, fontWeight: "800", marginLeft: 6, overflow: "hidden", paddingHorizontal: 6, paddingVertical: 1 },
+  trainStation: { flexShrink: 1, fontSize: 15, fontWeight: "700", marginLeft: 8 },
   leg: { alignItems: "center", flexDirection: "row", gap: 12 },
   legTime: { flexShrink: 0, fontFamily: DIGITS, fontSize: 15, width: 48 },
   divider: { height: 1 },

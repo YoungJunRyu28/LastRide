@@ -37,6 +37,16 @@ export function openTransitRoute(to: Point) {
   void Linking.openURL(url).catch(() => undefined);
 }
 
+/** Opens driving directions (a taxi ride) from the current location to `to` in the maps app. */
+export function openDrivingRoute(to: Point) {
+  const { latitude, longitude } = to;
+  const url =
+    Platform.OS === 'ios'
+      ? `http://maps.apple.com/?daddr=${latitude},${longitude}&dirflg=d`
+      : `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}&travelmode=driving`;
+  void Linking.openURL(url).catch(() => undefined);
+}
+
 /** Opens walking directions from the current location to `to` in the maps app. */
 export function openWalkingRoute(to: Point) {
   const { latitude, longitude } = to;
@@ -47,10 +57,13 @@ export function openWalkingRoute(to: Point) {
   void Linking.openURL(url).catch(() => undefined);
 }
 
+/** How close the walk-to-the-station map can zoom: about two blocks top to bottom. */
+const WALK_MIN_SPAN_METERS = 280;
+
 /** A map frame: centre and vertical extent in metres; projects coordinates to pixels. */
 type Frame = { center: Point; spanMeters: number; width: number; height: number };
 
-function frameFor(points: Point[], width: number, height: number): Frame {
+function frameFor(points: Point[], width: number, height: number, minSpanMeters = 500): Frame {
   const lats = points.map((p) => p.latitude);
   const lons = points.map((p) => p.longitude);
   const center = {
@@ -60,8 +73,8 @@ function frameFor(points: Point[], width: number, height: number): Frame {
   const cos = Math.cos((center.latitude * Math.PI) / 180);
   const northSpan = (Math.max(...lats) - Math.min(...lats)) * METERS_PER_DEGREE;
   const eastSpan = (Math.max(...lons) - Math.min(...lons)) * METERS_PER_DEGREE * cos;
-  // Fit both directions with a margin; at least 500 m tall so a short walk isn't a blur.
-  const spanMeters = Math.max(500, northSpan * 1.6, (eastSpan * 1.4 * height) / width);
+  // Fit both directions with a margin, with a floor so a short walk isn't a blur.
+  const spanMeters = Math.max(minSpanMeters, northSpan * 1.6, (eastSpan * 1.4 * height) / width);
   return { center, spanMeters, width, height };
 }
 
@@ -73,9 +86,13 @@ function project(frame: Frame, point: Point) {
   return { x: frame.width / 2 + east / metersPerPx, y: frame.height / 2 - north / metersPerPx };
 }
 
-/** Apple map snapshot for this frame, or null while loading / unavailable. */
+/**
+ * Apple map snapshot for this frame, with the frame it was taken for (so
+ * overlays line up with the image while a new one loads), or null while
+ * loading / unavailable.
+ */
 function useSnapshot(frame: Frame | null) {
-  const [uri, setUri] = useState<string | null>(null);
+  const [shot, setShot] = useState<{ uri: string; frame: Frame } | null>(null);
   const key = frame
     ? `${frame.center.latitude.toFixed(4)},${frame.center.longitude.toFixed(4)},${Math.round(frame.spanMeters)},${Math.round(frame.width)}x${frame.height}`
     : null;
@@ -83,18 +100,18 @@ function useSnapshot(frame: Frame | null) {
     if (!AppleMaps || !frame) return;
     let active = true;
     void AppleMaps.snapshot({ center: frame.center, spanMeters: frame.spanMeters, width: frame.width, height: frame.height })
-      .then((result) => {
-        if (active) setUri(result);
+      .then((uri) => {
+        if (active) setShot(uri ? { uri, frame } : null);
       })
       .catch(() => {
-        if (active) setUri(null);
+        if (active) setShot(null);
       });
     return () => {
       active = false;
     };
     // The key captures everything about the frame that changes the image.
   }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
-  return uri;
+  return frame ? shot : null;
 }
 
 export function MapCard({
@@ -102,6 +119,7 @@ export function MapCard({
   stationTag,
   walkLabel,
   pins,
+  frameTo,
   you,
   target,
   path,
@@ -116,6 +134,11 @@ export function MapCard({
   walkLabel?: string;
   /** Places shown instead of a walk (the If missed screen). */
   pins?: MapPin[];
+  /**
+   * Extra points the map is framed to include without a label (e.g. the rest of
+   * a list), so picking a different pin doesn't move the map.
+   */
+  frameTo?: Point[];
   /** Where the user is. With `target` (or pins with coordinates) the card shows a real map where available. */
   you?: Point | null;
   target?: Point | null;
@@ -133,7 +156,8 @@ export function MapCard({
     ...(showWalk && target ? [target] : []),
     ...(pins ?? []).filter((pin): pin is MapPin & Point => pin.latitude !== undefined && pin.longitude !== undefined),
   ];
-  const frame = AppleMaps && width > 0 && geoPoints.length >= 2 ? frameFor(geoPoints, width, height) : null;
+  const framePoints = [...geoPoints, ...(frameTo ?? [])];
+  const frame = AppleMaps && width > 0 && framePoints.length >= 2 ? frameFor(framePoints, width, height, showWalk ? WALK_MIN_SPAN_METERS : undefined) : null;
   const snapshot = useSnapshot(frame);
 
   return (
@@ -149,10 +173,10 @@ export function MapCard({
       ]}
     >
       <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-        {frame && snapshot ? (
+        {snapshot ? (
           <RealOverlay
-            frame={frame}
-            snapshot={snapshot}
+            frame={snapshot.frame}
+            snapshot={snapshot.uri}
             you={you ?? null}
             target={showWalk ? (target ?? null) : null}
             path={path}
@@ -171,7 +195,7 @@ export function MapCard({
           </View>
         ) : null}
       </View>
-      {frame && snapshot ? (
+      {snapshot ? (
         // The snapshot carries Apple's Maps logo; the legal link sits beside it,
         // outside the pointer-disabled layer so it stays tappable.
         <Pressable onPress={() => void Linking.openURL(APPLE_LEGAL_URL)} accessibilityRole="link" hitSlop={8} style={styles.attribution}>
@@ -223,7 +247,7 @@ function RealOverlay({
         </Svg>
       )}
       {targetPx && stationTag ? (
-        <View style={[styles.stationTag, { left: targetPx.x - 40, top: targetPx.y - 30, width: 80 }]}>
+        <View style={[styles.stationTag, { left: targetPx.x - 60, top: targetPx.y - 33, width: 120 }]}>
           <Text numberOfLines={1} style={[styles.stationTagText, { backgroundColor: colors.line }]}>
             {stationTag}
           </Text>
@@ -240,7 +264,7 @@ function RealOverlay({
           {walkLabel}
         </Text>
       ) : null}
-      {(pins ?? []).slice(0, 4).map((pin, index) => {
+      {pinsToDraw(pins).map((pin, index) => {
         if (pin.latitude === undefined || pin.longitude === undefined) return null;
         const { x, y } = project(frame, { latitude: pin.latitude, longitude: pin.longitude });
         return (
@@ -262,6 +286,12 @@ function RealOverlay({
       {youPx ? <View style={[styles.you, { left: youPx.x - 11, top: youPx.y - 11, borderColor: colors.primary }]} /> : null}
     </>
   );
+}
+
+/** The first four pins plus the highlighted one, drawn last so it's on top. */
+function pinsToDraw(pins: MapPin[] | undefined): MapPin[] {
+  const shown = (pins ?? []).filter((pin, index) => index < 4 || pin.emphasis);
+  return [...shown.filter((pin) => !pin.emphasis), ...shown.filter((pin) => pin.emphasis)];
 }
 
 /** The stand-in map: roads, river, and labels at fixed spots. */
@@ -316,7 +346,7 @@ function DrawnMap({
       {pins && (
         <>
           <View style={[styles.you, { left: '46%', top: height * 0.46, borderColor: colors.primary }]} />
-          {pins.slice(0, 4).map((pin, index) => {
+          {pinsToDraw(pins).map((pin, index) => {
             const spots = [
               { left: '60%', top: 0.2 },
               { left: '6%', top: 0.16 },
@@ -361,7 +391,7 @@ const styles = StyleSheet.create({
   stationTagText: {
     borderRadius: 7,
     color: '#FFFFFF',
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: '700',
     overflow: 'hidden',
     paddingHorizontal: 7,

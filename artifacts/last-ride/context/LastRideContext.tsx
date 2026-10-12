@@ -19,8 +19,8 @@ import {
 import {
   cancelAllReminders,
   ensureNotificationPermission,
+  notificationPermissionStatus,
   scheduleReminders,
-  sendTestNotification,
 } from "@/lib/notifications";
 import { clampLeaveMargin, recommendedLeaveTime, type LeaveMargin } from "@/lib/reliability";
 import { applyTrainChoice, effectiveTrainChoice, trainOptions, type TrainChoice } from "@/lib/trainChoice";
@@ -248,7 +248,6 @@ type RideContextValue = {
   setPinnedStation: (station: StationOption | null) => void;
   /** Development only: run a fast clock from `virtualMs`, or null to return to real time. */
   setDemoNow: (virtualMs: number | null) => void;
-  triggerTestNotification: () => Promise<void>;
   resetAll: () => Promise<void>;
   /** null = not tracking, 'background' = OS updates while app closed, 'foreground' = only while app open. */
   trackingMode: "background" | "foreground" | null;
@@ -525,9 +524,16 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       void endLiveActivity();
       return;
     }
-    void syncLiveActivity(plan, language ?? "en", Date.now(), true).catch(
-      () => undefined,
-    );
+    const sync = () =>
+      void syncLiveActivity(plan, language ?? "en", Date.now(), true).catch(
+        () => undefined,
+      );
+    sync();
+    // Also on return, so Live Activities just allowed in Settings show at once.
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") sync();
+    });
+    return () => subscription.remove();
   }, [trackingMode, plan, language, liveStatus, demoActive, isPremium]);
 
   // First train from the chosen station, for the "if missed" screen. Keyed on the
@@ -952,14 +958,6 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     return allowed;
   }, []);
 
-  const triggerTestNotification = useCallback(async () => {
-    const allowed = await ensureNotificationPermission();
-    setNotificationsAllowed(allowed);
-    if (!allowed) return;
-    await sendTestNotification(language ?? "en");
-    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-  }, [language]);
-
   /** Plans from a position; returns null when there is no home station to plan toward. */
   const planFrom = useCallback(
     async (coordinates: Coordinates, { dropPin = false } = {}) => {
@@ -1190,6 +1188,39 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       void requestLocationRef.current();
   }, [isHydrated, trackingMode, getNow]);
 
+  // Permissions change in iPhone Settings while the app is in the background.
+  // Re-check them on launch and whenever the app comes back: show when
+  // notifications are off, and pick location back up by itself once it's allowed.
+  const locationErrorRef = useRef(locationError);
+  locationErrorRef.current = locationError;
+  useEffect(() => {
+    if (Platform.OS === "web") return;
+    const recheck = async () => {
+      const notifications = await notificationPermissionStatus().catch(() => null);
+      if (notifications) setNotificationsAllowed(notifications === "granted" ? true : notifications === "denied" ? false : null);
+      // Look at the permission itself, not just the last lookup: a plan saved
+      // earlier would otherwise hide that location has since been turned off.
+      const [permission, servicesOn] = await Promise.all([
+        Location.getForegroundPermissionsAsync().catch(() => null),
+        Location.hasServicesEnabledAsync().catch(() => true),
+      ]);
+      const turnedOff = !servicesOn || permission?.status === "denied";
+      const failed = locationErrorRef.current;
+      if (turnedOff) {
+        if (failed !== "permission") setLocationError("permission");
+      } else if ((failed === "permission" || failed === "unavailable") && permission?.granted) {
+        // Allowed again (e.g. back from Settings): pick up by itself.
+        setLocationError(null);
+        void requestLocationRef.current();
+      }
+    };
+    void recheck();
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") void recheck();
+    });
+    return () => subscription.remove();
+  }, []);
+
   // Without tracking, the position is only as fresh as the last plan. When the app
   // comes back after a while, get a new fix so the options page shows what's nearby now.
   useEffect(() => {
@@ -1393,7 +1424,6 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       toggleReminderInterval,
       setPinnedStation,
       setDemoNow,
-      triggerTestNotification,
       resetAll,
       trackingMode,
       startTracking,
@@ -1452,7 +1482,6 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       stopTracking,
       toggleReminderInterval,
       trackingMode,
-      triggerTestNotification,
       userCoordinates,
       leaveMargin,
     ],
@@ -1480,8 +1509,8 @@ export function locationErrorText(
   switch (code) {
     case "permission":
       return ja
-        ? "位置情報が許可されていません。端末の設定から許可してください。"
-        : "Location permission was not granted. Please allow it in your device settings.";
+        ? "位置情報がオフです。タップしてiPhoneの設定で許可してください。戻ると自動で更新します。"
+        : "Location is off. Tap to allow it in iPhone Settings; the app updates when you come back.";
     case "unsupported":
       return ja
         ? "この端末では位置情報を利用できません。"

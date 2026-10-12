@@ -1,5 +1,6 @@
 import { BottomNav } from "@/components/BottomNav";
-import { MapCard, openTransitRoute, openWalkingRoute } from "@/components/MapCard";
+import { LocationOffCard } from "@/components/LocationOffCard";
+import { MapCard, openDrivingRoute, openTransitRoute, openWalkingRoute } from "@/components/MapCard";
 import { appleDrivingEta, appleNearbyStays, appleNearbyTaxiStands, type TaxiStand } from "@/lib/applePlaces";
 import { DIGITS } from "@/constants/type";
 import { useLastRide } from "@/context/LastRideContext";
@@ -106,6 +107,11 @@ function estimateTaxiFare(distanceMeters: number, lateNight: boolean) {
 }
 
 /** Streets add roughly 30% to the straight-line distance; 80 m per minute is a normal pace. */
+/** Taxi fares are estimates (distance, time of night): "約¥16,440" / "~¥16,440". */
+function approxYen(yen: number, ja: boolean) {
+  return ja ? `約${formatYen(yen)}` : `~${formatYen(yen)}`;
+}
+
 function walkMinutesFor(straightMeters: number) {
   return Math.max(1, Math.ceil((straightMeters * 1.3) / 80));
 }
@@ -310,11 +316,26 @@ export default function AlternativesScreen() {
   const [isLoadingPartway, setIsLoadingPartway] = useState(false);
   const [walkHome, setWalkHome] = useState<WalkingRoute | null>(null);
   const [taxiStands, setTaxiStands] = useState<TaxiStand[] | null>(null);
+  const [standIndex, setStandIndex] = useState(0);
+  /** The waiting spot shown on the map (by name); the first one until one is tapped. */
+  const [chosenStay, setChosenStay] = useState<string | null>(null);
   const [selected, setSelected] = useState<OptionKey>("train");
   const [kindFilter, setKindFilter] = useState<StayKind | null>(null);
   const [sortBy, setSortBy] = useState<"distance" | "price">("distance");
   const [showAllStays, setShowAllStays] = useState(false);
   const requestToken = useRef(0);
+  const scrollRef = useRef<ScrollView>(null);
+  const scrollY = useRef(0);
+  const stayMapRef = useRef<View>(null);
+  /** Shows a waiting spot on the map, scrolling back up to it if it's out of view. */
+  const chooseStay = (name: string) => {
+    setChosenStay(name);
+    stayMapRef.current?.measureInWindow((_x, y) => {
+      if (y < insets.top) {
+        scrollRef.current?.scrollTo({ y: Math.max(0, scrollY.current + y - insets.top - 12), animated: true });
+      }
+    });
+  };
   const partwayToken = useRef(0);
   const [retryCount, setRetryCount] = useState(0);
 
@@ -324,9 +345,6 @@ export default function AlternativesScreen() {
   // A taxi should take you to your door when the app knows it, not just to the station.
   const taxiTarget =
     homeAddress ?? (homeHasCoordinates ? homeStationOption : null);
-  const taxiTargetName = homeAddress
-    ? homeAddress.label
-    : (homeStationOption?.nameJa ?? "");
 
   // Opened straight from the "missed the last train?" notification, this screen may be
   // the first thing shown, so it asks for a location like the leave screen does.
@@ -449,7 +467,10 @@ export default function AlternativesScreen() {
     let active = true;
     void appleNearbyTaxiStands(userCoordinates)
       .then((stands) => {
-        if (active) setTaxiStands(stands);
+        if (active) {
+          setTaxiStands(stands);
+          setStandIndex(0);
+        }
       })
       .catch(() => {
         if (active) setTaxiStands(null);
@@ -600,6 +621,13 @@ export default function AlternativesScreen() {
         .slice(0, showAllStays ? MAX_STAYS : PREVIEW_STAYS)
     : null;
   const filteredCount = visibleStays?.length ?? 0;
+  // Falls back to the first spot when the chosen one is filtered out.
+  const selectedStay =
+    sortedStays?.find((stay) => stay.name === chosenStay) ?? sortedStays?.[0] ?? null;
+  // The first few on the map, plus the chosen one if it's further down the list.
+  const mapStays = sortedStays
+    ? sortedStays.filter((stay, index) => index < 4 || stay === selectedStay)
+    : [];
   const availableKinds = KIND_ORDER.filter((kind) =>
     stays?.some((stay) => stay.kind === kind),
   );
@@ -614,6 +642,11 @@ export default function AlternativesScreen() {
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
       <ScrollView
+        ref={scrollRef}
+        onScroll={(event) => {
+          scrollY.current = event.nativeEvent.contentOffset.y;
+        }}
+        scrollEventThrottle={32}
         contentContainerStyle={[
           styles.content,
           {
@@ -645,6 +678,8 @@ export default function AlternativesScreen() {
             {ja ? `${homeLabel}へ行く方法` : `Ways to ${homeLabel}`}
           </Text>
         </View>
+
+        {locationError === "permission" && <LocationOffCard ja={ja} />}
 
         {/* Pick an option; only its details are shown below */}
         <View style={styles.options}>
@@ -712,7 +747,9 @@ export default function AlternativesScreen() {
                         ? ja
                           ? "無料"
                           : "Free"
-                        : `${formatYen(option.cost)}${option.key === "stay" ? (ja ? "〜" : "+") : ""}`}
+                        : option.key === "taxi" || option.key === "partway"
+                          ? approxYen(option.cost, ja)
+                          : `${formatYen(option.cost)}${option.key === "stay" ? (ja ? "〜" : "+") : ""}`}
                   </Text>
                   {(isCheapest || isFastest) && (
                     <View
@@ -784,7 +821,7 @@ export default function AlternativesScreen() {
                   {[
                     partway.totalFareYen === null
                       ? null
-                      : formatYen(partway.totalFareYen),
+                      : approxYen(partway.totalFareYen, ja),
                     homeByPartway
                       ? ja
                         ? `${formatJstTime(homeByPartway)}着`
@@ -849,7 +886,7 @@ export default function AlternativesScreen() {
                       `${(partway.taxi.distanceMeters / 1000).toFixed(1)} km`,
                       partway.taxi.fareYen === null
                         ? null
-                        : formatYen(partway.taxi.fareYen),
+                        : approxYen(partway.taxi.fareYen, ja),
                     ]
                       .filter(Boolean)
                       .join(" · ")}
@@ -1116,34 +1153,45 @@ export default function AlternativesScreen() {
               </Pressable>
             ) : sortedStays && sortedStays.length > 0 ? (
               <>
-                <MapCard
-                  height={170}
-                  you={userCoordinates}
-                  pins={sortedStays.slice(0, 4).map((stay, index) => ({
-                    label: `${ja ? STAY_META[stay.kind].ja : STAY_META[stay.kind].en} ${formatYen(lowestPrice(stay))}`,
-                    emphasis: index === 0,
-                    latitude: stay.latitude,
-                    longitude: stay.longitude,
-                  }))}
-                  onPress={() =>
-                    openMaps(
-                      sortedStays[0].latitude,
-                      sortedStays[0].longitude,
-                      sortedStays[0].name,
-                    )
-                  }
-                  accessibilityLabel={
-                    ja
-                      ? `近くの${sortedStays.length}件。いちばん上を地図アプリで開く`
-                      : `${sortedStays.length} places nearby. Open the first in Maps`
-                  }
-                  openLabel={ja ? "地図アプリで開く" : "Open in Maps"}
-                />
+                <View ref={stayMapRef} collapsable={false}>
+                  <MapCard
+                    height={170}
+                    you={userCoordinates}
+                    // Framed to the whole list, so choosing a spot only moves the highlight.
+                    frameTo={sortedStays}
+                    pins={mapStays.map((stay) => ({
+                      label: `${ja ? STAY_META[stay.kind].ja : STAY_META[stay.kind].en} ${formatYen(lowestPrice(stay))}`,
+                      emphasis: stay === selectedStay,
+                      latitude: stay.latitude,
+                      longitude: stay.longitude,
+                    }))}
+                    onPress={() => {
+                      const stay = selectedStay ?? sortedStays[0];
+                      openMaps(stay.latitude, stay.longitude, stay.name);
+                    }}
+                    accessibilityLabel={
+                      ja
+                        ? `近くの${sortedStays.length}件。選んだ場所を地図アプリで開く`
+                        : `${sortedStays.length} places nearby. Open the chosen one in Maps`
+                    }
+                    openLabel={ja ? "地図アプリで開く" : "Open in Maps"}
+                  />
+                </View>
                 {sortedStays.map((stay) => {
                   const meta = STAY_META[stay.kind];
                   const { range, chain } = stayPrice(stay.name, stay.kind);
+                  const chosen = stay === selectedStay;
                   return (
-                    <View key={stay.name} style={styles.stayRow}>
+                    <View
+                      key={stay.name}
+                      style={[
+                        styles.stayRow,
+                        {
+                          borderColor: chosen ? colors.primary : "transparent",
+                          backgroundColor: chosen ? colors.secondary : "transparent",
+                        },
+                      ]}
+                    >
                       <View
                         style={[
                           styles.cardIcon,
@@ -1157,15 +1205,14 @@ export default function AlternativesScreen() {
                         />
                       </View>
                       <Pressable
-                        style={styles.cardCopy}
-                        onPress={() =>
-                          openMaps(stay.latitude, stay.longitude, stay.name)
-                        }
-                        accessibilityRole="link"
+                        testID={`stay-${stay.name}`}
+                        style={({ pressed }) => [styles.cardCopy, { opacity: pressed ? 0.6 : 1 }]}
+                        // Shows it on the map above; the map opens it in Maps.
+                        onPress={() => chooseStay(stay.name)}
+                        accessibilityRole="radio"
+                        accessibilityState={{ checked: chosen }}
                         accessibilityLabel={
-                          ja
-                            ? `${stay.name}を地図で開く`
-                            : `Open ${stay.name} in Maps`
+                          ja ? `${stay.name}を地図に表示` : `Show ${stay.name} on the map`
                         }
                       >
                         <Text
@@ -1292,17 +1339,16 @@ export default function AlternativesScreen() {
                     label: ja
                       ? `乗り場 徒歩${walkMinutesFor(stand.meters)}分`
                       : `Taxi stand ${walkMinutesFor(stand.meters)} min`,
-                    emphasis: index === 0,
+                    emphasis: index === standIndex,
                     latitude: stand.latitude,
                     longitude: stand.longitude,
                   }))}
-                  onPress={() =>
-                    openMaps(taxiStands[0].latitude, taxiStands[0].longitude, taxiStands[0].name)
-                  }
+                  // Walking directions to the chosen stand.
+                  onPress={() => openWalkingRoute(taxiStands[standIndex] ?? taxiStands[0])}
                   accessibilityLabel={
                     ja
-                      ? `近くのタクシー乗り場${taxiStands.length}か所。いちばん近い乗り場を地図アプリで開く`
-                      : `${taxiStands.length} taxi stands nearby. Open the nearest in Maps`
+                      ? `近くのタクシー乗り場${taxiStands.length}か所。選んだ乗り場までの道順を地図アプリで開く`
+                      : `${taxiStands.length} taxi stands nearby. Walking directions to the chosen one in Maps`
                   }
                   openLabel={ja ? "地図アプリで開く" : "Open in Maps"}
                 />
@@ -1319,18 +1365,48 @@ export default function AlternativesScreen() {
                         : `~${taxi.durationMinutes} min by car`
                       : undefined
                   }
-                  onPress={() =>
-                    openMaps(taxiTarget.latitude, taxiTarget.longitude, taxiTargetName, true)
-                  }
+                  onPress={() => openDrivingRoute(taxiTarget)}
                   accessibilityLabel={
                     ja ? `${homeLabel}までの地図。地図アプリで開く` : `Map to ${homeLabel}. Open in Maps`
                   }
                   openLabel={ja ? "地図アプリで開く" : "Open in Maps"}
                 />
               ) : null)}
+            {taxiStands && taxiStands.length > 1 && (
+              <View accessibilityRole="radiogroup" style={styles.standList}>
+                {taxiStands.map((stand, index) => {
+                  const chosen = index === standIndex;
+                  return (
+                    <Pressable
+                      key={`${stand.name}-${index}`}
+                      testID={`taxi-stand-${index}`}
+                      onPress={() => setStandIndex(index)}
+                      accessibilityRole="radio"
+                      accessibilityState={{ checked: chosen }}
+                      style={({ pressed }) => [
+                        styles.standRow,
+                        {
+                          borderColor: chosen ? colors.primary : colors.border,
+                          backgroundColor: chosen ? colors.secondary : "transparent",
+                          opacity: pressed ? 0.8 : 1,
+                        },
+                      ]}
+                    >
+                      <Feather name={chosen ? "check-circle" : "circle"} size={16} color={chosen ? colors.primary : colors.mutedForeground} />
+                      <Text numberOfLines={1} style={[styles.standName, { color: colors.foreground }]}>
+                        {stand.name}
+                      </Text>
+                      <Text style={[styles.note, { color: colors.mutedForeground }]}>
+                        {ja ? `徒歩${walkMinutesFor(stand.meters)}分` : `${walkMinutesFor(stand.meters)} min walk`}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            )}
             <View style={styles.panelHead}>
               <Text style={[styles.panelTime, { color: colors.foreground }]}>
-                {taxi ? formatYen(taxi.fareYen) : "—"}
+                {taxi ? approxYen(taxi.fareYen, ja) : "—"}
               </Text>
               <View style={styles.panelHeadCopy}>
                 <Text style={[styles.panelTitle, { color: colors.foreground }]}>
@@ -1369,14 +1445,7 @@ export default function AlternativesScreen() {
               <>
                 <Pressable
                   testID="taxi-route"
-                  onPress={() =>
-                    openMaps(
-                      taxiTarget.latitude,
-                      taxiTarget.longitude,
-                      taxiTargetName,
-                      true,
-                    )
-                  }
+                  onPress={() => openDrivingRoute(taxiTarget)}
                   accessibilityRole="button"
                   style={({ pressed }) => [
                     styles.actionButton,
@@ -1489,7 +1558,7 @@ export default function AlternativesScreen() {
           </View>
         )}
 
-        {!userCoordinates && (
+        {!userCoordinates && locationError !== "permission" && (
           <Pressable
             testID="alternatives-use-location"
             accessibilityRole="button"
@@ -1555,6 +1624,9 @@ const styles = StyleSheet.create({
     textTransform: "uppercase",
   },
   panel: { borderRadius: 22, borderWidth: 1, gap: 16, padding: 18 },
+  standList: { gap: 6 },
+  standRow: { alignItems: "center", borderRadius: 12, borderWidth: 1, flexDirection: "row", gap: 10, minHeight: 44, paddingHorizontal: 12 },
+  standName: { flex: 1, fontSize: 14, fontWeight: "700" },
   panelHead: { alignItems: "center", flexDirection: "row", gap: 16 },
   panelHeadCopy: { flex: 1, gap: 3 },
   panelTime: { fontFamily: DIGITS, fontSize: 32, letterSpacing: -0.8 },
@@ -1564,7 +1636,7 @@ const styles = StyleSheet.create({
   leg: { alignItems: "flex-start", flexDirection: "row", gap: 14 },
   legTime: { fontFamily: DIGITS, fontSize: 15, width: 46 },
   legIcon: { marginLeft: 14, marginRight: 14 },
-  stayRow: { alignItems: "center", flexDirection: "row", gap: 11 },
+  stayRow: { alignItems: "center", borderRadius: 12, borderWidth: 1, flexDirection: "row", gap: 11, marginHorizontal: -9, padding: 8 },
   stayActions: { flexDirection: "row", gap: 6 },
   cardIcon: {
     alignItems: "center",
