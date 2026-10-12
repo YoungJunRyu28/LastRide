@@ -197,3 +197,59 @@ th { color: var(--muted); font-weight: 700; width: 32%; background: #fbfcfe; }
   header.site .brand { flex: 1; }
   header.site nav.main { order: 3; width: 100%; }
     }
+
+/* About Us — bilingual founder story */
+.about-hero { position: relative; isolation: isolate; overflow: hidden; min-height: 35rem; color: #f5f8ff; background: #0e1b2f; padding: clamp(5rem, 10vw, 9rem) 0 5rem; }
+.about-hero::before { content:""; position:absolute; inset:0; z-index:-2; background: radial-gradient(ellipse 42rem 36rem at 84% 30%, rgba(241,170,65,.19), transparent 67%), radial-gradient(ellipse 27rem 29rem at 5% 100%, rgba(78,119,168,.24), transparent 68%), linear-gradient(145deg,#0b1628,#142945); }
+.about-hero::after { content:""; position:absolute; inset:0; z-index:-1; opacity:.15; background-image:linear-gradient(rgba(255,255,255,.15) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.15) 1px,transparent 1px); background-size:80px 80px; mask-image:linear-gradient(90deg,transparent,#000); }
+.about-orbit { position:absolute; width:43rem; height:43rem; border:1px solid rgba(242,185,96,.13); border-radius:50%; top:-20rem; right:-14rem; pointer-events:none; }
+.about-orbit::before,.about-orbit::after { content:""; position:absolute; inset:4rem; border:1px solid rgba(242,185,96,.16); border-radius:50%; }
+.about-orbit::after { inset:9rem; }
+.about-hero-inner { position:relative; }
+.about-kicker { display:inline-flex; align-items:center; gap:.65rem; color:#f6c47d; letter-spacing:.16em; text-transform:uppercase; font-weight:800; font-size:.75rem; }
+.about-kicker i { display:block; height:7px; width:7px; background:#f6bd63; border-radius:50%; box-shadow:0 0 0 5px rgba(246,189,99,.1); }
+.about-hero h1 { max-width:62rem; margin:1.6rem 0 1.6rem; font-size:clamp(2.6rem,6vw,5.75rem); letter-spacing:-.065em; line-height:1.13; font-weight:900; }
+.about-hero h1 span { color:#f4b85a; }
+.about-lead { max-width:47rem; color:#c7d4e3; font-size:clamp(1rem,1.65vw,1.22rem); line-height:1.95; }
+.about-facts { display:flex; gap:.6rem; flex-wrap:wrap; margin-top:2.1rem; }
+.about-facts span { display:inline-flex; align-items:center; border:1px solid rgba(221,233,250,.23); background:rgba(255,255,255,.055); border-radius:99px; color:#dfebf9; font-size:.79rem; padding:.55rem .9rem; backdrop-filter:blur(8px); }
+.about-scroll { display:flex; gap:.8rem; align-items:center; margin-top:4.5rem; letter-spacing:.17em; color:#a7b9cd; font-size:.68rem; font-weight:800; }
+.about-scroll span { width:2rem; height:1px; background:#f4b85a; }
+.about-team { padding:clamp(4.5rem,9vw,8rem) 0; background:#f8fafc; }
+.about-eyebrow { margin:0 0 .75rem; color:#ad741a; font-size:.75rem; font-weight:900; letter-spacing:.17em; text-transform:uppercase; }
+.about-team h2,.about-mission h2,.about-outro h2 { font-size:clamp(2rem,4vw,3.65rem); letter-spacing:-.045em; line-height:1.2; margin:.75rem 0 1rem; }
+.about-team h2 span,.about-mission h2 span { color:#b5781e; }
+.about-section-intro { color:#64748b; font-size:1.08rem; line-height:1.85; margin:0 0 2.5rem; }
+.about-founders { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:1.4rem; align-items:stretch; }
+.founder { background:#fff; border:1px solid #e4eaf1; border-radius:24px; overflow:hidden; box-shadow:0 20px 50px rgba(25,40,65,.055); transition:transform .25s ease,box-shadow .25s ease; }
+.founder:hover { transform:translateY(-4px); box-shadow:0 26px 56px rgba(25,40,65,.11); }
+.founder-media { position:relative; min-height:18rem; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+.founder-media--yj { background:radial-gradient(circle at 50% 45%,#f1e2cc,#d4dfec 56%,#93a7be 115%); }
+.founder-media--nick { background:radial-gradient(circle at 50% 44%,#344d69,#12263f 70%,#0c192c); }
+.founder-index { position:absolute; top:1.3rem; left:1.5rem; z-index:1; font-size:.72rem; font-weight:900; letter-spacing:.18em; color:#52627a; }
+.founder-media--nick .founder-index { color:#b2c5dd; }
+.founder-portrait { display:block; width:clamp(11rem,21vw,15rem); height:clamp(11rem,21vw,15rem); border-radius:50%; object-fit:cover; box-shadow:0 12px 40px rgba(9,23,40,.22); border:5px solid rgba(255,255,255,.8); }
+.founder-monogram { width:clamp(11rem,21vw,15rem); height:clamp(11rem,21vw,15rem); border-radius:50%; display:grid; place-items:center; border:1px solid rgba(236,196,136,.45); background:radial-gradient(circle at 20% 5%,rgba(255,255,255,.13),rgba(255,255,255,.02)); box-shadow:0 12px 35px rgba(0,0,0,.1); }
+.founder-monogram span { color:#f3be70; font-size:clamp(2rem,4vw,3rem); font-weight:900; letter-spacing:-.07em; }
+.founder-photo-note { position:absolute; bottom:1.2rem; color:#b1c2d7; font-size:.7rem; letter-spacing:.08em; }
+.founder-info { padding:2rem clamp(1.25rem,3vw,2.3rem) 2.4rem; }
+.founder-role { color:#b5781e; font-weight:900; font-size:.71rem; letter-spacing:.15em; text-transform:uppercase; margin:0 0:.6rem; }
+.founder-info h3 { font-size:clamp(1.5rem,2.5vw,2.05rem); line-height:1.25; letter-spacing:-.038em; margin:0 0:.5rem; }
+.founder-affiliation { color:#64748b; font-weight:600; font-size:.83rem; margin:0 0 1.3rem; }
+.founder-description { color:#4f6075; line-height:1.85; margin:0; max-width:37rem; }
+.about-mission { background:#101f34; color:#f5f8fe; padding:clamp(4.5rem,9vw,8rem) 0; }
+.about-mission h2 span { color:#f6bb65; }
+.about-mission .about-section-intro { color:#a9bdd1; }
+.about-mission .about-eyebrow { color:#f6be70; }
+.about-beliefs { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:1rem; margin-top:3rem; }
+.belief { border:1px solid rgba(216,232,252,.17); border-radius:20px; padding:2rem 1.6rem; background:rgba(255,255,255,.035); }
+.belief-num { color:#eab263; font-weight:900; font-size:.8rem; letter-spacing:.13em; }
+.belief h3 { color:#fff; margin:1.5rem 0 .7rem; font-size:1.2rem; }
+.belief p { margin:0; color:#bac9dc; line-height:1.85; font-size:.92rem; }
+.about-outro { padding:clamp(5rem,10vw,8rem) 0; text-align:center; background:linear-gradient(150deg,#f5f8fc,#fff); }
+.about-outro h2 { margin-top:.9rem; }
+.about-outro p:not(.about-eyebrow) { color:#62738a; max-width:42rem; margin:0 auto; line-height:1.8; }
+.about-outro-actions { display:flex; gap:.8rem; justify-content:center; flex-wrap:wrap; margin-top:2rem; }
+.about-outro-actions .btn { min-width:12rem; justify-content:center; }
+@media(max-width:700px) { .about-founders { grid-template-columns:1fr; } .founder-media { min-height:16.5rem; } .about-beliefs { grid-template-columns:1fr; } .about-hero { padding-top:4.5rem; } .about-scroll { margin-top:3rem; } }
+@media(prefers-reduced-motion:reduce) { .founder { transition:none; } .founder:hover { transform:none; } }
