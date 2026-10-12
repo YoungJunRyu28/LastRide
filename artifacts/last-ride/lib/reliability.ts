@@ -10,14 +10,26 @@ import { MINUTE_MS } from "@/lib/time";
 
 export const BASE_SAFETY_MARGIN_MINUTES = 4;
 
-/** How much time to spare the user wants (Settings → 余裕): ぎりぎり, ふつう or 余裕あり. */
-export type LeaveMargin = "tight" | "normal" | "relaxed";
-/** Minutes between the recommended and latest leave times, before transfers and long walks. */
-export const LEAVE_MARGIN_MINUTES: Record<LeaveMargin, number> = {
-  tight: 0,
-  normal: BASE_SAFETY_MARGIN_MINUTES,
-  relaxed: 10,
-};
+/**
+ * How much time to spare the user wants (Settings → 余裕), in minutes between
+ * the recommended and latest leave times, before transfers and long walks.
+ */
+export type LeaveMargin = number;
+export const MAX_LEAVE_MARGIN_MINUTES = 30;
+/** Older versions saved a preset: ぎりぎり, ふつう or 余裕あり. */
+const LEGACY_LEAVE_MARGINS: Record<string, number> = { tight: 0, normal: BASE_SAFETY_MARGIN_MINUTES, relaxed: 10 };
+
+export function clampLeaveMargin(minutes: number): LeaveMargin {
+  if (!Number.isFinite(minutes)) return BASE_SAFETY_MARGIN_MINUTES;
+  return Math.min(MAX_LEAVE_MARGIN_MINUTES, Math.max(0, Math.round(minutes)));
+}
+
+/** A saved 余裕: minutes, or an older version's preset. */
+export function parseLeaveMargin(raw: string | null | undefined): LeaveMargin {
+  if (raw && raw in LEGACY_LEAVE_MARGINS) return LEGACY_LEAVE_MARGINS[raw];
+  if (raw && /^\d+$/.test(raw.trim())) return clampLeaveMargin(Number(raw));
+  return BASE_SAFETY_MARGIN_MINUTES;
+}
 export const TRANSFER_SAFETY_MARGIN_MINUTES = 2;
 export const MAX_TRANSFER_SAFETY_MARGIN_MINUTES = 6;
 export const LONG_WALK_MINUTES = 15;
@@ -43,7 +55,7 @@ export type PlanFreshness = "fresh" | "aging" | "stale";
 
 export function recommendedSafetyMarginMinutes(
   choice: Pick<DeadlineChoice, "walkingMinutes" | "lastTrain">,
-  leaveMargin: LeaveMargin = "normal",
+  leaveMargin: LeaveMargin = BASE_SAFETY_MARGIN_MINUTES,
 ): number {
   const transfers = Math.max(0, choice.lastTrain.transfers ?? 0);
   const transferMargin = Math.min(
@@ -54,7 +66,7 @@ export function recommendedSafetyMarginMinutes(
     choice.walkingMinutes >= LONG_WALK_MINUTES
       ? LONG_WALK_SAFETY_MARGIN_MINUTES
       : 0;
-  return LEAVE_MARGIN_MINUTES[leaveMargin] + transferMargin + walkMargin;
+  return clampLeaveMargin(leaveMargin) + transferMargin + walkMargin;
 }
 
 export function recommendedLeaveTime(choice: DeadlineChoice): number {

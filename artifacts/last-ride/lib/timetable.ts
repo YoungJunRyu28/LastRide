@@ -9,7 +9,7 @@
  */
 import { getFirstTrain as fetchFirstTrain, getLastTrain as fetchLastTrain, type GetLastTrainParams, type TrainRoute } from '@workspace/api-client-react';
 import { apiBaseUrl, isDevelopment } from '@/lib/api';
-import { appleFirstTrain, appleLastTrain, appleTransitEnabled } from '@/lib/appleTransit';
+import { appleFirstTrain, appleLastTrain, appleTrainsBefore, appleTransitEnabled, EARLIER_TRAIN_COUNT } from '@/lib/appleTransit';
 import type { StationOption } from '@/lib/stations';
 import { nextOccurrence, serviceDate, serviceDayStart, serviceTimeToMs } from '@/lib/time';
 
@@ -44,7 +44,14 @@ export type TrainTime = {
    * as "out of the station").
    */
   arrivesAtStation?: boolean;
+  /**
+   * Last trains only: the trains before this one tonight (1本前, 2本前), latest
+   * first, within 2 hours of it. Undefined = not looked up yet
+   * (Apple: fetched for the chosen station only); [] = none.
+   */
+  before?: TrainTime[];
 };
+
 
 const SAMPLE_LAST_TRAIN = '23:52';
 const SAMPLE_FIRST_TRAIN = '05:04';
@@ -61,7 +68,7 @@ function toParams(from: StationOption, to: StationOption, nowMs: number): GetLas
   };
 }
 
-function toTrainTime(route: TrainRoute): TrainTime {
+function toTrainTime(route: TrainRoute & { earlier?: TrainRoute[] }): TrainTime {
   return {
     departsAt: Date.parse(route.departsAt),
     arrivesAt: Date.parse(route.arrivesAt),
@@ -69,6 +76,7 @@ function toTrainTime(route: TrainRoute): TrainTime {
     fareYen: route.fareYen,
     legs: route.legs.map((leg) => ({ ...leg, departsAt: Date.parse(leg.departsAt), arrivesAt: Date.parse(leg.arrivesAt) })),
     source: 'live',
+    ...(route.earlier ? { before: route.earlier.map((train) => toTrainTime(train)) } : {}),
   };
 }
 
@@ -120,7 +128,8 @@ export function earlierFirstTrain(server: TrainTime, apple: TrainTime | null): T
 /** The last departure from `from` tonight that still reaches `to`, or null if no train goes there. */
 export async function getLastTrain(from: StationOption, to: StationOption, nowMs: number): Promise<TrainTime | null> {
   const [server, apple] = await Promise.all([
-    fromServer(() => fetchLastTrain(toParams(from, to, nowMs))),
+    // The server answers the trains before the last one too (1本前 / 2本前), at no extra cost.
+    fromServer(() => fetchLastTrain({ ...toParams(from, to, nowMs), before: EARLIER_TRAIN_COUNT })),
     appleTransitEnabled ? appleLastTrain(from, to, nowMs).catch(() => null) : Promise.resolve(null),
   ]);
   if (server) return laterLastTrain(server, apple);
@@ -131,6 +140,17 @@ export async function getLastTrain(from: StationOption, to: StationOption, nowMs
     return { departsAt: serviceTimeToMs(SAMPLE_LAST_TRAIN, nowMs), source: 'sample' };
   }
   throw new Error('Train times are unavailable right now.');
+}
+
+/**
+ * The trains before `last` (1本前, 2本前), latest first. The server sends them
+ * with the last train; Apple's are asked for here, only for the station the
+ * user is heading to, to stay well inside MapKit's request limits.
+ */
+export async function trainsBefore(from: StationOption, to: StationOption, last: TrainTime, nowMs: number): Promise<TrainTime[]> {
+  if (last.before) return last.before;
+  if (last.source !== 'apple' || !appleTransitEnabled) return [];
+  return appleTrainsBefore(from, to, last, nowMs).catch(() => []);
 }
 
 /** The next first train from `from` toward `to` after `nowMs`, or null if no train goes there. */

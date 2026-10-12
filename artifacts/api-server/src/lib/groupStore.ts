@@ -8,7 +8,7 @@
  * changes, night start/end and participation updates are serialized per group.
  */
 import { randomUUID } from "node:crypto";
-import { and, asc, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, ne, or } from "drizzle-orm";
+import { and, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, ne, or } from "drizzle-orm";
 import {
   getDb,
   groupMembersTable,
@@ -54,6 +54,7 @@ export type GroupDetail = {
     language: GroupLanguage;
     pushRegistered: boolean;
     notifications: boolean;
+    leaveTimeAlerts: boolean;
   };
   members: Array<{ id: string; displayName: string; role: "host" | "member" }>;
   invite: { inviteToken: string; joinCode: string; rotatedAt: Date } | null;
@@ -66,7 +67,6 @@ export type GroupDetail = {
       memberId: string;
       displayName: string;
       leaveBy: Date | null;
-      missed: boolean;
     }>;
   };
 };
@@ -170,33 +170,22 @@ async function authorize(
 }
 
 /**
- * Removes a member. A departing host hands the role to the longest-standing
- * remaining member; a group left with nobody in it is deleted.
+ * Removes a member who reset the app or went inactive. A host's group is
+ * disbanded (hosting is a Premium feature, so the role isn't passed on), and
+ * everything in it is deleted.
  */
-async function removeMemberWithHandover(
+async function removeMemberOrDisband(
   tx: Tx,
   groupId: string,
   member: { id: string; role: GroupMember["role"] },
-  now: Date,
 ): Promise<"left" | "group-deleted"> {
-  await tx.delete(groupMembersTable).where(eq(groupMembersTable.id, member.id));
-  const [next] = await tx
-    .select({ id: groupMembersTable.id })
-    .from(groupMembersTable)
-    .where(eq(groupMembersTable.groupId, groupId))
-    .orderBy(asc(groupMembersTable.createdAt))
-    .limit(1);
-  if (!next) {
+  if (member.role === "host") {
     await deleteNights(tx, eq(groupNightsTable.groupId, groupId));
+    // Members, invites and nights all go with the group (ON DELETE CASCADE).
     await tx.delete(groupsTable).where(eq(groupsTable.id, groupId));
     return "group-deleted";
   }
-  if (member.role === "host") {
-    await tx
-      .update(groupMembersTable)
-      .set({ role: "host", updatedAt: now })
-      .where(eq(groupMembersTable.id, next.id));
-  }
+  await tx.delete(groupMembersTable).where(eq(groupMembersTable.id, member.id));
   return "left";
 }
 
@@ -257,7 +246,6 @@ async function loadDetail(
         memberId: groupNightParticipantsTable.memberId,
         displayName: groupMembersTable.displayName,
         leaveBy: groupNightParticipantsTable.leaveBy,
-        missedAt: groupNightParticipantsTable.missedAt,
       })
       .from(groupNightParticipantsTable)
       .innerJoin(
@@ -270,7 +258,6 @@ async function loadDetail(
         memberId: row.memberId,
         displayName: row.displayName,
         leaveBy: row.leaveBy,
-        missed: row.missedAt !== null,
       }))
       .sort((a, b) => {
         if (a.leaveBy && b.leaveBy) {
@@ -301,6 +288,7 @@ async function loadDetail(
       language: me.language,
       pushRegistered: me.expoPushToken !== null,
       notifications: me.notifications,
+      leaveTimeAlerts: me.leaveTimeAlerts,
     },
     members,
     invite,
@@ -501,45 +489,6 @@ export async function rotateGroupInviteRecord(
   );
 }
 
-export async function transferGroupHostRecord(
-  groupId: string,
-  memberToken: string,
-  targetMemberId: string,
-): Promise<HostResult<{ group: GroupDetail }> | { kind: "invalid-target" }> {
-  return unwrap(
-    await asHost(groupId, memberToken, new Date(), async (tx, auth) => {
-      if (targetMemberId === auth.member.id) {
-        return { kind: "invalid-target" as const };
-      }
-      const [target] = await tx
-        .select({ id: groupMembersTable.id })
-        .from(groupMembersTable)
-        .where(
-          and(
-            eq(groupMembersTable.id, targetMemberId),
-            eq(groupMembersTable.groupId, groupId),
-          ),
-        )
-        .limit(1);
-      if (!target) return { kind: "invalid-target" as const };
-      const now = new Date();
-      // Demote first: the partial unique index allows only one host.
-      await tx
-        .update(groupMembersTable)
-        .set({ role: "member", updatedAt: now })
-        .where(eq(groupMembersTable.id, auth.member.id));
-      await tx
-        .update(groupMembersTable)
-        .set({ role: "host", updatedAt: now })
-        .where(eq(groupMembersTable.id, target.id));
-      return {
-        kind: "ok" as const,
-        group: await loadDetail(tx, groupId, auth.member.id),
-      };
-    }),
-  );
-}
-
 export async function removeGroupMemberRecord(
   groupId: string,
   memberToken: string,
@@ -650,6 +599,7 @@ export async function updateGroupMembershipRecord(
     expoPushToken?: string | null;
     language?: GroupLanguage;
     notifications?: boolean;
+    leaveTimeAlerts?: boolean;
   },
 ): Promise<{ kind: "not-found" } | { kind: "invalid" } | { kind: "ok"; group: GroupDetail }> {
   const updates: Partial<typeof groupMembersTable.$inferInsert> = {
@@ -661,6 +611,7 @@ export async function updateGroupMembershipRecord(
     updates.displayName = displayName;
   }
   if (patch.language !== undefined) updates.language = patch.language;
+  if (patch.leaveTimeAlerts !== undefined) updates.leaveTimeAlerts = patch.leaveTimeAlerts;
   if (patch.notifications !== undefined) {
     updates.notifications = patch.notifications;
   }
@@ -698,21 +649,20 @@ export async function updateGroupMembershipRecord(
 }
 
 /**
- * Leave a group. A host normally has to transfer or disband first; with
- * `handover` (used by "Reset & start over") the host role passes to the
- * longest-standing member instead, and a group left empty is deleted.
+ * Leave a group. A host has to disband instead; with `disbandIfHost` (used by
+ * "Reset & start over") a host's group is disbanded as part of leaving.
  */
 export async function leaveGroupRecord(
   groupId: string,
   memberToken: string,
-  { handover = false }: { handover?: boolean } = {},
+  { disbandIfHost = false }: { disbandIfHost?: boolean } = {},
 ): Promise<{ kind: "not-found" } | { kind: "host" } | { kind: "ok" }> {
   return getDb().transaction(async (tx) => {
     const now = new Date();
     const auth = await authorize(tx, groupId, memberToken, now, true);
     if (!auth) return { kind: "not-found" as const };
-    if (auth.member.role === "host" && !handover) return { kind: "host" as const };
-    await removeMemberWithHandover(tx, groupId, auth.member, now);
+    if (auth.member.role === "host" && !disbandIfHost) return { kind: "host" as const };
+    await removeMemberOrDisband(tx, groupId, auth.member);
     return { kind: "ok" as const };
   });
 }
@@ -811,6 +761,8 @@ async function pushRecipients(
   groupId: string,
   nightId: string | undefined,
   excludeMemberId: string,
+  /** A member's leave time (メンバーの出発時刻 switch); otherwise the 今夜の開始 switch. */
+  { leaveTime = false }: { leaveTime?: boolean } = {},
 ): Promise<GroupPushRecipient[]> {
   const members = await tx
     .select()
@@ -832,7 +784,7 @@ async function pushRecipients(
       (member) =>
         member.id !== excludeMemberId &&
         member.expoPushToken !== null &&
-        member.notifications &&
+        (leaveTime ? member.leaveTimeAlerts : member.notifications) &&
         (allowed === null || allowed.has(member.id)),
     )
     .map((member) => ({
@@ -840,67 +792,6 @@ async function pushRecipients(
       expoPushToken: member.expoPushToken as string,
       language: member.language,
     }));
-}
-
-/**
- * 乗り遅れた: flag the caller as having missed their train tonight. The first
- * report returns push recipients (other participants + host); repeats are
- * idempotent and notify nobody.
- */
-export async function reportGroupTonightMissedRecord(
-  groupId: string,
-  memberToken: string,
-  now = new Date(),
-): Promise<
-  | { kind: "not-found" }
-  | { kind: "inactive" }
-  | { kind: "not-participant" }
-  | {
-      kind: "ok";
-      group: GroupDetail;
-      groupName: string;
-      displayName: string;
-      recipients: GroupPushRecipient[];
-    }
-> {
-  return getDb().transaction(async (tx) => {
-    const auth = await authorize(tx, groupId, memberToken, now, true);
-    if (!auth) return { kind: "not-found" as const };
-    const night = await activeNight(tx, groupId);
-    if (!night) return { kind: "inactive" as const };
-    const [participant] = await tx
-      .select()
-      .from(groupNightParticipantsTable)
-      .where(
-        and(
-          eq(groupNightParticipantsTable.nightId, night.id),
-          eq(groupNightParticipantsTable.memberId, auth.member.id),
-        ),
-      )
-      .limit(1);
-    if (!participant) return { kind: "not-participant" as const };
-
-    let recipients: GroupPushRecipient[] = [];
-    if (participant.missedAt === null) {
-      await tx
-        .update(groupNightParticipantsTable)
-        .set({ missedAt: now, updatedAt: now })
-        .where(
-          and(
-            eq(groupNightParticipantsTable.nightId, night.id),
-            eq(groupNightParticipantsTable.memberId, auth.member.id),
-          ),
-        );
-      recipients = await pushRecipients(tx, groupId, night.id, auth.member.id);
-    }
-    return {
-      kind: "ok" as const,
-      group: await loadDetail(tx, groupId, auth.member.id),
-      groupName: auth.group.name,
-      displayName: auth.member.displayName,
-      recipients,
-    };
-  });
 }
 
 // ---------------------------------------------------------------------------
@@ -955,7 +846,6 @@ export async function claimDueGroupLeaveAlerts(
         gt(groupNightsTable.endsAt, now),
         lte(groupNightParticipantsTable.leaveBy, now),
         gte(groupNightParticipantsTable.leaveBy, lowerBound),
-        isNull(groupNightParticipantsTable.missedAt),
         or(
           isNull(groupNightParticipantsTable.leaveAlertSentFor),
           lt(
@@ -998,6 +888,7 @@ export async function claimDueGroupLeaveAlerts(
           candidate.groupId,
           candidate.nightId,
           candidate.memberId,
+          { leaveTime: true },
         ),
       };
     });
@@ -1024,7 +915,7 @@ export async function purgeEndedGroupNights(now = new Date()): Promise<number> {
 /**
  * Deleting the app can't tell the server, so members whose app hasn't been in
  * touch for INACTIVE_MEMBER_DAYS (or UNREGISTERED_MEMBER_DAYS after their push
- * token was reported dead) are removed, with the usual host handover.
+ * token was reported dead) are removed; an inactive host's group is disbanded.
  */
 export async function purgeInactiveGroupMembers(now = new Date()): Promise<number> {
   const db = getDb();
@@ -1061,7 +952,7 @@ export async function purgeInactiveGroupMembers(now = new Date()): Promise<numbe
         member.lastSeenAt < inactiveBefore ||
         (member.pushTokenInvalidAt !== null && member.lastSeenAt < unregisteredBefore);
       if (!stillStale) return 0;
-      await removeMemberWithHandover(tx, candidate.groupId, member, now);
+      await removeMemberOrDisband(tx, candidate.groupId, member);
       return 1;
     });
   }

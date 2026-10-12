@@ -5,6 +5,7 @@
  */
 import type { NightPlan } from "@/lib/planner";
 import { recommendedLeaveTime } from "@/lib/reliability";
+import { lastTrainFallback, trainChoiceLabel } from "@/lib/trainChoice";
 import { formatJstTime, MINUTE_MS } from "@/lib/time";
 
 type Language = "ja" | "en";
@@ -107,12 +108,27 @@ export function widgetTimeline(
     | "arriveHomeMs"
     | "walkHomeMinutes"
     | "destination"
+    | "trainChoice"
+    | "nightLastTrain"
+    | "nightLastLeaveAt"
   >,
   destinationLabel: string,
   language: Language,
   nowMs: number,
 ): WidgetEntry[] {
+  // Heading for an earlier train (1本前 / 2本前): show it until it can no longer
+  // be made (its latest leave time), then the last train, as the app does.
+  const fallback = lastTrainFallback(plan);
+  if (fallback) {
+    const switchAt = plan.leaveByMs;
+    const chosen = nowMs < switchAt
+      ? widgetTimeline({ ...plan, nightLastTrain: undefined, nightLastLeaveAt: undefined }, destinationLabel, language, nowMs)
+          .filter((entry) => entry.date.getTime() < switchAt && entry.props.kind !== "message")
+      : [];
+    return [...chosen, ...widgetTimeline(fallback, destinationLabel, language, Math.max(nowMs, switchAt))];
+  }
   const ja = language === "ja";
+  const trainLabel = trainChoiceLabel(plan.trainChoice, ja);
   const leaveAt = recommendedLeaveTime(plan);
   const lastTrainAt = plan.lastTrain.departsAt;
   const endedAt = lastTrainAt + 5 * MINUTE_MS;
@@ -131,8 +147,8 @@ export function widgetTimeline(
     short,
     // The station is shown separately ("渋谷発"), so the detail is the deadline and the walk.
     detail: ja
-      ? `終電 ${lastTrain} · 徒歩${plan.walkingMinutes}分`
-      : `Last ${lastTrain} · ${plan.walkingMinutes} min walk`,
+      ? `${trainLabel} ${lastTrain} · 徒歩${plan.walkingMinutes}分`
+      : `${trainLabel} ${lastTrain} · ${plan.walkingMinutes} min walk`,
     footer: `${leave} ${station}`,
     arrival: arriveMs
       ? plan.lastTrain.source === "apple" && !plan.walkHomeMinutes
@@ -153,7 +169,7 @@ export function widgetTimeline(
       ...base,
       from,
       bigTime: leave,
-      inline: ja ? `${leave} 出発 · 終電 ${lastTrain}` : `Leave ${leave} · last ${lastTrain}`,
+      inline: ja ? `${leave} 出発 · ${trainLabel} ${lastTrain}` : `Leave ${leave} · ${trainLabel.toLowerCase()} ${lastTrain}`,
       countdownLabel: ja ? "出発まで" : "Leave in",
       countdownTo: leaveAt,
       barFrom: leaveAt - COUNTDOWN_WINDOW_MS,
@@ -170,7 +186,7 @@ export function widgetTimeline(
           shownAt: nowMs,
           bigLabel: ja ? "この時刻に出発" : "Leave at",
           // The leave time is already the big number; the footer says where and how late.
-          footer: ja ? `${from} · 終電 ${lastTrain}` : `${from} · last ${lastTrain}`,
+          footer: ja ? `${from} · ${trainLabel} ${lastTrain}` : `${from} · ${trainLabel.toLowerCase()} ${lastTrain}`,
         },
       });
     }
@@ -187,13 +203,13 @@ export function widgetTimeline(
       ...base,
       from,
       bigTime: lastTrain,
-      inline: ja ? `今すぐ出発 · 終電 ${lastTrain}` : `Leave now · last ${lastTrain}`,
-      countdownLabel: ja ? "終電まで" : "Last train in",
+      inline: ja ? `今すぐ出発 · ${trainLabel} ${lastTrain}` : `Leave now · ${trainLabel.toLowerCase()} ${lastTrain}`,
+      countdownLabel: plan.trainChoice ? (ja ? "発車まで" : "Train in") : ja ? "終電まで" : "Last train in",
       shownAt: urgentFrom,
       countdownTo: lastTrainAt,
       barFrom: urgentFrom,
       phase: "countdown",
-      bigLabel: ja ? "終電まで" : "Last train in",
+      bigLabel: plan.trainChoice ? (ja ? "発車まで" : "Train in") : ja ? "終電まで" : "Last train in",
     },
   });
   entries.push({ date: new Date(endedAt), props: widgetMessage(language, "ended") });

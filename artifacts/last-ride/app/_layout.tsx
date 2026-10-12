@@ -34,6 +34,8 @@ function RootLayoutNav() {
       <Stack.Screen name="group-new" />
       <Stack.Screen name="group-join" />
       <Stack.Screen name="onboarding-notifications" />
+      <Stack.Screen name="onboarding-alarms" />
+      <Stack.Screen name="onboarding-margin" />
       <Stack.Screen name="onboarding-location" />
       <Stack.Screen name="trial" />
       <Stack.Screen name="paywall" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />

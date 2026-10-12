@@ -1,14 +1,13 @@
 import { Notice } from '@/components/RideUI';
 import { Section, SettingsPage, soundLabel, useAlarmStatus } from '@/components/SettingsUI';
-import { Chip, Divider, PremiumTag, Row } from '@/components/ui';
+import { Chip, Divider, Row } from '@/components/ui';
 import { REMINDER_CHOICES, useLastRide } from '@/context/LastRideContext';
-import { usePremium } from '@/context/PremiumContext';
 import { useColors } from '@/hooks/useColors';
 import { alarmKitAvailable, iosMajorVersion, requestAlarmAuthorization, sendTestAlarm } from '@/lib/notifications';
-import { deliveredReminders, FREE_ALARM_TIMES, reminderLabel } from '@/lib/settings';
+import { reminderLabel } from '@/lib/settings';
 import { router } from 'expo-router';
 import React from 'react';
-import { Alert, Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Linking, Platform, StyleSheet, Text, View } from 'react-native';
 
 /** Settings → Leave reminders: notification and alarm times, alarm sound, check-in. */
 export default function ReminderSettingsScreen() {
@@ -19,8 +18,6 @@ export default function ReminderSettingsScreen() {
     alarmSound, reminderVibrate, setReminderVibrate, notificationsAllowed,
     missedCheckIn, setMissedCheckIn, triggerTestNotification,
   } = useLastRide();
-  const { isPremium } = usePremium();
-  const delivered = deliveredReminders({ notifications: reminderIntervals, alarms: alarmIntervals, sound: alarmSound }, isPremium);
   const [alarmStatus, setAlarmStatus] = useAlarmStatus(alarmsEnabled);
   const ja = language === 'ja';
 
@@ -45,18 +42,9 @@ export default function ReminderSettingsScreen() {
   const testAlarm = async () => {
     const status = await requestAlarmAuthorization().catch(() => 'denied');
     setAlarmStatus(status);
-    const sent = status === 'authorized' && (await sendTestAlarm(language ?? 'en', delivered.sound).catch(() => false));
+    const sent = status === 'authorized' && (await sendTestAlarm(language ?? 'en', alarmSound).catch(() => false));
     if (!sent) alarmsNotAllowed();
   };
-
-  const premiumNote = !isPremium && (
-    <Pressable testID="alarm-premium" accessibilityRole="button" onPress={() => router.push('/paywall')} style={styles.premiumNote}>
-      <PremiumTag label={ja ? 'プレミアム' : 'Premium'} />
-      <Text style={[styles.footer, styles.premiumNoteText, { color: colors.mutedForeground }]}>
-        {ja ? '出発時以外のアラームと、音の選択' : 'More alarm times and sounds'}
-      </Text>
-    </Pressable>
-  );
 
   return (
     <SettingsPage title={ja ? '出発リマインダー' : 'Leave reminders'} backLabel={ja ? '設定' : 'Settings'}>
@@ -92,14 +80,8 @@ export default function ReminderSettingsScreen() {
               key={minutes}
               testID={`reminder-${minutes}`}
               label={reminderLabel(minutes, ja)}
-              selected={delivered.notifications.includes(minutes)}
-              onPress={() =>
-                // On the free plan a saved premium alarm time shows here (it arrives as a
-                // notification); pressing it clears that alarm time.
-                !isPremium && alarmIntervals.includes(minutes) && !FREE_ALARM_TIMES.includes(minutes)
-                  ? toggleAlarmInterval(minutes)
-                  : toggleReminderInterval(minutes)
-              }
+              selected={reminderIntervals.includes(minutes)}
+              onPress={() => toggleReminderInterval(minutes)}
             />
           ))}
         </View>
@@ -122,7 +104,6 @@ export default function ReminderSettingsScreen() {
                   {ja ? '同じ時刻は、通知かアラームのどちらか一方です。' : 'Each time is either a notification or an alarm.'}
                 </Text>
               )}
-              {premiumNote}
             </View>
           }
         >
@@ -148,25 +129,21 @@ export default function ReminderSettingsScreen() {
           {alarmsEnabled && (
             <>
               <View style={[styles.chips, styles.alarmChips]}>
-                {REMINDER_CHOICES.map((minutes) => {
-                  const locked = !isPremium && !FREE_ALARM_TIMES.includes(minutes);
-                  return (
-                    <Chip
-                      key={minutes}
-                      testID={`alarm-${minutes}`}
-                      label={reminderLabel(minutes, ja)}
-                      selected={delivered.alarms.includes(minutes)}
-                      locked={locked}
-                      onPress={() => (locked ? router.push('/paywall') : toggleAlarmInterval(minutes))}
-                    />
-                  );
-                })}
+                {REMINDER_CHOICES.map((minutes) => (
+                  <Chip
+                    key={minutes}
+                    testID={`alarm-${minutes}`}
+                    label={reminderLabel(minutes, ja)}
+                    selected={alarmIntervals.includes(minutes)}
+                    onPress={() => toggleAlarmInterval(minutes)}
+                  />
+                ))}
               </View>
               <Divider />
               <Row
                 testID="open-alarm-sound"
                 title={ja ? '音' : 'Sound'}
-                value={soundLabel(delivered.sound, ja)}
+                value={soundLabel(alarmSound, ja)}
                 onPress={() => router.push('/settings/sound')}
               />
               {alarmKitAvailable && (
@@ -216,6 +193,4 @@ const styles = StyleSheet.create({
   alarmChips: { paddingTop: 0 },
   footerStack: { gap: 8 },
   footer: { fontSize: 12, lineHeight: 17, paddingHorizontal: 4 },
-  premiumNote: { alignItems: 'center', flexDirection: 'row', gap: 8, paddingHorizontal: 4 },
-  premiumNoteText: { flex: 1, paddingHorizontal: 0 },
 });

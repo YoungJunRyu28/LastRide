@@ -31,7 +31,7 @@ function copy(ja: boolean) {
           },
           {
             heading: "グループ",
-            body: "グループに参加すると、当社サーバーにはグループ名、あなたがグループごとに決めた表示名、ホストかメンバーか、通知の言語とオン・オフ、通知用のプッシュトークン、ランダムな参加用トークン（元に戻せない形で保存）、最後に本アプリからアクセスした日時が保存されます。「今夜参加する」を選んだ夜は、出発時刻（と「乗り遅れた」の連絡）だけが送られ、メンバーには表示名と出発時刻が見えます。現在地・自宅・駅・経路は共有されません。出発時刻は翌朝8時（日本時間）か、ホストが今夜を終了した時点で削除されます。グループから退出すると、あなたの参加データはすぐに削除されます。ホストがグループを解散すると、すべて削除されます。",
+            body: "グループに参加すると、当社サーバーにはグループ名、あなたがグループごとに決めた表示名、ホストかメンバーか、通知の言語と通知の設定、通知用のプッシュトークン、ランダムな参加用トークン（元に戻せない形で保存）、最後に本アプリからアクセスした日時が保存されます。「今夜参加する」を選んだ夜は、出発時刻だけが送られ、メンバーには表示名と出発時刻が見えます。現在地・自宅・駅・経路は共有されません。出発時刻は翌朝8時（日本時間）か、ホストが今夜を終了した時点で削除されます。グループから退出すると、あなたの参加データはすぐに削除されます。ホストがグループを解散すると、すべて削除されます。",
           },
           {
             heading: "プレミアム",
@@ -43,7 +43,7 @@ function copy(ja: boolean) {
           },
           {
             heading: "通知",
-            body: "出発のリマインダーは端末の中で予約されます。グループの通知（今夜の開始、メンバーの出発時刻、乗り遅れた）は、Expoのプッシュ配信とApple・Googleの通知サービスを通じて届きます。通知に広告は含まれません。",
+            body: "出発のリマインダーは端末の中で予約されます。グループの通知（今夜の開始、メンバーの出発時刻）は、Expoのプッシュ配信とApple・Googleの通知サービスを通じて届きます。通知に広告は含まれません。",
           },
           {
             heading: "法人向けイベント",
@@ -55,7 +55,7 @@ function copy(ja: boolean) {
           },
           {
             heading: "削除とお問い合わせ",
-            body: `アプリを削除すると、端末に保存された本アプリのデータはすべて消えます。設定の「最初からやり直す」でも端末のデータを消去でき、その際は参加中のグループからも退出します（ホストの場合は最も長く参加しているメンバーにホストを引き継ぎ、ほかにメンバーがいなければグループを削除します）。アプリを削除してもサーバーには伝わらないため、グループのデータは本アプリから6か月間アクセスがないと（通知が届かなくなった場合は30日間で）自動で削除されます。すぐに削除したい場合は、アプリを削除する前にグループの「…」から退出してください。プライバシーに関するお問い合わせ：${SUPPORT_EMAIL}`,
+            body: `アプリを削除すると、端末に保存された本アプリのデータはすべて消えます。設定の「最初からやり直す」でも端末のデータを消去でき、その際は参加中のグループからも退出します（ホストの場合はグループを解散し、全員の参加データを削除します）。アプリを削除してもサーバーには伝わらないため、グループのデータは本アプリから6か月間アクセスがないと（通知が届かなくなった場合は30日間で）自動で削除されます（ホストの場合はグループごと削除されます）。すぐに削除したい場合は、アプリを削除する前にグループの「…」から退出してください。プライバシーに関するお問い合わせ：${SUPPORT_EMAIL}`,
           },
         ],
       }
@@ -79,7 +79,7 @@ function copy(ja: boolean) {
           },
           {
             heading: "Groups",
-            body: "When you join a group, our server stores the group name, the display name you choose for that group, whether you’re the host or a member, your notification language and on/off setting, a push token for notifications, a random membership token (stored one-way), and when your app last contacted the group. On nights you choose “Join tonight”, only your leave-by time (and a “missed it” report) is sent, and members see your display name and leave-by time. Your location, home, station and route are never shared. Leave-by times are deleted at 8:00 AM Japan time the next morning, or when the host ends tonight. Leaving a group deletes your membership right away; disbanding a group deletes everything in it.",
+            body: "When you join a group, our server stores the group name, the display name you choose for that group, whether you’re the host or a member, your notification language and on/off setting, a push token for notifications, a random membership token (stored one-way), and when your app last contacted the group. On nights you choose “Join tonight”, only your leave-by time is sent, and members see your display name and leave-by time. Your location, home, station and route are never shared. Leave-by times are deleted at 8:00 AM Japan time the next morning, or when the host ends tonight. Leaving a group deletes your membership right away; disbanding a group deletes everything in it.",
           },
           {
             heading: "Premium",
@@ -91,7 +91,7 @@ function copy(ja: boolean) {
           },
           {
             heading: "Notifications",
-            body: "Leave reminders are scheduled on your phone. Group notifications (tonight started, a member’s leave time, missed it) are delivered through Expo’s push service and Apple’s or Google’s notification services. Notifications never contain advertising.",
+            body: "Leave reminders are scheduled on your phone. Group notifications (tonight started, a member’s leave time) are delivered through Expo’s push service and Apple’s or Google’s notification services. Notifications never contain advertising.",
           },
           {
             heading: "Business events",
@@ -103,7 +103,7 @@ function copy(ja: boolean) {
           },
           {
             heading: "Deleting your data and contact",
-            body: `Deleting the app erases all of LastRide’s data on your phone. “Reset & start over” in Settings also erases it and leaves your groups (a host hands the role to the longest-standing member, and a group with nobody else in it is deleted). Deleting the app can’t tell our server, so group data is deleted automatically once your app hasn’t contacted the group for 6 months (30 days if notifications can no longer reach your phone). To remove it straight away, leave your groups from their “…” menu before deleting the app. Privacy questions: ${SUPPORT_EMAIL}`,
+            body: `Deleting the app erases all of LastRide’s data on your phone. “Reset & start over” in Settings also erases it and leaves your groups (a host’s group is disbanded, deleting everyone’s membership). Deleting the app can’t tell our server, so group data is deleted automatically once your app hasn’t contacted the group for 6 months (30 days if notifications can no longer reach your phone); a host’s whole group is deleted. To remove it straight away, leave your groups from their “…” menu before deleting the app. Privacy questions: ${SUPPORT_EMAIL}`,
           },
         ],
       };

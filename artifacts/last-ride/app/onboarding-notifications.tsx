@@ -1,19 +1,19 @@
-import { OnboardingFrame, OnboardingHeading } from '@/components/Onboarding';
+import { OnboardingFrame, OnboardingHeading, SETUP_HAS_ALARMS, SETUP_STEPS } from '@/components/Onboarding';
 import { Card, Chip, PrimaryButton, Row, TextButton } from '@/components/ui';
 import { REMINDER_CHOICES, useLastRide } from '@/context/LastRideContext';
 import { reminderLabel } from '@/lib/settings';
 import { useColors } from '@/hooks/useColors';
 import { router } from 'expo-router';
 import React, { useState } from 'react';
-import { Platform, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
-/** Setup 2/3: reminder timing, then the notification permission. */
+/** Setup: reminder timing, then the notification permission. */
 export default function OnboardingNotificationsScreen() {
   const colors = useColors();
   const { language, reminderIntervals, toggleReminderInterval, missedCheckIn, setMissedCheckIn, requestNotifications } = useLastRide();
   const ja = language === 'ja';
   const [asking, setAsking] = useState(false);
-  const next = () => router.replace('/onboarding-location');
+  const next = () => router.replace(SETUP_HAS_ALARMS ? '/onboarding-alarms' : '/onboarding-margin');
 
   const allow = async () => {
     setAsking(true);
@@ -24,7 +24,7 @@ export default function OnboardingNotificationsScreen() {
 
   return (
     <OnboardingFrame
-      step={2}
+      step={SETUP_STEPS.notifications}
       backLabel={ja ? '戻る' : 'Back'}
       onBack={() => router.replace({ pathname: '/home-station', params: { setup: '1' } })}
       actions={
@@ -87,7 +87,6 @@ export default function OnboardingNotificationsScreen() {
 
       <Text style={[styles.footnote, { color: colors.mutedForeground }]}>
         {ja ? 'あとから設定で変更できます。' : 'You can change these later in Settings.'}
-        {Platform.OS === 'ios' ? (ja ? 'マナーモードでも鳴るアラームにもできます。' : ' They can also be alarms that ring in silent mode.') : ''}
       </Text>
     </OnboardingFrame>
   );

@@ -45,6 +45,8 @@ function trainHandler(
         },
         { latitude: query.toLat, longitude: query.toLon, name: query.toName },
         query.date,
+        // The trains before the last one (the app's 1本前 / 2本前).
+        kind === "last" && "before" in query ? Number(query.before ?? 0) : 0,
       );
       if (!route) {
         res.status(404).json({

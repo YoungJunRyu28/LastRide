@@ -179,14 +179,11 @@ export function Chip({
   selected,
   onPress,
   testID,
-  locked,
 }: {
   label: string;
   selected: boolean;
   onPress: () => void;
   testID?: string;
-  /** A Premium choice on the free plan: dimmed, and pressing it should open the paywall. */
-  locked?: boolean;
 }) {
   const colors = useColors();
   return (
@@ -194,9 +191,8 @@ export function Chip({
       testID={testID}
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityState={{ selected, disabled: locked }}
-      accessibilityHint={locked ? 'Premium' : undefined}
-      style={[styles.chip, { backgroundColor: selected ? colors.primary : colors.secondary }, locked && styles.chipLocked]}
+      accessibilityState={{ selected }}
+      style={[styles.chip, { backgroundColor: selected ? colors.primary : colors.secondary }]}
     >
       <Text
         numberOfLines={1}
@@ -372,12 +368,15 @@ export function CountdownRing({
   value,
   size = 124,
   tone = 'primary',
+  caption,
 }: {
   fraction: number;
   label: string;
   value: string;
   size?: number;
   tone?: 'primary' | 'destructive' | 'muted';
+  /** A small line under the value, e.g. "● トラッキング中". */
+  caption?: string;
 }) {
   const colors = useColors();
   const stroke = 9;
@@ -413,6 +412,11 @@ export function CountdownRing({
         >
           {value}
         </Text>
+        {caption ? (
+          <Text numberOfLines={1} style={[styles.ringCaption, { color: colors.primary }]}>
+            {caption}
+          </Text>
+        ) : null}
       </View>
     </View>
   );
@@ -450,7 +454,6 @@ const styles = StyleSheet.create({
   textButtonText: { fontSize: 15, fontWeight: '700' },
   card: { borderRadius: 20, overflow: 'hidden' },
   sectionLabel: { fontSize: 13, fontWeight: '700', marginTop: 4 },
-  chipLocked: { opacity: 0.45 },
   chip: {
     alignItems: 'center',
     borderRadius: 999,
@@ -494,4 +497,5 @@ const styles = StyleSheet.create({
   ringLabel: { fontSize: 11, fontWeight: '700' },
   ringValue: { fontFamily: DIGITS, fontSize: 28, lineHeight: 32 },
   ringWord: { fontFamily: undefined, fontSize: 18, fontWeight: '800' },
+  ringCaption: { fontSize: 11, fontWeight: '800', marginTop: 2 },
 });

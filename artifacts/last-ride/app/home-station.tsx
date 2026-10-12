@@ -1,4 +1,4 @@
-import { OnboardingFrame, OnboardingHeading } from '@/components/Onboarding';
+import { OnboardingFrame, OnboardingHeading, SETUP_STEPS } from '@/components/Onboarding';
 import { IconButton, PrimaryButton } from '@/components/ui';
 import { searchAddresses, searchStations, StationOption, useLastRide, type HomeAddress } from '@/context/LastRideContext';
 import { FREE_DESTINATIONS, usePremium } from '@/context/PremiumContext';
@@ -260,7 +260,7 @@ export default function HomeStationScreen() {
   if (setup) {
     return (
       <OnboardingFrame
-        step={1}
+        step={SETUP_STEPS.destination}
         backLabel={ja ? '戻る' : 'Back'}
         onBack={back}
         actions={<PrimaryButton label={ja ? '次へ' : 'Next'} icon="arrow-right" onPress={() => void save()} disabled={!canSave || saving} testID="save-home-station" />}

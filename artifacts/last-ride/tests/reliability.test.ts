@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import {
+  parseLeaveMargin,
   BASE_SAFETY_MARGIN_MINUTES,
   matchingDisruptionLines,
   planFreshness,
@@ -47,12 +48,22 @@ describe("recommended deadline", () => {
   });
 
   test("the 余裕 setting sets the base margin; transfers and long walks still add to it", () => {
-    expect(recommendedSafetyMarginMinutes(choice(), "tight")).toBe(0);
-    expect(recommendedSafetyMarginMinutes(choice(), "normal")).toBe(4);
-    expect(recommendedSafetyMarginMinutes(choice(), "relaxed")).toBe(10);
-    expect(
-      recommendedSafetyMarginMinutes(choice({ lastTrain: { transfers: 1 } }), "tight"),
-    ).toBe(2);
+    expect(recommendedSafetyMarginMinutes(choice(), 0)).toBe(0);
+    expect(recommendedSafetyMarginMinutes(choice(), 4)).toBe(4);
+    expect(recommendedSafetyMarginMinutes(choice(), 7)).toBe(7);
+    expect(recommendedSafetyMarginMinutes(choice({ lastTrain: { transfers: 1 } }), 0)).toBe(2);
+    // Out of range is clamped to 0–30.
+    expect(recommendedSafetyMarginMinutes(choice(), 99)).toBe(30);
+  });
+
+  test("a saved 余裕 reads as minutes, and older presets convert", () => {
+    expect(parseLeaveMargin("tight")).toBe(0);
+    expect(parseLeaveMargin("normal")).toBe(4);
+    expect(parseLeaveMargin("relaxed")).toBe(10);
+    expect(parseLeaveMargin("7")).toBe(7);
+    expect(parseLeaveMargin("45")).toBe(30);
+    expect(parseLeaveMargin(null)).toBe(4);
+    expect(parseLeaveMargin("nonsense")).toBe(4);
   });
 
   test("a persisted explicit recommendation wins but can never exceed the hard deadline", () => {

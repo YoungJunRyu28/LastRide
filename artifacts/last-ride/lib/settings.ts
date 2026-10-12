@@ -3,10 +3,10 @@
  * background-location task, which runs in a separate JS runtime.
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { LeaveMargin } from '@/lib/reliability';
+import { BASE_SAFETY_MARGIN_MINUTES, parseLeaveMargin, type LeaveMargin } from '@/lib/reliability';
 import type { Coordinates, StationOption } from '@/lib/stations';
 import { addressForDisk, hasPosition, rememberTonight, resolveAddress, resolveStation, stationForDisk } from '@/lib/storedPlaces';
-import { serviceDate } from '@/lib/time';
+import { serviceDate, serviceDayStart } from '@/lib/time';
 
 export type Language = 'ja' | 'en';
 
@@ -37,6 +37,8 @@ export const STORAGE_KEYS = {
   activeDestinationId: 'lastride-active-destination-id',
   nightLocationMode: 'lastride-night-location-mode',
   tonightDestination: 'lastride-tonight-destination',
+  /** 終電 / 1本前 / 2本前 for tonight: { choice, until }; lapses at 05:00 after the night. */
+  trainChoice: 'lastride-train-choice',
 } as const;
 
 /**
@@ -64,30 +66,6 @@ export type ReminderDelivery = {
   /** Android only: iOS follows the phone's Sounds & Haptics settings. */
   vibrate: boolean;
 };
-
-/** Free plans get one alarm, at the leave time, with the iOS default sound. */
-export const FREE_ALARM_TIMES = [0];
-export const FREE_ALARM_SOUND: ReminderSound = 'default';
-
-/**
- * What is actually delivered. Without Premium, alarm times other than the leave
- * time arrive as notifications instead (so a lapsed subscription never drops a
- * reminder) and alarms use the iOS default sound. Saved choices are kept, so
- * they come back if Premium does.
- */
-export function deliveredReminders(
-  { notifications, alarms, sound }: { notifications: number[]; alarms: number[]; sound: ReminderSound },
-  isPremium: boolean,
-): { notifications: number[]; alarms: number[]; sound: ReminderSound } {
-  if (isPremium) return { notifications, alarms, sound };
-  const freeAlarms = alarms.filter((minutes) => FREE_ALARM_TIMES.includes(minutes));
-  const asNotifications = alarms.filter((minutes) => !FREE_ALARM_TIMES.includes(minutes));
-  return {
-    notifications: [...new Set([...notifications, ...asNotifications])].sort((a, b) => b - a),
-    alarms: freeAlarms,
-    sound: FREE_ALARM_SOUND,
-  };
-}
 
 export function reminderLabel(minutes: number, ja: boolean): string {
   if (minutes === 0) return ja ? '出発時' : 'At leave';
@@ -118,12 +96,14 @@ export type Settings = {
   nightLocationMode: NightLocationMode;
   /** A station used for tonight only (not saved); it lapses at the next service day. */
   tonightDestination: StationOption | null;
+  /** Tonight's train: 0 = 終電, 1 = 1本前, 2 = 2本前 (lib/trainChoice). */
+  trainChoice: number;
 };
 
 export const DEFAULT_SETTINGS: Settings = {
   language: null,
   homeStation: null,
-  leaveMargin: 'normal',
+  leaveMargin: BASE_SAFETY_MARGIN_MINUTES,
   reminderIntervals: DEFAULT_REMINDERS,
   alarmsEnabled: false,
   alarmIntervals: [],
@@ -136,6 +116,7 @@ export const DEFAULT_SETTINGS: Settings = {
   activeDestinationId: null,
   nightLocationMode: 'ask',
   tonightDestination: null,
+  trainChoice: 0,
 };
 
 function parseHomeStation(raw: string | null): StationOption | null {
@@ -331,7 +312,7 @@ export async function readSettings(): Promise<Settings> {
     // Tonight's one-off station, when set, is where every plan heads (foreground and background).
     // A saved station may still lack a position (offline); planning looks it up again.
     homeStation: tonightDestination ?? homeStationResolved,
-    leaveMargin: leaveMargin === 'tight' || leaveMargin === 'relaxed' ? leaveMargin : 'normal',
+    leaveMargin: parseLeaveMargin(leaveMargin),
     ...parseReminderTimes(reminders, alarmsEnabled, alarmTimes),
     alarmSound: REMINDER_SOUNDS.includes(alarmSound as ReminderSound) ? (alarmSound as ReminderSound) : 'default',
     reminderVibrate: reminderVibrate !== 'false',
@@ -343,10 +324,34 @@ export async function readSettings(): Promise<Settings> {
     activeDestinationId,
     nightLocationMode: nightLocationMode === 'foreground' || nightLocationMode === 'background' ? nightLocationMode : 'ask',
     tonightDestination,
+    trainChoice: await readTrainChoice(),
   };
 }
 
 /** True when the station has real coordinates (legacy typed-in names do not). */
 export function hasCoordinates(station: StationOption | null): station is StationOption {
   return !!station && (station.latitude !== 0 || station.longitude !== 0);
+}
+
+/** The end of the night a train choice was made for: 05:00 the next morning. */
+export function trainChoiceUntil(nightMs: number): number {
+  return serviceDayStart(nightMs) + 25 * 60 * 60 * 1000;
+}
+
+/** Tonight's 終電 / 1本前 / 2本前 (0 once the night it was chosen for is over). */
+export async function readTrainChoice(nowMs = Date.now()): Promise<number> {
+  try {
+    const raw = await AsyncStorage.getItem(STORAGE_KEYS.trainChoice);
+    if (!raw) return 0;
+    const { choice, until } = JSON.parse(raw) as { choice?: unknown; until?: unknown };
+    if (typeof until !== 'number' || nowMs >= until) return 0;
+    return choice === 1 || choice === 2 ? choice : 0;
+  } catch {
+    return 0;
+  }
+}
+
+export async function writeTrainChoice(choice: number, until: number): Promise<void> {
+  if (choice === 0) await AsyncStorage.removeItem(STORAGE_KEYS.trainChoice).catch(() => undefined);
+  else await AsyncStorage.setItem(STORAGE_KEYS.trainChoice, JSON.stringify({ choice, until })).catch(() => undefined);
 }

@@ -44,4 +44,10 @@ toName: ToNameParameter;
  * @pattern ^[0-9]{8}$
  */
 date: ServiceDateParameter;
+/**
+ * Also return up to this many trains before the last one (latest first), as `earlier`.
+ * @minimum 0
+ * @maximum 2
+ */
+before?: number;
 };

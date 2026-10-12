@@ -22,12 +22,14 @@ import {
   scheduleReminders,
   sendTestNotification,
 } from "@/lib/notifications";
-import { recommendedLeaveTime, type LeaveMargin } from "@/lib/reliability";
+import { clampLeaveMargin, recommendedLeaveTime, type LeaveMargin } from "@/lib/reliability";
+import { applyTrainChoice, effectiveTrainChoice, trainOptions, type TrainChoice } from "@/lib/trainChoice";
 import {
   buildReminderPlans,
   nightEndsAt,
   freshPlanNightOf,
   planNight,
+  replanMargin,
   repick,
   rideStatus,
   shouldReplan,
@@ -35,16 +37,18 @@ import {
   trackingHardStopAt,
   type NightPlan,
   type RideStatus,
+  withTrainsBefore,
 } from "@/lib/planner";
 import {
   DEFAULT_SETTINGS,
-  deliveredReminders,
   readSettings,
   STORAGE_KEYS,
   writeDestinationState,
   writeHomeAddress,
   writePinnedStation,
+  trainChoiceUntil,
   writeTonightDestination,
+  writeTrainChoice,
   type HomeAddress,
   type Language,
   type NightLocationMode,
@@ -230,6 +234,13 @@ type RideContextValue = {
   setLanguage: (language: Language) => void;
   saveHomeStation: (station: StationOption) => Promise<void>;
   setLeaveMargin: (margin: LeaveMargin) => void;
+  /** Tonight's preferred train: 0 = 終電, 1 = 1本前, 2 = 2本前 (kept until 05:00). */
+  trainChoice: number;
+  /** The train the plan actually heads for: the preference, or a later one once it can't be made. */
+  effectiveTrainChoice: TrainChoice;
+  /** The last train and up to two before it from tonight's station. */
+  trainChoices: Array<{ choice: TrainChoice; departsAt: number; leaveAt: number; catchable: boolean }>;
+  setTrainChoice: (choice: number) => void;
   requestLocation: () => Promise<void>;
   resetLanguage: () => void;
   toggleReminderInterval: (minutes: number) => void;
@@ -320,7 +331,9 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
   const [pinnedStation, setPinnedStationState] = useState<StationOption | null>(
     DEFAULT_SETTINGS.pinnedStation,
   );
-  const [plan, setPlan] = useState<NightPlan | null>(null);
+  /** Tonight's plan as found (last train). `plan` below is it with tonight's train choice applied. */
+  const [basePlan, setPlan] = useState<NightPlan | null>(null);
+  const [trainChoice, setTrainChoiceState] = useState<number>(DEFAULT_SETTINGS.trainChoice);
   const [firstTrain, setFirstTrain] = useState<TrainTime | null>(null);
   const [userCoordinates, setUserCoordinates] = useState<Coordinates | null>(
     null,
@@ -375,8 +388,8 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     homeAddress,
   };
   const replanInFlight = useRef(false);
-  const planRef = useRef(plan);
-  planRef.current = plan;
+  const planRef = useRef(basePlan);
+  planRef.current = basePlan;
 
   useEffect(() => {
     readSettings()
@@ -396,6 +409,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
         setHomeAddressState(saved.homeAddress);
         setDestinations(saved.destinations);
         setActiveDestinationId(saved.activeDestinationId);
+        setTrainChoiceState(saved.trainChoice);
       })
       .catch(() => undefined) // unreadable storage: start fresh rather than hang on a blank screen
       .finally(() => setIsHydrated(true));
@@ -416,6 +430,33 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
   const nowMs = demo
     ? demo.virtualAt + (realNow - demo.realAt) * DEMO_SPEED
     : realNow;
+  // 終電 / 1本前 / 2本前 (lib/trainChoice): the plan heads for the chosen train
+  // while it can still be made, then falls back to a later one. Recomputed only
+  // when the train actually used changes, so effects keyed on the plan stay quiet.
+  const effectiveChoice: TrainChoice = basePlan
+    ? effectiveTrainChoice(trainOptions(basePlan, leaveMargin, nowMs), trainChoice)
+    : 0;
+  const plan = useMemo(
+    () =>
+      basePlan
+        ? applyTrainChoice(basePlan, trainOptions(basePlan, leaveMargin, 0), effectiveChoice)
+        : null,
+    [basePlan, leaveMargin, effectiveChoice],
+  );
+  /** Tonight's trains from the plan's station, for the 終電 / 1本前 / 2本前 switch. */
+  const trainChoices = useMemo(
+    () =>
+      basePlan
+        ? trainOptions(basePlan, leaveMargin, nowMs).map((option) => ({
+            choice: option.choice,
+            departsAt: option.station.lastTrain.departsAt,
+            leaveAt: recommendedLeaveTime(option.station),
+            catchable: option.catchable,
+          }))
+        : [],
+    [basePlan, leaveMargin, nowMs],
+  );
+
   const demoRef = useRef(demo);
   demoRef.current = demo;
   /** The app clock at this instant — the demo clock while one is set — for use in callbacks. */
@@ -433,9 +474,10 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     : "";
 
   const { isPremium } = usePremium();
+  // Notifications and alarms are free: what is chosen is what is delivered.
   const delivered = useMemo(
-    () => deliveredReminders({ notifications: reminderIntervals, alarms: alarmIntervals, sound: alarmSound }, isPremium),
-    [reminderIntervals, alarmIntervals, alarmSound, isPremium],
+    () => ({ notifications: reminderIntervals, alarms: alarmIntervals, sound: alarmSound }),
+    [reminderIntervals, alarmIntervals, alarmSound],
   );
 
   // Keep OS reminders in sync with the plan. Leave reminders belong to a night
@@ -459,6 +501,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       await scheduleReminders(plans, {
         leaveBy: formatJstTime(recommendedLeaveTime(plan)),
         station: stationLabel,
+        lastTrainLeaveBy: plan.nightLastLeaveAt === undefined ? undefined : formatJstTime(plan.nightLastLeaveAt),
         language: language ?? "en",
       }, { sound: delivered.sound, vibrate: reminderVibrate });
     })();
@@ -526,8 +569,8 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
   }, [firstTrainKey, homeStationOption, getNow]);
 
   // The night is over once the first train has left (not before 04:00).
-  const nightEnd = plan
-    ? nightEndsAt(plan, firstTrain, {
+  const nightEnd = basePlan
+    ? nightEndsAt(basePlan, firstTrain, {
         firstTrainPending: firstTrainFor !== firstTrainKey,
       })
     : null;
@@ -536,8 +579,21 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
 
   // Persisted so the app can open offline later in the night and still know tonight's plan.
   useEffect(() => {
-    void writeSavedPlan(plan);
-  }, [plan]);
+    void writeSavedPlan(basePlan);
+  }, [basePlan]);
+
+  // Apple's trains before the last one are looked up for the chosen station only:
+  // fill them in when the station changes (a pin) or a saved plan comes back without them.
+  useEffect(() => {
+    if (!basePlan || basePlan.lastTrain.before) return;
+    let cancelled = false;
+    void withTrainsBefore(basePlan, getNow()).then((filled) => {
+      if (!cancelled) setPlan((current) => (current === basePlan ? filled : current));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [basePlan, getNow]);
 
   // Enterprise participation is deliberately privacy-minimal: only the computed
   // leave-by timestamp is synced. Location, station, destination and route stay local.
@@ -570,15 +626,22 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     };
   }, [homeStationOption, homeAddress]);
 
-  const setLeaveMargin = useCallback(
-    (margin: LeaveMargin) => {
-      setLeaveMarginState(margin);
-      void AsyncStorage.setItem(STORAGE_KEYS.leaveMargin, margin);
-      clearPlan(); // the leave screen re-plans with the new margin
-      void Haptics.selectionAsync();
-    },
-    [clearPlan],
-  );
+  const setLeaveMargin = useCallback((minutes: LeaveMargin) => {
+    const margin = clampLeaveMargin(minutes);
+    setLeaveMarginState(margin);
+    void AsyncStorage.setItem(STORAGE_KEYS.leaveMargin, String(margin));
+    // Only the recommended leave times move: no new lookups.
+    setPlan((current) => (current ? replanMargin(current, margin) : current));
+    void Haptics.selectionAsync();
+  }, []);
+
+  const setTrainChoice = useCallback((choice: number) => {
+    const next = choice === 1 || choice === 2 ? choice : 0;
+    setTrainChoiceState(next);
+    // Kept for tonight: every re-plan (and the background task) applies it until 05:00.
+    void writeTrainChoice(next, trainChoiceUntil(planRef.current?.lastTrain.departsAt ?? Date.now()));
+    void Haptics.selectionAsync();
+  }, []);
 
   // Apple Maps place names follow the app's iOS language; keep it on LastRide's choice.
   useEffect(() => {
@@ -601,11 +664,11 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
 
   // A pin that can no longer get the user home (e.g. they walked far away) quietly returns to automatic.
   useEffect(() => {
-    if (pinnedStation && plan && !plan.pinned) {
+    if (pinnedStation && basePlan && !basePlan.pinned) {
       setPinnedStationState(null);
       void writePinnedStation(null);
     }
-  }, [pinnedStation, plan]);
+  }, [pinnedStation, basePlan]);
 
   const applyDestinationState = useCallback(
     (next: SavedDestination[], requestedActiveId: string | null) => {
@@ -867,6 +930,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
         await scheduleReminders(plans, {
           leaveBy: formatJstTime(recommendedLeaveTime(plan)),
           station: stationLabel,
+          lastTrainLeaveBy: plan.nightLastLeaveAt === undefined ? undefined : formatJstTime(plan.nightLastLeaveAt),
           language: language ?? "en",
         }, { sound: delivered.sound, vibrate: reminderVibrate });
       })();
@@ -1107,7 +1171,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
   // (or at 04:00): every notification for the night is done, so GPS can stop.
   const trackingOver =
     trackingMode !== null &&
-    ((plan !== null && nowMs >= trackingEndsAt(plan)) ||
+    ((basePlan !== null && nowMs >= trackingEndsAt(basePlan)) ||
       (trackingStartedAt !== null &&
         nowMs >= trackingHardStopAt(trackingStartedAt)));
   useEffect(() => {
@@ -1203,6 +1267,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     setLanguageState(DEFAULT_SETTINGS.language);
     setHomeStationOption(DEFAULT_SETTINGS.homeStation);
     setLeaveMarginState(DEFAULT_SETTINGS.leaveMargin);
+    setTrainChoiceState(DEFAULT_SETTINGS.trainChoice);
     setReminderIntervals(DEFAULT_SETTINGS.reminderIntervals);
     setAlarmsEnabledState(DEFAULT_SETTINGS.alarmsEnabled);
     setAlarmIntervals(DEFAULT_SETTINGS.alarmIntervals);
@@ -1319,6 +1384,10 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       setLanguage,
       saveHomeStation,
       setLeaveMargin,
+      trainChoice,
+      effectiveTrainChoice: effectiveChoice,
+      trainChoices,
+      setTrainChoice,
       requestLocation,
       resetLanguage,
       toggleReminderInterval,
@@ -1375,6 +1444,10 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       setPinnedStation,
       setLanguage,
       setLeaveMargin,
+      trainChoice,
+      effectiveChoice,
+      trainChoices,
+      setTrainChoice,
       startTracking,
       stopTracking,
       toggleReminderInterval,

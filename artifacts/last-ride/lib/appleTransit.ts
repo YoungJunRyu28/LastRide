@@ -24,6 +24,11 @@ import type { StationOption } from '@/lib/stations';
 import type { TrainTime } from '@/lib/timetable';
 import { HOUR_MS, MINUTE_MS, serviceDayStart } from '@/lib/time';
 
+/** How many trains before the last one the app offers (1本前, 2本前). */
+export const EARLIER_TRAIN_COUNT = 2;
+/** Earlier trains are only offered within this long before the last one (never the morning's). */
+export const EARLIER_TRAINS_WINDOW_MS = 2 * HOUR_MS;
+
 export const appleTransitEnabled = AppleMaps !== null && process.env.EXPO_PUBLIC_TRANSIT_PROVIDER !== 'server';
 
 export type Eta = { departureMs: number; arrivalMs: number; arrivesAtStation?: boolean };
@@ -64,11 +69,16 @@ async function isWalkLeaving(query: EtaQuery, eta: Eta, departAt: number): Promi
  * walking answers. Null when there's no train left to find (or none tonight).
  * An answer that couldn't be checked is returned as approximate (目安).
  */
-export async function searchLastTrain(query: EtaQuery, nowMs: number): Promise<Omit<TrainTime, 'source'> | null> {
+export async function searchLastTrain(
+  query: EtaQuery,
+  nowMs: number,
+  /** Arrive by this instead of 03:00: used to find the trains before the last one. */
+  deadline?: number,
+): Promise<Omit<TrainTime, 'source'> | null> {
   const dayStart = serviceDayStart(nowMs);
   // Trains arriving before this left long before anyone needs a last train.
   const floor = dayStart + 18 * HOUR_MS;
-  let arriveBy = lastTrainArriveBy(nowMs);
+  let arriveBy = deadline ?? lastTrainArriveBy(nowMs);
   for (let step = 0; step < MAX_STEPS; step++) {
     // Past the deadline MapKit doesn't say "none"; it answers with a later trip.
     if (arriveBy <= nowMs || arriveBy < floor) return null;
@@ -132,6 +142,37 @@ export async function appleLastTrain(from: StationOption, to: StationOption, now
   const query = etaQuery(from, to);
   const found = query ? await searchLastTrain(query, nowMs) : null;
   return found ? { ...found, source: 'apple' } : null;
+}
+
+/**
+ * The trains before `last` (1本前, 2本前), latest first: the last train again,
+ * with a deadline just before the previous one's arrival. Stops at the first
+ * gap (no train, or one more than EARLIER_TRAINS_WINDOW_MS earlier).
+ */
+export async function searchTrainsBefore(
+  query: EtaQuery,
+  last: Pick<TrainTime, 'departsAt' | 'arrivesAt'>,
+  nowMs: number,
+  count = EARLIER_TRAIN_COUNT,
+): Promise<Array<Omit<TrainTime, 'source'>>> {
+  const found: Array<Omit<TrainTime, 'source'>> = [];
+  let previous = last;
+  for (let attempt = 0; found.length < count && attempt < count + 2; attempt++) {
+    if (previous.arrivesAt === undefined) break;
+    const train = await searchLastTrain(query, nowMs, previous.arrivesAt - MINUTE_MS);
+    if (!train || train.approximate) break;
+    if (train.departsAt < last.departsAt - EARLIER_TRAINS_WINDOW_MS) break;
+    // An earlier arrival on the same departure (a faster change) isn't another train.
+    if (train.departsAt < previous.departsAt) found.push(train);
+    previous = train;
+  }
+  return found;
+}
+
+export async function appleTrainsBefore(from: StationOption, to: StationOption, last: TrainTime, nowMs: number): Promise<TrainTime[]> {
+  const query = etaQuery(from, to);
+  const found = query ? await searchTrainsBefore(query, last, nowMs) : [];
+  return found.map((train) => ({ ...train, source: 'apple' as const }));
 }
 
 export async function appleFirstTrain(from: StationOption, to: StationOption, nowMs: number): Promise<TrainTime | null> {

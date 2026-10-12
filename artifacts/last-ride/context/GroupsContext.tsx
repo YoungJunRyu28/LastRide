@@ -49,8 +49,8 @@ type GroupsValue = {
   /** Forgets a group locally (left, removed, disbanded). */
   forget: (groupId: string) => Promise<void>;
   /**
-   * "Reset & start over": leaves every group on the server (a host hands the
-   * role on; an empty group is deleted), then forgets them on this phone.
+   * "Reset & start over": leaves every group on the server (a host's group is
+   * disbanded), then forgets them on this phone.
    * Offline, the server copies are removed later by the inactivity cleanup.
    */
   leaveAll: () => Promise<void>;
@@ -58,6 +58,8 @@ type GroupsValue = {
   join: (input: { inviteToken?: string; joinCode?: string; displayName: string }) => Promise<GroupDetail>;
   /** The group you're in tonight (opted in, night active), for the Leave strip and If missed. */
   tonightGroup: GroupDetail | null;
+  /** A group active tonight that you haven't joined yet (the home screen offers 参加). */
+  tonightOpenGroup: GroupDetail | null;
 };
 
 const GroupsContext = createContext<GroupsValue | null>(null);
@@ -245,10 +247,19 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
         ) ?? null,
     [groups],
   );
+  const tonightOpenGroup = useMemo(
+    () =>
+      tonightGroup
+        ? null
+        : (groups
+            .map((entry) => entry.detail)
+            .find((detail): detail is GroupDetail => !!detail && detail.tonight.active) ?? null),
+    [groups, tonightGroup],
+  );
 
   const value = useMemo(
-    () => ({ groups, loading, available, refresh, memberOptions, apply, forget, leaveAll, create, join, tonightGroup }),
-    [groups, loading, available, refresh, memberOptions, apply, forget, leaveAll, create, join, tonightGroup],
+    () => ({ groups, loading, available, refresh, memberOptions, apply, forget, leaveAll, create, join, tonightGroup, tonightOpenGroup }),
+    [groups, loading, available, refresh, memberOptions, apply, forget, leaveAll, create, join, tonightGroup, tonightOpenGroup],
   );
   return <GroupsContext.Provider value={value}>{children}</GroupsContext.Provider>;
 }

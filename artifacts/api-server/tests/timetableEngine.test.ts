@@ -154,6 +154,19 @@ describe("journey → TrainRoute", () => {
     });
   });
 
+  it("also answers the trains before the last one, but not the morning's", () => {
+    const route = searchTrainIn(snapshot, "last", at("渋谷"), at("押上"), "20261009", 2);
+    expect(route?.departsAt).toBe("2026-10-09T23:50:00+09:00");
+    // 23:30 makes the 23:58 Toei; the next earlier trip is the 05:00 morning train, outside the window.
+    expect(route?.earlier?.map((train) => [train.departsAt, train.arrivesAt])).toEqual([
+      ["2026-10-09T23:30:00+09:00", "2026-10-10T00:13:00+09:00"],
+    ]);
+  });
+
+  it("leaves earlier trains out unless asked", () => {
+    expect(searchTrainIn(snapshot, "last", at("渋谷"), at("押上"), "20261009")).not.toHaveProperty("earlier");
+  });
+
   it("does not turn the interchange walk into a leg, but counts the change", () => {
     const origins = matchStations(snapshot, at("渋谷"));
     const targets = matchStations(snapshot, at("押上"));

@@ -120,20 +120,20 @@ describe("group push copy", () => {
   it("builds one operational message per recipient, deep-linking the group", () => {
     const messages = buildGroupPushMessages(
       "g1",
-      { kind: "missed", groupName: "金曜会", displayName: "ゆき" },
+      { kind: "tonight_started", groupName: "金曜会" },
       [
         { memberId: "m1", expoPushToken: "ExponentPushToken[a]", language: "ja" },
         { memberId: "m2", expoPushToken: "ExponentPushToken[b]", language: "en" },
       ],
     );
     expect(messages.map((message) => message.body)).toEqual([
-      "金曜会: ゆきさんが終電に乗り遅れました",
-      "金曜会: ゆき missed their train",
+      "金曜会: ホストが今夜の会を始めました",
+      "金曜会: The host started tonight's meetup",
     ]);
     expect(messages[0].data).toEqual({
       target: "/groups",
       groupId: "g1",
-      kind: "missed",
+      kind: "tonight_started",
     });
     for (const message of messages) {
       expect(message.body).not.toMatch(/premium|プレミアム|sale|セール|%/i);

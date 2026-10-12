@@ -167,6 +167,43 @@ export function lastTrainBetween(
   return best ? withTimes(snapshot, date, best) : null;
 }
 
+/** Earlier trains are only offered within this long before the last one (not the morning's). */
+export const EARLIER_TRAINS_WINDOW_MINUTES = 120;
+
+/**
+ * Tonight's last train and up to `before` trains before it (latest first),
+ * within EARLIER_TRAINS_WINDOW_MINUTES of it.
+ * Each earlier one is the last train with an arrival deadline just before the
+ * previous one's, so it is a genuinely earlier trip home, not the same train
+ * with a different change.
+ */
+export function lastTrainsBetween(
+  snapshot: TransitSnapshot,
+  date: string,
+  from: number[],
+  to: number[],
+  before: number,
+): JourneyAt[] {
+  const timetable = timetableFor(snapshot, date);
+  const found: Journey[] = [];
+  let arriveBy = Infinity;
+  // A few extra scans in case a deadline only finds a later-departing variant.
+  for (let attempt = 0; found.length <= before && attempt < before + 4; attempt++) {
+    const result = lastTrains(timetable, to, arriveBy);
+    let best: Journey | null = null;
+    for (const origin of from) {
+      const journey = result.journeyFrom(origin);
+      if (journey && (!best || journey.departs > best.departs)) best = journey;
+    }
+    if (!best) break;
+    if (found.length > 0 && best.departs < found[0].departs - EARLIER_TRAINS_WINDOW_MINUTES) break;
+    const previous = found[found.length - 1];
+    if (!previous || best.departs < previous.departs) found.push(best);
+    arriveBy = best.arrives - 1;
+  }
+  return found.map((journey) => withTimes(snapshot, date, journey));
+}
+
 /** The first train of the morning after service day `date`, from 04:00. */
 export function firstTrainBetween(
   snapshot: TransitSnapshot,

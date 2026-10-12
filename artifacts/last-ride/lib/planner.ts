@@ -8,7 +8,7 @@ import type { HomeAddress } from '@/lib/settings';
 import { matchingDisruptionLines, recommendedLeaveTime, type LeaveMargin, recommendedSafetyMarginMinutes, riskAdjustedLeaveTime } from '@/lib/reliability';
 import { distanceBetween, findNearbyStations, LocationError, walkingRoute, type Coordinates, type NearbyStation, type StationOption, type WalkingSpeed } from '@/lib/stations';
 import { MINUTE_MS, serviceDayStart } from '@/lib/time';
-import { getLastTrain, type TrainTime } from '@/lib/timetable';
+import { getLastTrain, trainsBefore, type TrainTime } from '@/lib/timetable';
 import { hasPosition, resolveAddress, resolveStation } from '@/lib/storedPlaces';
 
 /** Time from the station entrance to the platform (gates, stairs, finding the right line). */
@@ -50,6 +50,15 @@ export type StationChoice = {
   walkHomeMinutes?: number;
   /** At the user's door, epoch ms — arrival plus that walk. */
   arriveHomeMs?: number;
+  /**
+   * Set when `lastTrain` is an earlier train the user chose (1本前 = 1, 2本前 = 2):
+   * the real last train is then `nightLastTrain`, which still decides when the
+   * night's last train has gone (status, the "missed it?" check-in, tracking end).
+   */
+  trainChoice?: number;
+  nightLastTrain?: TrainTime;
+  /** Recommended leave time for the real last train, for the backup reminder. */
+  nightLastLeaveAt?: number;
 };
 
 /** Arrival stations worth comparing: the saved home station, plus this many near the home address. */
@@ -96,18 +105,21 @@ function nightClock(choice: Pick<StationChoice, 'lastTrain'>, offsetMs: number) 
   return serviceDayStart(choice.lastTrain.departsAt) + offsetMs;
 }
 
-/** When the app treats the last train as gone: its departure, or 01:30 at the latest. */
-export function lastTrainLeftAt(choice: Pick<StationChoice, 'lastTrain'>): number {
-  return Math.min(choice.lastTrain.departsAt, nightClock(choice, LAST_TRAIN_LEFT_BY));
+type NightChoice = Pick<StationChoice, 'lastTrain' | 'nightLastTrain'>;
+
+/** When the app treats the night's last train as gone: its departure, or 01:30 at the latest. */
+export function lastTrainLeftAt(choice: NightChoice): number {
+  const last = choice.nightLastTrain ?? choice.lastTrain;
+  return Math.min(last.departsAt, nightClock({ lastTrain: last }, LAST_TRAIN_LEFT_BY));
 }
 
-/** When the "missed the last train?" check-in is sent. */
-export function missedCheckInAt(choice: Pick<StationChoice, 'lastTrain'>): number {
+/** When the "missed the last train?" check-in is sent (always after the real last train). */
+export function missedCheckInAt(choice: NightChoice): number {
   return lastTrainLeftAt(choice) + MISSED_CHECK_IN_AFTER_MINUTES * MINUTE_MS;
 }
 
 /** Night-out tracking ends right after the check-in (nothing is left to notify), or at 04:00 at the latest. */
-export function trackingEndsAt(choice: Pick<StationChoice, 'lastTrain'>): number {
+export function trackingEndsAt(choice: NightChoice): number {
   return Math.min(missedCheckInAt(choice) + MINUTE_MS, nightClock(choice, TRACKING_OFF_BY));
 }
 
@@ -119,7 +131,7 @@ export function trackingHardStopAt(startedAt: number): number {
   return serviceDayStart(startedAt) + TRACKING_OFF_BY;
 }
 
-export function rideStatus(choice: Pick<StationChoice, 'leaveByMs' | 'recommendedLeaveByMs' | 'safetyMarginMinutes' | 'walkingMinutes' | 'lastTrain'>, nowMs: number): RideStatus {
+export function rideStatus(choice: Pick<StationChoice, 'leaveByMs' | 'recommendedLeaveByMs' | 'safetyMarginMinutes' | 'walkingMinutes' | 'lastTrain' | 'nightLastTrain'>, nowMs: number): RideStatus {
   if (nowMs >= lastTrainLeftAt(choice)) return 'departed';
   const recommended = recommendedLeaveTime(choice);
   const minutesLeft = (recommended - nowMs) / MINUTE_MS;
@@ -226,6 +238,21 @@ function assemble(options: StationChoice[], pinned: StationOption | null, coordi
     autoPick: auto,
     pinned: pinnedChoice !== undefined,
     computedAt,
+  };
+}
+
+/** The same choice with a new 余裕 (no lookups: only the recommended leave time moves). */
+export function withMargin<T extends StationChoice>(choice: T, leaveMargin: LeaveMargin): T {
+  const safetyMarginMinutes = recommendedSafetyMarginMinutes(choice, leaveMargin);
+  return { ...choice, safetyMarginMinutes, recommendedLeaveByMs: choice.leaveByMs - safetyMarginMinutes * MINUTE_MS };
+}
+
+/** A plan with a new 余裕 applied to every station in it, instantly. */
+export function replanMargin(plan: NightPlan, leaveMargin: LeaveMargin): NightPlan {
+  return {
+    ...withMargin(plan, leaveMargin),
+    alternatives: plan.alternatives.map((option) => withMargin(option, leaveMargin)),
+    autoPick: withMargin(plan.autoPick, leaveMargin),
   };
 }
 
@@ -385,7 +412,18 @@ export async function planNight(
   }
 
   if (options.length === 0) throw new LocationError(lookupFailed ? 'unavailable' : 'no-route');
-  return assemble(options, pinned, coordinates, nowMs);
+  return withTrainsBefore(assemble(options, pinned, coordinates, nowMs), nowMs);
+}
+
+/**
+ * The plan with the trains before its last train filled in (1本前, 2本前). The
+ * server sends them with every station's last train; Apple's are looked up
+ * here, for the chosen station only. Never fails: no earlier trains is fine.
+ */
+export async function withTrainsBefore(plan: NightPlan, nowMs: number): Promise<NightPlan> {
+  if (plan.lastTrain.before) return plan;
+  const before = await trainsBefore(plan.station, plan.destination, plan.lastTrain, nowMs).catch(() => []);
+  return { ...plan, lastTrain: { ...plan.lastTrain, before } };
 }
 
 /** A leave reminder (`minutesBefore` leave-by, 0 = "leave now") or the "missed it?" check-in. */
@@ -393,6 +431,8 @@ export type ReminderPlan = {
   minutesBefore: number;
   fireAt: number;
   missedCheckIn?: true;
+  /** On an earlier train: one notification at the real last train's leave time, in case that one was missed. */
+  lastTrainBackup?: true;
   /** Delivered as an alarm (AlarmKit) rather than a notification. */
   alarm?: true;
 };
@@ -403,7 +443,7 @@ export type ReminderPlan = {
  * last train leaves; past ones are dropped. Nothing is added unless chosen.
  */
 export function buildReminderPlans(
-  choice: Pick<StationChoice, 'leaveByMs' | 'recommendedLeaveByMs' | 'safetyMarginMinutes' | 'walkingMinutes' | 'lastTrain'>,
+  choice: Pick<StationChoice, 'leaveByMs' | 'recommendedLeaveByMs' | 'safetyMarginMinutes' | 'walkingMinutes' | 'lastTrain' | 'nightLastTrain' | 'nightLastLeaveAt'>,
   intervals: number[],
   nowMs: number,
   { missedCheckIn = true, alarmIntervals = [] }: { missedCheckIn?: boolean; alarmIntervals?: number[] } = {},
@@ -416,6 +456,9 @@ export function buildReminderPlans(
       fireAt: leaveAt - minutesBefore * MINUTE_MS,
       ...(alarmIntervals.includes(minutesBefore) ? { alarm: true as const } : {}),
     }));
+  // Heading for an earlier train: if it's missed, still say when the last train needs you to go.
+  if (choice.nightLastLeaveAt !== undefined && choice.nightLastLeaveAt > leaveAt)
+    reminders.push({ minutesBefore: 0, fireAt: choice.nightLastLeaveAt, lastTrainBackup: true });
   if (missedCheckIn)
     reminders.push({
       minutesBefore: 0,

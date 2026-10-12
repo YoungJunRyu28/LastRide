@@ -3,8 +3,21 @@ import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { IconButton } from '@/components/ui';
 import { useColors } from '@/hooks/useColors';
+import { alarmKitAvailable } from '@/lib/notifications';
 
-/** Shared frame for the three setup steps: back, "n / 3", scrolling body, pinned actions. */
+/** The alarm step only shows where alarms work (iOS 26+, AlarmKit). */
+export const SETUP_HAS_ALARMS = Platform.OS === 'ios' && alarmKitAvailable;
+/** Step numbers: 帰り先, 通知, (アラーム), 早めに出る時間, 位置情報. */
+export const SETUP_STEPS = {
+  destination: 1,
+  notifications: 2,
+  alarms: 3,
+  margin: SETUP_HAS_ALARMS ? 4 : 3,
+  location: SETUP_HAS_ALARMS ? 5 : 4,
+} as const;
+const SETUP_TOTAL = SETUP_STEPS.location;
+
+/** Shared frame for the setup steps: back, "n / total", scrolling body, pinned actions. */
 export function OnboardingFrame({
   step,
   onBack,
@@ -12,7 +25,7 @@ export function OnboardingFrame({
   children,
   actions,
 }: {
-  step: 1 | 2 | 3;
+  step: number;
   onBack: () => void;
   backLabel: string;
   children: React.ReactNode;
@@ -29,14 +42,14 @@ export function OnboardingFrame({
       >
         <View style={styles.topbar}>
           <IconButton icon="chevron-left" label={backLabel} onPress={onBack} testID="onboarding-back" />
-          <View style={styles.progress} accessible accessibilityLabel={`${step} / 3`}>
-            {[1, 2, 3].map((index) => (
+          <View style={styles.progress} accessible accessibilityLabel={`${step} / ${SETUP_TOTAL}`}>
+            {Array.from({ length: SETUP_TOTAL }, (_, index) => index + 1).map((index) => (
               <View
                 key={index}
                 style={[styles.progressDot, { backgroundColor: index <= step ? colors.primary : colors.secondary }]}
               />
             ))}
-            <Text style={[styles.progressText, { color: colors.mutedForeground }]}>{step} / 3</Text>
+            <Text style={[styles.progressText, { color: colors.mutedForeground }]}>{step} / {SETUP_TOTAL}</Text>
           </View>
         </View>
         {children}

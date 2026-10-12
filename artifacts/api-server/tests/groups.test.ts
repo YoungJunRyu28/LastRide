@@ -34,11 +34,9 @@ import {
   purgeInactiveGroupMembers,
   removeGroupMemberRecord,
   renameGroupRecord,
-  reportGroupTonightMissedRecord,
   rotateGroupInviteRecord,
   setGroupTonightParticipationRecord,
   startGroupTonightRecord,
-  transferGroupHostRecord,
   updateGroupMembershipRecord,
 } from "../src/lib/groupStore";
 import { nightWindow, serviceDateFor } from "../src/lib/groupNight";
@@ -211,9 +209,6 @@ describe("host-only actions", () => {
       "forbidden",
     );
     expect(
-      (await transferGroupHostRecord(groupId, member.token, member.id)).kind,
-    ).toBe("forbidden");
-    expect(
       (await removeGroupMemberRecord(groupId, member.token, host.id)).kind,
     ).toBe("forbidden");
     expect((await startGroupTonightRecord(groupId, member.token)).kind).toBe(
@@ -233,40 +228,9 @@ describe("host-only actions", () => {
     );
   });
 
-  it("the host cannot leave without transferring; after transfer they can", async () => {
-    const { groupId, host, members } = await groupWithMembers();
-    expect((await leaveGroupRecord(groupId, host.token)).kind).toBe("host");
-
-    const transferred = await transferGroupHostRecord(
-      groupId,
-      host.token,
-      members[0].id,
-    );
-    expect(transferred.kind).toBe("ok");
-    if (transferred.kind !== "ok") return;
-    expect(transferred.group.me.role).toBe("member");
-    expect(transferred.group.invite).toBeNull();
-    expect(
-      transferred.group.members.find((member) => member.role === "host")?.id,
-    ).toBe(members[0].id);
-
-    // The new host can recover the existing invite without rotating it.
-    const newHostView = await getGroupDetailRecord(groupId, members[0].token);
-    expect(newHostView?.invite).not.toBeNull();
-
-    expect((await leaveGroupRecord(groupId, host.token)).kind).toBe("ok");
-    expect(await getGroupDetailRecord(groupId, host.token)).toBeNull();
-  });
-
-  it("cannot transfer to someone outside the group", async () => {
+  it("the host cannot simply leave (only disband, or hand over on reset)", async () => {
     const { groupId, host } = await groupWithMembers();
-    const other = await groupWithMembers([]);
-    expect(
-      (await transferGroupHostRecord(groupId, host.token, other.host.id)).kind,
-    ).toBe("invalid-target");
-    expect(
-      (await transferGroupHostRecord(groupId, host.token, host.id)).kind,
-    ).toBe("invalid-target");
+    expect((await leaveGroupRecord(groupId, host.token)).kind).toBe("host");
   });
 
   it("removing a member revokes their token", async () => {
@@ -335,19 +299,19 @@ describe("leaving on reset, and members whose app is gone", () => {
     return row?.role ?? null;
   }
 
-  it("reset as host hands the role to the longest-standing member", async () => {
+  it("reset as host disbands the group (hosting isn't passed on)", async () => {
     const { groupId, host, members } = await groupWithMembers(["Bea", "Cai"]);
-    expect((await leaveGroupRecord(groupId, host.token, { handover: true })).kind).toBe("ok");
-    expect(await getGroupDetailRecord(groupId, host.token)).toBeNull();
-    expect(await roleOf(members[0].id)).toBe("host");
-    expect(await roleOf(members[1].id)).toBe("member");
-  });
-
-  it("reset as the only member deletes the group", async () => {
-    const { groupId, host } = await groupWithMembers([]);
-    expect((await leaveGroupRecord(groupId, host.token, { handover: true })).kind).toBe("ok");
+    expect((await leaveGroupRecord(groupId, host.token, { disbandIfHost: true })).kind).toBe("ok");
     const rows = await getDb().select().from(groupsTable).where(eq(groupsTable.id, groupId));
     expect(rows).toHaveLength(0);
+    expect(await roleOf(members[0].id)).toBeNull();
+  });
+
+  it("reset as a member just leaves", async () => {
+    const { groupId, host, members } = await groupWithMembers(["Bea"]);
+    expect((await leaveGroupRecord(groupId, members[0].token, { disbandIfHost: true })).kind).toBe("ok");
+    expect(await roleOf(members[0].id)).toBeNull();
+    expect(await roleOf(host.id)).toBe("host");
   });
 
   it("any request from the app refreshes last-seen", async () => {
@@ -377,16 +341,24 @@ describe("leaving on reset, and members whose app is gone", () => {
     expect(await getGroupDetailRecord(groupId, host.token)).not.toBeNull();
   });
 
-  it("an inactive host is replaced, and a group nobody is left in is deleted", async () => {
-    const kept = await groupWithMembers(["Bea"]);
-    await seen(kept.host.id, 200);
-    const gone = await groupWithMembers([]);
-    await seen(gone.host.id, 200);
+  it("an inactive host's group is disbanded", async () => {
+    const { groupId, host, members } = await groupWithMembers(["Bea"]);
+    await seen(host.id, 200);
 
-    expect(await purgeInactiveGroupMembers()).toBe(2);
-    expect(await roleOf(kept.members[0].id)).toBe("host");
-    const rows = await getDb().select().from(groupsTable).where(eq(groupsTable.id, gone.groupId));
+    expect(await purgeInactiveGroupMembers()).toBe(1);
+    expect(await roleOf(members[0].id)).toBeNull();
+    const rows = await getDb().select().from(groupsTable).where(eq(groupsTable.id, groupId));
     expect(rows).toHaveLength(0);
+  });
+
+  it("メンバーの出発時刻 can be muted on its own", async () => {
+    const { groupId, members } = await groupWithMembers(["Bea"]);
+    const muted = await updateGroupMembershipRecord(groupId, members[0].token, { leaveTimeAlerts: false });
+    expect(muted.kind).toBe("ok");
+    if (muted.kind !== "ok") return;
+    expect(muted.group.me.leaveTimeAlerts).toBe(false);
+    // Everything else stays on.
+    expect(muted.group.me.notifications).toBe(true);
   });
 
   it("a fresh push token clears the dead-token mark", async () => {
@@ -469,8 +441,8 @@ describe("tonight", () => {
     if (result.kind !== "ok") return;
     // Sorted by leave-by.
     expect(result.group.tonight.participants).toEqual([
-      { memberId: members[1].id, displayName: "Cai", leaveBy: earlier, missed: false },
-      { memberId: members[0].id, displayName: "Bea", leaveBy: later, missed: false },
+      { memberId: members[1].id, displayName: "Cai", leaveBy: earlier },
+      { memberId: members[0].id, displayName: "Bea", leaveBy: later },
     ]);
 
     // undefined keeps the current leave-by.
@@ -549,40 +521,38 @@ describe("tonight", () => {
     ).toBe("inactive");
   });
 
-  it("乗り遅れた notifies the other participants and the host, once", async () => {
-    const { groupId, host, members } = await groupWithMembers(["Bea", "Cai", "Dan"]);
-    const [bea, cai, dan] = members;
-    for (const [who, label] of [
-      [host, "host"],
-      [bea, "bea"],
-      [cai, "cai"],
-      [dan, "dan"],
-    ] as const) {
+  it("the 今夜の開始 and メンバーの出発時刻 switches are independent", async () => {
+    const { groupId, host, members } = await groupWithMembers(["Bea", "Cai"]);
+    const [bea, cai] = members;
+    for (const [who, label] of [[host, "host"], [bea, "bea"], [cai, "cai"]] as const) {
       await setPush(groupId, who.token, label);
     }
-    await startGroupTonightRecord(groupId, host.token);
-    const leaveBy = new Date(tonightWindow().endsAt.getTime() - 60 * 60_000);
-    await setGroupTonightParticipationRecord(groupId, bea.token, leaveBy);
+    // Bea mutes the start notification only.
+    await updateGroupMembershipRecord(groupId, bea.token, { notifications: false });
+    const started = await startGroupTonightRecord(groupId, host.token);
+    expect(started.kind === "ok" && started.recipients.map((r) => r.memberId)).toEqual([cai.id]);
+    // …but still hears when Cai's leave time comes.
+    const leaveBy = new Date(tonightWindow().endsAt.getTime() - 2 * 60 * 60_000);
+    await setGroupTonightParticipationRecord(groupId, bea.token, null);
     await setGroupTonightParticipationRecord(groupId, cai.token, leaveBy);
-    // Dan is a member but not participating tonight.
+    const [alert] = await claimDueGroupLeaveAlerts(new Date(leaveBy.getTime() + 60_000));
+    expect(alert.recipients.map((r) => r.memberId).sort()).toEqual([host.id, bea.id].sort());
+  });
 
-    expect((await reportGroupTonightMissedRecord(groupId, dan.token)).kind).toBe(
-      "not-participant",
-    );
-
-    const missed = await reportGroupTonightMissedRecord(groupId, bea.token);
-    expect(missed.kind).toBe("ok");
-    if (missed.kind !== "ok") return;
-    expect(missed.displayName).toBe("Bea");
-    expect(missed.recipients.map((r) => r.memberId).sort()).toEqual(
-      [host.id, cai.id].sort(),
-    );
-    expect(
-      missed.group.tonight.participants.find((p) => p.memberId === bea.id)?.missed,
-    ).toBe(true);
-
-    const repeat = await reportGroupTonightMissedRecord(groupId, bea.token);
-    expect(repeat.kind === "ok" && repeat.recipients).toEqual([]);
+  it("leave-time alerts skip members who muted メンバーの出発時刻", async () => {
+    const { groupId, host, members } = await groupWithMembers(["Bea", "Cai"]);
+    const [bea, cai] = members;
+    for (const [who, label] of [[host, "host"], [bea, "bea"], [cai, "cai"]] as const) {
+      await setPush(groupId, who.token, label);
+    }
+    await updateGroupMembershipRecord(groupId, cai.token, { leaveTimeAlerts: false });
+    await startGroupTonightRecord(groupId, host.token);
+    const leaveBy = new Date(tonightWindow().endsAt.getTime() - 2 * 60 * 60_000);
+    await setGroupTonightParticipationRecord(groupId, bea.token, leaveBy);
+    await setGroupTonightParticipationRecord(groupId, cai.token, null);
+    const [alert] = await claimDueGroupLeaveAlerts(new Date(leaveBy.getTime() + 60_000));
+    // The host still hears about Bea; Cai, who muted it, doesn't.
+    expect(alert.recipients.map((r) => r.memberId)).toEqual([host.id]);
   });
 
   it("leave-time alerts fire once per night and re-arm only when leave-by moves later", async () => {
@@ -596,11 +566,11 @@ describe("tonight", () => {
     ] as const) {
       await setPush(groupId, who.token, label);
     }
-    // Dan switched group notifications off.
+    // Dan switched メンバーの出発時刻 off.
     const off = await updateGroupMembershipRecord(groupId, dan.token, {
-      notifications: false,
+      leaveTimeAlerts: false,
     });
-    expect(off.kind === "ok" && off.group.me.notifications).toBe(false);
+    expect(off.kind === "ok" && off.group.me.leaveTimeAlerts).toBe(false);
 
     await startGroupTonightRecord(groupId, host.token);
     const MIN = 60_000;
@@ -616,7 +586,7 @@ describe("tonight", () => {
     const first = await claimDueGroupLeaveAlerts(at(1));
     expect(first).toHaveLength(1);
     expect(first[0]).toMatchObject({ memberId: bea.id, displayName: "Bea", leaveBy });
-    // Other participants + host; not Bea herself, not Dan (notifications off).
+    // Other participants + host; not Bea herself, not Dan (leave times muted).
     expect(first[0].recipients.map((r) => r.memberId).sort()).toEqual(
       [host.id, cai.id].sort(),
     );
@@ -633,7 +603,7 @@ describe("tonight", () => {
     expect(await claimDueGroupLeaveAlerts(at(32))).toEqual([]);
   });
 
-  it("does not send stale leave-time alerts or alerts for someone who already missed", async () => {
+  it("does not send stale leave-time alerts", async () => {
     const { groupId, host, members } = await groupWithMembers(["Bea", "Cai"]);
     await startGroupTonightRecord(groupId, host.token);
     const leaveBy = new Date(tonightWindow().endsAt.getTime() - 2 * 60 * 60_000);
@@ -641,19 +611,8 @@ describe("tonight", () => {
     expect(
       await claimDueGroupLeaveAlerts(new Date(leaveBy.getTime() + 11 * 60_000)),
     ).toEqual([]);
-
-    await setGroupTonightParticipationRecord(groupId, members[1].token, leaveBy);
-    await reportGroupTonightMissedRecord(groupId, members[1].token);
-    const alerts = await claimDueGroupLeaveAlerts(new Date(leaveBy.getTime() + 60_000));
-    expect(alerts.map((alert) => alert.memberId)).toEqual([members[0].id]);
   });
 
-  it("missed is rejected when the group is not active tonight", async () => {
-    const { groupId, members } = await groupWithMembers();
-    expect(
-      (await reportGroupTonightMissedRecord(groupId, members[0].token)).kind,
-    ).toBe("inactive");
-  });
 });
 
 describe("groups HTTP routes", () => {
@@ -775,14 +734,14 @@ describe("groups HTTP routes", () => {
     expect(session.group.invite.joinCode).toHaveLength(8);
   });
 
-  it("reset leaves as host over HTTP, handing the role on", async () => {
+  it("reset as host over HTTP disbands the group", async () => {
     const { groupId, host, members } = await groupWithMembers(["Bea"]);
     const left = await call("DELETE", `/groups/${groupId}/me`, { token: host.token });
     expect(left.status).toBe(409);
     const reset = await call("POST", `/groups/${groupId}/me/reset`, { token: host.token });
     expect(reset.status).toBe(204);
-    const view = await getGroupDetailRecord(groupId, members[0].token);
-    expect(view?.me.role).toBe("host");
+    // The host's reset disbands the group for everyone.
+    expect(await getGroupDetailRecord(groupId, members[0].token)).toBeNull();
     const again = await call("POST", `/groups/${groupId}/me/reset`, { token: host.token });
     expect(again.status).toBe(404);
   });
@@ -812,7 +771,6 @@ describe("groups HTTP routes", () => {
       ["PATCH", `/groups/${groupId}`, { name: "x" }],
       ["DELETE", `/groups/${groupId}`],
       ["POST", `/groups/${groupId}/invite`],
-      ["POST", `/groups/${groupId}/transfer`, { memberId: member.group.me.memberId }],
       ["DELETE", `/groups/${groupId}/members/${host.group.me.memberId}`],
       ["POST", `/groups/${groupId}/tonight`],
       ["DELETE", `/groups/${groupId}/tonight`],
@@ -867,7 +825,7 @@ describe("groups HTTP routes", () => {
     );
   });
 
-  it("activation and 乗り遅れた push to the right members", async () => {
+  it("activation pushes to the members who keep 今夜の開始 on", async () => {
     const { groupId, host, members } = await groupWithMembers(["Bea", "Cai"]);
     const [bea, cai] = members;
     await setPush(groupId, host.token, "host");
@@ -901,23 +859,5 @@ describe("groups HTTP routes", () => {
     });
     expect(outside.status).toBe(400);
 
-    pushes = [];
-    const missed = await call("POST", `/groups/${groupId}/tonight/missed`, {
-      token: bea.token,
-    });
-    expect(missed.status).toBe(200);
-    // Cai is not participating tonight; only the host hears about it.
-    expect(pushes).toEqual([
-      {
-        to: "ExponentPushToken[hostxxxxxxxxxxxxxxxx]",
-        body: "金曜会: Beaさんが終電に乗り遅れました",
-      },
-    ]);
-    const detail = (await missed.json()) as {
-      tonight: { participants: Array<{ displayName: string; missed: boolean }> };
-    };
-    expect(detail.tonight.participants).toEqual([
-      expect.objectContaining({ displayName: "Bea", missed: true }),
-    ]);
   });
 });

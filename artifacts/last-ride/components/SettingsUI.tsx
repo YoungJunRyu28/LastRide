@@ -92,8 +92,7 @@ export function useAlarmStatus(revision?: unknown) {
 export const soundLabel = (sound: ReminderSound, ja: boolean) =>
   ({ default: ja ? 'iOS標準' : 'iOS default', pulse: 'Pulse', chime: 'Chime', urgent: ja ? '緊急' : 'Urgent' })[sound];
 
-export const marginLabel = (margin: LeaveMargin, ja: boolean) =>
-  ({ tight: ja ? 'ぎりぎり' : 'Tight', normal: ja ? 'ふつう' : 'Normal', relaxed: ja ? '余裕あり' : 'Relaxed' })[margin];
+export const marginLabel = (margin: LeaveMargin, ja: boolean) => (ja ? `${margin}分` : `${margin} min`);
 
 export const nightLocationLabel = (mode: NightLocationMode, ja: boolean) =>
   ({ ask: ja ? '未選択' : 'Not set', foreground: ja ? 'アプリのみ' : 'App open', background: ja ? '閉じても更新' : 'When closed' })[mode];

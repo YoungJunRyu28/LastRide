@@ -68,3 +68,26 @@ describe("widgetTimeline", () => {
     expect(entries[1].props).toMatchObject({ phase: "countdown", countdownTo: jst(23, 37), barFrom: jst(22, 37) });
   });
 });
+
+describe("heading for an earlier train (1本前)", () => {
+  // 1本前 leaves 23:36 (latest leave 23:25, recommended 23:21); the last train is 23:52 (leave 23:37).
+  const earlier = {
+    ...plan,
+    leaveByMs: jst(23, 25),
+    recommendedLeaveByMs: jst(23, 21),
+    lastTrain: { departsAt: jst(23, 36), arrivesAt: jst(24, 8), source: "live" as const },
+    trainChoice: 1,
+    nightLastTrain: plan.lastTrain,
+    nightLastLeaveAt: jst(23, 37),
+  };
+
+  test("shows the earlier train, then switches to the last train once it can't be made", () => {
+    const entries = widgetTimeline(earlier, "自宅", "ja", jst(23, 0));
+    expect(entries[0].props).toMatchObject({ bigTime: "23:21", detail: "1本前 23:36 · 徒歩8分" });
+    // From 23:25 (1本前's latest leave time) the widget is the last train's.
+    const switched = entries.find((entry) => entry.date.getTime() === jst(23, 25));
+    expect(switched?.props).toMatchObject({ detail: "終電 23:52 · 徒歩8分", countdownTo: jst(23, 37) });
+    // And it only says "ended" after the real last train.
+    expect(entries[entries.length - 1].date.getTime()).toBe(jst(23, 57));
+  });
+});

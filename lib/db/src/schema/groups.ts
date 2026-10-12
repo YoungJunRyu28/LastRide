@@ -70,8 +70,11 @@ export const groupMembersTable = pgTable(
     memberTokenHash: varchar("member_token_hash", { length: 64 }).notNull(),
     expoPushToken: varchar("expo_push_token", { length: 255 }),
     language: groupLanguageEnum("language").default("ja").notNull(),
-    // Per-member "group notifications" switch; applies to every group push.
+    // "今夜の開始": the host-started-tonight notification.
     notifications: boolean("notifications").default(true).notNull(),
+    // "メンバーの出発時刻": when another participant's leave time comes. Some
+    // join only to see the list or to share their own time, so it is separate.
+    leaveTimeAlerts: boolean("leave_time_alerts").default(true).notNull(),
     // Last authenticated request from this member's app (refreshed at most
     // twice a day). Members inactive for long enough are removed by the
     // nightly cleanup, since deleting the app can't tell the server.
@@ -142,7 +145,6 @@ export const groupNightParticipantsTable = pgTable(
     // persisted for group members, and it is deleted when the night ends.
     // Never add location, station, route, or destination.
     leaveBy: timestamp("leave_by", { withTimezone: true }),
-    missedAt: timestamp("missed_at", { withTimezone: true }),
     // The leave-by value the "time to leave" push was sent for. A later
     // leave-by re-arms the alert; an earlier or equal one does not.
     leaveAlertSentFor: timestamp("leave_alert_sent_for", { withTimezone: true }),

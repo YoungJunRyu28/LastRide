@@ -1,4 +1,4 @@
-import { OnboardingFrame, OnboardingHeading } from '@/components/Onboarding';
+import { OnboardingFrame, OnboardingHeading, SETUP_STEPS } from '@/components/Onboarding';
 import { PrimaryButton, TextButton } from '@/components/ui';
 import { useLastRide } from '@/context/LastRideContext';
 import { usePremium } from '@/context/PremiumContext';
@@ -60,9 +60,9 @@ export default function OnboardingLocationScreen() {
 
   return (
     <OnboardingFrame
-      step={3}
+      step={SETUP_STEPS.location}
       backLabel={ja ? '戻る' : 'Back'}
-      onBack={() => router.replace('/onboarding-notifications')}
+      onBack={() => router.replace('/onboarding-margin')}
       actions={
         <>
           <PrimaryButton label={ja ? '続ける' : 'Continue'} onPress={() => void confirm()} loading={asking} testID="confirm-location" />

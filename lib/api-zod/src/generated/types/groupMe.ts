@@ -15,4 +15,5 @@ export interface GroupMe {
   language: GroupLanguage;
   pushRegistered: boolean;
   notifications: boolean;
+  leaveTimeAlerts: boolean;
 }

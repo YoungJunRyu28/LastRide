@@ -20,6 +20,7 @@ import { syncWidgets } from '@/lib/widgets';
 import { scheduleReminders } from '@/lib/notifications';
 import { buildReminderPlans, planNight, shouldReplan, trackingEndsAt, trackingHardStopAt, type NightPlan } from '@/lib/planner';
 import { hasCoordinates, readSettings } from '@/lib/settings';
+import { applyTrainChoice, effectiveTrainChoice, trainOptions } from '@/lib/trainChoice';
 import type { Coordinates } from '@/lib/stations';
 import { formatJstTime } from '@/lib/time';
 
@@ -58,14 +59,19 @@ async function recomputeFromLocation(coordinates: Coordinates): Promise<void> {
     return;
   }
   if (!shouldReplan(previous, coordinates, now)) return;
-  const plan = await planNight(coordinates, settings.homeStation, settings.leaveMargin, now, { pinned: settings.pinnedStation, homeAddress: settings.homeAddress });
+  const basePlan = await planNight(coordinates, settings.homeStation, settings.leaveMargin, now, { pinned: settings.pinnedStation, homeAddress: settings.homeAddress });
   if (!(await isTrackingFlagOn())) return; // stopped while we were computing
-  await AsyncStorage.setItem(SNAPSHOT_KEY, JSON.stringify(plan));
+  // The snapshot keeps the plan as found; the app applies tonight's train choice itself.
+  await AsyncStorage.setItem(SNAPSHOT_KEY, JSON.stringify(basePlan));
+  // 終電 / 1本前 / 2本前, falling back to a later train once the chosen one can't be made.
+  const options = trainOptions(basePlan, settings.leaveMargin, now);
+  const plan = applyTrainChoice(basePlan, options, effectiveTrainChoice(options, settings.trainChoice));
   const language = settings.language ?? 'en';
   await scheduleReminders(buildReminderPlans(plan, settings.reminderIntervals, now, { missedCheckIn: settings.missedCheckIn, alarmIntervals: settings.alarmIntervals }), {
     leaveBy: formatJstTime(recommendedLeaveTime(plan)),
     station: language === 'ja' ? plan.station.nameJa : plan.station.name,
     language,
+    lastTrainLeaveBy: plan.nightLastLeaveAt === undefined ? undefined : formatJstTime(plan.nightLastLeaveAt),
   }, { sound: settings.alarmSound, vibrate: settings.reminderVibrate });
   await syncLiveActivity(plan, language, now).catch(() => undefined);
   const destinationLabel = settings.tonightDestination

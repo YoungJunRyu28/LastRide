@@ -65,10 +65,6 @@ export interface UpdateGroupRequest {
   name: string;
 }
 
-export interface TransferGroupHostRequest {
-  memberId: string;
-}
-
 /**
  * Omitted fields are unchanged. expoPushToken null unregisters push.
  */
@@ -85,8 +81,10 @@ export interface UpdateGroupMembershipRequest {
      */
   expoPushToken?: string | null;
   language?: GroupLanguage;
-  /** Group notifications on/off for this member (default true); applies to all group pushes */
+  /** The host-started-tonight notification on/off for this member (default true) */
   notifications?: boolean;
+  /** Pushes when another participant's leave time comes (default true) */
+  leaveTimeAlerts?: boolean;
 }
 
 /**
@@ -116,6 +114,7 @@ export interface GroupMe {
   language: GroupLanguage;
   pushRegistered: boolean;
   notifications: boolean;
+  leaveTimeAlerts: boolean;
 }
 
 /**
@@ -126,7 +125,6 @@ export interface GroupTonightParticipant {
   displayName: string;
   /** @nullable */
   leaveBy: string | null;
-  missed: boolean;
 }
 
 export interface GroupTonight {
@@ -187,6 +185,11 @@ export interface TrainRoute {
   fareYen: number | null;
   legs: TrainLeg[];
 }
+
+export type LastTrainRoute = TrainRoute & {
+  /** Trains before the last one, latest first (only when `before` was asked for) */
+  earlier?: TrainRoute[];
+};
 
 export interface Station {
   id: string;
@@ -527,6 +530,12 @@ toName: ToNameParameter;
  * @pattern ^[0-9]{8}$
  */
 date: ServiceDateParameter;
+/**
+ * Also return up to this many trains before the last one (latest first), as `earlier`.
+ * @minimum 0
+ * @maximum 2
+ */
+before?: number;
 };
 
 export type GetFirstTrainParams = {

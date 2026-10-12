@@ -7,7 +7,6 @@ import { useColors } from '@/hooks/useColors';
 import { SUPPORT_URL, TERMS_URL, TOKUSHOHO_URL, siteLink } from '@/lib/links';
 import { alarmKitAvailable } from '@/lib/notifications';
 import { recommendedLeaveTime } from '@/lib/reliability';
-import { deliveredReminders } from '@/lib/settings';
 import { MINUTE_MS } from '@/lib/time';
 import { Feather } from '@expo/vector-icons';
 import { router } from 'expo-router';
@@ -26,7 +25,6 @@ export default function SettingsScreen() {
   } = useLastRide();
   const { isPremium, live: premiumLive, setTestPremium } = usePremium();
   const { leaveAll } = useGroups();
-  const delivered = deliveredReminders({ notifications: reminderIntervals, alarms: alarmIntervals, sound: alarmSound }, isPremium);
   const [alarmStatus] = useAlarmStatus(alarmsEnabled);
   const ja = language === 'ja';
 
@@ -38,8 +36,8 @@ export default function SettingsScreen() {
     Alert.alert(
       ja ? '最初からやり直しますか？' : 'Reset and start over?',
       ja
-        ? '言語・帰り先・設定が消去され、参加中のグループからも退出します。'
-        : 'This clears your language, destinations and settings, and leaves your groups.',
+        ? '言語・帰り先・設定が消去され、参加中のグループからも退出します（ホストのグループは解散されます）。'
+        : 'This clears your language, destinations and settings, and leaves your groups (groups you host are disbanded).',
       [
         { text: ja ? 'キャンセル' : 'Cancel', style: 'cancel' },
         {
@@ -97,7 +95,7 @@ export default function SettingsScreen() {
           testID="open-reminders"
           icon="bell"
           title={ja ? '出発リマインダー' : 'Leave reminders'}
-          subtitle={reminderSummary(delivered.notifications, alarmsEnabled ? delivered.alarms : [], ja)}
+          subtitle={reminderSummary(reminderIntervals, alarmsEnabled ? alarmIntervals : [], ja)}
           warning={remindersNeedAttention}
           onPress={() => router.push('/settings/reminders')}
         />
@@ -114,7 +112,7 @@ export default function SettingsScreen() {
         <Row
           testID="open-margin"
           icon="clock"
-          title={ja ? '余裕' : 'Time to spare'}
+          title={ja ? '早めに出る時間' : 'Leave early by'}
           value={marginLabel(leaveMargin, ja)}
           onPress={() => router.push('/settings/margin')}
         />

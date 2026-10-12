@@ -10,13 +10,15 @@ type Tab = {
   route: '/ride' | '/alternatives' | '/groups';
   label: string;
   labelJa: string;
+  /** Other screens that belong to this tab (a group's own page is /group/<id>). */
+  also?: string[];
 };
 
 /** The three nightly screens. Settings is reached from the gear on Leave. */
 const TABS: Tab[] = [
   { icon: 'clock', route: '/ride', label: 'Leave', labelJa: '帰る時間' },
   { icon: 'compass', route: '/alternatives', label: 'If missed', labelJa: '乗れなかったら' },
-  { icon: 'users', route: '/groups', label: 'Groups', labelJa: 'グループ' },
+  { icon: 'users', route: '/groups', label: 'Groups', labelJa: 'グループ', also: ['/group/', '/group-'] },
 ];
 
 export function BottomNav({ language }: { language: 'ja' | 'en' | null }) {
@@ -32,7 +34,10 @@ export function BottomNav({ language }: { language: 'ja' | 'en' | null }) {
       ]}
     >
       {TABS.map((tab) => {
-        const active = pathname === tab.route || pathname.startsWith(`${tab.route}/`);
+        const active =
+          pathname === tab.route ||
+          pathname.startsWith(`${tab.route}/`) ||
+          (tab.also ?? []).some((prefix) => pathname.startsWith(prefix));
         const label = language === 'ja' ? tab.labelJa : tab.label;
         const color = active ? colors.primary : colors.mutedForeground;
         return (

@@ -1,35 +1,31 @@
-import { marginLabel, Section, SettingsPage } from '@/components/SettingsUI';
-import { Divider, Row } from '@/components/ui';
+import { MarginStepper } from '@/components/MarginStepper';
+import { Section, SettingsPage } from '@/components/SettingsUI';
 import { useLastRide } from '@/context/LastRideContext';
-import type { LeaveMargin } from '@/lib/reliability';
+import { formatJstTime, MINUTE_MS } from '@/lib/time';
 import React from 'react';
 
-const OPTIONS: { value: LeaveMargin; ja: string; en: string }[] = [
-  { value: 'tight', ja: '「遅くとも」の時刻に出発', en: 'Leave at the latest time' },
-  { value: 'normal', ja: 'その4分前に出発', en: 'Leave 4 min before the latest time' },
-  { value: 'relaxed', ja: 'その10分前に出発', en: 'Leave 10 min before the latest time' },
-];
-
-/** Settings → Time to spare: how long before the latest leave time we tell you to go. */
+/** Settings → 早めに出る時間 (余裕): minutes before the latest leave time, by the minute. */
 export default function LeaveMarginScreen() {
-  const { language, leaveMargin, setLeaveMargin } = useLastRide();
+  const { language, leaveMargin, setLeaveMargin, plan } = useLastRide();
   const ja = language === 'ja';
+  // Tonight's latest leave time makes the example real when there is a plan.
+  const latest = plan?.leaveByMs ?? null;
 
   return (
-    <SettingsPage title={ja ? '余裕' : 'Time to spare'} backLabel={ja ? '設定' : 'Settings'}>
-      <Section footer={ja ? '乗り換えや長い徒歩があるときは、さらに余裕を足します。' : 'Extra time is added for transfers and long walks.'}>
-        {OPTIONS.map((option, index) => (
-          <React.Fragment key={option.value}>
-            {index > 0 && <Divider />}
-            <Row
-              testID={`margin-${option.value}`}
-              title={marginLabel(option.value, ja)}
-              subtitle={ja ? option.ja : option.en}
-              checked={leaveMargin === option.value}
-              onPress={() => setLeaveMargin(option.value)}
-            />
-          </React.Fragment>
-        ))}
+    <SettingsPage title={ja ? '早めに出る時間' : 'Leave early by'} backLabel={ja ? '設定' : 'Settings'}>
+      <Section
+        label={ja ? '「遅くとも」の何分前に出発するか' : 'HOW LONG BEFORE THE LATEST TIME TO LEAVE'}
+        footer={
+          latest !== null
+            ? ja
+              ? `今夜なら：遅くとも ${formatJstTime(latest)} → ${formatJstTime(latest - leaveMargin * MINUTE_MS)}に出発。乗り換えが多い日は自動で少し足します。`
+              : `Tonight: latest ${formatJstTime(latest)} → leave at ${formatJstTime(latest - leaveMargin * MINUTE_MS)}. A little more is added for routes with changes.`
+            : ja
+              ? '乗り換えが多い日は自動で少し足します。'
+              : 'A little more is added for routes with changes.'
+        }
+      >
+        <MarginStepper value={leaveMargin} onChange={setLeaveMargin} ja={ja} />
       </Section>
     </SettingsPage>
   );

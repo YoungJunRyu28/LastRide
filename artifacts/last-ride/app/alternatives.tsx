@@ -4,7 +4,6 @@ import { appleDrivingEta, appleNearbyStays, appleNearbyTaxiStands, type TaxiStan
 import { DIGITS } from "@/constants/type";
 import { useLastRide } from "@/context/LastRideContext";
 import { useGroups } from "@/context/GroupsContext";
-import { reportGroupTonightMissed } from "@workspace/api-client-react";
 import { useColors } from "@/hooks/useColors";
 import { apiBaseUrl, communityFallbacksEnabled } from "@/lib/api";
 import { fetchWithTimeout } from "@/lib/fetchWithTimeout";
@@ -1489,39 +1488,6 @@ export default function AlternativesScreen() {
             </Pressable>
           </View>
         )}
-
-        {tonightGroup && status === "departed" && (() => {
-          const reported = tonightGroup.tonight.participants.find(
-            (participant) => participant.memberId === tonightGroup.me.memberId,
-          )?.missed;
-          return (
-            <Pressable
-              testID="group-missed"
-              disabled={reported}
-              onPress={() =>
-                void reportGroupTonightMissed(tonightGroup.id, memberOptions(tonightGroup.id))
-                  .then(apply)
-                  .catch(() => undefined)
-              }
-              accessibilityRole="button"
-              style={({ pressed }) => [
-                styles.locationPrompt,
-                { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1, opacity: pressed ? 0.7 : 1 },
-              ]}
-            >
-              <Feather name={reported ? "check" : "users"} color={colors.primary} size={18} />
-              <Text style={[styles.locationPromptText, { color: colors.foreground }]}>
-                {reported
-                  ? ja
-                    ? `${tonightGroup.name}に知らせました`
-                    : `${tonightGroup.name} has been told`
-                  : ja
-                    ? `${tonightGroup.name}に「乗り遅れた」と知らせる`
-                    : `Tell ${tonightGroup.name} you missed it`}
-              </Text>
-            </Pressable>
-          );
-        })()}
 
         {!userCoordinates && (
           <Pressable

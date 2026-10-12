@@ -22,7 +22,9 @@ import {
   STORAGE_KEYS,
   writeDestinationState,
   type SavedDestination,
-  deliveredReminders,
+  readTrainChoice,
+  trainChoiceUntil,
+  writeTrainChoice,
 } from "@/lib/settings";
 
 const homeStation = {
@@ -84,12 +86,30 @@ describe("saved destinations", () => {
 describe("余裕 (time to spare)", () => {
   beforeEach(() => storage.clear());
 
-  it("reads the saved choice and falls back to normal", async () => {
-    expect((await readSettings()).leaveMargin).toBe("normal");
+  it("reads the saved minutes, converts older presets and falls back to 4", async () => {
+    expect((await readSettings()).leaveMargin).toBe(4);
+    storage.set(STORAGE_KEYS.leaveMargin, "7");
+    expect((await readSettings()).leaveMargin).toBe(7);
     storage.set(STORAGE_KEYS.leaveMargin, "relaxed");
-    expect((await readSettings()).leaveMargin).toBe("relaxed");
+    expect((await readSettings()).leaveMargin).toBe(10);
     storage.set(STORAGE_KEYS.leaveMargin, "nonsense");
-    expect((await readSettings()).leaveMargin).toBe("normal");
+    expect((await readSettings()).leaveMargin).toBe(4);
+  });
+});
+
+describe("tonight's train (終電 / 1本前 / 2本前)", () => {
+  it("is kept until the night it was chosen for is over", async () => {
+    const until = Date.now() + 60_000;
+    await writeTrainChoice(1, until);
+    expect((await readSettings()).trainChoice).toBe(1);
+    expect(await readTrainChoice(until + 1)).toBe(0);
+    await writeTrainChoice(0, until);
+    expect(storage.has(STORAGE_KEYS.trainChoice)).toBe(false);
+  });
+
+  it("ends at 05:00 after the night", () => {
+    // 23:30 on 9 Oct → 05:00 on 10 Oct (Japan time).
+    expect(trainChoiceUntil(Date.UTC(2026, 9, 9, 14, 30))).toBe(Date.UTC(2026, 9, 9, 20, 0));
   });
 
   it("drops the old walking-pace setting", async () => {
@@ -99,20 +119,3 @@ describe("余裕 (time to spare)", () => {
   });
 });
 
-describe("deliveredReminders", () => {
-  const chosen = { notifications: [30], alarms: [15, 0], sound: "chime" as const };
-
-  it("delivers every choice with Premium", () => {
-    expect(deliveredReminders(chosen, true)).toEqual(chosen);
-  });
-
-  it("keeps only the leave-time alarm and the iOS sound on the free plan", () => {
-    expect(deliveredReminders(chosen, false)).toEqual({ notifications: [30, 15], alarms: [0], sound: "default" });
-  });
-
-  it("never drops a reminder when Premium ends", () => {
-    const free = deliveredReminders({ notifications: [], alarms: [30, 10, 5], sound: "urgent" }, false);
-    expect(free.notifications).toEqual([30, 10, 5]);
-    expect(free.alarms).toEqual([]);
-  });
-});

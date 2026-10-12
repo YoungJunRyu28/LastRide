@@ -9,7 +9,6 @@ import {
   JoinGroupResponse,
   JoinGroupTonightBody,
   RotateGroupInviteResponse,
-  TransferGroupHostBody,
   UpdateGroupBody,
   UpdateMyGroupMembershipBody,
 } from "@workspace/api-zod";
@@ -27,11 +26,9 @@ import {
   leaveGroupTonightRecord,
   removeGroupMemberRecord,
   renameGroupRecord,
-  reportGroupTonightMissedRecord,
   rotateGroupInviteRecord,
   setGroupTonightParticipationRecord,
   startGroupTonightRecord,
-  transferGroupHostRecord,
   updateGroupMembershipRecord,
   type GroupDetail,
 } from "../lib/groupStore";
@@ -221,30 +218,6 @@ router.post("/groups/:groupId/invite", memberLimiter, async (req, res) => {
   res.status(201).json(RotateGroupInviteResponse.parse(result.invite));
 });
 
-router.post("/groups/:groupId/transfer", memberLimiter, async (req, res) => {
-  const auth = memberRequest(req, res);
-  if (!auth) return;
-  const body = TransferGroupHostBody.safeParse(req.body);
-  if (!body.success || !UUID_RE.test(body.data.memberId)) {
-    res.status(400).json({ error: "Invalid member id" });
-    return;
-  }
-  const result = await transferGroupHostRecord(
-    auth.groupId,
-    auth.token,
-    body.data.memberId,
-  );
-  if (result.kind === "not-found") return notFound(res);
-  if (result.kind === "forbidden") return forbidden(res);
-  if (result.kind === "invalid-target") {
-    res
-      .status(400)
-      .json({ error: "The new host must be another member of this group" });
-    return;
-  }
-  sendDetail(res, result.group);
-});
-
 router.delete(
   "/groups/:groupId/members/:memberId",
   memberLimiter,
@@ -307,19 +280,18 @@ router.delete("/groups/:groupId/me", memberLimiter, async (req, res) => {
   if (result.kind === "not-found") return notFound(res);
   if (result.kind === "host") {
     res.status(409).json({
-      error: "The host must transfer the host role or disband the group",
+      error: "The host must disband the group",
     });
     return;
   }
   res.status(204).end();
 });
 
-// "Reset & start over": leave even as host (the role passes to the
-// longest-standing member; a group left empty is deleted).
+// "Reset & start over": leave even as host (a host's group is disbanded).
 router.post("/groups/:groupId/me/reset", memberLimiter, async (req, res) => {
   const auth = memberRequest(req, res);
   if (!auth) return;
-  const result = await leaveGroupRecord(auth.groupId, auth.token, { handover: true });
+  const result = await leaveGroupRecord(auth.groupId, auth.token, { disbandIfHost: true });
   if (result.kind === "not-found") return notFound(res);
   res.status(204).end();
 });
@@ -382,38 +354,6 @@ router.delete(
     if (!auth) return;
     const result = await leaveGroupTonightRecord(auth.groupId, auth.token);
     if (result.kind === "not-found") return notFound(res);
-    sendDetail(res, result.group);
-  },
-);
-
-router.post(
-  "/groups/:groupId/tonight/missed",
-  memberLimiter,
-  async (req, res) => {
-    const auth = memberRequest(req, res);
-    if (!auth) return;
-    const result = await reportGroupTonightMissedRecord(
-      auth.groupId,
-      auth.token,
-    );
-    if (result.kind === "not-found") return notFound(res);
-    if (result.kind === "inactive") {
-      res.status(409).json({ error: "The group is not active tonight" });
-      return;
-    }
-    if (result.kind === "not-participant") {
-      res.status(409).json({ error: "Join tonight first" });
-      return;
-    }
-    await sendGroupPush(
-      auth.groupId,
-      {
-        kind: "missed",
-        groupName: result.groupName,
-        displayName: result.displayName,
-      },
-      result.recipients,
-    );
     sendDetail(res, result.group);
   },
 );

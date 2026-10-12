@@ -1,6 +1,6 @@
 /**
  * Expo push for persistent groups. Messages are purely operational (tonight
- * started / someone missed their train). Never put promotions, upsells or
+ * started / a member's leave time). Never put promotions, upsells or
  * marketing copy in these: they go to members who never paid for anything.
  */
 import { and, eq, inArray } from "drizzle-orm";
@@ -19,7 +19,6 @@ export type GroupPushRecipient = {
 
 export type GroupPushEvent =
   | { kind: "tonight_started"; groupName: string }
-  | { kind: "missed"; groupName: string; displayName: string }
   | { kind: "leave_time"; groupName: string; displayName: string; leaveBy: Date };
 
 export type GroupPushMessage = {
@@ -48,10 +47,6 @@ export function groupPushBody(
       return language === "en"
         ? `${event.groupName}: The host started tonight's meetup`
         : `${event.groupName}: ホストが今夜の会を始めました`;
-    case "missed":
-      return language === "en"
-        ? `${event.groupName}: ${event.displayName} missed their train`
-        : `${event.groupName}: ${event.displayName}さんが終電に乗り遅れました`;
     case "leave_time": {
       const time = formatJstTime(event.leaveBy);
       return language === "en"

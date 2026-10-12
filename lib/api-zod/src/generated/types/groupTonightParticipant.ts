@@ -14,5 +14,4 @@ export interface GroupTonightParticipant {
   displayName: string;
   /** @nullable */
   leaveBy: Date | null;
-  missed: boolean;
 }

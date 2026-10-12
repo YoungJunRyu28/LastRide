@@ -79,13 +79,18 @@ paths:
         - $ref: "#/components/parameters/ToLon"
         - $ref: "#/components/parameters/ToName"
         - $ref: "#/components/parameters/ServiceDate"
+        - name: before
+          in: query
+          required: false
+          description: Also return up to this many trains before the last one (latest first), as `earlier`.
+          schema: { type: integer, minimum: 0, maximum: 2 }
       responses:
         "200":
           description: Last train route
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/TrainRoute"
+                $ref: "#/components/schemas/LastTrainRoute"
         "404":
           description: No train route between the stations on that date
         "502":
@@ -607,28 +612,6 @@ paths:
               schema: { $ref: "#/components/schemas/GroupInvite" }
         "403": { description: Host only }
         "404": { description: Group not found or no longer a member }
-  /groups/{groupId}/transfer:
-    post:
-      operationId: transferGroupHost
-      tags: [groups]
-      summary: Make another member the host (host only)
-      parameters:
-        - $ref: "#/components/parameters/GroupId"
-        - $ref: "#/components/parameters/MemberToken"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/TransferGroupHostRequest" }
-      responses:
-        "200":
-          description: Updated group
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/GroupDetail" }
-        "400": { description: Target is not another member of this group }
-        "403": { description: Host only }
-        "404": { description: Group not found or no longer a member }
   /groups/{groupId}/members/{memberId}:
     delete:
       operationId: removeGroupMember
@@ -670,19 +653,19 @@ paths:
     delete:
       operationId: leaveGroup
       tags: [groups]
-      summary: Leave the group (hosts must transfer or disband first)
+      summary: Leave the group (a host disbands instead)
       parameters:
         - $ref: "#/components/parameters/GroupId"
         - $ref: "#/components/parameters/MemberToken"
       responses:
         "204": { description: Membership deleted }
         "404": { description: Group not found or no longer a member }
-        "409": { description: The host must transfer or disband instead }
+        "409": { description: The host must disband the group instead }
   /groups/{groupId}/me/reset:
     post:
       operationId: resetGroupMembership
       tags: [groups]
-      summary: Leave as part of "Reset & start over" (a host hands the role to the longest-standing member; an empty group is deleted)
+      summary: Leave as part of "Reset & start over" (a host's group is disbanded)
       parameters:
         - $ref: "#/components/parameters/GroupId"
         - $ref: "#/components/parameters/MemberToken"
@@ -761,22 +744,6 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/GroupDetail" }
         "404": { description: Group not found or no longer a member }
-  /groups/{groupId}/tonight/missed:
-    post:
-      operationId: reportGroupTonightMissed
-      tags: [groups]
-      summary: Tell tonight's participants and the host that I missed my train (乗り遅れた)
-      parameters:
-        - $ref: "#/components/parameters/GroupId"
-        - $ref: "#/components/parameters/MemberToken"
-      responses:
-        "200":
-          description: Updated group
-          content:
-            application/json:
-              schema: { $ref: "#/components/schemas/GroupDetail" }
-        "404": { description: Group not found or no longer a member }
-        "409": { description: Not active tonight or not opted in }
 components:
   securitySchemes:
     bearerAuth:
@@ -899,11 +866,6 @@ components:
       properties:
         name: { type: string, minLength: 1, maxLength: 80 }
       required: [name]
-    TransferGroupHostRequest:
-      type: object
-      properties:
-        memberId: { type: string, format: uuid }
-      required: [memberId]
     UpdateGroupMembershipRequest:
       type: object
       description: Omitted fields are unchanged. expoPushToken null unregisters push.
@@ -913,7 +875,10 @@ components:
         language: { $ref: "#/components/schemas/GroupLanguage" }
         notifications:
           type: boolean
-          description: Group notifications on/off for this member (default true); applies to all group pushes
+          description: The host-started-tonight notification on/off for this member (default true)
+        leaveTimeAlerts:
+          type: boolean
+          description: Pushes when another participant's leave time comes (default true)
     GroupTonightParticipationRequest:
       type: object
       description: Only a leave-by timestamp is ever synced; never location, station, route or destination.
@@ -942,7 +907,8 @@ components:
         language: { $ref: "#/components/schemas/GroupLanguage" }
         pushRegistered: { type: boolean }
         notifications: { type: boolean }
-      required: [memberId, displayName, role, language, pushRegistered, notifications]
+        leaveTimeAlerts: { type: boolean }
+      required: [memberId, displayName, role, language, pushRegistered, notifications, leaveTimeAlerts]
     GroupTonightParticipant:
       type: object
       description: Privacy-minimal. No location, route, station, or destination data.
@@ -950,8 +916,7 @@ components:
         memberId: { type: string }
         displayName: { type: string }
         leaveBy: { type: [string, "null"], format: date-time }
-        missed: { type: boolean }
-      required: [memberId, displayName, leaveBy, missed]
+      required: [memberId, displayName, leaveBy]
     GroupTonight:
       type: object
       properties:
@@ -1013,6 +978,16 @@ components:
           items:
             $ref: "#/components/schemas/TrainLeg"
       required: [departsAt, arrivesAt, transfers, fareYen, legs]
+    LastTrainRoute:
+      allOf:
+        - $ref: "#/components/schemas/TrainRoute"
+        - type: object
+          properties:
+            earlier:
+              type: array
+              description: Trains before the last one, latest first (only when `before` was asked for)
+              items:
+                $ref: "#/components/schemas/TrainRoute"
     Station:
       type: object
       properties:

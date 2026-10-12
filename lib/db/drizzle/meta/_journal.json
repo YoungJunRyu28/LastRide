@@ -71,6 +71,20 @@
       "when": 1791793662045,
       "tag": "0009_group_member_activity",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1791800120581,
+      "tag": "0010_group_leave_time_alerts",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1791801362949,
+      "tag": "0011_drop_group_missed",
+      "breakpoints": true
     }
   ]
 }

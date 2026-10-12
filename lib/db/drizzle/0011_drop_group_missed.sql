@@ -1,0 +1,1 @@
+ALTER TABLE "group_night_participants" DROP COLUMN "missed_at";

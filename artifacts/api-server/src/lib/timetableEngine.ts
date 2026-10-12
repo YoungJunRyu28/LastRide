@@ -18,6 +18,7 @@ import {
   findStations,
   firstTrainBetween,
   lastTrainBetween,
+  lastTrainsBetween,
   readSnapshot,
   type JourneyAt,
 } from "./transit/snapshot";
@@ -368,7 +369,9 @@ export function searchTrainIn(
   from: StationRef,
   to: StationRef,
   serviceDate: string,
-): TrainRoute | null {
+  /** Last train only: also return up to this many trains before it (as `earlier`). */
+  before = 0,
+): (TrainRoute & { earlier?: TrainRoute[] }) | null {
   const date = normalizeServiceDate(serviceDate);
   if (!date) return null;
   const origins = matchStations(snapshot, from);
@@ -376,6 +379,15 @@ export function searchTrainIn(
   if (origins.length === 0 || targets.length === 0) return null;
   // Same station on both ends: nothing to ride.
   if (origins.some((origin) => targets.includes(origin))) return null;
+  if (kind === "last" && before > 0) {
+    const [last, ...earlier] = lastTrainsBetween(snapshot, date, origins, targets, before);
+    const route = last ? toTrainRoute(last) : null;
+    if (!route) return null;
+    return {
+      ...route,
+      earlier: earlier.map(toTrainRoute).filter((train): train is TrainRoute => train !== null),
+    };
+  }
   const journey =
     kind === "last"
       ? lastTrainBetween(snapshot, date, origins, targets)
@@ -389,7 +401,8 @@ export async function searchTrain(
   from: StationRef,
   to: StationRef,
   serviceDate: string,
-): Promise<TrainRoute | null> {
+  before = 0,
+): Promise<(TrainRoute & { earlier?: TrainRoute[] }) | null> {
   const { snapshot } = await timetableEngine();
-  return searchTrainIn(snapshot, kind, from, to, serviceDate);
+  return searchTrainIn(snapshot, kind, from, to, serviceDate, before);
 }

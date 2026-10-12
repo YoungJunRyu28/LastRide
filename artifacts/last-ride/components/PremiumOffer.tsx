@@ -21,11 +21,6 @@ export function premiumFeatures(ja: boolean): Array<{ icon: IconName; title: str
       title: ja ? 'ロック画面のカウントダウン' : 'Lock-screen countdown',
       body: ja ? 'ライブアクティビティ · Androidは通知' : 'Live Activity · a notification on Android',
     },
-    {
-      icon: 'bell',
-      title: ja ? 'アラームをもっと' : 'More alarms',
-      body: ja ? '出発時以外のタイミングと音の選択 · アラームはiOS 26以降' : 'At other times, with a choice of sound · alarms need iOS 26+',
-    },
     { icon: 'grid', title: ja ? 'ホーム画面ウィジェット' : 'Home-screen widgets', body: ja ? '今夜の出発時刻をひと目で' : 'Tonight’s leave time at a glance' },
     { icon: 'map-pin', title: ja ? '帰り先を無制限に' : 'Unlimited destinations', body: ja ? '無料プランは1件まで' : 'Free plan: one' },
   ];

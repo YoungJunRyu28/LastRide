@@ -23,6 +23,8 @@ export interface UpdateGroupMembershipRequest {
      */
   expoPushToken?: string | null;
   language?: GroupLanguage;
-  /** Group notifications on/off for this member (default true); applies to all group pushes */
+  /** The host-started-tonight notification on/off for this member (default true) */
   notifications?: boolean;
+  /** Pushes when another participant's leave time comes (default true) */
+  leaveTimeAlerts?: boolean;
 }

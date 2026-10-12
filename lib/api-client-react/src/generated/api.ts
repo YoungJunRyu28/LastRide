@@ -45,6 +45,7 @@ import type {
   HostDeviceRegistration,
   JoinEnterpriseEventRequest,
   JoinGroupRequest,
+  LastTrainRoute,
   PartwayTrainTaxi,
   Place,
   SearchAddressesParams,
@@ -53,7 +54,6 @@ import type {
   TaxiEstimate,
   TrainDisruption,
   TrainRoute,
-  TransferGroupHostRequest,
   UpdateEnterpriseEventRequest,
   UpdateEventParticipantRequest,
   UpdateGroupMembershipRequest,
@@ -264,9 +264,9 @@ export const getGetLastTrainUrl = (params: GetLastTrainParams,) => {
  * The last departure from the origin station on the given service date that still reaches the destination station.
  * @summary Last train tonight
  */
-export const getLastTrain = async (params: GetLastTrainParams, options?: Parameters<typeof customFetch>[1]): Promise<TrainRoute> => {
+export const getLastTrain = async (params: GetLastTrainParams, options?: Parameters<typeof customFetch>[1]): Promise<LastTrainRoute> => {
 
-  return customFetch<TrainRoute>(getGetLastTrainUrl(params),
+  return customFetch<LastTrainRoute>(getGetLastTrainUrl(params),
   {
     ...options,
     method: 'GET'
@@ -2492,95 +2492,6 @@ export const useRotateGroupInvite = <TError = ErrorType<void>,
       return useMutation(getRotateGroupInviteMutationOptions(options));
     }
 
-export const getTransferGroupHostUrl = (groupId: string,) => {
-
-
-
-
-  return `/api/groups/${groupId}/transfer`
-}
-
-/**
- * @summary Make another member the host (host only)
- */
-export const transferGroupHost = async (groupId: string,
-    transferGroupHostRequest: TransferGroupHostRequest, options?: Parameters<typeof customFetch>[1]): Promise<GroupDetail> => {
-
-    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
-    if (!h) return {};
-    if (h instanceof Headers) return Object.fromEntries(h.entries());
-    if (Symbol.iterator in h) {
-      return Object.fromEntries(
-        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
-      );
-    }
-    const headers: Record<string, string | readonly string[]> = {};
-    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
-      if (value !== undefined) headers[name] = value;
-    }
-    return headers;
-  };
-return customFetch<GroupDetail>(getTransferGroupHostUrl(groupId),
-  {
-    ...options,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
-    body: JSON.stringify(transferGroupHostRequest)
-  }
-);}
-
-
-
-
-
-export const getTransferGroupHostMutationKey = () => ['transferGroupHost'] as const;
-
-export const getTransferGroupHostMutationOptions = <TError = ErrorType<void>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof transferGroupHost>>, TError,TransferGroupHostMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof transferGroupHost>>, TError,TransferGroupHostMutationVariables, TContext> => {
-
-const mutationKey = getTransferGroupHostMutationKey();
-const {mutation: mutationOptions, request: requestOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }, request: undefined};
-
-
-
-
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof transferGroupHost>>, TransferGroupHostMutationVariables> = (props) => {
-          const {groupId,data} = props ?? {};
-
-          return  transferGroupHost(groupId,data,requestOptions)
-        }
-
-
-
-
-
-
-  return  { mutationFn, ...mutationOptions }}
-
-    export type TransferGroupHostMutationResult = NonNullable<Awaited<ReturnType<typeof transferGroupHost>>>
-    export type TransferGroupHostMutationBody = BodyType<TransferGroupHostRequest>
-    export type TransferGroupHostMutationError = ErrorType<void>
-    export type TransferGroupHostMutationVariables = {groupId: string;data: BodyType<TransferGroupHostRequest>}
-
-    /**
- * @summary Make another member the host (host only)
- */
-export const useTransferGroupHost = <TError = ErrorType<void>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof transferGroupHost>>, TError,TransferGroupHostMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
- ): UseMutationResult<
-        Awaited<ReturnType<typeof transferGroupHost>>,
-        TError,
-        TransferGroupHostMutationVariables,
-        TContext
-      > => {
-      return useMutation(getTransferGroupHostMutationOptions(options));
-    }
-
 export const getRemoveGroupMemberUrl = (groupId: string,
     memberId: string,) => {
 
@@ -2755,7 +2666,7 @@ export const getLeaveGroupUrl = (groupId: string,) => {
 }
 
 /**
- * @summary Leave the group (hosts must transfer or disband first)
+ * @summary Leave the group (a host disbands instead)
  */
 export const leaveGroup = async (groupId: string, options?: Parameters<typeof customFetch>[1]): Promise<void> => {
 
@@ -2807,7 +2718,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type LeaveGroupMutationVariables = {groupId: string}
 
     /**
- * @summary Leave the group (hosts must transfer or disband first)
+ * @summary Leave the group (a host disbands instead)
  */
 export const useLeaveGroup = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof leaveGroup>>, TError,LeaveGroupMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
@@ -2829,7 +2740,7 @@ export const getResetGroupMembershipUrl = (groupId: string,) => {
 }
 
 /**
- * @summary Leave as part of "Reset & start over" (a host hands the role to the longest-standing member; an empty group is deleted)
+ * @summary Leave as part of "Reset & start over" (a host's group is disbanded)
  */
 export const resetGroupMembership = async (groupId: string, options?: Parameters<typeof customFetch>[1]): Promise<void> => {
 
@@ -2881,7 +2792,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type ResetGroupMembershipMutationVariables = {groupId: string}
 
     /**
- * @summary Leave as part of "Reset & start over" (a host hands the role to the longest-standing member; an empty group is deleted)
+ * @summary Leave as part of "Reset & start over" (a host's group is disbanded)
  */
 export const useResetGroupMembership = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resetGroupMembership>>, TError,ResetGroupMembershipMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
@@ -3203,79 +3114,5 @@ export const useLeaveGroupTonight = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getLeaveGroupTonightMutationOptions(options));
-    }
-
-export const getReportGroupTonightMissedUrl = (groupId: string,) => {
-
-
-
-
-  return `/api/groups/${groupId}/tonight/missed`
-}
-
-/**
- * @summary Tell tonight's participants and the host that I missed my train (乗り遅れた)
- */
-export const reportGroupTonightMissed = async (groupId: string, options?: Parameters<typeof customFetch>[1]): Promise<GroupDetail> => {
-
-  return customFetch<GroupDetail>(getReportGroupTonightMissedUrl(groupId),
-  {
-    ...options,
-    method: 'POST'
-
-
-  }
-);}
-
-
-
-
-
-export const getReportGroupTonightMissedMutationKey = () => ['reportGroupTonightMissed'] as const;
-
-export const getReportGroupTonightMissedMutationOptions = <TError = ErrorType<void>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reportGroupTonightMissed>>, TError,ReportGroupTonightMissedMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof reportGroupTonightMissed>>, TError,ReportGroupTonightMissedMutationVariables, TContext> => {
-
-const mutationKey = getReportGroupTonightMissedMutationKey();
-const {mutation: mutationOptions, request: requestOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }, request: undefined};
-
-
-
-
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof reportGroupTonightMissed>>, ReportGroupTonightMissedMutationVariables> = (props) => {
-          const {groupId} = props ?? {};
-
-          return  reportGroupTonightMissed(groupId,requestOptions)
-        }
-
-
-
-
-
-
-  return  { mutationFn, ...mutationOptions }}
-
-    export type ReportGroupTonightMissedMutationResult = NonNullable<Awaited<ReturnType<typeof reportGroupTonightMissed>>>
-
-    export type ReportGroupTonightMissedMutationError = ErrorType<void>
-    export type ReportGroupTonightMissedMutationVariables = {groupId: string}
-
-    /**
- * @summary Tell tonight's participants and the host that I missed my train (乗り遅れた)
- */
-export const useReportGroupTonightMissed = <TError = ErrorType<void>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reportGroupTonightMissed>>, TError,ReportGroupTonightMissedMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
- ): UseMutationResult<
-        Awaited<ReturnType<typeof reportGroupTonightMissed>>,
-        TError,
-        ReportGroupTonightMissedMutationVariables,
-        TContext
-      > => {
-      return useMutation(getReportGroupTonightMissedMutationOptions(options));
     }
 

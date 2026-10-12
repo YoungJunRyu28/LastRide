@@ -4,6 +4,7 @@
  */
 import { rideStatus, type NightPlan } from "@/lib/planner";
 import { recommendedLeaveTime } from "@/lib/reliability";
+import { trainChoiceLabel } from "@/lib/trainChoice";
 import { formatJstTime } from "@/lib/time";
 
 export type LiveActivityContent = {
@@ -29,6 +30,8 @@ export function liveActivityContent(
     | "lastTrain"
     | "walkingMinutes"
     | "station"
+    | "trainChoice"
+    | "nightLastTrain"
   >,
   language: Language,
   nowMs: number,
@@ -41,9 +44,10 @@ export function liveActivityContent(
   const leaveBy = formatJstTime(recommended);
   const lastTrain = `${formatJstTime(plan.lastTrain.departsAt)}${plan.lastTrain.approximate ? (ja ? "（目安）" : " (approx.)") : ""}`;
   const station = ja ? plan.station.nameJa : plan.station.name;
+  const trainLabel = trainChoiceLabel(plan.trainChoice, ja);
   const subtitle = ja
-    ? `${station}まで徒歩${plan.walkingMinutes}分 · 終電 ${lastTrain}`
-    : `${plan.walkingMinutes} min walk to ${station} · last train ${lastTrain}`;
+    ? `${station}まで徒歩${plan.walkingMinutes}分 · ${trainLabel} ${lastTrain}`
+    : `${plan.walkingMinutes} min walk to ${station} · ${plan.trainChoice ? trainLabel : 'last train'} ${lastTrain}`;
 
   if (status === "relaxed" || status === "soon") {
     return {
@@ -54,8 +58,8 @@ export function liveActivityContent(
   }
   return {
     title: ja
-      ? `今すぐ出発 — 終電 ${lastTrain}`
-      : `Leave now — last train ${lastTrain}`,
+      ? `今すぐ出発 — ${trainLabel} ${lastTrain}`
+      : `Leave now — ${plan.trainChoice ? trainLabel : 'last train'} ${lastTrain}`,
     subtitle,
     countdownTo: plan.lastTrain.departsAt,
   };

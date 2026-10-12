@@ -8,7 +8,6 @@ import {
   removeGroupMember,
   rotateGroupInvite,
   startGroupTonight,
-  transferGroupHost,
   updateGroup,
   updateMyGroupMembership,
   type GroupDetail,
@@ -28,8 +27,10 @@ import { usePremium } from '@/context/PremiumContext';
 import { useColors } from '@/hooks/useColors';
 import { recommendedLeaveTime } from '@/lib/reliability';
 import { formatJstTime, MINUTE_MS } from '@/lib/time';
+import { formatCountdown } from '@/lib/countdown';
+import { useSecondClock } from '@/hooks/useSecondClock';
 
-type Sheet = null | 'menu' | 'rename' | 'displayName' | 'members' | 'transfer';
+type Sheet = null | 'menu' | 'rename' | 'displayName' | 'members' | 'notifications';
 
 /** Yes/no confirmation that also works on web. */
 function confirm(title: string, message: string, action: string, cancel: string, onConfirm: () => void) {
@@ -56,7 +57,8 @@ export default function GroupScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { language, plan, nowMs } = useLastRide();
+  const { language, plan, nowMs, demoActive } = useLastRide();
+  const clockMs = useSecondClock(nowMs, demoActive);
   const { groups, apply, forget, memberOptions } = useGroups();
   const { isPremium } = usePremium();
   const ja = language !== 'en';
@@ -110,18 +112,84 @@ export default function GroupScreen() {
     });
   };
 
+  /**
+   * Shares your current leave time. Separate from night tracking: with tracking
+   * on it keeps updating as you move; without it, it stays as shared (it is
+   * refreshed only when the app re-plans, e.g. when you open it).
+   */
+  const joinTonight = () =>
+    run(() => joinGroupTonight(detail.id, { leaveBy: plan ? new Date(recommendedLeaveTime(plan)).toISOString() : null }, options));
+
+  /** The host starting tonight is going too: start, and share their own time. */
+  const startTonight = () =>
+    run(async () => {
+      await startGroupTonight(detail.id, options);
+      return joinGroupTonight(detail.id, { leaveBy: plan ? new Date(recommendedLeaveTime(plan)).toISOString() : null }, options);
+    });
+
+  const stopSharingTonight = () =>
+    confirm(
+      ja ? '今夜の参加をやめる' : 'Stop sharing tonight',
+      ja ? '今夜の出発時刻の共有をやめます。グループからは退出しません。' : 'Your leave time stops being shared tonight. You stay in the group.',
+      ja ? 'やめる' : 'Stop',
+      ja ? 'キャンセル' : 'Cancel',
+      () => void run(() => leaveGroupTonight(detail.id, options)),
+    );
+
+  const notificationSwitches = (
+    <View style={styles.sheetList}>
+      {[
+        {
+          key: 'notifications' as const,
+          testID: 'toggle-tonight-alerts',
+          title: ja ? '今夜の開始' : 'Tonight starts',
+          subtitle: ja ? 'ホストが今夜の会をはじめたとき' : 'When the host starts tonight',
+          value: detail.me.notifications,
+        },
+        {
+          key: 'leaveTimeAlerts' as const,
+          testID: 'toggle-leave-time-alerts',
+          title: ja ? 'メンバーの出発時刻' : 'Members’ leave times',
+          subtitle: ja ? 'オフにしても一覧は見られ、自分の時刻も共有されます' : 'Off still shows the list and shares your own time',
+          value: detail.me.leaveTimeAlerts,
+        },
+      ].map((item, index) => (
+        <View key={item.key} style={[styles.alertsRow, index > 0 && { borderTopColor: colors.border, borderTopWidth: 1 }]}>
+          <View style={styles.alertsText}>
+            <Text style={[styles.menuTitle, { color: colors.foreground }]}>{item.title}</Text>
+            <Text style={[styles.note, { color: colors.mutedForeground }]}>{item.subtitle}</Text>
+          </View>
+          <Switch
+            testID={item.testID}
+            accessibilityLabel={item.title}
+            value={item.value}
+            onValueChange={(value) => void run(() => updateMyGroupMembership(detail.id, { [item.key]: value }, options))}
+            trackColor={{ false: colors.input, true: colors.primary }}
+            thumbColor={colors.background}
+          />
+        </View>
+      ))}
+    </View>
+  );
+
+  /** "今夜の開始 · 出発時刻" (whichever are on), for the menu item. */
+  const notificationSummary =
+    [detail.me.notifications ? (ja ? '今夜の開始' : 'Tonight starts') : null, detail.me.leaveTimeAlerts ? (ja ? 'メンバーの出発時刻' : 'leave times') : null]
+      .filter(Boolean)
+      .join(' · ') || (ja ? 'オフ' : 'Off');
+
   const share = async () => {
     const message = inviteMessage(detail, ja);
     if (message) await Share.share({ message });
   };
 
-  const statusFor = (leaveBy: string | null, missed: boolean) => {
-    if (missed) return { text: ja ? '乗り遅れた' : 'Missed it', tone: colors.destructive };
+  const statusFor = (leaveBy: string | null) => {
     if (!leaveBy) return { text: ja ? '計算中…' : 'Calculating…', tone: colors.mutedForeground };
-    const minutes = Math.round((Date.parse(leaveBy) - nowMs) / MINUTE_MS);
-    if (minutes <= 0) return { text: ja ? '出発時刻' : 'Time to go', tone: colors.destructive };
-    if (minutes <= 10) return { text: ja ? 'そろそろ出発' : 'Leaving soon', tone: colors.primary };
-    return { text: ja ? `あと${minutes}分` : `in ${minutes} min`, tone: colors.mutedForeground };
+    const msLeft = Date.parse(leaveBy) - clockMs;
+    if (msLeft <= 0) return { text: ja ? '出発時刻' : 'Time to go', tone: colors.destructive };
+    // h:mm for an hour or more, then mm:ss, like the home screen.
+    const tone = msLeft <= 10 * MINUTE_MS ? colors.primary : colors.mutedForeground;
+    return { text: ja ? `あと${formatCountdown(msLeft)}` : `in ${formatCountdown(msLeft)}`, tone };
   };
 
   const menuItem = (key: string, title: string, subtitle: string | null, onPress: () => void, destructive = false, trailing?: React.ReactNode) => (
@@ -182,6 +250,8 @@ export default function GroupScreen() {
           </View>
         );
       }
+      case 'notifications':
+        return notificationSwitches;
       case 'members':
         return memberPicker(others, (member) =>
           confirm(
@@ -192,16 +262,6 @@ export default function GroupScreen() {
             () => void run(() => removeGroupMember(detail.id, member.id, options)),
           ),
         'user-x');
-      case 'transfer':
-        return memberPicker(others, (member) =>
-          confirm(
-            ja ? 'ホストを交代' : 'Hand over host',
-            ja ? `${member.displayName}さんをホストにしますか？あなたはメンバーになります。` : `Make ${member.displayName} the host? You’ll become a member.`,
-            ja ? '交代する' : 'Hand over',
-            ja ? 'キャンセル' : 'Cancel',
-            () => void run(() => transferGroupHost(detail.id, { memberId: member.id }, options), () => setSheet(null)),
-          ),
-        'award');
       default:
         return host ? (
           <View style={styles.sheetList}>
@@ -211,13 +271,12 @@ export default function GroupScreen() {
                   void run(() => endGroupTonight(detail.id, options), () => setSheet(null)),
                 ),
               )}
-            {mine && menuItem('leave-tonight', ja ? '今夜の参加をやめる' : 'Stop sharing tonight', ja ? '出発時刻の共有を今夜だけ止めます' : 'Stops sharing your leave time tonight', () => void run(() => leaveGroupTonight(detail.id, options), () => setSheet(null)))}
             {menuItem('members', ja ? 'メンバーを管理' : 'Manage members', ja ? 'メンバーを削除できます' : 'Remove members', () => setSheet('members'))}
-            {menuItem('transfer', ja ? 'ホストを交代' : 'Hand over host', ja ? 'ほかのメンバーをホストにします' : 'Make another member the host', () => setSheet('transfer'))}
             {menuItem('rename', ja ? 'グループ名を変更' : 'Rename group', null, () => {
               setDraft(detail.name);
               setSheet('rename');
             })}
+            {menuItem('notifications', ja ? '通知' : 'Notifications', notificationSummary, () => setSheet('notifications'))}
             {menuItem('display-name', ja ? '表示名を変更' : 'Change display name', ja ? `いまの表示名：${detail.me.displayName}` : `Now: ${detail.me.displayName}`, () => {
               setDraft(detail.me.displayName);
               setSheet('displayName');
@@ -236,29 +295,16 @@ export default function GroupScreen() {
               ),
             true)}
             <Text style={[styles.note, { color: colors.mutedForeground }]}>
-              {ja ? 'ホストが退出するには、先にホストを交代するか、グループを解散してください。' : 'To leave as host, hand over host first or disband the group.'}
+              {ja ? 'ホストはグループを解散すると退出できます。' : 'As host, you leave by disbanding the group.'}
             </Text>
           </View>
         ) : (
           <View style={styles.sheetList}>
-            {mine && menuItem('leave-tonight', ja ? '今夜の参加をやめる' : 'Stop sharing tonight', ja ? '出発時刻の共有を今夜だけ止めます' : 'Stops sharing your leave time tonight', () => void run(() => leaveGroupTonight(detail.id, options), () => setSheet(null)))}
+            {menuItem('notifications', ja ? '通知' : 'Notifications', notificationSummary, () => setSheet('notifications'))}
             {menuItem('display-name', ja ? '表示名を変更' : 'Change display name', ja ? `いまの表示名：${detail.me.displayName}` : `Now: ${detail.me.displayName}`, () => {
               setDraft(detail.me.displayName);
               setSheet('displayName');
             })}
-            {menuItem(
-              'notifications',
-              ja ? 'このグループの通知' : 'Notifications for this group',
-              ja ? 'メンバーの出発時刻をお知らせ' : 'When members need to leave',
-              () => void run(() => updateMyGroupMembership(detail.id, { notifications: !detail.me.notifications }, options)),
-              false,
-              <Switch
-                value={detail.me.notifications}
-                onValueChange={(value) => void run(() => updateMyGroupMembership(detail.id, { notifications: value }, options))}
-                trackColor={{ false: colors.input, true: colors.primary }}
-                thumbColor={colors.background}
-              />,
-            )}
             {menuItem('leave-group', ja ? 'グループから退出' : 'Leave group', ja ? '表示名と出発時刻はすぐに削除されます' : 'Your name and leave time are deleted right away', () =>
               confirm(ja ? 'グループから退出' : 'Leave group', ja ? `「${detail.name}」から退出しますか？` : `Leave “${detail.name}”?`, ja ? '退出する' : 'Leave', ja ? 'キャンセル' : 'Cancel', () =>
                 void leaveGone(() => leaveGroup(detail.id, options)),
@@ -276,9 +322,9 @@ export default function GroupScreen() {
         ? ja ? '表示名を変更' : 'Change display name'
         : sheet === 'members'
           ? ja ? 'メンバーを管理' : 'Manage members'
-          : sheet === 'transfer'
-            ? ja ? 'ホストを交代' : 'Hand over host'
-            : host
+          : sheet === 'notifications'
+            ? ja ? 'このグループの通知' : 'Notifications for this group'
+          : host
               ? ja ? 'ホストのオプション · あなたがホストです' : 'Host options · you’re the host'
               : ja ? 'メンバーのオプション' : 'Member options';
 
@@ -324,12 +370,13 @@ export default function GroupScreen() {
               {tonight.participants.map((participant, index) => {
                 const me = participant.memberId === detail.me.memberId;
                 const isHost = detail.members.find((member) => member.id === participant.memberId)?.role === 'host';
-                const status = statusFor(participant.leaveBy, participant.missed);
+                const status = statusFor(participant.leaveBy);
                 return (
                   <View key={participant.memberId} style={[styles.person, index > 0 && { borderTopColor: colors.border, borderTopWidth: 1 }]}>
                     <View style={[styles.avatar, { backgroundColor: me ? colors.primary : colors.secondary }]}>
                       <Text style={[styles.avatarText, { color: me ? colors.primaryForeground : colors.foreground }]}>
-                        {(me ? (ja ? 'あ' : 'Y') : participant.displayName).slice(0, 1)}
+                        {/* Your own initial too (the name reads あなた); the amber circle marks it as you. */}
+                        {Array.from(participant.displayName)[0] ?? ''}
                       </Text>
                     </View>
                     <View style={styles.personText}>
@@ -349,13 +396,30 @@ export default function GroupScreen() {
                 <Text style={[styles.note, { color: colors.mutedForeground }]}>{ja ? 'まだ誰も参加していません。' : 'Nobody has joined tonight yet.'}</Text>
               )}
             </Card>
+            {mine && (
+              // A status line, not a button: you're sharing; stopping is the small link at the end.
+              <View style={styles.sharingRow}>
+                <View style={[styles.sharingDot, { backgroundColor: colors.primary }]} />
+                <Text style={[styles.sharingText, { color: colors.mutedForeground }]} numberOfLines={1}>
+                  {ja ? 'あなたの出発時刻を共有中' : 'Sharing your leave time'}
+                </Text>
+                <Pressable
+                  testID="leave-tonight"
+                  onPress={stopSharingTonight}
+                  accessibilityRole="button"
+                  accessibilityLabel={ja ? '今夜の共有をやめる' : 'Stop sharing tonight'}
+                  hitSlop={12}
+                  style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
+                >
+                  <Text style={[styles.sharingStop, { color: colors.mutedForeground }]}>{ja ? '今夜はやめる' : 'Stop tonight'}</Text>
+                </Pressable>
+              </View>
+            )}
             {!mine && (
               <PrimaryButton
                 label={ja ? '今夜参加する' : 'Join tonight'}
                 loading={busy}
-                onPress={() =>
-                  void run(() => joinGroupTonight(detail.id, { leaveBy: plan ? new Date(recommendedLeaveTime(plan)).toISOString() : null }, options))
-                }
+                onPress={() => void joinTonight()}
                 testID="join-tonight"
               />
             )}
@@ -368,7 +432,7 @@ export default function GroupScreen() {
                 {ja ? 'メンバーに通知が届き、参加した人の出発時刻が並びます。明日の朝8:00に自動で終了します。' : 'Members get a notification, and those who join line up by leave time. Ends at 8:00 tomorrow.'}
               </Text>
             </Card>
-            <PrimaryButton label={ja ? '今夜をはじめる' : 'Start tonight'} loading={busy} onPress={() => void run(() => startGroupTonight(detail.id, options))} testID="start-tonight" />
+            <PrimaryButton label={ja ? '今夜をはじめる' : 'Start tonight'} loading={busy} onPress={() => void startTonight()} testID="start-tonight" />
             {detail.invite && <SecondaryButton label={ja ? '招待リンクを共有' : 'Share invite link'} onPress={() => void share()} />}
           </>
         ) : (
@@ -379,6 +443,7 @@ export default function GroupScreen() {
             </Text>
           </Card>
         )}
+
 
         {!host && !isPremium && (
           <Pressable onPress={() => router.push('/paywall')} accessibilityRole="button" style={styles.hostLine}>
@@ -391,8 +456,8 @@ export default function GroupScreen() {
 
         <Text style={[styles.note, { color: colors.mutedForeground }]}>
           {ja
-            ? '表示されるのは名前と出発時刻だけ。現在地や帰り先は共有されません。出発時刻になるとメンバー全員に通知します。'
-            : 'Only names and leave times are shown — never your location or destination. Everyone is notified at each leave time.'}
+            ? '表示されるのは名前と出発時刻だけ。現在地や帰り先は共有されません。出発時刻になると、今夜参加しているメンバーに通知します（⋯ の「通知」で変更できます）。'
+            : 'Only names and leave times are shown — never your location or destination. Tonight’s participants are notified at each leave time (change it under ⋯ → Notifications).'}
         </Text>
       </ScrollView>
       <BottomNav language={language} />
@@ -431,9 +496,15 @@ const styles = StyleSheet.create({
   avatarText: { fontSize: 14, fontWeight: '800' },
   personText: { flex: 1, gap: 2 },
   personName: { fontSize: 15, fontWeight: '800' },
+  sharingRow: { alignItems: 'center', flexDirection: 'row', gap: 8, marginTop: -4, paddingHorizontal: 6 },
+  sharingDot: { borderRadius: 4, height: 8, width: 8 },
+  sharingText: { flex: 1, fontSize: 13, fontWeight: '600' },
+  sharingStop: { fontSize: 13, fontWeight: '700', textDecorationLine: 'underline' },
   hostTag: { fontSize: 11, fontWeight: '800' },
   personStatus: { fontSize: 12, fontWeight: '700' },
   personTime: { fontFamily: DIGITS, fontSize: 20 },
+  alertsRow: { alignItems: 'center', flexDirection: 'row', gap: 12, paddingVertical: 10 },
+  alertsText: { flex: 1, gap: 2 },
   hostLine: { alignItems: 'center', flexDirection: 'row', gap: 6, justifyContent: 'center', paddingVertical: 4 },
   hostLineText: { fontSize: 13, fontWeight: '700' },
   scrim: { backgroundColor: 'rgba(0,0,0,0.5)', flex: 1 },

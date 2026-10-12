@@ -17,15 +17,20 @@ import {
 } from "@/lib/reliability";
 import { leaveCardFor, useLeaveCardOpening } from "@/lib/premiumPrompts";
 import { formatJstTime, serviceDate } from "@/lib/time";
+import { formatCountdown } from "@/lib/countdown";
+import { useSecondClock } from "@/hooks/useSecondClock";
 import { shortLineName } from "@/lib/timetable";
+import { trainChoiceLabel } from "@/lib/trainChoice";
 import { Feather } from "@expo/vector-icons";
 import {
   getTrainDisruptions,
+  joinGroupTonight,
   type TrainDisruption,
 } from "@workspace/api-client-react";
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
+  Alert,
   AppState,
   Linking,
   Platform,
@@ -40,31 +45,10 @@ import { isLocationApproximate } from "@/lib/tracking";
 
 /** The ring empties over the last hour before leave-by. */
 const RING_WINDOW_MS = 60 * 60 * 1000;
+/** The countdown ring, and the start button that stands in for it until tonight is started. */
+const HERO_SIZE = 140;
 
 /** "1:05" above an hour (h:mm), "13:42" below it (mm:ss). */
-function formatCountdown(ms: number) {
-  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-  return hours > 0
-    ? `${hours}:${String(minutes).padStart(2, "0")}`
-    : `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
-}
-
-/** Ticks every second so the countdown moves; the app clock only ticks every 10s. */
-function useSecondClock(appNowMs: number, demoActive: boolean) {
-  const [offset, setOffset] = useState(0);
-  useEffect(() => {
-    if (demoActive) return;
-    const base = Date.now();
-    setOffset(0);
-    const timer = setInterval(() => setOffset(Date.now() - base), 1000);
-    return () => clearInterval(timer);
-  }, [appNowMs, demoActive]);
-  return demoActive ? appNowMs : appNowMs + offset;
-}
-
 export default function RideScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -93,6 +77,10 @@ export default function RideScreen() {
     stopTracking,
     nightLocationMode,
     backgroundAllowed,
+    trainChoice,
+    effectiveTrainChoice,
+    trainChoices,
+    setTrainChoice,
   } = useLastRide();
   const ja = language === "ja";
   const station = ja ? stationNameJa : stationName;
@@ -107,7 +95,26 @@ export default function RideScreen() {
     router.setParams({ stop: undefined });
   }, [stop, trackingMode, stopTracking]);
   const { isPremium } = usePremium();
-  const { tonightGroup } = useGroups();
+  const { tonightGroup, tonightOpenGroup, apply: applyGroup, memberOptions } = useGroups();
+  const [joiningGroup, setJoiningGroup] = useState(false);
+  /** 参加 on the home screen: shares your current leave time with tonight's group. */
+  const joinOpenGroup = async () => {
+    if (!tonightOpenGroup) return;
+    setJoiningGroup(true);
+    try {
+      applyGroup(
+        await joinGroupTonight(
+          tonightOpenGroup.id,
+          { leaveBy: plan ? new Date(recommendedLeaveTime(plan)).toISOString() : null },
+          memberOptions(tonightOpenGroup.id),
+        ),
+      );
+    } catch {
+      Alert.alert(ja ? '参加できませんでした' : 'Couldn’t join', ja ? 'しばらくしてからもう一度お試しください。' : 'Please try again in a moment.');
+    } finally {
+      setJoiningGroup(false);
+    }
+  };
   const leaveCard = useLeaveCardOpening();
   // Precise Location off (iOS): positions are only approximate. Rechecked on return from Settings.
   const [approximateLocation, setApproximateLocation] = useState(false);
@@ -208,7 +215,7 @@ export default function RideScreen() {
   const arrivalMs = plan?.arriveHomeMs ?? plan?.lastTrain.arrivesAt;
   const otherStations = plan?.alternatives ?? [];
   // Tonight's group takes the card slot; the premium card only shows without one.
-  const premiumCard = tonightGroup
+  const premiumCard = tonightGroup || tonightOpenGroup
     ? null
     : leaveCardFor({ isPremium, opens: leaveCard.opens, dismissed: leaveCard.dismissed });
   const nextInGroup = tonightGroup?.tonight.participants.find(
@@ -232,9 +239,6 @@ export default function RideScreen() {
       >
         <View style={styles.topbar}>
           <View style={styles.flex}>
-            <Text style={[styles.brand, { color: colors.mutedForeground }]}>
-              LASTRIDE <Text style={styles.brandJa}>帰り時</Text>
-            </Text>
             <Pressable
               testID="edit-destination"
               onPress={() => router.push("/destinations")}
@@ -338,14 +342,100 @@ export default function RideScreen() {
             );
           })()}
 
-        {/* Tonight at a glance: the countdown, the time to leave, and how late is too late */}
+        {/* 終電 / 1本前 / 2本前: kept for tonight; a train that can't be made any more is greyed out */}
+        {plan && !departed && trainChoices.length > 1 && (
+          <View>
+            <View
+              accessibilityRole="radiogroup"
+              style={[styles.trainSwitch, { backgroundColor: colors.card, borderColor: colors.border }]}
+            >
+              {trainChoices.map((option) => {
+                const selected = option.choice === effectiveTrainChoice;
+                const label = trainChoiceLabel(option.choice, ja);
+                return (
+                  <Pressable
+                    key={option.choice}
+                    testID={`train-choice-${option.choice}`}
+                    disabled={!option.catchable}
+                    onPress={() => setTrainChoice(option.choice)}
+                    accessibilityRole="radio"
+                    accessibilityState={{ checked: selected, disabled: !option.catchable }}
+                    accessibilityLabel={
+                      option.catchable
+                        ? ja
+                          ? `${label} ${formatJstTime(option.departsAt)}発`
+                          : `${label}, ${formatJstTime(option.departsAt)}`
+                        : ja
+                          ? `${label}は間に合いません`
+                          : `${label}: too late`
+                    }
+                    style={({ pressed }) => [
+                      styles.trainSegment,
+                      selected && { backgroundColor: colors.primary },
+                      { opacity: !option.catchable ? 0.4 : pressed ? 0.75 : 1 },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.trainSegmentLabel,
+                        { color: selected ? colors.primaryForeground : colors.mutedForeground },
+                      ]}
+                    >
+                      {label}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.trainSegmentTime,
+                        { color: selected ? colors.primaryForeground : colors.subtle },
+                      ]}
+                    >
+                      {option.catchable ? formatJstTime(option.departsAt) : ja ? "間に合わず" : "Too late"}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            {trainChoice > effectiveTrainChoice && (
+              <Text style={[styles.note, styles.switchNote, { color: colors.mutedForeground }]}>
+                {ja
+                  ? `${trainChoiceLabel(trainChoice, true)}には間に合わないため、${trainChoiceLabel(effectiveTrainChoice, true)}にしています`
+                  : `Too late for ${trainChoiceLabel(trainChoice, false).toLowerCase()}, so this is the ${effectiveTrainChoice ? trainChoiceLabel(effectiveTrainChoice, false).toLowerCase() : "last train"}`}
+              </Text>
+            )}
+          </View>
+        )}
+
+        {/* Tonight at a glance: start tonight (or the countdown once started), the time to leave, and how late is too late */}
         <View style={styles.hero}>
-          <CountdownRing
-            fraction={msLeft === null ? 0 : msLeft / RING_WINDOW_MS}
-            label={ringLabel}
-            value={ringValue}
-            tone={ringTone}
-          />
+          {isLocationReady && !departed && trackingMode === null ? (
+            <Pressable
+              testID="start-tracking"
+              onPress={() => void startTracking()}
+              accessibilityRole="button"
+              accessibilityLabel={ja ? "今夜スタート。リマインダーをオンにして、移動に合わせて更新" : "Start tonight. Turns reminders on and follows you"}
+              style={({ pressed }) => [
+                styles.startCircle,
+                { backgroundColor: colors.primary, shadowColor: colors.primary, opacity: pressed ? 0.85 : 1 },
+              ]}
+            >
+              <Feather name="moon" size={28} color={colors.primaryForeground} />
+              <Text maxFontSizeMultiplier={1.2} style={[styles.startTitle, { color: colors.primaryForeground }]}>
+                {ja ? "今夜スタート" : "Start tonight"}
+              </Text>
+              <Text maxFontSizeMultiplier={1.2} style={[styles.startNote, { color: colors.primaryForeground }]}>
+                {ja ? "タップで通知オン" : "Turns reminders on"}
+              </Text>
+            </Pressable>
+          ) : (
+            <CountdownRing
+              size={HERO_SIZE}
+              fraction={msLeft === null ? 0 : msLeft / RING_WINDOW_MS}
+              label={ringLabel}
+              value={ringValue}
+              tone={ringTone}
+              caption={trackingMode !== null && !departed ? (ja ? "● トラッキング中" : "● Tracking") : undefined}
+            />
+          )}
           <View style={styles.heroCopy}>
             <Text style={[styles.heroLabel, { color: colors.mutedForeground }]}>
               {departed
@@ -368,9 +458,7 @@ export default function RideScreen() {
             </Text>
             {plan && (
               <Text style={[styles.heroMeta, { color: colors.subtle }]}>
-                {ja
-                  ? `遅くとも ${formatJstTime(plan.leaveByMs)} · 終電 ${lastTrain}`
-                  : `Latest ${formatJstTime(plan.leaveByMs)} · last train ${lastTrain}`}
+                {ja ? `遅くとも ${formatJstTime(plan.leaveByMs)}` : `Latest ${formatJstTime(plan.leaveByMs)}`}
                 {lastTrainSource === "sample" ? (ja ? "（仮）" : "*") : ""}
                 {plan.lastTrain.approximate ? (ja ? "（目安）" : " (approx.)") : ""}
               </Text>
@@ -500,6 +588,9 @@ export default function RideScreen() {
               </View>
               <View style={styles.flex}>
                 <Text style={[styles.rowTitle, { color: colors.foreground }]}>
+                  {effectiveTrainChoice > 0 ? (
+                    <Text style={{ color: colors.primary }}>{`${trainChoiceLabel(effectiveTrainChoice, ja)}  `}</Text>
+                  ) : null}
                   <Text style={styles.digits}>{lastTrain}</Text>
                   {firstLeg
                     ? `  ${ja ? shortLineName(firstLeg.line) : (firstLeg.lineEn ?? shortLineName(firstLeg.line))}`
@@ -673,119 +764,103 @@ export default function RideScreen() {
                 )}
               </>
             )}
+            {trackingMode !== null && (
+              <>
+                <View style={[styles.divider, { backgroundColor: colors.border }]} />
+                <View style={styles.trackingFooter}>
+                  <View style={[styles.liveDot, { backgroundColor: colors.primary }]} />
+                  <View style={styles.flex}>
+                    <Text style={[styles.rowTitle, { color: colors.foreground }]}>
+                      {ja ? "夜のトラッキング中" : "Tracking tonight"}
+                    </Text>
+                    <Text style={[styles.note, { color: colors.mutedForeground }]}>
+                      {trackingMode === "background"
+                        ? ja
+                          ? "閉じても更新。終電後に自動で停止。"
+                          : "Updates when closed; stops after the last train."
+                        : nightLocationMode === "background" && backgroundAllowed === false
+                          ? ja
+                            ? "位置情報が「常に」ではないため、開いている間だけ更新します。"
+                            : "Location isn’t “Always”, so this updates only while open."
+                          : ja
+                            ? "アプリを開いている間だけ更新します。"
+                            : "Updates while the app is open."}
+                    </Text>
+                  </View>
+                  <Pressable
+                    testID="stop-tracking"
+                    onPress={() => void stopTracking()}
+                    accessibilityRole="button"
+                    style={({ pressed }) => [
+                      styles.smallButton,
+                      { borderColor: colors.input, opacity: pressed ? 0.7 : 1 },
+                    ]}
+                  >
+                    <Text style={[styles.smallButtonText, { color: colors.foreground }]}>
+                      {ja ? "停止" : "Stop"}
+                    </Text>
+                  </Pressable>
+                </View>
+              </>
+            )}
           </Card>
         )}
 
-        {tonightGroup && (
-          <Pressable
-            testID="group-strip"
-            onPress={() =>
-              router.push({ pathname: "/group/[id]", params: { id: tonightGroup.id } })
-            }
-            accessibilityRole="button"
-            style={({ pressed }) => [
-              styles.trackRow,
-              { backgroundColor: colors.card, borderColor: colors.border, opacity: pressed ? 0.85 : 1 },
-            ]}
-          >
-            <Feather name="users" color={colors.primary} size={18} />
-            <Text numberOfLines={1} style={[styles.rowTitle, styles.flex, { color: colors.foreground }]}>
-              {tonightGroup.name}
-              <Text style={[styles.note, { color: colors.mutedForeground }]}>
-                {ja
-                  ? ` · 今夜${tonightGroup.tonight.participants.length}人${nextInGroup?.leaveBy ? ` · 次は${nextInGroup.displayName}さん ${formatJstTime(Date.parse(nextInGroup.leaveBy))}` : ""}`
-                  : ` · ${tonightGroup.tonight.participants.length} tonight${nextInGroup?.leaveBy ? ` · next: ${nextInGroup.displayName} ${formatJstTime(Date.parse(nextInGroup.leaveBy))}` : ""}`}
-              </Text>
-            </Text>
-            <Feather name="chevron-right" color={colors.mutedForeground} size={18} />
-          </Pressable>
-        )}
-
-        {premiumCard && leaveAt !== null && (
-          <PremiumCard
-            variant={premiumCard}
-            ja={ja}
-            leaveAt={formatJstTime(leaveAt)}
-            countdown={ringValue}
-            station={station}
-            destination={destination}
-            onDismiss={leaveCard.dismiss}
-          />
-        )}
-
-        {isLocationReady &&
-          (!departed || trackingMode !== null) &&
-          (trackingMode === null ? (
-            <Pressable
-              testID="start-tracking"
-              onPress={() => void startTracking()}
-              accessibilityRole="button"
-              style={({ pressed }) => [
-                styles.trackRow,
-                {
-                  backgroundColor: colors.card,
-                  borderColor: colors.border,
-                  opacity: pressed ? 0.85 : 1,
-                },
-              ]}
-            >
-              <Feather name="moon" color={colors.mutedForeground} size={18} />
-              <View style={styles.flex}>
-                <Text style={[styles.rowTitle, { color: colors.foreground }]}>
-                  {ja ? "夜のトラッキング" : "Night-out tracking"}
-                </Text>
-                <Text style={[styles.note, { color: colors.mutedForeground }]}>
-                  {ja
-                    ? "リマインダーをオンにし、移動に合わせて更新"
-                    : "Reminders on, and your plan follows you"}
-                </Text>
-              </View>
-              <View style={[styles.smallButton, styles.startButton, { backgroundColor: colors.primary }]}>
-                <Text style={[styles.smallButtonText, { color: colors.primaryForeground }]}>
-                  {ja ? "開始" : "Start"}
-                </Text>
-              </View>
-            </Pressable>
-          ) : (
-            <Pressable
-              testID="stop-tracking"
-              onPress={() => void stopTracking()}
-              accessibilityRole="button"
-              style={({ pressed }) => [
-                styles.trackRow,
-                {
-                  backgroundColor: colors.card,
-                  borderColor: colors.border,
-                  opacity: pressed ? 0.85 : 1,
-                },
-              ]}
-            >
-              <View style={[styles.liveDot, { backgroundColor: colors.primary }]} />
-              <View style={styles.flex}>
-                <Text style={[styles.rowTitle, { color: colors.foreground }]}>
-                  {ja ? "夜のトラッキング中" : "Tracking tonight"}
-                </Text>
-                <Text style={[styles.note, { color: colors.mutedForeground }]}>
-                  {trackingMode === "background"
-                    ? ja
-                      ? "閉じても更新。終電後に自動で停止。"
-                      : "Updates when closed; stops after the last train."
-                    : nightLocationMode === "background" && backgroundAllowed === false
+        {(tonightGroup ?? tonightOpenGroup) &&
+          (() => {
+            const group = (tonightGroup ?? tonightOpenGroup)!;
+            const joined = tonightGroup !== null;
+            const count = group.tonight.participants.length;
+            return (
+              <Pressable
+                testID="group-strip"
+                onPress={() => router.push({ pathname: "/group/[id]", params: { id: group.id } })}
+                accessibilityRole="button"
+                style={({ pressed }) => [
+                  styles.trackRow,
+                  { backgroundColor: colors.card, borderColor: joined ? colors.border : colors.primary, opacity: pressed ? 0.85 : 1 },
+                ]}
+              >
+                <Feather name="users" color={colors.primary} size={18} />
+                <View style={styles.flex}>
+                  <Text numberOfLines={1} style={[styles.rowTitle, { color: colors.foreground }]}>
+                    {group.name}
+                  </Text>
+                  <Text numberOfLines={1} style={[styles.note, { color: joined ? colors.primary : colors.mutedForeground }]}>
+                    {joined
                       ? ja
-                        ? "iPhoneの位置情報が「常に」ではないため、アプリを開いている間だけ更新します。"
-                        : "iPhone location isn’t “Always”, so this updates only while the app is open."
+                        ? `● 出発時刻を共有中 · 今夜${count}人${nextInGroup?.leaveBy ? ` · 次は${nextInGroup.displayName}さん ${formatJstTime(Date.parse(nextInGroup.leaveBy))}` : ""}`
+                        : `● Sharing your leave time · ${count} tonight${nextInGroup?.leaveBy ? ` · next: ${nextInGroup.displayName} ${formatJstTime(Date.parse(nextInGroup.leaveBy))}` : ""}`
                       : ja
-                        ? "アプリを開いている間だけ更新します。"
-                        : "Updates while the app is open."}
-                </Text>
-              </View>
-              <View style={[styles.smallButton, { borderColor: colors.input }]}>
-                <Text style={[styles.smallButtonText, { color: colors.foreground }]}>
-                  {ja ? "停止" : "Stop"}
-                </Text>
-              </View>
-            </Pressable>
-          ))}
+                        ? `今夜の会がはじまりました · ${count}人参加中`
+                        : `Tonight has started · ${count} joined`}
+                  </Text>
+                </View>
+                {joined ? (
+                  <Feather name="chevron-right" color={colors.mutedForeground} size={18} />
+                ) : (
+                  <Pressable
+                    testID="group-strip-join"
+                    onPress={() => void joinOpenGroup()}
+                    disabled={joiningGroup}
+                    accessibilityRole="button"
+                    accessibilityLabel={ja ? `${group.name}に今夜参加する` : `Join ${group.name} tonight`}
+                    hitSlop={8}
+                    style={({ pressed }) => [
+                      styles.smallButton,
+                      styles.joinButton,
+                      { backgroundColor: colors.primary, opacity: joiningGroup ? 0.6 : pressed ? 0.85 : 1 },
+                    ]}
+                  >
+                    <Text style={[styles.smallButtonText, { color: colors.primaryForeground }]}>
+                      {ja ? "今夜参加" : "Join"}
+                    </Text>
+                  </Pressable>
+                )}
+              </Pressable>
+            );
+          })()}
+
 
         {trackingMode === "foreground" && nightLocationMode === "background" && backgroundAllowed === false && (
           <Pressable
@@ -888,6 +963,19 @@ export default function RideScreen() {
             }
           />
         )}
+
+        {/* Premium last: below everything for tonight (only shown without Premium) */}
+        {premiumCard && leaveAt !== null && (
+          <PremiumCard
+            variant={premiumCard}
+            ja={ja}
+            leaveAt={formatJstTime(leaveAt)}
+            countdown={ringValue}
+            station={station}
+            destination={destination}
+            onDismiss={leaveCard.dismiss}
+          />
+        )}
       </ScrollView>
       <BottomNav language={language} />
     </View>
@@ -899,15 +987,33 @@ const styles = StyleSheet.create({
   content: { gap: 14, paddingHorizontal: 20 },
   flex: { flex: 1, gap: 2 },
   topbar: { alignItems: "flex-start", flexDirection: "row", gap: 12 },
-  brand: { fontSize: 11, fontWeight: "800", letterSpacing: 1.6 },
-  brandJa: { letterSpacing: 0 },
   destination: { alignItems: "center", alignSelf: "flex-start", flexDirection: "row", gap: 4, marginTop: 2 },
   destinationText: { flexShrink: 1, fontSize: 22, fontWeight: "800" },
   banner: { alignItems: "center", flexDirection: "row", gap: 12, padding: 14 },
-  hero: { alignItems: "center", flexDirection: "row", gap: 18, marginVertical: 4 },
+  hero: { alignItems: "center", flexDirection: "row", gap: 16, marginVertical: 4 },
+  startCircle: {
+    alignItems: "center",
+    borderRadius: HERO_SIZE / 2,
+    gap: 2,
+    height: HERO_SIZE,
+    justifyContent: "center",
+    paddingHorizontal: 10,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.45,
+    shadowRadius: 18,
+    width: HERO_SIZE,
+  },
+  startTitle: { fontSize: 18, fontWeight: "900", marginTop: 4 },
+  startNote: { fontSize: 11, fontWeight: "700", opacity: 0.8 },
+  trainSwitch: { borderRadius: 14, borderWidth: 1, flexDirection: "row", gap: 4, padding: 4 },
+  trainSegment: { alignItems: "center", borderRadius: 10, flex: 1, justifyContent: "center", minHeight: 46, paddingVertical: 4 },
+  trainSegmentLabel: { fontSize: 11, fontWeight: "800" },
+  trainSegmentTime: { fontFamily: DIGITS, fontSize: 15 },
+  switchNote: { marginTop: 6, paddingHorizontal: 4 },
+  trackingFooter: { alignItems: "center", flexDirection: "row", gap: 10 },
   heroCopy: { flex: 1, gap: 2 },
   heroLabel: { fontSize: 12, fontWeight: "700" },
-  leaveTime: { fontFamily: DIGITS, fontSize: 48, letterSpacing: -1, lineHeight: 54 },
+  leaveTime: { fontFamily: DIGITS, fontSize: 60, letterSpacing: -1.5, lineHeight: 64 },
   heroMeta: { fontSize: 13, fontWeight: "600" },
   freshness: { alignItems: "center", flexDirection: "row", gap: 5, marginTop: 4 },
   promptRow: { alignItems: "center", borderRadius: 18, flexDirection: "row", gap: 12, padding: 15 },
@@ -928,6 +1034,6 @@ const styles = StyleSheet.create({
   trackRow: { alignItems: "center", borderRadius: 18, borderWidth: 1, flexDirection: "row", gap: 12, padding: 14 },
   liveDot: { borderRadius: 5, height: 10, marginHorizontal: 4, width: 10 },
   smallButton: { borderRadius: 12, borderWidth: 1, borderColor: "transparent", paddingHorizontal: 14, paddingVertical: 9 },
-  startButton: { borderWidth: 0 },
+  joinButton: { borderWidth: 0 },
   smallButtonText: { fontSize: 13, fontWeight: "800" },
 });

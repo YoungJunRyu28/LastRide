@@ -144,14 +144,30 @@ export function cancelAllReminders(): Promise<void> {
   return enqueue(cancelOwned);
 }
 
-export type ReminderText = { leaveBy: string; station: string; language: 'ja' | 'en' };
-function reminderText({ leaveBy, station, language }: ReminderText, { minutesBefore, missedCheckIn }: ReminderPlan) {
+export type ReminderText = {
+  leaveBy: string;
+  station: string;
+  language: 'ja' | 'en';
+  /** Set when heading for an earlier train (1本前 / 2本前): the real last train's leave time. */
+  lastTrainLeaveBy?: string;
+};
+function reminderText({ leaveBy, station, language, lastTrainLeaveBy }: ReminderText, { minutesBefore, missedCheckIn, lastTrainBackup }: ReminderPlan) {
+  if (lastTrainBackup) {
+    return language === 'ja'
+      ? { title: 'LastRide — 終電に乗るなら今', body: `${lastTrainLeaveBy ?? ''}は終電に間に合う最後の出発時刻です。${station}へ。` }
+      : { title: 'LastRide — leave now for the last train', body: `${lastTrainLeaveBy ?? 'Now'} is the last time to leave for the last train. Head to ${station}.` };
+  }
   if (missedCheckIn) {
     return language === 'ja'
       ? { title: 'LastRide — 終電に間に合いませんでしたか？', body: 'タップして始発・タクシー・近くで朝まで過ごせる場所を確認。' }
       : { title: 'LastRide — missed the last train?', body: 'Tap to see the first train, a taxi estimate, and places to wait nearby.' };
   }
   if (minutesBefore === 0) {
+    if (lastTrainLeaveBy) {
+      return language === 'ja'
+        ? { title: 'LastRide — 今すぐ出発', body: `${station}へ歩き始めましょう。乗り遅れても、終電は${lastTrainLeaveBy}までに出れば間に合います。` }
+        : { title: 'LastRide — leave now', body: `Start walking to ${station}. If you miss this train, leave by ${lastTrainLeaveBy} for the last one.` };
+    }
     return language === 'ja'
       ? { title: 'LastRide — 今すぐ出発', body: `${station}へ歩き始めましょう。終電に間に合う最後のタイミングです。` }
       : { title: 'LastRide — leave now', body: `Start walking to ${station} now to make the last train.` };

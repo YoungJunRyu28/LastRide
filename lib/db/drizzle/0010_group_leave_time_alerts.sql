@@ -1,0 +1,1 @@
+ALTER TABLE "group_members" ADD COLUMN "leave_time_alerts" boolean DEFAULT true NOT NULL;
