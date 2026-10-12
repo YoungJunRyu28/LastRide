@@ -101,10 +101,10 @@ nav.main a:hover { color: #c27b12; }
 .shots { display: flex; gap: 1.25rem; overflow-x: auto; scroll-snap-type: x mandatory; padding: 0.5rem var(--gutter) 1.5rem; margin: 2rem calc(-1 * var(--gutter)) 0; }
 .shot { flex: none; width: min(15rem, 68vw); margin: 0; scroll-snap-align: center; }
 .shot img { display: block; width: 100%; height: auto; aspect-ratio: 600 / 1304; border-radius: 2.2rem; border: 0.45rem solid #05080f; box-shadow: 0 1.5rem 3rem rgba(10, 19, 34, 0.25); }
-.shot figcaption { margin-top: 1rem; text-align: center; font-size: 0.875rem; color: var(--muted); line-height: 1.6; }
+.shot figcaption { margin-top: 1rem; text-align: center; font-size: 0.875rem; color: var(--muted); line-height: 1.6; text-wrap: balance; }
 .shot figcaption b { display: block; color: var(--text); font-size: 1rem; }
-@media (min-width: 900px) {
-  .shots { display: grid; grid-template-columns: repeat(3, minmax(0, 15rem)); justify-content: center; gap: 2.5rem; overflow: visible; margin-inline: 0; padding-inline: 0; }
+@media (min-width: 560px) {
+  .shots { display: grid; grid-template-columns: repeat(2, minmax(0, 15rem)); justify-content: center; gap: 3rem; overflow: visible; margin-inline: 0; padding-inline: 0; }
   .shot { width: auto; }
 }
 
