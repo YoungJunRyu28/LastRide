@@ -31,6 +31,7 @@ import {
   leaveGroupRecord,
   leaveGroupTonightRecord,
   purgeEndedGroupNights,
+  purgeInactiveGroupMembers,
   removeGroupMemberRecord,
   renameGroupRecord,
   reportGroupTonightMissedRecord,
@@ -312,6 +313,91 @@ describe("host-only actions", () => {
       expoPushToken: null,
     });
     expect(cleared.kind === "ok" && cleared.group.me.pushRegistered).toBe(false);
+  });
+});
+
+describe("leaving on reset, and members whose app is gone", () => {
+  const DAY = 24 * 60 * 60 * 1000;
+
+  async function seen(memberId: string, daysAgo: number, pushInvalid = false) {
+    const at = new Date(Date.now() - daysAgo * DAY);
+    await getDb()
+      .update(groupMembersTable)
+      .set({ lastSeenAt: at, pushTokenInvalidAt: pushInvalid ? at : null })
+      .where(eq(groupMembersTable.id, memberId));
+  }
+
+  async function roleOf(memberId: string) {
+    const [row] = await getDb()
+      .select({ role: groupMembersTable.role })
+      .from(groupMembersTable)
+      .where(eq(groupMembersTable.id, memberId));
+    return row?.role ?? null;
+  }
+
+  it("reset as host hands the role to the longest-standing member", async () => {
+    const { groupId, host, members } = await groupWithMembers(["Bea", "Cai"]);
+    expect((await leaveGroupRecord(groupId, host.token, { handover: true })).kind).toBe("ok");
+    expect(await getGroupDetailRecord(groupId, host.token)).toBeNull();
+    expect(await roleOf(members[0].id)).toBe("host");
+    expect(await roleOf(members[1].id)).toBe("member");
+  });
+
+  it("reset as the only member deletes the group", async () => {
+    const { groupId, host } = await groupWithMembers([]);
+    expect((await leaveGroupRecord(groupId, host.token, { handover: true })).kind).toBe("ok");
+    const rows = await getDb().select().from(groupsTable).where(eq(groupsTable.id, groupId));
+    expect(rows).toHaveLength(0);
+  });
+
+  it("any request from the app refreshes last-seen", async () => {
+    const { groupId, members } = await groupWithMembers(["Bea"]);
+    await seen(members[0].id, 100);
+    await getGroupDetailRecord(groupId, members[0].token);
+    const [row] = await getDb()
+      .select({ lastSeenAt: groupMembersTable.lastSeenAt })
+      .from(groupMembersTable)
+      .where(eq(groupMembersTable.id, members[0].id));
+    expect(Date.now() - row.lastSeenAt.getTime()).toBeLessThan(60_000);
+  });
+
+  it("the cleanup removes long-inactive members and members whose app was deleted", async () => {
+    const { groupId, host, members } = await groupWithMembers(["Bea", "Cai", "Dan", "Eve"]);
+    await seen(members[0].id, 200); // 6+ months away: removed
+    await seen(members[1].id, 40, true); // push token dead, 30+ days: removed
+    await seen(members[2].id, 10, true); // push token dead but recent: kept
+    await seen(members[3].id, 100); // quiet but under 6 months: kept
+
+    expect(await purgeInactiveGroupMembers()).toBe(2);
+    expect(await roleOf(members[0].id)).toBeNull();
+    expect(await roleOf(members[1].id)).toBeNull();
+    expect(await roleOf(members[2].id)).toBe("member");
+    expect(await roleOf(members[3].id)).toBe("member");
+    expect(await roleOf(host.id)).toBe("host");
+    expect(await getGroupDetailRecord(groupId, host.token)).not.toBeNull();
+  });
+
+  it("an inactive host is replaced, and a group nobody is left in is deleted", async () => {
+    const kept = await groupWithMembers(["Bea"]);
+    await seen(kept.host.id, 200);
+    const gone = await groupWithMembers([]);
+    await seen(gone.host.id, 200);
+
+    expect(await purgeInactiveGroupMembers()).toBe(2);
+    expect(await roleOf(kept.members[0].id)).toBe("host");
+    const rows = await getDb().select().from(groupsTable).where(eq(groupsTable.id, gone.groupId));
+    expect(rows).toHaveLength(0);
+  });
+
+  it("a fresh push token clears the dead-token mark", async () => {
+    const { groupId, members } = await groupWithMembers(["Bea"]);
+    await seen(members[0].id, 1, true);
+    await setPush(groupId, members[0].token, "fresh");
+    const [row] = await getDb()
+      .select({ invalid: groupMembersTable.pushTokenInvalidAt })
+      .from(groupMembersTable)
+      .where(eq(groupMembersTable.id, members[0].id));
+    expect(row.invalid).toBeNull();
   });
 });
 
@@ -687,6 +773,18 @@ describe("groups HTTP routes", () => {
     expect(session.memberToken.length).toBeGreaterThanOrEqual(32);
     expect(session.group.me.role).toBe("host");
     expect(session.group.invite.joinCode).toHaveLength(8);
+  });
+
+  it("reset leaves as host over HTTP, handing the role on", async () => {
+    const { groupId, host, members } = await groupWithMembers(["Bea"]);
+    const left = await call("DELETE", `/groups/${groupId}/me`, { token: host.token });
+    expect(left.status).toBe(409);
+    const reset = await call("POST", `/groups/${groupId}/me/reset`, { token: host.token });
+    expect(reset.status).toBe(204);
+    const view = await getGroupDetailRecord(groupId, members[0].token);
+    expect(view?.me.role).toBe("host");
+    const again = await call("POST", `/groups/${groupId}/me/reset`, { token: host.token });
+    expect(again.status).toBe(404);
   });
 
   it("join is free, and host-only routes reject members with 403", async () => {

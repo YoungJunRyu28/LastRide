@@ -9,6 +9,7 @@ import {
   getGroup,
   joinGroup,
   joinGroupTonight,
+  resetGroupMembership,
   updateMyGroupMembership,
   type GroupDetail,
 } from "@workspace/api-client-react";
@@ -18,6 +19,7 @@ import { useLastRide } from "@/context/LastRideContext";
 import { usePremium } from "@/context/PremiumContext";
 import { apiBaseUrl } from "@/lib/api";
 import {
+  clearMemberships,
   readMemberships,
   removeMembership,
   saveMembership,
@@ -46,6 +48,12 @@ type GroupsValue = {
   apply: (detail: GroupDetail) => void;
   /** Forgets a group locally (left, removed, disbanded). */
   forget: (groupId: string) => Promise<void>;
+  /**
+   * "Reset & start over": leaves every group on the server (a host hands the
+   * role on; an empty group is deleted), then forgets them on this phone.
+   * Offline, the server copies are removed later by the inactivity cleanup.
+   */
+  leaveAll: () => Promise<void>;
   create: (name: string, displayName: string) => Promise<GroupDetail>;
   join: (input: { inviteToken?: string; joinCode?: string; displayName: string }) => Promise<GroupDetail>;
   /** The group you're in tonight (opted in, night active), for the Leave strip and If missed. */
@@ -93,6 +101,30 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
       const { [groupId]: _removed, ...rest } = current;
       return rest;
     });
+  }, []);
+
+  const leaveAll = useCallback(async () => {
+    const list = await readMemberships();
+    await Promise.all(
+      list.map(async (membership) => {
+        // No AbortSignal.timeout() in React Native (see lib/fetchWithTimeout).
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 8_000);
+        try {
+          await resetGroupMembership(membership.groupId, {
+            headers: { "X-Member-Token": membership.memberToken },
+            signal: controller.signal,
+          });
+        } catch {
+          // Offline or already gone: the server cleanup handles what's left.
+        } finally {
+          clearTimeout(timer);
+        }
+      }),
+    );
+    await clearMemberships();
+    setMemberships([]);
+    setDetails({});
   }, []);
 
   const refresh = useCallback(async () => {
@@ -215,8 +247,8 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
   );
 
   const value = useMemo(
-    () => ({ groups, loading, available, refresh, memberOptions, apply, forget, create, join, tonightGroup }),
-    [groups, loading, available, refresh, memberOptions, apply, forget, create, join, tonightGroup],
+    () => ({ groups, loading, available, refresh, memberOptions, apply, forget, leaveAll, create, join, tonightGroup }),
+    [groups, loading, available, refresh, memberOptions, apply, forget, leaveAll, create, join, tonightGroup],
   );
   return <GroupsContext.Provider value={value}>{children}</GroupsContext.Provider>;
 }

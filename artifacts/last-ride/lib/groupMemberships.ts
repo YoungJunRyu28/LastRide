@@ -57,6 +57,11 @@ export async function removeMembership(groupId: string): Promise<void> {
   await write(current.filter((item) => item.groupId !== groupId));
 }
 
+/** Forgets every group and the saved display name ("Reset & start over"). */
+export async function clearMemberships(): Promise<void> {
+  await AsyncStorage.multiRemove([MEMBERSHIPS_KEY, DISPLAY_NAME_KEY]);
+}
+
 /** The name last used to join a group, offered as the default next time. */
 export async function readDisplayName(): Promise<string> {
   try {

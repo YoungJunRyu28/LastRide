@@ -678,6 +678,17 @@ paths:
         "204": { description: Membership deleted }
         "404": { description: Group not found or no longer a member }
         "409": { description: The host must transfer or disband instead }
+  /groups/{groupId}/me/reset:
+    post:
+      operationId: resetGroupMembership
+      tags: [groups]
+      summary: Leave as part of "Reset & start over" (a host hands the role to the longest-standing member; an empty group is deleted)
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+        - $ref: "#/components/parameters/MemberToken"
+      responses:
+        "204": { description: Membership deleted }
+        "404": { description: Group not found or no longer a member }
   /groups/{groupId}/tonight:
     post:
       operationId: startGroupTonight

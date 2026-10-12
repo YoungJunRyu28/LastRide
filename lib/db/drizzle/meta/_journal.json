@@ -64,6 +64,13 @@
       "when": 1791645972504,
       "tag": "0008_persistent_groups",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1791793662045,
+      "tag": "0009_group_member_activity",
+      "breakpoints": true
     }
   ]
 }

@@ -1124,6 +1124,25 @@ export const LeaveGroupResponse = zod.void()
 
 
 /**
+ * @summary Leave as part of "Reset & start over" (a host hands the role to the longest-standing member; an empty group is deleted)
+ */
+export const ResetGroupMembershipParams = zod.object({
+  "groupId": zod.uuid()
+})
+
+export const resetGroupMembershipHeaderXMemberTokenMin = 32;
+export const resetGroupMembershipHeaderXMemberTokenMax = 256;
+
+
+
+export const ResetGroupMembershipHeader = zod.object({
+  "X-Member-Token": zod.string().min(resetGroupMembershipHeaderXMemberTokenMin).max(resetGroupMembershipHeaderXMemberTokenMax)
+})
+
+export const ResetGroupMembershipResponse = zod.void()
+
+
+/**
  * @summary Activate the group for tonight and notify members (host only)
  */
 export const StartGroupTonightParams = zod.object({

@@ -264,6 +264,11 @@ export function Row({
   destructive,
   children,
   testID,
+  icon,
+  value,
+  warning,
+  checked,
+  external,
 }: {
   title: string;
   subtitle?: string;
@@ -273,29 +278,60 @@ export function Row({
   destructive?: boolean;
   children?: React.ReactNode;
   testID?: string;
+  /** Leading icon in a small tinted square, like iOS Settings. */
+  icon?: React.ComponentProps<typeof Feather>['name'];
+  /** Current value, shown before the chevron. */
+  value?: string;
+  /** Something needs attention on the page this row opens. */
+  warning?: boolean;
+  /** A choice in a pick-one list: shows a checkmark instead of the chevron. */
+  checked?: boolean;
+  /** Opens outside the app (a web page). */
+  external?: boolean;
 }) {
   const colors = useColors();
   const titleColor = destructive ? colors.destructive : colors.foreground;
+  const trailing = onSwitch ? (
+    <Switch
+      testID={testID}
+      accessibilityLabel={title}
+      value={!!switchValue}
+      onValueChange={onSwitch}
+      trackColor={{ false: colors.input, true: colors.primary }}
+      thumbColor={colors.background}
+      // react-native-web colours the "on" thumb separately.
+      {...({ activeThumbColor: colors.background } as object)}
+    />
+  ) : checked !== undefined ? (
+    checked ? <Feather name="check" size={20} color={colors.primary} /> : <View style={styles.rowCheckSpace} />
+  ) : (
+    children ??
+    (onPress ? (
+      <View style={styles.rowTrailing}>
+        {warning ? <Feather name="alert-circle" size={16} color={colors.destructive} /> : null}
+        {value ? (
+          <Text numberOfLines={1} style={[styles.rowValue, { color: colors.mutedForeground }]}>
+            {value}
+          </Text>
+        ) : null}
+        <Feather name={external ? 'arrow-up-right' : 'chevron-right'} size={18} color={colors.mutedForeground} />
+      </View>
+    ) : null)
+  );
   const body = (
     <>
+      {icon ? (
+        <View style={[styles.rowIcon, { backgroundColor: colors.secondary }]}>
+          <Feather name={icon} size={16} color={destructive ? colors.destructive : colors.primary} />
+        </View>
+      ) : null}
       <View style={styles.rowText}>
         <Text style={[styles.rowTitle, { color: titleColor }]}>{title}</Text>
-        {subtitle ? <Text style={[styles.rowSubtitle, { color: colors.mutedForeground }]}>{subtitle}</Text> : null}
+        {subtitle ? (
+          <Text style={[styles.rowSubtitle, { color: colors.mutedForeground }]}>{subtitle}</Text>
+        ) : null}
       </View>
-      {onSwitch ? (
-        <Switch
-          testID={testID}
-          accessibilityLabel={title}
-          value={!!switchValue}
-          onValueChange={onSwitch}
-          trackColor={{ false: colors.input, true: colors.primary }}
-          thumbColor={colors.background}
-          // react-native-web colours the "on" thumb separately.
-          {...({ activeThumbColor: colors.background } as object)}
-        />
-      ) : (
-        children ?? (onPress ? <Feather name="chevron-right" size={18} color={colors.mutedForeground} /> : null)
-      )}
+      {trailing}
     </>
   );
   if (!onPress) return <View style={styles.row}>{body}</View>;
@@ -303,7 +339,8 @@ export function Row({
     <Pressable
       testID={testID}
       onPress={onPress}
-      accessibilityRole="button"
+      accessibilityRole={checked !== undefined ? 'radio' : 'button'}
+      accessibilityState={checked !== undefined ? { checked } : undefined}
       style={({ pressed }) => [styles.row, { opacity: pressed ? 0.7 : 1 }]}
     >
       {body}
@@ -436,6 +473,10 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   rowText: { flex: 1, gap: 2 },
+  rowIcon: { alignItems: 'center', borderRadius: 8, height: 30, justifyContent: 'center', width: 30 },
+  rowTrailing: { alignItems: 'center', flexDirection: 'row', flexShrink: 1, gap: 6, maxWidth: '55%' },
+  rowValue: { flexShrink: 1, fontSize: 14 },
+  rowCheckSpace: { width: 20 },
   rowTitle: { fontSize: 15, fontWeight: '700' },
   rowSubtitle: { fontSize: 12, lineHeight: 17 },
   premiumTag: {

@@ -1,0 +1,2 @@
+ALTER TABLE "group_members" ADD COLUMN "last_seen_at" timestamp with time zone DEFAULT now() NOT NULL;--> statement-breakpoint
+ALTER TABLE "group_members" ADD COLUMN "push_token_invalid_at" timestamp with time zone;

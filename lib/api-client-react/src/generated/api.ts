@@ -2820,6 +2820,80 @@ export const useLeaveGroup = <TError = ErrorType<void>,
       return useMutation(getLeaveGroupMutationOptions(options));
     }
 
+export const getResetGroupMembershipUrl = (groupId: string,) => {
+
+
+
+
+  return `/api/groups/${groupId}/me/reset`
+}
+
+/**
+ * @summary Leave as part of "Reset & start over" (a host hands the role to the longest-standing member; an empty group is deleted)
+ */
+export const resetGroupMembership = async (groupId: string, options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+
+  return customFetch<void>(getResetGroupMembershipUrl(groupId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getResetGroupMembershipMutationKey = () => ['resetGroupMembership'] as const;
+
+export const getResetGroupMembershipMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resetGroupMembership>>, TError,ResetGroupMembershipMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof resetGroupMembership>>, TError,ResetGroupMembershipMutationVariables, TContext> => {
+
+const mutationKey = getResetGroupMembershipMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof resetGroupMembership>>, ResetGroupMembershipMutationVariables> = (props) => {
+          const {groupId} = props ?? {};
+
+          return  resetGroupMembership(groupId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ResetGroupMembershipMutationResult = NonNullable<Awaited<ReturnType<typeof resetGroupMembership>>>
+
+    export type ResetGroupMembershipMutationError = ErrorType<void>
+    export type ResetGroupMembershipMutationVariables = {groupId: string}
+
+    /**
+ * @summary Leave as part of "Reset & start over" (a host hands the role to the longest-standing member; an empty group is deleted)
+ */
+export const useResetGroupMembership = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof resetGroupMembership>>, TError,ResetGroupMembershipMutationVariables, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof resetGroupMembership>>,
+        TError,
+        ResetGroupMembershipMutationVariables,
+        TContext
+      > => {
+      return useMutation(getResetGroupMembershipMutationOptions(options));
+    }
+
 export const getStartGroupTonightUrl = (groupId: string,) => {
 
 

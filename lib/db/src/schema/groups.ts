@@ -72,6 +72,15 @@ export const groupMembersTable = pgTable(
     language: groupLanguageEnum("language").default("ja").notNull(),
     // Per-member "group notifications" switch; applies to every group push.
     notifications: boolean("notifications").default(true).notNull(),
+    // Last authenticated request from this member's app (refreshed at most
+    // twice a day). Members inactive for long enough are removed by the
+    // nightly cleanup, since deleting the app can't tell the server.
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    // Set when Expo reports the push token as DeviceNotRegistered (usually the
+    // app was deleted); such members are removed sooner if they stay inactive.
+    pushTokenInvalidAt: timestamp("push_token_invalid_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),

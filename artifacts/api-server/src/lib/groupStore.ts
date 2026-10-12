@@ -8,7 +8,7 @@
  * changes, night start/end and participation updates are serialized per group.
  */
 import { randomUUID } from "node:crypto";
-import { and, eq, gt, gte, inArray, isNull, lt, lte, ne, or } from "drizzle-orm";
+import { and, asc, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, ne, or } from "drizzle-orm";
 import {
   getDb,
   groupMembersTable,
@@ -29,6 +29,14 @@ import { isLeaveByInNight, nightWindow, serviceDateFor } from "./groupNight";
 import type { GroupLanguage, GroupPushRecipient } from "./groupNotifications";
 
 export const GROUP_MEMBER_LIMIT = 50;
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+/** lastSeenAt is refreshed at most this often, to keep reads cheap. */
+const LAST_SEEN_REFRESH_MS = 12 * 60 * 60 * 1000;
+/** Members whose app hasn't been in touch this long are removed. */
+export const INACTIVE_MEMBER_DAYS = 180;
+/** Sooner when the push token was reported dead (the app was most likely deleted). */
+export const UNREGISTERED_MEMBER_DAYS = 30;
 
 type Db = ReturnType<typeof getDb>;
 type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
@@ -151,8 +159,45 @@ async function authorize(
     ? await query.for("update", { of: groupsTable })
     : await query;
   if (!row) return null;
+  if (now.getTime() - row.member.lastSeenAt.getTime() > LAST_SEEN_REFRESH_MS) {
+    await tx
+      .update(groupMembersTable)
+      .set({ lastSeenAt: now })
+      .where(eq(groupMembersTable.id, row.member.id));
+  }
   await expireNight(tx, groupId, now);
   return row;
+}
+
+/**
+ * Removes a member. A departing host hands the role to the longest-standing
+ * remaining member; a group left with nobody in it is deleted.
+ */
+async function removeMemberWithHandover(
+  tx: Tx,
+  groupId: string,
+  member: { id: string; role: GroupMember["role"] },
+  now: Date,
+): Promise<"left" | "group-deleted"> {
+  await tx.delete(groupMembersTable).where(eq(groupMembersTable.id, member.id));
+  const [next] = await tx
+    .select({ id: groupMembersTable.id })
+    .from(groupMembersTable)
+    .where(eq(groupMembersTable.groupId, groupId))
+    .orderBy(asc(groupMembersTable.createdAt))
+    .limit(1);
+  if (!next) {
+    await deleteNights(tx, eq(groupNightsTable.groupId, groupId));
+    await tx.delete(groupsTable).where(eq(groupsTable.id, groupId));
+    return "group-deleted";
+  }
+  if (member.role === "host") {
+    await tx
+      .update(groupMembersTable)
+      .set({ role: "host", updatedAt: now })
+      .where(eq(groupMembersTable.id, next.id));
+  }
+  return "left";
 }
 
 async function loadDetail(
@@ -621,6 +666,8 @@ export async function updateGroupMembershipRecord(
   }
   if (patch.expoPushToken !== undefined) {
     updates.expoPushToken = patch.expoPushToken?.trim() || null;
+    // A fresh token means the app is installed and reachable again.
+    if (updates.expoPushToken) updates.pushTokenInvalidAt = null;
   }
 
   return getDb().transaction(async (tx) => {
@@ -650,17 +697,22 @@ export async function updateGroupMembershipRecord(
   });
 }
 
+/**
+ * Leave a group. A host normally has to transfer or disband first; with
+ * `handover` (used by "Reset & start over") the host role passes to the
+ * longest-standing member instead, and a group left empty is deleted.
+ */
 export async function leaveGroupRecord(
   groupId: string,
   memberToken: string,
+  { handover = false }: { handover?: boolean } = {},
 ): Promise<{ kind: "not-found" } | { kind: "host" } | { kind: "ok" }> {
   return getDb().transaction(async (tx) => {
-    const auth = await authorize(tx, groupId, memberToken, new Date(), true);
+    const now = new Date();
+    const auth = await authorize(tx, groupId, memberToken, now, true);
     if (!auth) return { kind: "not-found" as const };
-    if (auth.member.role === "host") return { kind: "host" as const };
-    await tx
-      .delete(groupMembersTable)
-      .where(eq(groupMembersTable.id, auth.member.id));
+    if (auth.member.role === "host" && !handover) return { kind: "host" as const };
+    await removeMemberWithHandover(tx, groupId, auth.member, now);
     return { kind: "ok" as const };
   });
 }
@@ -967,4 +1019,51 @@ export async function purgeEndedGroupNights(now = new Date()): Promise<number> {
   return getDb().transaction((tx) =>
     deleteNights(tx, lte(groupNightsTable.endsAt, now)),
   );
+}
+
+/**
+ * Deleting the app can't tell the server, so members whose app hasn't been in
+ * touch for INACTIVE_MEMBER_DAYS (or UNREGISTERED_MEMBER_DAYS after their push
+ * token was reported dead) are removed, with the usual host handover.
+ */
+export async function purgeInactiveGroupMembers(now = new Date()): Promise<number> {
+  const db = getDb();
+  const inactiveBefore = new Date(now.getTime() - INACTIVE_MEMBER_DAYS * DAY_MS);
+  const unregisteredBefore = new Date(now.getTime() - UNREGISTERED_MEMBER_DAYS * DAY_MS);
+  const stale = await db
+    .select({ id: groupMembersTable.id, groupId: groupMembersTable.groupId })
+    .from(groupMembersTable)
+    .where(
+      or(
+        lt(groupMembersTable.lastSeenAt, inactiveBefore),
+        and(
+          isNotNull(groupMembersTable.pushTokenInvalidAt),
+          lt(groupMembersTable.lastSeenAt, unregisteredBefore),
+        ),
+      ),
+    );
+  let removed = 0;
+  for (const candidate of stale) {
+    removed += await db.transaction(async (tx) => {
+      // Lock the group, then re-check: the member may have come back meanwhile.
+      await tx
+        .select({ id: groupsTable.id })
+        .from(groupsTable)
+        .where(eq(groupsTable.id, candidate.groupId))
+        .for("update");
+      const [member] = await tx
+        .select()
+        .from(groupMembersTable)
+        .where(eq(groupMembersTable.id, candidate.id))
+        .limit(1);
+      if (!member) return 0;
+      const stillStale =
+        member.lastSeenAt < inactiveBefore ||
+        (member.pushTokenInvalidAt !== null && member.lastSeenAt < unregisteredBefore);
+      if (!stillStale) return 0;
+      await removeMemberWithHandover(tx, candidate.groupId, member, now);
+      return 1;
+    });
+  }
+  return removed;
 }

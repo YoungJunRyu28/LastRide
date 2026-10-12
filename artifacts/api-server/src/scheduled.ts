@@ -20,7 +20,7 @@ import {
 import { purgeExpiredCacheEntries } from "./lib/cache";
 import { purgeExpiredRateLimits } from "./lib/rateLimit";
 import { purgeExpiredEnterpriseData } from "./lib/enterpriseStore";
-import { purgeEndedGroupNights } from "./lib/groupStore";
+import { purgeEndedGroupNights, purgeInactiveGroupMembers } from "./lib/groupStore";
 import { dispatchGroupLeaveAlerts } from "./lib/groupNotifications";
 import { logger } from "./lib/logger";
 
@@ -39,19 +39,22 @@ export async function handler(event: ScheduledEvent) {
 
   switch (event.task) {
     case "cleanup": {
-      const [eventsPurged, cacheRowsPurged, rateLimitRowsPurged, groupNightsPurged] =
+      const [eventsPurged, cacheRowsPurged, rateLimitRowsPurged, groupNightsPurged, groupMembersPurged] =
         await Promise.all([
           purgeExpiredEnterpriseData(),
           purgeExpiredCacheEntries(),
           purgeExpiredRateLimits(),
           // Deletes every group night past 08:00 JST with its leave-by rows.
           purgeEndedGroupNights(),
+          // Members whose app has been gone for months (deleting the app can't tell us).
+          purgeInactiveGroupMembers(),
         ]);
       if (
         eventsPurged > 0 ||
         cacheRowsPurged > 0 ||
         rateLimitRowsPurged > 0 ||
-        groupNightsPurged > 0
+        groupNightsPurged > 0 ||
+        groupMembersPurged > 0
       ) {
         logger.info(
           {
@@ -59,6 +62,7 @@ export async function handler(event: ScheduledEvent) {
             cacheRowsPurged,
             rateLimitRowsPurged,
             groupNightsPurged,
+            groupMembersPurged,
           },
           "Purged expired application data",
         );

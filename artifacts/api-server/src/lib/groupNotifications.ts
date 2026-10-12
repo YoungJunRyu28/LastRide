@@ -83,7 +83,8 @@ type ExpoPushTicket = {
 /**
  * Sends best-effort pushes. Never throws: a push outage must not fail the
  * request that triggered it. Tokens Expo reports as DeviceNotRegistered are
- * removed from the member so we stop sending to them.
+ * removed from the member so we stop sending to them, and the member is marked
+ * so the nightly cleanup removes them sooner if the app doesn't come back.
  */
 export async function sendGroupPush(
   groupId: string,
@@ -143,7 +144,7 @@ export async function sendGroupPush(
     try {
       await getDb()
         .update(groupMembersTable)
-        .set({ expoPushToken: null, updatedAt: new Date() })
+        .set({ expoPushToken: null, pushTokenInvalidAt: new Date(), updatedAt: new Date() })
         .where(
           and(
             eq(groupMembersTable.groupId, groupId),

@@ -314,6 +314,16 @@ router.delete("/groups/:groupId/me", memberLimiter, async (req, res) => {
   res.status(204).end();
 });
 
+// "Reset & start over": leave even as host (the role passes to the
+// longest-standing member; a group left empty is deleted).
+router.post("/groups/:groupId/me/reset", memberLimiter, async (req, res) => {
+  const auth = memberRequest(req, res);
+  if (!auth) return;
+  const result = await leaveGroupRecord(auth.groupId, auth.token, { handover: true });
+  if (result.kind === "not-found") return notFound(res);
+  res.status(204).end();
+});
+
 router.post("/groups/:groupId/tonight", memberLimiter, async (req, res) => {
   const auth = memberRequest(req, res);
   if (!auth) return;
