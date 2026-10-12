@@ -1,0 +1,33 @@
+
+name: Sync LastRide Mirror
+
+on:
+  push:
+  delete:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lastride-mirror
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mirror repository
+        env:
+          MIRROR_TOKEN: ${{ secrets.MIRROR_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          git clone --bare \
+            https://github.com/nicknr100/LastRide.git \
+            repo.git
+
+          cd repo.git
+
+          git push --mirror \
+            "https://x-access-token:${MIRROR_TOKEN}@github.com/yjr28/LastRide.git"
