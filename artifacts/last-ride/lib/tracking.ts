@@ -61,11 +61,11 @@ async function recomputeFromLocation(coordinates: Coordinates): Promise<void> {
   if (!(await isTrackingFlagOn())) return; // stopped while we were computing
   await AsyncStorage.setItem(SNAPSHOT_KEY, JSON.stringify(plan));
   const language = settings.language ?? 'en';
-  await scheduleReminders(buildReminderPlans(plan, settings.reminderIntervals, now, { missedCheckIn: settings.missedCheckIn }), {
+  await scheduleReminders(buildReminderPlans(plan, settings.reminderIntervals, now, { missedCheckIn: settings.missedCheckIn, alarmIntervals: settings.alarmIntervals }), {
     leaveBy: formatJstTime(recommendedLeaveTime(plan)),
     station: language === 'ja' ? plan.station.nameJa : plan.station.name,
     language,
-  });
+  }, { sound: settings.alarmSound, vibrate: settings.reminderVibrate });
   await syncLiveActivity(plan, language, now).catch(() => undefined);
   const destinationLabel = settings.tonightDestination
     ? language === 'ja' ? settings.tonightDestination.nameJa : settings.tonightDestination.name

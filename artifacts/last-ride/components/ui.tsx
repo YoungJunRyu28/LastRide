@@ -195,6 +195,9 @@ export function Chip({
       style={[styles.chip, { backgroundColor: selected ? colors.primary : colors.secondary }]}
     >
       <Text
+        numberOfLines={1}
+        adjustsFontSizeToFit
+        minimumFontScale={0.8}
         style={[
           styles.chipText,
           { color: selected ? colors.primaryForeground : colors.mutedForeground, fontWeight: selected ? '900' : '700' },

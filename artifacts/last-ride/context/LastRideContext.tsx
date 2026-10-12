@@ -49,6 +49,7 @@ import {
   type HomeAddress,
   type Language,
   type NightLocationMode,
+  type ReminderSound,
   type SavedDestination,
 } from "@/lib/settings";
 import { clearSavedPlan, readSavedPlan, writeSavedPlan } from "@/lib/savedPlan";
@@ -188,7 +189,19 @@ type RideContextValue = {
   isLocationReady: boolean;
   isLocating: boolean;
   locationError: LocationErrorCode | null;
+  /** Notification times, minutes before leaving (0 = at leave time). */
   reminderIntervals: number[];
+  /** Alarm times (iOS); a time is a notification or an alarm, never both. */
+  alarmsEnabled: boolean;
+  alarmIntervals: number[];
+  alarmSound: ReminderSound;
+  /** Android: vibrate with reminders. */
+  reminderVibrate: boolean;
+  /** On starts with the leave time; off moves alarm times back to notifications. */
+  setAlarmsEnabled: (enabled: boolean) => void;
+  toggleAlarmInterval: (minutes: number) => void;
+  setAlarmSound: (sound: ReminderSound) => void;
+  setReminderVibrate: (vibrate: boolean) => void;
   /** Send the "missed the last train?" check-in after the last train has gone. */
   missedCheckIn: boolean;
   setMissedCheckIn: (enabled: boolean) => void;
@@ -412,6 +425,10 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
   const [reminderIntervals, setReminderIntervals] = useState<number[]>(
     DEFAULT_SETTINGS.reminderIntervals,
   );
+  const [alarmsEnabled, setAlarmsEnabledState] = useState(DEFAULT_SETTINGS.alarmsEnabled);
+  const [alarmIntervals, setAlarmIntervals] = useState<number[]>(DEFAULT_SETTINGS.alarmIntervals);
+  const [alarmSound, setAlarmSoundState] = useState<ReminderSound>(DEFAULT_SETTINGS.alarmSound);
+  const [reminderVibrate, setReminderVibrateState] = useState(DEFAULT_SETTINGS.reminderVibrate);
   const [missedCheckIn, setMissedCheckInState] = useState(
     DEFAULT_SETTINGS.missedCheckIn,
   );
@@ -445,6 +462,15 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     null,
   );
   const scheduleToken = useRef(0);
+  // Recheck alarm authorization when returning from iOS Settings, even if the
+  // chosen route and preferences are unchanged.
+  const [alarmPermissionRevision, setAlarmPermissionRevision] = useState(0);
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') setAlarmPermissionRevision((revision) => revision + 1);
+    });
+    return () => subscription.remove();
+  }, []);
   const foregroundWatch = useRef<Location.LocationSubscription | null>(null);
   const webWatchId = useRef<number | null>(null);
   // Serializes start/stop tracking: any await inside startTracking re-checks this
@@ -476,6 +502,10 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
         setHomeStationOption(saved.homeStation);
         setLeaveMarginState(saved.leaveMargin);
         setReminderIntervals(saved.reminderIntervals);
+        setAlarmsEnabledState(saved.alarmsEnabled);
+        setAlarmIntervals(saved.alarmIntervals);
+        setAlarmSoundState(saved.alarmSound);
+        setReminderVibrateState(saved.reminderVibrate);
         setPinnedStationState(saved.pinnedStation);
         setMissedCheckInState(saved.missedCheckIn);
         setNightLocationModeState(saved.nightLocationMode);
@@ -525,7 +555,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
   useEffect(() => {
     const token = ++scheduleToken.current;
     if (demoActive) return;
-    if (!trackingMode || !plan || reminderIntervals.length === 0) {
+    if (!trackingMode || !plan) {
       void cancelAllReminders();
       return;
     }
@@ -533,24 +563,28 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       const allowed = await ensureNotificationPermission();
       if (token !== scheduleToken.current) return;
       setNotificationsAllowed(allowed);
-      if (!allowed) return;
       const plans = buildReminderPlans(plan, reminderIntervals, Date.now(), {
         missedCheckIn,
+        alarmIntervals,
       });
       await scheduleReminders(plans, {
         leaveBy: formatJstTime(recommendedLeaveTime(plan)),
         station: stationLabel,
         language: language ?? "en",
-      });
+      }, { sound: alarmSound, vibrate: reminderVibrate });
     })();
   }, [
     trackingMode,
     plan,
     stationLabel,
     reminderIntervals,
+    alarmIntervals,
+    alarmSound,
+    reminderVibrate,
     missedCheckIn,
     language,
     demoActive,
+    alarmPermissionRevision,
   ]);
 
   // The lock-screen countdown follows night-out tracking. Re-synced when the plan
@@ -784,15 +818,71 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     [activeDestinationId, destinations, clearPlan],
   );
 
+  // A time is a notification or an alarm, never both: choosing it in one list
+  // removes it from the other.
   const toggleReminderInterval = useCallback((minutes: number) => {
-    setReminderIntervals((current) => {
-      const next = current.includes(minutes)
-        ? current.filter((entry) => entry !== minutes)
-        : [...current, minutes].sort((a, b) => b - a);
-      void AsyncStorage.setItem(STORAGE_KEYS.reminders, JSON.stringify(next));
-      return next;
-    });
+    const adding = !reminderIntervals.includes(minutes);
+    const next = adding
+      ? [...reminderIntervals, minutes].sort((a, b) => b - a)
+      : reminderIntervals.filter((entry) => entry !== minutes);
+    setReminderIntervals(next);
+    void AsyncStorage.setItem(STORAGE_KEYS.reminders, JSON.stringify(next));
+    if (adding && alarmIntervals.includes(minutes)) {
+      const alarms = alarmIntervals.filter((entry) => entry !== minutes);
+      setAlarmIntervals(alarms);
+      void AsyncStorage.setItem(STORAGE_KEYS.alarmTimes, JSON.stringify(alarms));
+    }
     void Haptics.selectionAsync();
+  }, [reminderIntervals, alarmIntervals]);
+
+  const toggleAlarmInterval = useCallback((minutes: number) => {
+    const adding = !alarmIntervals.includes(minutes);
+    const next = adding
+      ? [...alarmIntervals, minutes].sort((a, b) => b - a)
+      : alarmIntervals.filter((entry) => entry !== minutes);
+    setAlarmIntervals(next);
+    void AsyncStorage.setItem(STORAGE_KEYS.alarmTimes, JSON.stringify(next));
+    if (adding && reminderIntervals.includes(minutes)) {
+      const notifications = reminderIntervals.filter((entry) => entry !== minutes);
+      setReminderIntervals(notifications);
+      void AsyncStorage.setItem(STORAGE_KEYS.reminders, JSON.stringify(notifications));
+    }
+    void Haptics.selectionAsync();
+  }, [reminderIntervals, alarmIntervals]);
+
+  const setAlarmsEnabled = useCallback((enabled: boolean) => {
+    if (enabled === alarmsEnabled) return;
+    let notifications: number[];
+    let alarms: number[];
+    if (enabled) {
+      // Start with an alarm at the leave time. Settings asks for permission.
+      alarms = [0];
+      notifications = reminderIntervals.filter((entry) => entry !== 0);
+      setAlarmPermissionRevision((revision) => revision + 1);
+    } else {
+      // Their times go back to notifications, so switching alarms off never drops a reminder.
+      alarms = [];
+      notifications = [...new Set([...reminderIntervals, ...alarmIntervals])].sort((a, b) => b - a);
+    }
+    setAlarmsEnabledState(enabled);
+    setAlarmIntervals(alarms);
+    setReminderIntervals(notifications);
+    void AsyncStorage.multiSet([
+      [STORAGE_KEYS.alarmsEnabled, String(enabled)],
+      [STORAGE_KEYS.alarmTimes, JSON.stringify(alarms)],
+      [STORAGE_KEYS.reminders, JSON.stringify(notifications)],
+    ]);
+    void Haptics.selectionAsync();
+  }, [alarmsEnabled, reminderIntervals, alarmIntervals]);
+
+  const setAlarmSound = useCallback((sound: ReminderSound) => {
+    setAlarmSoundState(sound);
+    void AsyncStorage.setItem(STORAGE_KEYS.alarmSound, sound);
+  }, []);
+
+  const setReminderVibrate = useCallback((vibrate: boolean) => {
+    setReminderVibrateState(vibrate);
+    void AsyncStorage.setItem(STORAGE_KEYS.reminderVibrate, String(vibrate));
   }, []);
 
   const setHomeAddress = useCallback(
@@ -857,13 +947,13 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       // Schedule demo reminders with the OS (compressed to demo speed) so they
       // arrive even when the app is backgrounded or the phone is locked.
       scheduleToken.current += 1; // invalidate any in-flight real-mode scheduling
-      if (!trackingMode || !plan || reminderIntervals.length === 0) return;
+      if (!trackingMode || !plan) return;
       void (async () => {
         const allowed = await ensureNotificationPermission();
         setNotificationsAllowed(allowed);
-        if (!allowed) return;
         const plans = buildReminderPlans(plan, reminderIntervals, virtualMs, {
           missedCheckIn,
+          alarmIntervals,
         }).map((reminder) => ({
           ...reminder,
           fireAt: realAt + (reminder.fireAt - virtualMs) / DEMO_SPEED,
@@ -872,7 +962,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
           leaveBy: formatJstTime(recommendedLeaveTime(plan)),
           station: stationLabel,
           language: language ?? "en",
-        });
+        }, { sound: alarmSound, vibrate: reminderVibrate });
       })();
     },
     [
@@ -880,6 +970,9 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       plan,
       language,
       reminderIntervals,
+      alarmIntervals,
+      alarmSound,
+      reminderVibrate,
       missedCheckIn,
       stationLabel,
     ],
@@ -1206,6 +1299,10 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     setHomeStationOption(DEFAULT_SETTINGS.homeStation);
     setLeaveMarginState(DEFAULT_SETTINGS.leaveMargin);
     setReminderIntervals(DEFAULT_SETTINGS.reminderIntervals);
+    setAlarmsEnabledState(DEFAULT_SETTINGS.alarmsEnabled);
+    setAlarmIntervals(DEFAULT_SETTINGS.alarmIntervals);
+    setAlarmSoundState(DEFAULT_SETTINGS.alarmSound);
+    setReminderVibrateState(DEFAULT_SETTINGS.reminderVibrate);
     setPinnedStationState(null);
     setHomeAddressState(null);
     setDestinations(DEFAULT_SETTINGS.destinations);
@@ -1295,6 +1392,14 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       isLocating,
       locationError,
       reminderIntervals,
+      alarmsEnabled,
+      alarmIntervals,
+      alarmSound,
+      reminderVibrate,
+      setAlarmsEnabled,
+      toggleAlarmInterval,
+      setAlarmSound,
+      setReminderVibrate,
       missedCheckIn,
       setMissedCheckIn,
       nightLocationMode,
@@ -1345,6 +1450,14 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       nowMs,
       plan,
       reminderIntervals,
+      alarmsEnabled,
+      alarmIntervals,
+      alarmSound,
+      reminderVibrate,
+      setAlarmsEnabled,
+      toggleAlarmInterval,
+      setAlarmSound,
+      setReminderVibrate,
       requestLocation,
       resetAll,
       resetLanguage,

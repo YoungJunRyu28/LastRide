@@ -20,7 +20,8 @@
         "CFBundleLocalizations": [
           "ja",
           "en"
-        ]
+        ],
+        "NSAlarmKitUsageDescription": "LastRide uses alarms to help you leave in time for your last train, even when your iPhone is locked or silenced."
       }
     },
     "android": {

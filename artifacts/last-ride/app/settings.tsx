@@ -1,13 +1,15 @@
 import { Card, Chip, Divider, IconButton, Row, SectionLabel, Segmented } from '@/components/ui';
 import { REMINDER_CHOICES, useLastRide } from '@/context/LastRideContext';
+import { alarmKitAvailable, alarmAuthorizationStatus, iosMajorVersion, previewSound, requestAlarmAuthorization, sendTestAlarm } from '@/lib/notifications';
+import { REMINDER_SOUNDS, reminderLabel, type ReminderSound } from '@/lib/settings';
 import { usePremium } from '@/context/PremiumContext';
 import { Feather } from '@expo/vector-icons';
 import { useColors } from '@/hooks/useColors';
 import { recommendedLeaveTime } from '@/lib/reliability';
 import { MINUTE_MS } from '@/lib/time';
 import { router } from 'expo-router';
-import React from 'react';
-import { Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Alert, AppState, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 /** A labelled card of rows, with an optional note underneath. */
@@ -28,13 +30,55 @@ export default function SettingsScreen() {
   const insets = useSafeAreaInsets();
   const {
     language, homeStation, destination, leaveMargin, setLeaveMargin, setLanguage,
-    reminderIntervals, toggleReminderInterval, notificationsAllowed,
+    reminderIntervals, toggleReminderInterval, alarmsEnabled, setAlarmsEnabled, alarmIntervals, toggleAlarmInterval,
+    alarmSound, setAlarmSound, reminderVibrate, setReminderVibrate, notificationsAllowed,
     missedCheckIn, setMissedCheckIn, nightLocationMode, setNightLocationMode, backgroundAllowed, requestBackgroundLocation,
     demoActive, setDemoNow, nowMs, plan, currentTime, leaveBy, triggerTestNotification, resetAll,
   } = useLastRide();
   const { isPremium, live: premiumLive, setTestPremium } = usePremium();
   const ja = language === 'ja';
   const back = () => (router.canGoBack() ? router.back() : router.replace('/ride'));
+  // Rechecked when alarms are switched on and on return from iPhone Settings.
+  const [alarmStatus, setAlarmStatus] = useState<string>('unknown');
+  useEffect(() => {
+    const check = () => void alarmAuthorizationStatus().then(setAlarmStatus).catch(() => setAlarmStatus('unsupported'));
+    check();
+    const subscription = AppState.addEventListener('change', (state) => state === 'active' && check());
+    return () => subscription.remove();
+  }, [alarmsEnabled]);
+
+  const soundLabel = (sound: ReminderSound) =>
+    ({ default: ja ? 'iOS標準' : 'iOS default', pulse: 'Pulse', chime: 'Chime', urgent: ja ? '緊急' : 'Urgent' })[sound];
+
+  const chooseSound = (sound: ReminderSound) => {
+    setAlarmSound(sound);
+    previewSound(sound).catch(() => undefined);
+  };
+
+  const alarmsNotAllowed = () =>
+    Alert.alert(
+      ja ? 'iPhoneの設定でアラームがオフです' : 'Alarms are off in iPhone Settings',
+      ja
+        ? '許可するまで、アラームの時刻は通知として届きます（マナーモード中は鳴りません）。'
+        : 'Until you allow them, alarm times arrive as notifications (silent in silent mode).',
+      [{ text: ja ? 'あとで' : 'Later', style: 'cancel' }, { text: ja ? '設定を開く' : 'Open Settings', onPress: () => void Linking.openSettings() }],
+    );
+
+  // Every time alarms are switched on: ask (first time), or point to iPhone Settings if they're blocked.
+  const switchAlarms = async (enabled: boolean) => {
+    setAlarmsEnabled(enabled);
+    if (!enabled || !alarmKitAvailable) return;
+    const status = await requestAlarmAuthorization().catch(() => 'denied');
+    setAlarmStatus(status);
+    if (status !== 'authorized') alarmsNotAllowed();
+  };
+
+  const testAlarm = async () => {
+    const status = await requestAlarmAuthorization().catch(() => 'denied');
+    setAlarmStatus(status);
+    const sent = status === 'authorized' && (await sendTestAlarm(language ?? 'en', alarmSound).catch(() => false));
+    if (!sent) alarmsNotAllowed();
+  };
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
@@ -93,21 +137,118 @@ export default function SettingsScreen() {
                 ? 'ブラウザ版ではこのタブを開いている間のみ届きます。'
                 : 'In the browser, reminders only arrive while this tab is open.'
               : ja
-                ? '夜のトラッキング中に届きます。出発時刻ちょうどにも通知します。'
-                : 'Sent while night-out tracking is on, including when it’s time to go.'
+                ? '夜のトラッキング中に届きます。同じ時刻は通知かアラームのどちらか一方です。'
+                : 'Sent while night-out tracking is on. Each time is either a notification or an alarm.'
           }
         >
-          <View style={styles.chipRow}>
-            {REMINDER_CHOICES.map((minutes) => (
-              <Chip
-                key={minutes}
-                testID={`reminder-${minutes}`}
-                label={ja ? `${minutes}分前` : `${minutes} min`}
-                selected={reminderIntervals.includes(minutes)}
-                onPress={() => toggleReminderInterval(minutes)}
-              />
-            ))}
+          <View style={styles.reminderList}>
+            <Text style={[styles.listTitle, { color: colors.foreground }]}>{ja ? '通知' : 'Notifications'}</Text>
+            <View style={styles.choiceRow}>
+              {REMINDER_CHOICES.map((minutes) => (
+                <Chip
+                  key={minutes}
+                  testID={`reminder-${minutes}`}
+                  label={reminderLabel(minutes, ja)}
+                  selected={reminderIntervals.includes(minutes)}
+                  onPress={() => toggleReminderInterval(minutes)}
+                />
+              ))}
+            </View>
           </View>
+          {Platform.OS === 'ios' && (
+            <>
+              <Divider />
+              <Row
+                testID="toggle-alarms"
+                title={ja ? 'アラーム' : 'Alarms'}
+                subtitle={ja ? '時計のアラームのように、マナーモードでも鳴ります' : 'Rings like a Clock alarm, even in silent mode'}
+                switchValue={alarmsEnabled}
+                onSwitch={(enabled) => void switchAlarms(enabled)}
+              />
+              {alarmsEnabled && alarmKitAvailable && alarmStatus === 'denied' && (
+                <>
+                  <Divider />
+                  <Row
+                    testID="alarm-settings"
+                    title={ja ? 'iPhoneの設定でアラームがオフです' : 'Alarms are off in iPhone Settings'}
+                    subtitle={
+                      ja
+                        ? 'このままでは通知として届き、マナーモード中は鳴りません。タップしてアラームを許可してください。'
+                        : 'Until then they arrive as notifications and stay silent in silent mode. Tap to allow alarms.'
+                    }
+                    onPress={() => void Linking.openSettings()}
+                    destructive
+                  />
+                </>
+              )}
+              {alarmsEnabled && (
+                <View style={[styles.reminderList, styles.alarmList]}>
+                  <View style={styles.choiceRow}>
+                    {REMINDER_CHOICES.map((minutes) => (
+                      <Chip
+                        key={minutes}
+                        testID={`alarm-${minutes}`}
+                        label={reminderLabel(minutes, ja)}
+                        selected={alarmIntervals.includes(minutes)}
+                        onPress={() => toggleAlarmInterval(minutes)}
+                      />
+                    ))}
+                  </View>
+                  <Text style={[styles.listTitle, { color: colors.foreground }]}>{ja ? '音' : 'Sound'}</Text>
+                  <View style={styles.choiceRow}>
+                    {REMINDER_SOUNDS.map((sound) => (
+                      <Chip
+                        key={sound}
+                        testID={`alarm-sound-${sound}`}
+                        label={soundLabel(sound)}
+                        selected={alarmSound === sound}
+                        onPress={() => chooseSound(sound)}
+                      />
+                    ))}
+                  </View>
+                  <Text style={[styles.listNote, { color: colors.mutedForeground }]}>
+                    {ja
+                      ? 'タップで試聴できます（メディアの音量で再生）。iOS標準の音と実際の音量は、下の「実際のアラームで確認」で確かめられます。'
+                      : 'Tap to preview (plays at media volume). Hear iOS default and the real loudness with “Check with a real alarm” below.'}
+                  </Text>
+                  {!alarmKitAvailable && (
+                    <Pressable accessibilityRole="button" onPress={() => void Linking.openSettings()}>
+                      <Text style={[styles.listNote, { color: colors.mutedForeground }]}>
+                        {ja
+                          ? `このiPhone（iOS ${iosMajorVersion ?? ''}）ではアラームを使えません。iOS 26以降にアップデートすると使えるようになります。それまでは、選んだ音の通知として届きます（マナーモード中は鳴りません）。`
+                          : `Alarms need iOS 26 or later (this iPhone has iOS ${iosMajorVersion ?? ''}). Until you update, they arrive as notifications with your chosen sound, and stay silent in silent mode.`}
+                      </Text>
+                      <Text style={[styles.listLink, { color: colors.primary }]}>
+                        {ja ? '設定 → 一般 → ソフトウェアアップデート ›' : 'Settings → General → Software Update ›'}
+                      </Text>
+                    </Pressable>
+                  )}
+                </View>
+              )}
+              {alarmsEnabled && alarmKitAvailable && (
+                <>
+                  <Divider />
+                  <Row
+                    testID="test-alarm"
+                    title={ja ? '実際のアラームで確認' : 'Check with a real alarm'}
+                    subtitle={ja ? '5秒後に鳴ります。画面をロックすると、実際の見え方を確認できます。' : 'Rings in 5 seconds. Lock your phone to see it as you will on the night.'}
+                    onPress={() => void testAlarm()}
+                  />
+                </>
+              )}
+            </>
+          )}
+          {Platform.OS === 'android' && (
+            <>
+              <Divider />
+              <Row
+                testID="reminder-vibrate"
+                title={ja ? 'バイブレーション' : 'Vibration'}
+                switchValue={reminderVibrate}
+                onSwitch={setReminderVibrate}
+              />
+            </>
+          )}
           <Divider />
           <Row
             testID="toggle-missed-check-in"
@@ -271,4 +412,10 @@ const styles = StyleSheet.create({
   premiumTitle: { fontSize: 15, fontWeight: '800' },
   premiumBody: { fontSize: 12, lineHeight: 17 },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 16, paddingVertical: 14 },
+  reminderList: { gap: 10, paddingHorizontal: 16, paddingVertical: 14 },
+  alarmList: { paddingTop: 0 },
+  listTitle: { fontSize: 13, fontWeight: '700' },
+  choiceRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  listNote: { fontSize: 12, lineHeight: 18 },
+  listLink: { fontSize: 13, fontWeight: '700', marginTop: 4 },
 });

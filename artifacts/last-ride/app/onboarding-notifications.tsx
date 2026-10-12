@@ -1,10 +1,11 @@
 import { OnboardingFrame, OnboardingHeading } from '@/components/Onboarding';
 import { Card, Chip, PrimaryButton, Row, TextButton } from '@/components/ui';
 import { REMINDER_CHOICES, useLastRide } from '@/context/LastRideContext';
+import { reminderLabel } from '@/lib/settings';
 import { useColors } from '@/hooks/useColors';
 import { router } from 'expo-router';
 import React, { useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Platform, StyleSheet, Text, View } from 'react-native';
 
 /** Setup 2/3: reminder timing, then the notification permission. */
 export default function OnboardingNotificationsScreen() {
@@ -66,7 +67,7 @@ export default function OnboardingNotificationsScreen() {
             <Chip
               key={minutes}
               testID={`reminder-${minutes}`}
-              label={ja ? `${minutes}分前` : `${minutes} min`}
+              label={reminderLabel(minutes, ja)}
               selected={reminderIntervals.includes(minutes)}
               onPress={() => toggleReminderInterval(minutes)}
             />
@@ -85,7 +86,8 @@ export default function OnboardingNotificationsScreen() {
       </Card>
 
       <Text style={[styles.footnote, { color: colors.mutedForeground }]}>
-        {ja ? '「今すぐ出発」の通知は常に届きます。あとから設定で変更できます。' : 'The “leave now” alert always comes. You can change this later in Settings.'}
+        {ja ? 'あとから設定で変更できます。' : 'You can change these later in Settings.'}
+        {Platform.OS === 'ios' ? (ja ? 'マナーモードでも鳴るアラームにもできます。' : ' They can also be alarms that ring in silent mode.') : ''}
       </Text>
     </OnboardingFrame>
   );

@@ -202,7 +202,7 @@ describe('buildReminderPlans', () => {
   const evening = jst(2026, 9, 23, 22, 0);
 
   test('one reminder per interval, newest last, plus the check-in', () => {
-    const plans = buildReminderPlans(tonight, [30, 10], evening);
+    const plans = buildReminderPlans(tonight, [30, 10, 0], evening);
 
     expect(plans.map((plan) => plan.fireAt)).toEqual([
       jst(2026, 9, 23, 23, 7), // 30 minutes before recommended departure
@@ -213,23 +213,32 @@ describe('buildReminderPlans', () => {
     expect(plans.at(-1)?.missedCheckIn).toBe(true);
   });
 
-  test('"leave now" is always included, even if not asked for', () => {
-    const plans = buildReminderPlans(tonight, [30], evening);
-    expect(plans.map((plan) => plan.minutesBefore)).toEqual([30, 0, 0]);
+  test('"leave now" is opt-in like the other times', () => {
+    expect(buildReminderPlans(tonight, [30], evening).map((plan) => plan.minutesBefore)).toEqual([30, 0]);
+    expect(buildReminderPlans(tonight, [], evening, { missedCheckIn: false })).toEqual([]);
   });
 
   test('duplicate intervals collapse', () => {
     const plans = buildReminderPlans(tonight, [30, 30, 10], evening);
-    expect(plans).toHaveLength(4);
+    expect(plans).toHaveLength(3);
+  });
+
+  test('alarm times are marked as alarms and merged in time order', () => {
+    const plans = buildReminderPlans(tonight, [15], evening, { alarmIntervals: [0, 30], missedCheckIn: false });
+    expect(plans.map((plan) => [plan.minutesBefore, plan.alarm ?? false])).toEqual([
+      [30, true],
+      [15, false],
+      [0, true],
+    ]);
   });
 
   test('reminders that have already passed are dropped', () => {
-    const plans = buildReminderPlans(tonight, [30, 10], jst(2026, 9, 23, 23, 35));
+    const plans = buildReminderPlans(tonight, [30, 10, 0], jst(2026, 9, 23, 23, 35));
     expect(plans.map((plan) => plan.fireAt)).toEqual([RECOMMENDED_LEAVE_BY, jst(2026, 9, 23, 23, 55)]);
   });
 
   test('a reminder due within five seconds is not worth scheduling', () => {
-    const plans = buildReminderPlans(tonight, [30, 10], RECOMMENDED_LEAVE_BY - 3000);
+    const plans = buildReminderPlans(tonight, [30, 10, 0], RECOMMENDED_LEAVE_BY - 3000);
     expect(plans.map((plan) => plan.fireAt)).toEqual([jst(2026, 9, 23, 23, 55)]);
   });
 });
