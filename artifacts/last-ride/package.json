@@ -26,6 +26,7 @@
     "@ungap/structured-clone": "^1.4.0",
     "@workspace/api-client-react": "workspace:*",
     "babel-plugin-react-compiler": "^19.0.0-beta-e993439-20250117",
+    "babel-preset-expo": "~57.0.14",
     "expo-blur": "~57.0.3",
     "expo-constants": "~57.0.21",
     "expo-font": "~57.0.4",

@@ -281,6 +281,9 @@ importers:
       babel-plugin-react-compiler:
         specifier: ^19.0.0-beta-e993439-20250117
         version: 19.0.0-beta-ebf51a3-20250411
+      babel-preset-expo:
+        specifier: ~57.0.14
+        version: 57.0.14(@babel/core@7.29.7)(@babel/runtime@7.29.7)(expo-widgets@57.0.23)(expo@57.0.27)(react-refresh@0.14.2)
       expo-blur:
         specifier: ~57.0.3
         version: 57.0.3(expo@57.0.27)(react-native@0.86.3(@babel/core@7.29.7)(@types/react@19.2.18)(react@19.2.3))(react@19.2.3)
