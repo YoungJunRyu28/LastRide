@@ -8,6 +8,8 @@ import { useColors } from '@/hooks/useColors';
 import { recommendedLeaveTime } from '@/lib/reliability';
 import { MINUTE_MS } from '@/lib/time';
 import { router } from 'expo-router';
+import * as WebBrowser from 'expo-web-browser';
+import { SUPPORT_URL, TERMS_URL, TOKUSHOHO_URL, siteLink } from '@/lib/links';
 import React, { useEffect, useState } from 'react';
 import { Alert, AppState, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -341,6 +343,12 @@ export default function SettingsScreen() {
           <Row testID="open-privacy" title={ja ? 'プライバシー' : 'Privacy'} subtitle={ja ? '位置情報の扱いについて' : 'How your location is used'} onPress={() => router.push('/privacy')} />
           <Divider />
           <Row testID="open-data-sources" title={ja ? 'データとライセンス' : 'Data & licences'} subtitle={ja ? '時刻データの提供元と注意事項' : 'Where train times come from'} onPress={() => router.push('/data-sources')} />
+          <Divider />
+          <Row testID="open-support" title={ja ? 'サポート・お問い合わせ' : 'Support & contact'} subtitle={ja ? 'よくある質問と連絡先' : 'Questions and how to reach us'} onPress={() => void WebBrowser.openBrowserAsync(siteLink(SUPPORT_URL, ja))} />
+          <Divider />
+          <Row testID="open-terms" title={ja ? '利用規約' : 'Terms of use'} onPress={() => void WebBrowser.openBrowserAsync(siteLink(TERMS_URL, ja))} />
+          <Divider />
+          <Row testID="open-tokushoho" title={ja ? '特定商取引法に基づく表記' : 'Legal notice (Japan)'} onPress={() => void WebBrowser.openBrowserAsync(siteLink(TOKUSHOHO_URL, ja))} />
           <Divider />
           <Row
             testID="reset-all"

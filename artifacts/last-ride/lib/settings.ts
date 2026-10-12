@@ -66,7 +66,7 @@ export type ReminderDelivery = {
 };
 
 export function reminderLabel(minutes: number, ja: boolean): string {
-  if (minutes === 0) return ja ? '出発時' : 'Leave time';
+  if (minutes === 0) return ja ? '出発時' : 'At leave';
   return ja ? `${minutes}分前` : `${minutes} min`;
 }
 

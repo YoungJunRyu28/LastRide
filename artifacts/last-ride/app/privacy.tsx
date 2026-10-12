@@ -6,21 +6,20 @@ import React from "react";
 import { Platform, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-/** Where privacy requests go; the same contact as the data notice. */
-const SUPPORT_CONTACT = process.env.EXPO_PUBLIC_SUPPORT_CONTACT?.trim() || null;
+import { SUPPORT_EMAIL } from "@/lib/links";
 
-/** Kept in step with PRIVACY.md at the repo root; this is the short version users see. */
+/** The short version users see; the full policy is site/privacy/index.html and site/en/privacy/index.html (lastride.jp/privacy). Keep them in step. */
 function copy(ja: boolean) {
   return ja
     ? {
         title: "プライバシー",
-        updated: "最終更新：2026年10月11日",
+        updated: "最終更新：2026年10月12日",
         intro:
           "LastRideはアカウントなしで使えます。データを広告目的で利用したり、販売したりすることはありません。",
         sections: [
           {
             heading: "端末に保存するもの",
-            body: "保存した帰り先（最寄り駅と、設定した場合は住所）、「今夜だけ別の場所へ」の駅（翌日に自動で消去）、言語・余裕・リマインダーなどの設定、今夜のプランです。今夜のプランは夜が終わると次の夜のものに置き換わります。移動履歴や過去の夜の記録は保存しません。",
+            body: "保存した帰り先（駅の名前と地域、設定した場合は住所の文字列。地図上の位置は長期保存せず、その夜だけ調べ直します）、「今夜だけ別の場所へ」の駅（翌日に自動で消去）、言語・余裕・通知などの設定、今夜のプランです。今夜のプランは夜が終わると削除または次の夜のものに置き換わります。移動履歴や過去の夜の記録は保存しません。",
           },
           {
             heading: "位置情報",
@@ -56,19 +55,19 @@ function copy(ja: boolean) {
           },
           {
             heading: "削除とお問い合わせ",
-            body: `設定の「最初からやり直す」で端末のデータを消去できます。グループからの退出はグループの「…」から行えます。${SUPPORT_CONTACT ? `プライバシーに関するお問い合わせ：${SUPPORT_CONTACT}` : "プライバシーに関するお問い合わせは、App Storeのアプリページのサポート窓口までお願いします。"}`,
+            body: `設定の「最初からやり直す」で端末のデータを消去できます。グループからの退出はグループの「…」から行えます。プライバシーに関するお問い合わせ：${SUPPORT_EMAIL}`,
           },
         ],
       }
     : {
         title: "Privacy",
-        updated: "Last updated: 11 October 2026",
+        updated: "Last updated: 12 October 2026",
         intro:
           "LastRide works without an account. We do not sell your data or use it for advertising.",
         sections: [
           {
             heading: "Stored on your phone",
-            body: "Your saved destinations (nearest station, plus an address if you add one), a “tonight only” station (cleared the next day), your language, time-to-spare, reminder and other settings, and tonight’s plan, which is replaced by the next night’s. LastRide keeps no movement history or record of past nights.",
+            body: "Your saved destinations (the station’s name and area, plus an address’s text if you add one — map positions aren’t kept long-term but looked up again for the night), a “tonight only” station (cleared the next day), your language, time-to-spare, reminder and other settings, and tonight’s plan, which is deleted or replaced once the night is over. LastRide keeps no movement history or record of past nights.",
           },
           {
             heading: "Location",
@@ -104,7 +103,7 @@ function copy(ja: boolean) {
           },
           {
             heading: "Deleting your data and contact",
-            body: `Use “Reset & start over” in Settings to erase LastRide’s data on your phone. Leave a group from its “…” menu. ${SUPPORT_CONTACT ? `Privacy questions: ${SUPPORT_CONTACT}` : "For privacy questions, use the support link on the App Store page."}`,
+            body: `Use “Reset & start over” in Settings to erase LastRide’s data on your phone. Leave a group from its “…” menu. Privacy questions: ${SUPPORT_EMAIL}`,
           },
         ],
       };

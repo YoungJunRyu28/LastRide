@@ -11,8 +11,7 @@ import { useColors } from '@/hooks/useColors';
 type IconName = React.ComponentProps<typeof Feather>['name'];
 
 /** Legal pages; set per build so the URLs can move without an app change. */
-const TERMS_URL = process.env.EXPO_PUBLIC_TERMS_URL;
-const TOKUSHOHO_URL = process.env.EXPO_PUBLIC_TOKUSHOHO_URL;
+import { TERMS_URL, TOKUSHOHO_URL, siteLink } from '@/lib/links';
 
 export function premiumFeatures(ja: boolean): Array<{ icon: IconName; title: string; body: string }> {
   return [
@@ -149,9 +148,9 @@ export function PremiumOffer({
         </Text>
         <View style={styles.links}>
           <TextButton label={ja ? '購入を復元' : 'Restore purchases'} onPress={() => void restorePurchases()} testID="restore-purchases" />
-          {TERMS_URL ? <TextButton label={ja ? '利用規約' : 'Terms'} onPress={() => void WebBrowser.openBrowserAsync(TERMS_URL)} /> : null}
+          <TextButton label={ja ? '利用規約' : 'Terms'} onPress={() => void WebBrowser.openBrowserAsync(siteLink(TERMS_URL, ja))} />
           <TextButton label={ja ? 'プライバシー' : 'Privacy'} onPress={() => router.push('/privacy')} />
-          {TOKUSHOHO_URL ? <TextButton label={ja ? '特定商取引法' : 'Legal notice'} onPress={() => void WebBrowser.openBrowserAsync(TOKUSHOHO_URL)} /> : null}
+          <TextButton label={ja ? '特定商取引法' : 'Legal notice'} onPress={() => void WebBrowser.openBrowserAsync(siteLink(TOKUSHOHO_URL, ja))} />
         </View>
       </View>
     </View>

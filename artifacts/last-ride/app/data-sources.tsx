@@ -7,8 +7,7 @@ import { Card, IconButton, SectionLabel, TextButton } from '@/components/ui';
 import { useLastRide } from '@/context/LastRideContext';
 import { useColors } from '@/hooks/useColors';
 
-/** Where users with questions should go — never the rail companies (ODPT licence condition). */
-const SUPPORT_CONTACT = process.env.EXPO_PUBLIC_SUPPORT_CONTACT?.trim() || null;
+import { SUPPORT_EMAIL } from '@/lib/links';
 
 const ODPT_URL = 'https://www.odpt.org/';
 const CC_BY_URL = 'https://creativecommons.org/licenses/by/4.0/deed.ja';
@@ -62,12 +61,12 @@ export default function DataSourcesScreen() {
             ? [
                 'このアプリで使用している公共交通データ（東京メトロ、都営地下鉄、つくばエクスプレス、りんかい線、多摩モノレール、横浜市営地下鉄）は、公共交通オープンデータセンターにおいて提供されるものです。',
                 '公共交通事業者により提供されたデータを元にしていますが、必ずしも正確・完全なものとは限りません。本アプリの表示内容について、公共交通事業者への直接の問い合わせは行わないでください。',
-                SUPPORT_CONTACT ? `本アプリに関するお問い合わせ：${SUPPORT_CONTACT}` : '本アプリに関するお問い合わせは、アプリの配信ページのサポート窓口までお願いします。',
+                `本アプリに関するお問い合わせ：${SUPPORT_EMAIL}`,
               ]
             : [
                 'Timetables for Tokyo Metro, Toei Subway, Tsukuba Express, Rinkai Line, Tama Monorail and Yokohama Municipal Subway come from the Public Transportation Open Data Center (公共交通オープンデータセンター).',
                 'The data is provided by the operators, but its accuracy and completeness are not guaranteed. Please do not contact the rail operators about anything shown in this app.',
-                SUPPORT_CONTACT ? `Questions about this app: ${SUPPORT_CONTACT}` : 'For questions about this app, use the support link on its App Store page.',
+                `Questions about this app: ${SUPPORT_EMAIL}`,
               ],
           { label: ja ? '公共交通オープンデータセンター' : 'Open Data Center', url: ODPT_URL },
         )}
