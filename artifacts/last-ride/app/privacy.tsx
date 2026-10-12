@@ -27,7 +27,7 @@ function copy(ja: boolean) {
           },
           {
             heading: "地図と時刻のデータ",
-            body: "iPhoneでは、近くの駅・徒歩時間・住所・周辺の施設・タクシーの所要時間、JRや私鉄の時刻をApple Mapsで調べるため、位置情報と検索内容がApple（Appleのプライバシーポリシーに従う）へ送信されます。地下鉄などの時刻は当社サーバーが公共交通オープンデータセンターのデータで計算するため、出発駅と到着駅（名前と位置）が当社サーバーへ送信されます。Androidでは、近くの駅を探すために位置情報も当社サーバーへ送信されます。これらは計算に使うだけで、アカウントや個人に結びつけて保存しません。",
+            body: "iPhoneでは、近くの駅・徒歩時間・住所・周辺の施設・タクシーの所要時間、JRや私鉄の時刻をApple Mapsで調べるため、位置情報と検索内容がApple（Appleのプライバシーポリシーに従う）へ送信されます。地下鉄などの時刻は当社サーバーが公共交通オープンデータセンターのデータで計算するため、出発駅と到着駅（名前と位置）が当社サーバーへ送信されます。これらは計算に使うだけで、アカウントや個人に結びつけて保存しません。",
           },
           {
             heading: "グループ",
@@ -35,15 +35,15 @@ function copy(ja: boolean) {
           },
           {
             heading: "プレミアム",
-            body: "購入と請求はApple（Androidの場合はGoogle）が行い、当社がカード情報などを受け取ることはありません。購読状態の管理にRevenueCatを使い、アカウント名やメールアドレスではなく、匿名のユーザーIDで管理します。グループを作るとき、当社サーバーはこのIDで購読状態を確認しますが、IDを保存しません。",
+            body: "購入と請求はAppleが行い、当社がカード情報などを受け取ることはありません。購読状態の管理にRevenueCatを使い、アカウント名やメールアドレスではなく、匿名のユーザーIDで管理します。グループを作るとき、当社サーバーはこのIDで購読状態を確認しますが、IDを保存しません。",
           },
           {
             heading: "ウィジェットとロック画面",
-            body: "ウィジェットとロック画面のカウントダウン（ライブアクティビティ、Androidは通知）は、今夜の出発時刻を端末の中だけで表示します。当社に送信されることはありません。",
+            body: "ウィジェットとロック画面のカウントダウン（ライブアクティビティ）は、今夜の出発時刻を端末の中だけで表示します。当社に送信されることはありません。",
           },
           {
             heading: "通知",
-            body: "出発のリマインダーは端末の中で予約されます。グループの通知（今夜の開始、メンバーの出発時刻）は、Expoのプッシュ配信とApple・Googleの通知サービスを通じて届きます。通知に広告は含まれません。",
+            body: "出発のリマインダーは端末の中で予約されます。グループの通知（今夜の開始、メンバーの出発時刻）は、Expoのプッシュ配信とAppleの通知サービスを通じて届きます。通知に広告は含まれません。",
           },
           {
             heading: "法人向けイベント",
@@ -75,7 +75,7 @@ function copy(ja: boolean) {
           },
           {
             heading: "Map and timetable data",
-            body: "On iPhone, nearby stations, walking times, addresses, nearby places, taxi times, and JR and private-railway times come from Apple Maps, so your location and searches are sent to Apple (under Apple’s privacy policy). Subway times are calculated by our server from Public Transportation Open Data Center data, so the departure and arrival stations (names and positions) are sent to our server. On Android your location is also sent to our server to find nearby stations. These are used for the calculation only and are not stored against you.",
+            body: "On iPhone, nearby stations, walking times, addresses, nearby places, taxi times, and JR and private-railway times come from Apple Maps, so your location and searches are sent to Apple (under Apple’s privacy policy). Subway times are calculated by our server from Public Transportation Open Data Center data, so the departure and arrival stations (names and positions) are sent to our server. These are used for the calculation only and are not stored against you.",
           },
           {
             heading: "Groups",
@@ -83,15 +83,15 @@ function copy(ja: boolean) {
           },
           {
             heading: "Premium",
-            body: "Purchases and billing are handled by Apple (or Google on Android); we never receive your card details. Subscription status is managed with RevenueCat using an anonymous user ID, not your name or email. When you create a group, our server checks your subscription with that ID but does not store it.",
+            body: "Purchases and billing are handled by Apple; we never receive your card details. Subscription status is managed with RevenueCat using an anonymous user ID, not your name or email. When you create a group, our server checks your subscription with that ID but does not store it.",
           },
           {
             heading: "Widgets and lock screen",
-            body: "Widgets and the lock-screen countdown (Live Activity, or a notification on Android) show tonight’s leave time from data on your phone. Nothing is sent to us for them.",
+            body: "Widgets and the lock-screen countdown (Live Activity) show tonight’s leave time from data on your phone. Nothing is sent to us for them.",
           },
           {
             heading: "Notifications",
-            body: "Leave reminders are scheduled on your phone. Group notifications (tonight started, a member’s leave time) are delivered through Expo’s push service and Apple’s or Google’s notification services. Notifications never contain advertising.",
+            body: "Leave reminders are scheduled on your phone. Group notifications (tonight started, a member’s leave time) are delivered through Expo’s push service and Apple’s notification service. Notifications never contain advertising.",
           },
           {
             heading: "Business events",

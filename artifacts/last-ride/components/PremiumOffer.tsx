@@ -19,7 +19,8 @@ export function premiumFeatures(ja: boolean): Array<{ icon: IconName; title: str
     {
       icon: 'lock',
       title: ja ? 'ロック画面のカウントダウン' : 'Lock-screen countdown',
-      body: ja ? 'ライブアクティビティ · Androidは通知' : 'Live Activity · a notification on Android',
+      // iPhone: the Live Activity. Never name the other platform in the iOS app (App Review 2.3.10).
+      body: Platform.OS === 'ios' ? (ja ? 'ライブアクティビティで最後の1時間を表示' : 'A Live Activity for the last hour') : ja ? '通知で残り時間を表示' : 'Time left in a notification',
     },
     { icon: 'grid', title: ja ? 'ホーム画面ウィジェット' : 'Home-screen widgets', body: ja ? '今夜の出発時刻をひと目で' : 'Tonight’s leave time at a glance' },
     { icon: 'map-pin', title: ja ? '帰り先を無制限に' : 'Unlimited destinations', body: ja ? '無料プランは1件まで' : 'Free plan: one' },
