@@ -4,8 +4,8 @@
 
 Default native application IDs:
 
-- iOS: `com.nicholasroberts.lastride`
-- Android: `com.nicholasroberts.lastride`
+- iOS: `jp.lastride.app`
+- Android: `jp.lastride.app`
 
 Local developers can override them with `IOS_BUNDLE_ID` and
 `ANDROID_PACKAGE_ID`.
