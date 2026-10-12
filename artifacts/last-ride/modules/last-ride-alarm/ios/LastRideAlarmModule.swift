@@ -1,12 +1,17 @@
 import ExpoModulesCore
 import AlarmKit
 import ActivityKit
+import AudioToolbox
+import AVFoundation
 import SwiftUI
 
 @available(iOS 26.0, *)
 private struct LastRideAlarmMetadata: AlarmMetadata {}
 
 public class LastRideAlarmModule: Module {
+  /** Kept alive while a preview plays. */
+  private var previewPlayer: AVAudioPlayer?
+
   public func definition() -> ModuleDefinition {
     Name("LastRideAlarm")
 
@@ -26,7 +31,7 @@ public class LastRideAlarmModule: Module {
       return state == .authorized ? "authorized" : "denied"
     }
 
-    AsyncFunction("scheduleAlarm") { (id: String, fireAtMs: Double, title: String, soundName: String) async throws -> Void in
+    AsyncFunction("scheduleAlarm") { (id: String, fireAtMs: Double, title: String, soundName: String, stopLabel: String) async throws -> Void in
       guard #available(iOS 26.0, *) else {
         throw Exception(name: "ALARM_UNSUPPORTED", description: "AlarmKit needs iOS 26 or later.")
       }
@@ -36,7 +41,7 @@ public class LastRideAlarmModule: Module {
       guard let uuid = UUID(uuidString: id), fireAtMs.isFinite, fireAtMs > Date().timeIntervalSince1970 * 1000 else {
         throw Exception(name: "INVALID_ALARM", description: "Expected a unique UUID and a future time.")
       }
-      let stop = AlarmButton(text: "Stop", textColor: .white, systemImageName: "stop.circle.fill")
+      let stop = AlarmButton(text: LocalizedStringResource(stringLiteral: stopLabel), textColor: .white, systemImageName: "stop.circle.fill")
       let alert = AlarmPresentation.Alert(title: LocalizedStringResource(stringLiteral: title), stopButton: stop)
       let attributes = AlarmAttributes<LastRideAlarmMetadata>(
         presentation: AlarmPresentation(alert: alert),
@@ -57,6 +62,28 @@ public class LastRideAlarmModule: Module {
       )
       _ = try await AlarmManager.shared.schedule(id: uuid, configuration: config)
     }
+
+    // Plays a bundled tone now, even with the silent switch on (at media volume:
+    // apps can't use the ringer volume), with a vibration, so tones can be compared.
+    AsyncFunction("previewSound") { (fileName: String) throws -> Void in
+      let name = (fileName as NSString).deletingPathExtension
+      guard let url = Bundle.main.url(forResource: name, withExtension: "caf") else {
+        throw Exception(name: "SOUND_NOT_FOUND", description: "\(fileName) isn't in the app bundle.")
+      }
+      let session = AVAudioSession.sharedInstance()
+      try session.setCategory(.playback, options: [.duckOthers])
+      try session.setActive(true)
+      let player = try AVAudioPlayer(contentsOf: url)
+      self.previewPlayer?.stop()
+      self.previewPlayer = player
+      player.play()
+      AudioServicesPlaySystemSound(kSystemSoundID_Vibrate)
+      DispatchQueue.main.asyncAfter(deadline: .now() + player.duration + 0.3) { [weak self] in
+        guard self?.previewPlayer === player else { return }
+        self?.previewPlayer = nil
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+      }
+    }.runOnQueue(.main)
 
     AsyncFunction("cancelAll") { () throws -> Void in
       guard #available(iOS 26.0, *) else { return }

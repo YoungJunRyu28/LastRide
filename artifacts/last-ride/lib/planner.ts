@@ -388,24 +388,28 @@ export type ReminderPlan = {
   minutesBefore: number;
   fireAt: number;
   missedCheckIn?: true;
+  /** Delivered as an alarm (AlarmKit) rather than a notification. */
+  alarm?: true;
 };
 
 /**
- * One reminder per selected interval, a "leave now" at leave-by itself, and a
- * "missed it?" check-in just after the last train leaves; past ones are dropped.
+ * One reminder per chosen time (`intervals` as notifications, `alarmIntervals`
+ * as alarms; 0 = at the leave time) and a "missed it?" check-in just after the
+ * last train leaves; past ones are dropped. Nothing is added unless chosen.
  */
 export function buildReminderPlans(
   choice: Pick<StationChoice, 'leaveByMs' | 'recommendedLeaveByMs' | 'safetyMarginMinutes' | 'walkingMinutes' | 'lastTrain'>,
   intervals: number[],
   nowMs: number,
-  { missedCheckIn = true }: { missedCheckIn?: boolean } = {},
+  { missedCheckIn = true, alarmIntervals = [] }: { missedCheckIn?: boolean; alarmIntervals?: number[] } = {},
 ): ReminderPlan[] {
   const leaveAt = recommendedLeaveTime(choice);
-  const reminders: ReminderPlan[] = [...new Set([...intervals, 0])]
+  const reminders: ReminderPlan[] = [...new Set([...intervals, ...alarmIntervals])]
     .sort((first, second) => second - first)
     .map((minutesBefore) => ({
       minutesBefore,
       fireAt: leaveAt - minutesBefore * MINUTE_MS,
+      ...(alarmIntervals.includes(minutesBefore) ? { alarm: true as const } : {}),
     }));
   if (missedCheckIn)
     reminders.push({

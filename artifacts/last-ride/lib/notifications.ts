@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import type { ReminderPlan } from '@/lib/planner';
-import { DEFAULT_REMINDER_PREFERENCES, deliveryFor, type ReminderPreferences } from '@/lib/settings';
+import type { ReminderDelivery, ReminderSound } from '@/lib/settings';
 import { alarmKit, alarmKitAvailable, type AlarmAuthorization } from '../modules/last-ride-alarm/src';
 
 let configured = false;
@@ -12,9 +12,10 @@ const webTimers: ReturnType<typeof setTimeout>[] = [];
 // use these keys to replace, not accumulate, locally scheduled notifications.
 const OWNED_IDS_KEY = 'lastride-owned-notification-ids';
 const SIGNATURE_KEY = 'lastride-reminder-signature';
-const SCHEDULER_VERSION = 3;
+const SCHEDULER_VERSION = 4;
 
 export { alarmKitAvailable };
+export { iosMajorVersion } from '../modules/last-ride-alarm/src';
 export const alarmAuthorizationStatus = (): Promise<AlarmAuthorization> => alarmKit.status();
 /** Called from an explicit user action, never from a headless background task. */
 export const requestAlarmAuthorization = (): Promise<AlarmAuthorization> => alarmKit.request();
@@ -31,6 +32,8 @@ async function writeOwnedIds(ids: string[]): Promise<void> {
   await AsyncStorage.setItem(OWNED_IDS_KEY, JSON.stringify(ids)).catch(() => undefined);
 }
 
+// Serializes all schedule/cancel operations so an older reschedule can never
+// cancel or overwrite a newer one.
 let queue: Promise<void> = Promise.resolve();
 function enqueue(operation: () => Promise<void>): Promise<void> {
   queue = queue.then(operation, operation);
@@ -80,9 +83,14 @@ export async function ensureNotificationPermission(): Promise<boolean> {
 
 export type NotificationTarget = '/ride' | '/alternatives' | '/business-event';
 
+/** The bundled tone's file name, for alarms and for notifications standing in for them. */
+function soundFile(sound: ReminderSound): string | null {
+  return sound === 'default' ? null : `lastride_${sound}.caf`;
+}
+
 async function present(
   title: string, body: string, fireAt: number | null,
-  target: NotificationTarget = '/ride', vibrate = true,
+  target: NotificationTarget = '/ride', vibrate = true, sound: string | null = null,
 ) {
   const delayMs = fireAt === null ? 0 : Math.max(0, fireAt - Date.now());
   if (Platform.OS === 'web') {
@@ -101,9 +109,11 @@ async function present(
   configure();
   await ensureChannel();
   const id = await Notifications.scheduleNotificationAsync({
-    // On iOS, vibration follows the user's iOS sound/haptics settings;
-    // iOS offers no per-notification independent vibration switch.
-    content: { title, body, sound: true, interruptionLevel: 'timeSensitive', data: { target } },
+    // timeSensitive lets the alert break through Focus modes once the app has the
+    // Time Sensitive Notifications entitlement. On iOS, vibration follows the
+    // phone's Sounds & Haptics settings; there's no per-notification switch.
+    // A custom `sound` is a bundled tone (at most 30 s), used when an alarm falls back.
+    content: { title, body, sound: (Platform.OS === 'ios' && sound) || true, interruptionLevel: 'timeSensitive', data: { target } },
     trigger: delayMs < 1000
       ? null
       : {
@@ -160,44 +170,48 @@ function newAlarmId(): string {
 }
 
 /**
- * Replaces all reminders for a tracking plan. Native alarms and Expo notifications
- * share the same lifecycle and use the same local departure timestamps. Never
- * request alarm permission from the headless location task.
- *
- * When AlarmKit is unavailable or not authorized, we fall back to a standard
- * notification rather than silently pretending to deliver a full system alarm.
+ * Replaces all reminders for a tracking plan (fire times are real epoch ms).
+ * Plans marked `alarm` become AlarmKit alarms on iOS 26+ when allowed; otherwise
+ * a time-sensitive notification with the chosen tone stands in for them.
+ * Skips the work when the same set is already scheduled, so frequent location
+ * updates from the app and the background task don't churn the OS schedule.
+ * Never requests alarm permission: this also runs in the headless location task.
  */
 export function scheduleReminders(
   plans: ReminderPlan[],
   text: ReminderText,
-  preferences: ReminderPreferences = DEFAULT_REMINDER_PREFERENCES,
+  { sound, vibrate }: Pick<ReminderDelivery, 'sound' | 'vibrate'> = { sound: 'default', vibrate: true },
 ): Promise<void> {
   return enqueue(async () => {
-    const alarmAuthorization = alarmKitAvailable ? await alarmKit.status().catch(() => 'denied') : 'unsupported';
-    // Permission can change in iOS Settings without the selected reminders changing.
-    // A schedule made as fallback notifications must be replaced after approval.
-    const signature = JSON.stringify([SCHEDULER_VERSION, plans, text, preferences, alarmAuthorization]);
+    const wantsAlarm = plans.some((plan) => plan.alarm);
+    const alarmAuthorization = wantsAlarm && alarmKitAvailable ? await alarmKit.status().catch(() => 'denied') : 'unsupported';
+    // Permission can change in iOS Settings without the plans changing; a schedule
+    // made of stand-in notifications must be replaced once alarms are allowed.
+    const signature = JSON.stringify([SCHEDULER_VERSION, plans, text, sound, vibrate, alarmAuthorization]);
     if (Platform.OS !== 'web' && (await AsyncStorage.getItem(SIGNATURE_KEY).catch(() => null)) === signature) return;
     await cancelOwned();
-    const alarmAuthorized = alarmAuthorization === 'authorized';
+    const language = text.language;
     for (const plan of plans) {
-      // A delayed background task must never turn an expired scheduled alarm
-      // into an unexpected instant notification.
+      // A delayed background task must never turn an expired alarm into an instant notification.
       if (plan.fireAt < Date.now() - 1000) continue;
       const { title, body } = reminderText(text, plan);
-      const pref = deliveryFor(preferences, plan.minutesBefore);
-      if (!plan.missedCheckIn && pref.mode === 'alarm' && alarmAuthorized && plan.fireAt > Date.now() + 1000) {
+      const target = plan.missedCheckIn ? '/alternatives' : '/ride';
+      if (plan.alarm && alarmAuthorization === 'authorized' && plan.fireAt > Date.now() + 1000) {
         try {
-          await alarmKit.schedule(newAlarmId(), plan.fireAt, title, pref.sound);
+          await alarmKit.schedule(newAlarmId(), plan.fireAt, title, sound, stopLabel(language));
           continue;
         } catch (error) {
-          console.warn('[LastRide] AlarmKit failed; falling back to notification', error);
+          console.warn('[LastRide] AlarmKit failed; falling back to a notification', error);
         }
       }
-      await present(title, body, plan.fireAt, plan.missedCheckIn ? '/alternatives' : '/ride', pref.vibrate);
+      await present(title, body, plan.fireAt, target, vibrate, plan.alarm ? soundFile(sound) : null);
     }
     await AsyncStorage.setItem(SIGNATURE_KEY, signature).catch(() => undefined);
   });
+}
+
+function stopLabel(language: 'ja' | 'en'): string {
+  return language === 'ja' ? '停止' : 'Stop';
 }
 
 export function sendTestNotification(language: 'ja' | 'en'): Promise<void> {
@@ -209,10 +223,19 @@ export function sendTestNotification(language: 'ja' | 'en'): Promise<void> {
   });
 }
 
-/** Schedules an actual system alarm 15 seconds ahead for device testing. */
-export async function sendTestAlarm(language: 'ja' | 'en', sound: string = 'default'): Promise<boolean> {
+/** How long the "check with a real alarm" test waits: time to lock the phone and see the full alarm. */
+export const TEST_ALARM_DELAY_MS = 5000;
+
+/** Schedules a real system alarm a few seconds ahead with `sound`; false when alarms aren't allowed. */
+export async function sendTestAlarm(language: 'ja' | 'en', sound: ReminderSound): Promise<boolean> {
   if (!alarmKitAvailable || (await alarmKit.status()) !== 'authorized') return false;
-  await alarmKit.schedule(newAlarmId(), Date.now() + 15000,
-    language === 'ja' ? 'LastRide — アラームテスト' : 'LastRide — alarm test', sound);
+  await alarmKit.schedule(newAlarmId(), Date.now() + TEST_ALARM_DELAY_MS,
+    language === 'ja' ? 'LastRide — アラームのテスト' : 'LastRide — alarm test', sound, stopLabel(language));
   return true;
+}
+
+/** Plays a bundled tone right away (even in silent mode, at media volume). Not for 'default': apps can't play Apple's alarm sound. */
+export function previewSound(sound: ReminderSound): Promise<void> {
+  const file = soundFile(sound);
+  return file ? alarmKit.preview(file) : Promise.resolve();
 }

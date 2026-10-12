@@ -23,8 +23,12 @@ export const STORAGE_KEYS = {
   language: 'lastride-language',
   homeStation: 'lastride-home-station',
   leaveMargin: 'lastride-leave-margin',
-  reminders: 'lastride-reminder-intervals',
-  reminderDelivery: 'lastride-reminder-delivery',
+  /** Notification times, minutes before leaving (0 = at leave time). */
+  reminders: 'lastride-reminder-times',
+  alarmsEnabled: 'lastride-alarms-enabled',
+  alarmTimes: 'lastride-alarm-times',
+  alarmSound: 'lastride-alarm-sound',
+  reminderVibrate: 'lastride-reminder-vibrate',
   pinnedStation: 'lastride-pinned-station',
   missedCheckIn: 'lastride-missed-check-in',
   homeAddress: 'lastride-home-address',
@@ -40,40 +44,29 @@ export const STORAGE_KEYS = {
  */
 export type NightLocationMode = 'ask' | 'foreground' | 'background';
 
-export const REMINDER_CHOICES = [30, 15, 10, 5];
-export const DEFAULT_REMINDERS = [15];
+/** Minutes before the leave time; 0 is the leave time itself (出発時刻). */
+export const REMINDER_CHOICES = [30, 15, 10, 5, 0];
+export const DEFAULT_REMINDERS = [15, 0];
 
-/** A preference for each selected lead time and for the always-on leave-now alert (0). */
-export type ReminderMode = 'notification' | 'alarm';
+/** Alarm sounds: Apple's default alarm, or one of the tones bundled in modules/last-ride-alarm. */
 export type ReminderSound = 'default' | 'pulse' | 'chime' | 'urgent';
-export type ReminderDelivery = { mode: ReminderMode; vibrate: boolean; sound: ReminderSound };
-export type ReminderPreferences = Record<number, ReminderDelivery>;
-export const DEFAULT_REMINDER_DELIVERY: ReminderDelivery = { mode: 'notification', vibrate: true, sound: 'default' };
-export const DEFAULT_REMINDER_PREFERENCES: ReminderPreferences = Object.fromEntries(
-  [...REMINDER_CHOICES, 0].map((minute) => [minute, { ...DEFAULT_REMINDER_DELIVERY }])
-) as ReminderPreferences;
+export const REMINDER_SOUNDS: ReminderSound[] = ['default', 'pulse', 'chime', 'urgent'];
 
-/** Reject invalid/corrupted persisted data; unknown fields and intervals are discarded. */
-export function parseReminderPreferences(raw: string | null): ReminderPreferences {
-  let parsed: unknown;
-  try { parsed = raw ? JSON.parse(raw) : null; } catch { parsed = null; }
-  const saved = parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : {};
-  const result: ReminderPreferences = {};
-  for (const minute of [...REMINDER_CHOICES, 0]) {
-    const item = saved[String(minute)];
-    const value = item && typeof item === 'object' ? item as Partial<ReminderDelivery> : {};
-    result[minute] = {
-      mode: value.mode === 'alarm' ? 'alarm' : 'notification',
-      vibrate: typeof value.vibrate === 'boolean' ? value.vibrate : true,
-      sound: value.sound === 'pulse' || value.sound === 'chime' || value.sound === 'urgent'
-        ? value.sound : 'default',
-    };
-  }
-  return result;
-}
+/**
+ * How the night's reminders are delivered. A time is either a notification or
+ * an alarm, never both; alarms are opt-in and iOS only.
+ */
+export type ReminderDelivery = {
+  /** Times delivered as alarms (empty while alarms are off). */
+  alarmTimes: number[];
+  sound: ReminderSound;
+  /** Android only: iOS follows the phone's Sounds & Haptics settings. */
+  vibrate: boolean;
+};
 
-export function deliveryFor(preferences: ReminderPreferences, minute: number): ReminderDelivery {
-  return preferences[minute] ?? DEFAULT_REMINDER_DELIVERY;
+export function reminderLabel(minutes: number, ja: boolean): string {
+  if (minutes === 0) return ja ? '出発時' : 'Leave time';
+  return ja ? `${minutes}分前` : `${minutes} min`;
 }
 
 export type Settings = {
@@ -81,8 +74,13 @@ export type Settings = {
   homeStation: StationOption | null;
   /** How much time to spare before the latest leave time. */
   leaveMargin: LeaveMargin;
+  /** Notification times (minutes before leaving). */
   reminderIntervals: number[];
-  reminderPreferences: ReminderPreferences;
+  alarmsEnabled: boolean;
+  /** Alarm times; never overlaps reminderIntervals. */
+  alarmIntervals: number[];
+  alarmSound: ReminderSound;
+  reminderVibrate: boolean;
   /** Station the user chose over the automatic pick; valid for one night only. */
   pinnedStation: StationOption | null;
   /** Send the "missed the last train?" check-in after the last train has gone. */
@@ -102,7 +100,10 @@ export const DEFAULT_SETTINGS: Settings = {
   homeStation: null,
   leaveMargin: 'normal',
   reminderIntervals: DEFAULT_REMINDERS,
-  reminderPreferences: DEFAULT_REMINDER_PREFERENCES,
+  alarmsEnabled: false,
+  alarmIntervals: [],
+  alarmSound: 'default',
+  reminderVibrate: true,
   pinnedStation: null,
   missedCheckIn: true,
   homeAddress: null,
@@ -167,14 +168,28 @@ export async function writeDestinationState(destinations: SavedDestination[], ac
   }
 }
 
-function parseReminders(raw: string | null): number[] {
-  if (!raw) return DEFAULT_REMINDERS;
+function parseReminders(raw: string | null, fallback: number[]): number[] {
+  if (!raw) return fallback;
   try {
     const parsed = JSON.parse(raw) as unknown;
-    return Array.isArray(parsed) ? parsed.filter((entry): entry is number => REMINDER_CHOICES.includes(entry as number)) : DEFAULT_REMINDERS;
+    return Array.isArray(parsed)
+      ? [...new Set(parsed.filter((entry): entry is number => REMINDER_CHOICES.includes(entry as number)))].sort((a, b) => b - a)
+      : fallback;
   } catch {
-    return DEFAULT_REMINDERS;
+    return fallback;
   }
+}
+
+/** Notification and alarm times; a time in both lists stays an alarm. */
+function parseReminderTimes(
+  notifyRaw: string | null,
+  enabledRaw: string | null,
+  alarmRaw: string | null,
+): Pick<Settings, 'reminderIntervals' | 'alarmsEnabled' | 'alarmIntervals'> {
+  const alarmsEnabled = enabledRaw === 'true';
+  const alarmIntervals = alarmsEnabled ? parseReminders(alarmRaw, []) : [];
+  const reminderIntervals = parseReminders(notifyRaw, DEFAULT_REMINDERS).filter((minutes) => !alarmIntervals.includes(minutes));
+  return { reminderIntervals, alarmsEnabled, alarmIntervals };
 }
 
 /** A pin only applies to the service day it was made on, so it never leaks into tomorrow night. */
@@ -200,12 +215,15 @@ export async function writePinnedStation(station: StationOption | null): Promise
 }
 
 export async function readSettings(): Promise<Settings> {
-  const [language, homeStation, leaveMargin, reminders, reminderDelivery, pinnedStation, missedCheckIn, homeAddress, destinationsRaw, activeDestinationIdRaw, nightLocationMode, tonightRaw] = await Promise.all([
+  const [language, homeStation, leaveMargin, reminders, alarmsEnabled, alarmTimes, alarmSound, reminderVibrate, pinnedStation, missedCheckIn, homeAddress, destinationsRaw, activeDestinationIdRaw, nightLocationMode, tonightRaw] = await Promise.all([
     AsyncStorage.getItem(STORAGE_KEYS.language),
     AsyncStorage.getItem(STORAGE_KEYS.homeStation),
     AsyncStorage.getItem(STORAGE_KEYS.leaveMargin),
     AsyncStorage.getItem(STORAGE_KEYS.reminders),
-    AsyncStorage.getItem(STORAGE_KEYS.reminderDelivery),
+    AsyncStorage.getItem(STORAGE_KEYS.alarmsEnabled),
+    AsyncStorage.getItem(STORAGE_KEYS.alarmTimes),
+    AsyncStorage.getItem(STORAGE_KEYS.alarmSound),
+    AsyncStorage.getItem(STORAGE_KEYS.reminderVibrate),
     AsyncStorage.getItem(STORAGE_KEYS.pinnedStation),
     AsyncStorage.getItem(STORAGE_KEYS.missedCheckIn),
     AsyncStorage.getItem(STORAGE_KEYS.homeAddress),
@@ -218,6 +236,8 @@ export async function readSettings(): Promise<Settings> {
   void AsyncStorage.removeItem('lastride-night-history').catch(() => undefined);
   // The walking-pace setting was replaced by 余裕 (leaveMargin).
   void AsyncStorage.removeItem('lastride-walking-speed').catch(() => undefined);
+  // Replaced by lastride-reminder-times (which includes the leave time) and the alarm keys.
+  void AsyncStorage.multiRemove(['lastride-reminder-intervals', 'lastride-reminder-delivery']).catch(() => undefined);
   const tonightDestination = parsePinnedStation(tonightRaw);
 
   const legacyStation = parseHomeStation(homeStation);
@@ -249,8 +269,9 @@ export async function readSettings(): Promise<Settings> {
     // Tonight's one-off station, when set, is where every plan heads (foreground and background).
     homeStation: tonightDestination ?? activeDestination?.station ?? legacyStation,
     leaveMargin: leaveMargin === 'tight' || leaveMargin === 'relaxed' ? leaveMargin : 'normal',
-    reminderIntervals: parseReminders(reminders),
-    reminderPreferences: parseReminderPreferences(reminderDelivery),
+    ...parseReminderTimes(reminders, alarmsEnabled, alarmTimes),
+    alarmSound: REMINDER_SOUNDS.includes(alarmSound as ReminderSound) ? (alarmSound as ReminderSound) : 'default',
+    reminderVibrate: reminderVibrate !== 'false',
     pinnedStation: parsePinnedStation(pinnedStation),
     // Absent means never changed, and the check-in is on by default.
     missedCheckIn: missedCheckIn !== 'false',

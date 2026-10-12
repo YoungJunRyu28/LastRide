@@ -5,7 +5,7 @@ const mocks = vi.hoisted(() => {
   return {
     store,
     alarmStatus: vi.fn(async () => 'authorized'),
-    alarmSchedule: vi.fn(async (_id: string, _fireAt: number, _title: string, _sound: string) => {}),
+    alarmSchedule: vi.fn(async (_id: string, _fireAt: number, _title: string, _sound: string, _stop: string) => {}),
     alarmCancel: vi.fn(async () => {}),
     notificationSchedule: vi.fn(async () => 'notification-id'),
     notificationCancel: vi.fn(async () => {}),
@@ -17,6 +17,7 @@ vi.mock('@react-native-async-storage/async-storage', () => ({
     getItem: vi.fn(async (key: string) => mocks.store.get(key) ?? null),
     setItem: vi.fn(async (key: string, value: string) => { mocks.store.set(key, value); }),
     removeItem: vi.fn(async (key: string) => { mocks.store.delete(key); }),
+    multiRemove: vi.fn(async (keys: string[]) => { keys.forEach((key) => mocks.store.delete(key)); }),
   },
 }));
 vi.mock('react-native', () => ({ Platform: { OS: 'ios', Version: 26 } }));
@@ -34,15 +35,17 @@ vi.mock('../modules/last-ride-alarm/src', () => ({
     request: vi.fn(async () => 'authorized'),
     schedule: mocks.alarmSchedule,
     cancelAll: mocks.alarmCancel,
+    preview: vi.fn(async () => {}),
   },
+  iosMajorVersion: 26,
 }));
 
-import { DEFAULT_REMINDER_PREFERENCES, parseReminderPreferences } from '@/lib/settings';
+import { readSettings, STORAGE_KEYS } from '@/lib/settings';
 import { cancelAllReminders, scheduleReminders } from '@/lib/notifications';
 
 const text = { leaveBy: '23:10', station: '新宿', language: 'ja' as const };
 
-describe('per-reminder delivery', () => {
+describe('reminder delivery', () => {
   beforeEach(async () => {
     await cancelAllReminders();
     mocks.store.clear();
@@ -50,48 +53,52 @@ describe('per-reminder delivery', () => {
     mocks.alarmStatus.mockResolvedValue('authorized');
   });
 
-  it('defaults to non-disruptive standard notifications, including leave-now', () => {
-    expect(parseReminderPreferences(null)[5]).toEqual({
-      mode: 'notification', vibrate: true, sound: 'default',
-    });
-    expect(parseReminderPreferences(null)[0].mode).toBe('notification');
+  it('defaults to notifications at 15 minutes and the leave time, with alarms off', async () => {
+    const settings = await readSettings();
+    expect(settings.reminderIntervals).toEqual([15, 0]);
+    expect(settings.alarmsEnabled).toBe(false);
+    expect(settings.alarmIntervals).toEqual([]);
+    expect(settings.alarmSound).toBe('default');
   });
 
-  it('validates saved preferences and ignores invalid inputs', () => {
-    const result = parseReminderPreferences(JSON.stringify({
-      5: { mode: 'alarm', vibrate: false, sound: 'urgent' },
-      10: { mode: 'malicious', vibrate: 'no', sound: '../../other' },
-      999: { mode: 'alarm', sound: 'pulse' },
-    }));
-    expect(result[5]).toEqual({ mode: 'alarm', vibrate: false, sound: 'urgent' });
-    expect(result[10]).toEqual({ mode: 'notification', vibrate: true, sound: 'default' });
-    expect(result[999]).toBeUndefined();
+  it('reads saved alarm times, keeps a time out of both lists, and ignores bad values', async () => {
+    mocks.store.set(STORAGE_KEYS.reminders, JSON.stringify([30, 15, 0, 999]));
+    mocks.store.set(STORAGE_KEYS.alarmsEnabled, 'true');
+    mocks.store.set(STORAGE_KEYS.alarmTimes, JSON.stringify([0, 'x']));
+    mocks.store.set(STORAGE_KEYS.alarmSound, '../../other');
+    const settings = await readSettings();
+    expect(settings.reminderIntervals).toEqual([30, 15]);
+    expect(settings.alarmIntervals).toEqual([0]);
+    expect(settings.alarmSound).toBe('default');
   });
 
-  it('schedules true iOS AlarmKit alarms for selected lead times and regular notifications for others', async () => {
+  it('ignores saved alarm times while alarms are off', async () => {
+    mocks.store.set(STORAGE_KEYS.alarmTimes, JSON.stringify([0]));
+    expect((await readSettings()).alarmIntervals).toEqual([]);
+  });
+
+  it('schedules AlarmKit alarms for alarm times with the chosen sound and a localised Stop button', async () => {
     const now = Date.now();
-    const preferences = {
-      ...DEFAULT_REMINDER_PREFERENCES,
-      5: { mode: 'alarm' as const, vibrate: true, sound: 'chime' as const },
-    };
     await scheduleReminders([
       { minutesBefore: 5, fireAt: now + 120000 },
-      { minutesBefore: 0, fireAt: now + 180000 },
-    ], text, preferences);
+      { minutesBefore: 0, fireAt: now + 180000, alarm: true },
+    ], text, { sound: 'chime', vibrate: true });
     expect(mocks.alarmSchedule).toHaveBeenCalledOnce();
-    expect(mocks.alarmSchedule.mock.calls[0][3]).toBe('chime');
+    expect(mocks.alarmSchedule.mock.calls[0].slice(3)).toEqual(['chime', '停止']);
     expect(mocks.notificationSchedule).toHaveBeenCalledOnce();
   });
 
-  it('falls back to ordinary notifications when system-alarm permission is denied', async () => {
+  it('falls back to a notification with the chosen tone when alarms are not allowed', async () => {
     mocks.alarmStatus.mockResolvedValue('denied');
-    const preferences = {
-      ...DEFAULT_REMINDER_PREFERENCES,
-      10: { mode: 'alarm' as const, vibrate: true, sound: 'pulse' as const },
-    };
-    await scheduleReminders([{ minutesBefore: 10, fireAt: Date.now() + 90000 }], text, preferences);
+    await scheduleReminders([{ minutesBefore: 10, fireAt: Date.now() + 90000, alarm: true }], text, { sound: 'pulse', vibrate: true });
     expect(mocks.alarmSchedule).not.toHaveBeenCalled();
     expect(mocks.notificationSchedule).toHaveBeenCalledOnce();
+    expect(mocks.notificationSchedule.mock.calls[0]).toMatchObject([{ content: { sound: 'lastride_pulse.caf' } }]);
+  });
+
+  it('plays the default sound for ordinary notifications', async () => {
+    await scheduleReminders([{ minutesBefore: 10, fireAt: Date.now() + 90000 }], text, { sound: 'urgent', vibrate: true });
+    expect(mocks.notificationSchedule.mock.calls[0]).toMatchObject([{ content: { sound: true } }]);
   });
 
   it('cancels native alarms when resetting and rescheduling', async () => {
@@ -102,7 +109,7 @@ describe('per-reminder delivery', () => {
   });
 
   it('does not schedule stale alarms from a delayed background callback', async () => {
-    await scheduleReminders([{ minutesBefore: 5, fireAt: Date.now() - 120000 }], text);
+    await scheduleReminders([{ minutesBefore: 5, fireAt: Date.now() - 120000, alarm: true }], text);
     expect(mocks.alarmSchedule).not.toHaveBeenCalled();
     expect(mocks.notificationSchedule).not.toHaveBeenCalled();
   });
