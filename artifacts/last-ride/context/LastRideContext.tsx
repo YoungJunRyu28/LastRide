@@ -38,6 +38,7 @@ import {
 } from "@/lib/planner";
 import {
   DEFAULT_SETTINGS,
+  deliveredReminders,
   readSettings,
   STORAGE_KEYS,
   writeDestinationState,
@@ -431,6 +432,12 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       : plan.station.name
     : "";
 
+  const { isPremium } = usePremium();
+  const delivered = useMemo(
+    () => deliveredReminders({ notifications: reminderIntervals, alarms: alarmIntervals, sound: alarmSound }, isPremium),
+    [reminderIntervals, alarmIntervals, alarmSound, isPremium],
+  );
+
   // Keep OS reminders in sync with the plan. Leave reminders belong to a night
   // out, so they are only scheduled while night-out tracking is on. Runs only when
   // these inputs change; unchanged schedules are skipped inside scheduleReminders.
@@ -445,23 +452,21 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       const allowed = await ensureNotificationPermission();
       if (token !== scheduleToken.current) return;
       setNotificationsAllowed(allowed);
-      const plans = buildReminderPlans(plan, reminderIntervals, Date.now(), {
+      const plans = buildReminderPlans(plan, delivered.notifications, Date.now(), {
         missedCheckIn,
-        alarmIntervals,
+        alarmIntervals: delivered.alarms,
       });
       await scheduleReminders(plans, {
         leaveBy: formatJstTime(recommendedLeaveTime(plan)),
         station: stationLabel,
         language: language ?? "en",
-      }, { sound: alarmSound, vibrate: reminderVibrate });
+      }, { sound: delivered.sound, vibrate: reminderVibrate });
     })();
   }, [
     trackingMode,
     plan,
     stationLabel,
-    reminderIntervals,
-    alarmIntervals,
-    alarmSound,
+    delivered,
     reminderVibrate,
     missedCheckIn,
     language,
@@ -472,7 +477,6 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
   // The lock-screen countdown follows night-out tracking. Re-synced when the plan
   // changes and when the night moves on (leave-by passes, the last train goes).
   const liveStatus = plan && !demoActive ? rideStatus(plan, nowMs) : null;
-  const { isPremium } = usePremium();
   useEffect(() => {
     if (!trackingMode || !plan || demoActive || !isPremium) {
       void endLiveActivity();
@@ -853,9 +857,9 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       void (async () => {
         const allowed = await ensureNotificationPermission();
         setNotificationsAllowed(allowed);
-        const plans = buildReminderPlans(plan, reminderIntervals, virtualMs, {
+        const plans = buildReminderPlans(plan, delivered.notifications, virtualMs, {
           missedCheckIn,
-          alarmIntervals,
+          alarmIntervals: delivered.alarms,
         }).map((reminder) => ({
           ...reminder,
           fireAt: realAt + (reminder.fireAt - virtualMs) / DEMO_SPEED,
@@ -864,16 +868,14 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
           leaveBy: formatJstTime(recommendedLeaveTime(plan)),
           station: stationLabel,
           language: language ?? "en",
-        }, { sound: alarmSound, vibrate: reminderVibrate });
+        }, { sound: delivered.sound, vibrate: reminderVibrate });
       })();
     },
     [
       trackingMode,
       plan,
       language,
-      reminderIntervals,
-      alarmIntervals,
-      alarmSound,
+      delivered,
       reminderVibrate,
       missedCheckIn,
       stationLabel,

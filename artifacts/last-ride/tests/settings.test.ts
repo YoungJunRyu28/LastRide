@@ -22,6 +22,7 @@ import {
   STORAGE_KEYS,
   writeDestinationState,
   type SavedDestination,
+  deliveredReminders,
 } from "@/lib/settings";
 
 const homeStation = {
@@ -95,5 +96,23 @@ describe("余裕 (time to spare)", () => {
     storage.set("lastride-walking-speed", "fast");
     await readSettings();
     expect(storage.has("lastride-walking-speed")).toBe(false);
+  });
+});
+
+describe("deliveredReminders", () => {
+  const chosen = { notifications: [30], alarms: [15, 0], sound: "chime" as const };
+
+  it("delivers every choice with Premium", () => {
+    expect(deliveredReminders(chosen, true)).toEqual(chosen);
+  });
+
+  it("keeps only the leave-time alarm and the iOS sound on the free plan", () => {
+    expect(deliveredReminders(chosen, false)).toEqual({ notifications: [30, 15], alarms: [0], sound: "default" });
+  });
+
+  it("never drops a reminder when Premium ends", () => {
+    const free = deliveredReminders({ notifications: [], alarms: [30, 10, 5], sound: "urgent" }, false);
+    expect(free.notifications).toEqual([30, 10, 5]);
+    expect(free.alarms).toEqual([]);
   });
 });

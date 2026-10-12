@@ -1,7 +1,7 @@
-import { Card, Chip, Divider, IconButton, Row, SectionLabel, Segmented } from '@/components/ui';
+import { Card, Chip, Divider, IconButton, PremiumTag, Row, SectionLabel, Segmented } from '@/components/ui';
 import { REMINDER_CHOICES, useLastRide } from '@/context/LastRideContext';
 import { alarmKitAvailable, alarmAuthorizationStatus, iosMajorVersion, previewSound, requestAlarmAuthorization, sendTestAlarm } from '@/lib/notifications';
-import { REMINDER_SOUNDS, reminderLabel, type ReminderSound } from '@/lib/settings';
+import { deliveredReminders, FREE_ALARM_SOUND, FREE_ALARM_TIMES, REMINDER_SOUNDS, reminderLabel, type ReminderSound } from '@/lib/settings';
 import { usePremium } from '@/context/PremiumContext';
 import { Feather } from '@expo/vector-icons';
 import { useColors } from '@/hooks/useColors';
@@ -38,6 +38,7 @@ export default function SettingsScreen() {
     demoActive, setDemoNow, nowMs, plan, currentTime, leaveBy, triggerTestNotification, resetAll,
   } = useLastRide();
   const { isPremium, live: premiumLive, setTestPremium } = usePremium();
+  const delivered = deliveredReminders({ notifications: reminderIntervals, alarms: alarmIntervals, sound: alarmSound }, isPremium);
   const ja = language === 'ja';
   const back = () => (router.canGoBack() ? router.back() : router.replace('/ride'));
   // Rechecked when alarms are switched on and on return from iPhone Settings.
@@ -78,7 +79,7 @@ export default function SettingsScreen() {
   const testAlarm = async () => {
     const status = await requestAlarmAuthorization().catch(() => 'denied');
     setAlarmStatus(status);
-    const sent = status === 'authorized' && (await sendTestAlarm(language ?? 'en', alarmSound).catch(() => false));
+    const sent = status === 'authorized' && (await sendTestAlarm(language ?? 'en', delivered.sound).catch(() => false));
     if (!sent) alarmsNotAllowed();
   };
 
@@ -151,8 +152,14 @@ export default function SettingsScreen() {
                   key={minutes}
                   testID={`reminder-${minutes}`}
                   label={reminderLabel(minutes, ja)}
-                  selected={reminderIntervals.includes(minutes)}
-                  onPress={() => toggleReminderInterval(minutes)}
+                  selected={delivered.notifications.includes(minutes)}
+                  onPress={() =>
+                    // On the free plan a saved premium alarm time shows here (it arrives as a
+                    // notification); pressing it clears that alarm time.
+                    !isPremium && alarmIntervals.includes(minutes) && !FREE_ALARM_TIMES.includes(minutes)
+                      ? toggleAlarmInterval(minutes)
+                      : toggleReminderInterval(minutes)
+                  }
                 />
               ))}
             </View>
@@ -186,28 +193,44 @@ export default function SettingsScreen() {
               {alarmsEnabled && (
                 <View style={[styles.reminderList, styles.alarmList]}>
                   <View style={styles.choiceRow}>
-                    {REMINDER_CHOICES.map((minutes) => (
-                      <Chip
-                        key={minutes}
-                        testID={`alarm-${minutes}`}
-                        label={reminderLabel(minutes, ja)}
-                        selected={alarmIntervals.includes(minutes)}
-                        onPress={() => toggleAlarmInterval(minutes)}
-                      />
-                    ))}
+                    {REMINDER_CHOICES.map((minutes) => {
+                      const locked = !isPremium && !FREE_ALARM_TIMES.includes(minutes);
+                      return (
+                        <Chip
+                          key={minutes}
+                          testID={`alarm-${minutes}`}
+                          label={reminderLabel(minutes, ja)}
+                          selected={delivered.alarms.includes(minutes)}
+                          locked={locked}
+                          onPress={() => (locked ? router.push('/paywall') : toggleAlarmInterval(minutes))}
+                        />
+                      );
+                    })}
                   </View>
                   <Text style={[styles.listTitle, { color: colors.foreground }]}>{ja ? '音' : 'Sound'}</Text>
                   <View style={styles.choiceRow}>
-                    {REMINDER_SOUNDS.map((sound) => (
-                      <Chip
-                        key={sound}
-                        testID={`alarm-sound-${sound}`}
-                        label={soundLabel(sound)}
-                        selected={alarmSound === sound}
-                        onPress={() => chooseSound(sound)}
-                      />
-                    ))}
+                    {REMINDER_SOUNDS.map((sound) => {
+                      const locked = !isPremium && sound !== FREE_ALARM_SOUND;
+                      return (
+                        <Chip
+                          key={sound}
+                          testID={`alarm-sound-${sound}`}
+                          label={soundLabel(sound)}
+                          selected={delivered.sound === sound}
+                          locked={locked}
+                          onPress={() => (locked ? router.push('/paywall') : chooseSound(sound))}
+                        />
+                      );
+                    })}
                   </View>
+                  {!isPremium && (
+                    <Pressable testID="alarm-premium" accessibilityRole="button" onPress={() => router.push('/paywall')} style={styles.alarmPremium}>
+                      <PremiumTag label={ja ? 'プレミアム' : 'Premium'} />
+                      <Text style={[styles.listNote, styles.alarmPremiumText, { color: colors.mutedForeground }]}>
+                        {ja ? '出発時以外のアラームと、音の選択' : 'Alarms at other times, and the choice of sound'}
+                      </Text>
+                    </Pressable>
+                  )}
                   <Text style={[styles.listNote, { color: colors.mutedForeground }]}>
                     {ja
                       ? 'タップで試聴できます（メディアの音量で再生）。iOS標準の音と実際の音量は、下の「実際のアラームで確認」で確かめられます。'
@@ -425,5 +448,7 @@ const styles = StyleSheet.create({
   listTitle: { fontSize: 13, fontWeight: '700' },
   choiceRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   listNote: { fontSize: 12, lineHeight: 18 },
+  alarmPremium: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  alarmPremiumText: { flex: 1 },
   listLink: { fontSize: 13, fontWeight: '700', marginTop: 4 },
 });

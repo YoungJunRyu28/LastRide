@@ -179,11 +179,14 @@ export function Chip({
   selected,
   onPress,
   testID,
+  locked,
 }: {
   label: string;
   selected: boolean;
   onPress: () => void;
   testID?: string;
+  /** A Premium choice on the free plan: dimmed, and pressing it should open the paywall. */
+  locked?: boolean;
 }) {
   const colors = useColors();
   return (
@@ -191,8 +194,9 @@ export function Chip({
       testID={testID}
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityState={{ selected }}
-      style={[styles.chip, { backgroundColor: selected ? colors.primary : colors.secondary }]}
+      accessibilityState={{ selected, disabled: locked }}
+      accessibilityHint={locked ? 'Premium' : undefined}
+      style={[styles.chip, { backgroundColor: selected ? colors.primary : colors.secondary }, locked && styles.chipLocked]}
     >
       <Text
         numberOfLines={1}
@@ -409,6 +413,7 @@ const styles = StyleSheet.create({
   textButtonText: { fontSize: 15, fontWeight: '700' },
   card: { borderRadius: 20, overflow: 'hidden' },
   sectionLabel: { fontSize: 13, fontWeight: '700', marginTop: 4 },
+  chipLocked: { opacity: 0.45 },
   chip: {
     alignItems: 'center',
     borderRadius: 999,

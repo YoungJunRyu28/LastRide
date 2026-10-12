@@ -65,6 +65,30 @@ export type ReminderDelivery = {
   vibrate: boolean;
 };
 
+/** Free plans get one alarm, at the leave time, with the iOS default sound. */
+export const FREE_ALARM_TIMES = [0];
+export const FREE_ALARM_SOUND: ReminderSound = 'default';
+
+/**
+ * What is actually delivered. Without Premium, alarm times other than the leave
+ * time arrive as notifications instead (so a lapsed subscription never drops a
+ * reminder) and alarms use the iOS default sound. Saved choices are kept, so
+ * they come back if Premium does.
+ */
+export function deliveredReminders(
+  { notifications, alarms, sound }: { notifications: number[]; alarms: number[]; sound: ReminderSound },
+  isPremium: boolean,
+): { notifications: number[]; alarms: number[]; sound: ReminderSound } {
+  if (isPremium) return { notifications, alarms, sound };
+  const freeAlarms = alarms.filter((minutes) => FREE_ALARM_TIMES.includes(minutes));
+  const asNotifications = alarms.filter((minutes) => !FREE_ALARM_TIMES.includes(minutes));
+  return {
+    notifications: [...new Set([...notifications, ...asNotifications])].sort((a, b) => b - a),
+    alarms: freeAlarms,
+    sound: FREE_ALARM_SOUND,
+  };
+}
+
 export function reminderLabel(minutes: number, ja: boolean): string {
   if (minutes === 0) return ja ? '出発時' : 'At leave';
   return ja ? `${minutes}分前` : `${minutes} min`;
