@@ -27,6 +27,7 @@ import { applyTrainChoice, effectiveTrainChoice, trainOptions, type TrainChoice 
 import {
   buildReminderPlans,
   nightEndsAt,
+  firstTrainSearchFrom,
   freshPlanNightOf,
   planNight,
   replanMargin,
@@ -557,7 +558,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     getFirstTrain(
       station,
       homeStationOption,
-      Math.max(getNow(), current!.lastTrain.departsAt),
+      firstTrainSearchFrom(current!.lastTrain.departsAt, getNow()),
     )
       .then((train) => {
         if (cancelled) return;

@@ -172,6 +172,17 @@ export function freshPlanNightOf(nowMs: number): number {
   return nowMs - dayStart < NIGHT_OVER_BY - 24 * HOUR_MS ? dayStart - 1 : nowMs;
 }
 
+/**
+ * When to look for the first train from: after tonight's last train, except
+ * between 03:00 and 05:00, when the next one from now is this morning's 始発
+ * (someone still out needs it, even if the plan has moved on to the coming night).
+ */
+export function firstTrainSearchFrom(lastTrainDepartsAt: number, nowMs: number): number {
+  const intoServiceDay = nowMs - serviceDayStart(nowMs);
+  const earlyMorning = intoServiceDay >= 23 * HOUR_MS || intoServiceDay < NIGHT_OVER_BY - 24 * HOUR_MS;
+  return earlyMorning ? nowMs : Math.max(nowMs, lastTrainDepartsAt);
+}
+
 /** The latest a night's last train can arrive (03:00 after it): past this, the night is over. */
 const NIGHT_DEADLINE = 23 * HOUR_MS;
 

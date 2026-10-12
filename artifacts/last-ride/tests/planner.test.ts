@@ -19,6 +19,7 @@ import {
   lastTrainLeftAt,
   missedCheckInAt,
   nightEndsAt,
+  firstTrainSearchFrom,
   freshPlanNightOf,
   nextNightOf,
   repick,
@@ -179,6 +180,23 @@ describe('nightEndsAt', () => {
 
   test('and the night is over by 05:00 regardless', () => {
     expect(nightEndsAt(tonight, train(jst(2026, 9, 24, 6, 0)))).toBe(jst(2026, 9, 24, 5, 0));
+  });
+});
+
+describe('firstTrainSearchFrom', () => {
+  test('in the evening, the first train is the one after tonight’s last train', () => {
+    expect(firstTrainSearchFrom(jst(2026, 9, 23, 23, 45), jst(2026, 9, 23, 21, 0))).toBe(jst(2026, 9, 23, 23, 45));
+  });
+
+  test('after the last train has gone, it is the next one from now', () => {
+    expect(firstTrainSearchFrom(jst(2026, 9, 23, 23, 45), jst(2026, 9, 24, 1, 0))).toBe(jst(2026, 9, 24, 1, 0));
+  });
+
+  test('between 03:00 and 05:00 it is this morning’s, even when the plan is for the coming night', () => {
+    const comingLastTrain = jst(2026, 9, 24, 23, 33);
+    expect(firstTrainSearchFrom(comingLastTrain, jst(2026, 9, 24, 3, 30))).toBe(jst(2026, 9, 24, 3, 30));
+    expect(firstTrainSearchFrom(comingLastTrain, jst(2026, 9, 24, 4, 20))).toBe(jst(2026, 9, 24, 4, 20));
+    expect(firstTrainSearchFrom(comingLastTrain, jst(2026, 9, 24, 5, 0))).toBe(comingLastTrain);
   });
 });
 
