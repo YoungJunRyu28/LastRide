@@ -925,6 +925,7 @@ export default function AlternativesScreen() {
                     : `${plan.walkingMinutes} min walk to ${station} for the first train. Open the route home in Maps`
                 }
                 openLabel={ja ? "経路を地図アプリで開く" : "Open route in Maps"}
+                legalLabel={ja ? "法的情報" : "Legal"}
               />
             )}
             <View style={styles.panelHead}>
@@ -1175,6 +1176,7 @@ export default function AlternativesScreen() {
                         : `${sortedStays.length} places nearby. Open the chosen one in Maps`
                     }
                     openLabel={ja ? "地図アプリで開く" : "Open in Maps"}
+                    legalLabel={ja ? "法的情報" : "Legal"}
                   />
                 </View>
                 {sortedStays.map((stay) => {
@@ -1351,6 +1353,7 @@ export default function AlternativesScreen() {
                       : `${taxiStands.length} taxi stands nearby. Walking directions to the chosen one in Maps`
                   }
                   openLabel={ja ? "地図アプリで開く" : "Open in Maps"}
+                  legalLabel={ja ? "法的情報" : "Legal"}
                 />
               ) : taxiTarget ? (
                 <MapCard
@@ -1370,6 +1373,7 @@ export default function AlternativesScreen() {
                     ja ? `${homeLabel}までの地図。地図アプリで開く` : `Map to ${homeLabel}. Open in Maps`
                   }
                   openLabel={ja ? "地図アプリで開く" : "Open in Maps"}
+                  legalLabel={ja ? "法的情報" : "Legal"}
                 />
               ) : null)}
             {taxiStands && taxiStands.length > 1 && (
@@ -1516,6 +1520,7 @@ export default function AlternativesScreen() {
                     : `${walkHome.walkingMinutes} min walk to ${homeLabel}. Open in Maps`
                 }
                 openLabel={ja ? "地図アプリで開く" : "Open in Maps"}
+                legalLabel={ja ? "法的情報" : "Legal"}
               />
             )}
             <View style={styles.panelHead}>

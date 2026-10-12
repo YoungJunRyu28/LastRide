@@ -126,6 +126,7 @@ export function MapCard({
   onPress,
   accessibilityLabel,
   openLabel,
+  legalLabel = '法的情報',
 }: {
   height?: number;
   /** Station tag at the end of the walk, e.g. "渋谷 A2". */
@@ -147,6 +148,8 @@ export function MapCard({
   onPress?: () => void;
   accessibilityLabel: string;
   openLabel: string;
+  /** Apple's required legal link next to the Maps logo. */
+  legalLabel?: string;
 }) {
   const colors = useColors();
   const [width, setWidth] = useState(0);
@@ -199,7 +202,7 @@ export function MapCard({
         // The snapshot carries Apple's Maps logo; the legal link sits beside it,
         // outside the pointer-disabled layer so it stays tappable.
         <Pressable onPress={() => void Linking.openURL(APPLE_LEGAL_URL)} accessibilityRole="link" hitSlop={8} style={styles.attribution}>
-          <Text style={styles.attributionText}>法的情報</Text>
+          <Text style={styles.attributionText}>{legalLabel}</Text>
         </Pressable>
       ) : null}
     </Pressable>
@@ -420,6 +423,6 @@ const styles = StyleSheet.create({
     right: 10,
   },
   openText: { fontSize: 11, fontWeight: '700' },
-  attribution: { bottom: 7, left: 64, position: 'absolute' },
+  attribution: { bottom: 7, left: 76, position: 'absolute' },
   attributionText: { color: '#C9D4DE', fontSize: 10, fontWeight: '600', textDecorationLine: 'underline' },
 });

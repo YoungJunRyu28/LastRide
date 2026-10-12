@@ -629,6 +629,7 @@ export default function RideScreen() {
                 : `${walkingMinutes ?? "—"} min walk to ${station}. Open the route home in Maps`
             }
             openLabel={ja ? "経路を地図アプリで開く" : "Open route in Maps"}
+            legalLabel={ja ? "法的情報" : "Legal"}
           />
         )}
 
