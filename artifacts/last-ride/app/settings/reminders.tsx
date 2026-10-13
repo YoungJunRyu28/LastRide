@@ -3,7 +3,7 @@ import { Section, SettingsPage, soundLabel, useAlarmStatus } from '@/components/
 import { Chip, Divider, Row } from '@/components/ui';
 import { REMINDER_CHOICES, useLastRide } from '@/context/LastRideContext';
 import { useColors } from '@/hooks/useColors';
-import { alarmKitAvailable, iosMajorVersion, requestAlarmAuthorization, sendTestAlarm } from '@/lib/notifications';
+import { alarmKitAvailable, effectiveAlarmSound, iosMajorVersion, requestAlarmAuthorization, sendTestAlarm } from '@/lib/notifications';
 import { reminderLabel } from '@/lib/settings';
 import { router } from 'expo-router';
 import React from 'react';
@@ -93,11 +93,15 @@ export default function ReminderSettingsScreen() {
           footer={
             <View style={styles.footerStack}>
               {alarmsEnabled && !alarmKitAvailable && (
-                <Text style={[styles.footer, { color: colors.mutedForeground }]}>
-                  {ja
-                    ? `アラームはiOS 26以降で使えます（このiPhoneはiOS ${iosMajorVersion ?? ''}）。それまでは通知として届きます。`
-                    : `Alarms need iOS 26 or later (this iPhone has iOS ${iosMajorVersion ?? ''}). Until then they arrive as notifications.`}
-                </Text>
+                <Notice
+                  icon="alert-circle"
+                  title={ja ? 'iOS 26以降でアラームになります' : 'Alarms need iOS 26 or later'}
+                  body={
+                    ja
+                      ? `このiPhoneはiOS ${iosMajorVersion ?? ''}です。今はアラームの時刻も、選んだ音の通知として届きます（マナーモード中は鳴りません）。iPhoneの設定 › 一般 › ソフトウェアアップデート からアップデートできます。`
+                      : `This iPhone is on iOS ${iosMajorVersion ?? ''}. For now, alarm times arrive as notifications with your chosen sound (silent in silent mode). Update in iPhone Settings › General › Software Update.`
+                  }
+                />
               )}
               {alarmsEnabled && (
                 <Text style={[styles.footer, { color: colors.mutedForeground }]}>
@@ -110,7 +114,11 @@ export default function ReminderSettingsScreen() {
           <Row
             testID="toggle-alarms"
             title={ja ? 'アラーム' : 'Alarms'}
-            subtitle={ja ? 'マナーモードでも鳴ります' : 'Rings even in silent mode'}
+            subtitle={
+              alarmKitAvailable
+                ? ja ? 'マナーモードでも鳴ります' : 'Rings even in silent mode'
+                : ja ? 'iOS 26以降はマナーモードでも鳴ります' : 'Rings in silent mode from iOS 26'
+            }
             switchValue={alarmsEnabled}
             onSwitch={(enabled) => void switchAlarms(enabled)}
           />
@@ -143,7 +151,7 @@ export default function ReminderSettingsScreen() {
               <Row
                 testID="open-alarm-sound"
                 title={ja ? '音' : 'Sound'}
-                value={soundLabel(alarmSound, ja)}
+                value={soundLabel(effectiveAlarmSound(alarmSound), ja)}
                 onPress={() => router.push('/settings/sound')}
               />
               {alarmKitAvailable && (

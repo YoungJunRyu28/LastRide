@@ -3,8 +3,8 @@ import { soundLabel } from '@/components/SettingsUI';
 import { Card, Chip, PrimaryButton, Row, TextButton } from '@/components/ui';
 import { REMINDER_CHOICES, useLastRide } from '@/context/LastRideContext';
 import { useColors } from '@/hooks/useColors';
-import { alarmKitAvailable, iosMajorVersion, previewSound, requestAlarmAuthorization } from '@/lib/notifications';
-import { REMINDER_SOUNDS, reminderLabel } from '@/lib/settings';
+import { ALARM_SOUND_CHOICES, alarmKitAvailable, effectiveAlarmSound, iosMajorVersion, previewSound, requestAlarmAuthorization } from '@/lib/notifications';
+import { reminderLabel } from '@/lib/settings';
 import { router } from 'expo-router';
 import React, { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
@@ -84,7 +84,11 @@ export default function OnboardingAlarmsScreen() {
         <Row
           testID="toggle-alarms"
           title={ja ? 'アラームを使う' : 'Use alarms'}
-          subtitle={ja ? 'マナーモードでも鳴ります' : 'Rings even in silent mode'}
+          subtitle={
+              alarmKitAvailable
+                ? ja ? 'マナーモードでも鳴ります' : 'Rings even in silent mode'
+                : ja ? 'iOS 26以降はマナーモードでも鳴ります' : 'Rings in silent mode from iOS 26'
+            }
           switchValue={alarmsEnabled}
           onSwitch={setAlarmsEnabled}
         />
@@ -116,12 +120,12 @@ export default function OnboardingAlarmsScreen() {
               <Text style={[styles.sectionHint, { color: colors.mutedForeground }]}>{ja ? '（タップで試聴）' : '  (tap to hear)'}</Text>
             </Text>
             <View style={styles.chips}>
-              {REMINDER_SOUNDS.map((sound) => (
+              {ALARM_SOUND_CHOICES.map((sound) => (
                 <Chip
                   key={sound}
                   testID={`alarm-sound-${sound}`}
                   label={soundLabel(sound, ja)}
-                  selected={alarmSound === sound}
+                  selected={effectiveAlarmSound(alarmSound) === sound}
                   onPress={() => {
                     setAlarmSound(sound);
                     previewSound(sound).catch(() => undefined);

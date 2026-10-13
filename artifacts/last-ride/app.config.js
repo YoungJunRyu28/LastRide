@@ -102,6 +102,11 @@ module.exports = ({ config }) => {
       ? { appleTeamId: process.env.APPLE_TEAM_ID }
       : {}),
     ...(joinUrl ? { associatedDomains: ["applinks:" + joinUrl.hostname] } : {}),
+    // Leave-now reminders and alarm stand-ins may break through Focus modes.
+    entitlements: {
+      ...((config.ios && config.ios.entitlements) || {}),
+      "com.apple.developer.usernotifications.time-sensitive": true,
+    },
   };
 
   const android = {

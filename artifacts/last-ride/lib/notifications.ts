@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import type { ReminderPlan } from '@/lib/planner';
-import type { ReminderDelivery, ReminderSound } from '@/lib/settings';
+import { REMINDER_SOUNDS, type ReminderDelivery, type ReminderSound } from '@/lib/settings';
 import { alarmKit, alarmKitAvailable, type AlarmAuthorization } from '../modules/last-ride-alarm/src';
 
 let configured = false;
@@ -12,7 +12,7 @@ const webTimers: ReturnType<typeof setTimeout>[] = [];
 // use these keys to replace, not accumulate, locally scheduled notifications.
 const OWNED_IDS_KEY = 'lastride-owned-notification-ids';
 const SIGNATURE_KEY = 'lastride-reminder-signature';
-const SCHEDULER_VERSION = 4;
+const SCHEDULER_VERSION = 5;
 
 export { alarmKitAvailable };
 export { iosMajorVersion } from '../modules/last-ride-alarm/src';
@@ -102,9 +102,23 @@ function soundFile(sound: ReminderSound): string | null {
   return sound === 'default' ? null : `lastride_${sound}.caf`;
 }
 
+/**
+ * Alarm tones on offer. "iOS default" is Apple's alarm sound only with AlarmKit
+ * (iOS 26+); before that an alarm arrives as a notification, where it would
+ * sound exactly like an ordinary reminder, so it isn't offered.
+ */
+export const ALARM_SOUND_CHOICES: ReminderSound[] = alarmKitAvailable
+  ? REMINDER_SOUNDS
+  : REMINDER_SOUNDS.filter((sound) => sound !== 'default');
+
+/** The tone an alarm actually uses: without AlarmKit, "iOS default" becomes Urgent. */
+export function effectiveAlarmSound(sound: ReminderSound): ReminderSound {
+  return !alarmKitAvailable && sound === 'default' ? 'urgent' : sound;
+}
+
 async function present(
   title: string, body: string, fireAt: number | null,
-  target: NotificationTarget = '/ride', vibrate = true, sound: string | null = null,
+  target: NotificationTarget = '/ride', vibrate = true, sound: string | null = null, urgent = false,
 ) {
   const delayMs = fireAt === null ? 0 : Math.max(0, fireAt - Date.now());
   if (Platform.OS === 'web') {
@@ -127,7 +141,7 @@ async function present(
     // Time Sensitive Notifications entitlement. On iOS, vibration follows the
     // phone's Sounds & Haptics settings; there's no per-notification switch.
     // A custom `sound` is a bundled tone (at most 30 s), used when an alarm falls back.
-    content: { title, body, sound: (Platform.OS === 'ios' && sound) || true, interruptionLevel: 'timeSensitive', data: { target } },
+    content: { title, body, sound: (Platform.OS === 'ios' && sound) || true, interruptionLevel: urgent ? 'timeSensitive' : 'active', data: { target } },
     trigger: delayMs < 1000
       ? null
       : {
@@ -234,7 +248,11 @@ export function scheduleReminders(
           console.warn('[LastRide] AlarmKit failed; falling back to a notification', error);
         }
       }
-      await present(title, body, plan.fireAt, target, vibrate, plan.alarm ? soundFile(sound) : null);
+      // An alarm's stand-in never uses the plain notification sound (or it'd be just another reminder).
+      const tone = plan.alarm ? soundFile(sound === 'default' ? 'urgent' : sound) : null;
+      // Time Sensitive (breaks through Focus) only where being late means missing the train.
+      const urgent = plan.alarm === true || plan.lastTrainBackup === true || (plan.minutesBefore === 0 && !plan.missedCheckIn);
+      await present(title, body, plan.fireAt, target, vibrate, tone, urgent);
     }
     await AsyncStorage.setItem(SIGNATURE_KEY, signature).catch(() => undefined);
   });
