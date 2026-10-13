@@ -3,6 +3,7 @@
  * rows on the main page, each opening a page for that setting).
  */
 import { Card, IconButton, SectionLabel } from '@/components/ui';
+import { useLastRide } from '@/context/LastRideContext';
 import { useColors } from '@/hooks/useColors';
 import { alarmAuthorizationStatus } from '@/lib/notifications';
 import type { LeaveMargin } from '@/lib/reliability';
@@ -26,10 +27,14 @@ export function SettingsPage({
 }) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
+  const { language } = useLastRide();
   const back = onBack ?? (() => (router.canGoBack() ? router.back() : router.replace('/settings')));
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
       <ScrollView
+        // Rebuilt on a language switch: iOS can otherwise keep text sized for the
+        // old language (e.g. after the phone was locked), cutting the new text off.
+        key={language}
         contentContainerStyle={[
           styles.content,
           { paddingTop: insets.top + (Platform.OS === 'web' ? 24 : 12), paddingBottom: insets.bottom + 28 },
