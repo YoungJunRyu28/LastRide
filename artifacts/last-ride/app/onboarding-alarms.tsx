@@ -67,12 +67,12 @@ export default function OnboardingAlarmsScreen() {
       {!alarmKitAvailable && (
         <Card style={[styles.card, styles.updateCard, { borderColor: colors.primary }]}>
           <Text style={[styles.updateTitle, { color: colors.foreground }]}>
-            {ja ? 'iOS 26以降にアップデートすると使えます' : 'Update to iOS 26 or later to use alarms'}
+            {ja ? 'アラームはiOS 26以降で使えます' : 'Alarms need iOS 26 or later'}
           </Text>
           <Text style={[styles.updateBody, { color: colors.mutedForeground }]}>
             {ja
-              ? `このiPhoneはiOS ${iosMajorVersion ?? ''}です。今はアラームの時刻も、選んだ音の通知として届きます（マナーモード中は鳴りません）。アップデート後は、ここで選んだ内容がそのままマナーモードでも鳴るアラームになります。設定 › 出発リマインダー からいつでも変更できます。`
-              : `This iPhone is on iOS ${iosMajorVersion ?? ''}. For now, alarm times arrive as notifications with your chosen sound (silent in silent mode). After updating, the same choices become alarms that ring even in silent mode. You can change them any time in Settings › Leave reminders.`}
+              ? `このiPhoneはiOS ${iosMajorVersion ?? ''}です。それまでは、出発の時刻を通知でお知らせします。アップデート後に、設定 › 出発リマインダー からアラームを設定できます。`
+              : `This iPhone is on iOS ${iosMajorVersion ?? ''}. Until then, notifications tell you when to leave. After updating, set up alarms in Settings › Leave reminders.`}
           </Text>
           <Text style={[styles.updatePath, { color: colors.primary }]}>
             {ja ? 'iPhoneの設定 › 一般 › ソフトウェアアップデート' : 'iPhone Settings › General › Software Update'}
@@ -80,68 +80,68 @@ export default function OnboardingAlarmsScreen() {
         </Card>
       )}
 
-      <Card style={styles.card}>
-        <Row
-          testID="toggle-alarms"
-          title={ja ? 'アラームを使う' : 'Use alarms'}
-          subtitle={
-              alarmKitAvailable
-                ? ja ? 'マナーモードでも鳴ります' : 'Rings even in silent mode'
-                : ja ? 'iOS 26以降はマナーモードでも鳴ります' : 'Rings in silent mode from iOS 26'
-            }
-          switchValue={alarmsEnabled}
-          onSwitch={setAlarmsEnabled}
-        />
-      </Card>
-
-      {alarmsEnabled && (
+      {alarmKitAvailable && (
         <>
-          <View style={styles.section}>
-            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-              {ja ? 'いつ鳴らす？' : 'When should it ring?'}
-              <Text style={[styles.sectionHint, { color: colors.mutedForeground }]}>{ja ? '（複数選択可）' : '  (pick any)'}</Text>
-            </Text>
-            <View style={styles.chips}>
-              {REMINDER_CHOICES.map((minutes) => (
-                <Chip
-                  key={minutes}
-                  testID={`alarm-${minutes}`}
-                  label={reminderLabel(minutes, ja)}
-                  selected={alarmIntervals.includes(minutes)}
-                  onPress={() => toggleAlarmInterval(minutes)}
-                />
-              ))}
-            </View>
-          </View>
+          <Card style={styles.card}>
+            <Row
+              testID="toggle-alarms"
+              title={ja ? 'アラームを使う' : 'Use alarms'}
+              subtitle={ja ? 'マナーモードでも鳴ります' : 'Rings even in silent mode'}
+              switchValue={alarmsEnabled}
+              onSwitch={setAlarmsEnabled}
+            />
+          </Card>
 
-          <View style={styles.section}>
-            <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-              {ja ? '音' : 'Sound'}
-              <Text style={[styles.sectionHint, { color: colors.mutedForeground }]}>{ja ? '（タップで試聴）' : '  (tap to hear)'}</Text>
-            </Text>
-            <View style={styles.chips}>
-              {ALARM_SOUND_CHOICES.map((sound) => (
-                <Chip
-                  key={sound}
-                  testID={`alarm-sound-${sound}`}
-                  label={soundLabel(sound, ja)}
-                  selected={effectiveAlarmSound(alarmSound) === sound}
-                  onPress={() => {
-                    setAlarmSound(sound);
-                    previewSound(sound).catch(() => undefined);
-                  }}
-                />
-              ))}
-            </View>
-          </View>
+          {alarmsEnabled && (
+            <>
+              <View style={styles.section}>
+                <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+                  {ja ? 'いつ鳴らす？' : 'When should it ring?'}
+                  <Text style={[styles.sectionHint, { color: colors.mutedForeground }]}>{ja ? '（複数選択可）' : '  (pick any)'}</Text>
+                </Text>
+                <View style={styles.chips}>
+                  {REMINDER_CHOICES.map((minutes) => (
+                    <Chip
+                      key={minutes}
+                      testID={`alarm-${minutes}`}
+                      label={reminderLabel(minutes, ja)}
+                      selected={alarmIntervals.includes(minutes)}
+                      onPress={() => toggleAlarmInterval(minutes)}
+                    />
+                  ))}
+                </View>
+              </View>
+
+              <View style={styles.section}>
+                <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
+                  {ja ? '音' : 'Sound'}
+                  <Text style={[styles.sectionHint, { color: colors.mutedForeground }]}>{ja ? '（タップで試聴）' : '  (tap to hear)'}</Text>
+                </Text>
+                <View style={styles.chips}>
+                  {ALARM_SOUND_CHOICES.map((sound) => (
+                    <Chip
+                      key={sound}
+                      testID={`alarm-sound-${sound}`}
+                      label={soundLabel(sound, ja)}
+                      selected={effectiveAlarmSound(alarmSound) === sound}
+                      onPress={() => {
+                        setAlarmSound(sound);
+                        previewSound(sound).catch(() => undefined);
+                      }}
+                    />
+                  ))}
+                </View>
+              </View>
+            </>
+          )}
+
+          <Text style={[styles.footnote, { color: colors.mutedForeground }]}>
+            {ja
+              ? '同じ時刻は、通知かアラームのどちらか一方です。アラームの時刻には、内容を残すための音なしの通知も届きます。あとから設定で変更できます。'
+              : 'Each time is either a notification or an alarm. Alarm times also leave a silent notification with the details. You can change this later in Settings.'}
+          </Text>
         </>
       )}
-
-      <Text style={[styles.footnote, { color: colors.mutedForeground }]}>
-        {ja
-          ? '同じ時刻は、通知かアラームのどちらか一方です。あとから設定で変更できます。'
-          : 'Each time is either a notification or an alarm. You can change this later in Settings.'}
-      </Text>
     </OnboardingFrame>
   );
 }

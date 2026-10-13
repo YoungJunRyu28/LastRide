@@ -12,7 +12,7 @@ const webTimers: ReturnType<typeof setTimeout>[] = [];
 // use these keys to replace, not accumulate, locally scheduled notifications.
 const OWNED_IDS_KEY = 'lastride-owned-notification-ids';
 const SIGNATURE_KEY = 'lastride-reminder-signature';
-const SCHEDULER_VERSION = 5;
+const SCHEDULER_VERSION = 6;
 
 export { alarmKitAvailable };
 export { iosMajorVersion } from '../modules/last-ride-alarm/src';
@@ -119,6 +119,8 @@ export function effectiveAlarmSound(sound: ReminderSound): ReminderSound {
 async function present(
   title: string, body: string, fireAt: number | null,
   target: NotificationTarget = '/ride', vibrate = true, sound: string | null = null, urgent = false,
+  /** Silent and passive: kept in Notification Center without sound or lighting the screen. */
+  silent = false,
 ) {
   const delayMs = fireAt === null ? 0 : Math.max(0, fireAt - Date.now());
   if (Platform.OS === 'web') {
@@ -141,7 +143,12 @@ async function present(
     // Time Sensitive Notifications entitlement. On iOS, vibration follows the
     // phone's Sounds & Haptics settings; there's no per-notification switch.
     // A custom `sound` is a bundled tone (at most 30 s), used when an alarm falls back.
-    content: { title, body, sound: (Platform.OS === 'ios' && sound) || true, interruptionLevel: urgent ? 'timeSensitive' : 'active', data: { target } },
+    content: {
+      title, body,
+      sound: silent ? false : (Platform.OS === 'ios' && sound) || true,
+      interruptionLevel: silent ? 'passive' : urgent ? 'timeSensitive' : 'active',
+      data: { target },
+    },
     trigger: delayMs < 1000
       ? null
       : {
@@ -243,6 +250,9 @@ export function scheduleReminders(
       if (plan.alarm && alarmAuthorization === 'authorized' && plan.fireAt > Date.now() + 1000) {
         try {
           await alarmKit.schedule(newAlarmId(), plan.fireAt, title, sound, stopLabel(language));
+          // The alarm rings; a silent notification keeps the details (station, times)
+          // in Notification Center once it's stopped, and opens the app when tapped.
+          await present(title, body, plan.fireAt, target, false, null, false, true);
           continue;
         } catch (error) {
           console.warn('[LastRide] AlarmKit failed; falling back to a notification', error);

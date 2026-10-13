@@ -17,6 +17,7 @@ import {
   syncEnterpriseLeaveBy,
 } from "@/lib/enterpriseParticipation";
 import {
+  alarmKitAvailable,
   cancelAllReminders,
   ensureNotificationPermission,
   notificationPermissionStatus,
@@ -868,6 +869,12 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     ]);
     void Haptics.selectionAsync();
   }, [alarmsEnabled, reminderIntervals, alarmIntervals]);
+
+  // Before iOS 26 there are no real alarms (no AlarmKit), so the option isn't
+  // offered: alarm times someone set earlier go back to being notifications.
+  useEffect(() => {
+    if (isHydrated && Platform.OS === "ios" && !alarmKitAvailable && alarmsEnabled) setAlarmsEnabled(false);
+  }, [isHydrated, alarmsEnabled, setAlarmsEnabled]);
 
   const setAlarmSound = useCallback((sound: ReminderSound) => {
     setAlarmSoundState(sound);

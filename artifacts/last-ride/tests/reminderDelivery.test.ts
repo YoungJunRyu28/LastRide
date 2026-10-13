@@ -85,7 +85,21 @@ describe('reminder delivery', () => {
     ], text, { sound: 'chime', vibrate: true });
     expect(mocks.alarmSchedule).toHaveBeenCalledOnce();
     expect(mocks.alarmSchedule.mock.calls[0].slice(3)).toEqual(['chime', '停止']);
-    expect(mocks.notificationSchedule).toHaveBeenCalledOnce();
+    // The 5-minute notification, plus a silent companion for the alarm that keeps its details.
+    expect(mocks.notificationSchedule).toHaveBeenCalledTimes(2);
+    const [reminder, companion] = (mocks.notificationSchedule.mock.calls as unknown as [{ content: Record<string, unknown> }][]).map(([request]) => request.content);
+    expect(reminder).toMatchObject({ sound: true, interruptionLevel: 'active' });
+    expect(companion).toMatchObject({ sound: false, interruptionLevel: 'passive' });
+  });
+
+  it('makes the leave-now reminder Time Sensitive, but not the earlier ones', async () => {
+    const now = Date.now();
+    await scheduleReminders([
+      { minutesBefore: 15, fireAt: now + 120000 },
+      { minutesBefore: 0, fireAt: now + 180000 },
+    ], text, { sound: 'default', vibrate: true });
+    const levels = (mocks.notificationSchedule.mock.calls as unknown as [{ content: Record<string, unknown> }][]).map(([request]) => request.content.interruptionLevel);
+    expect(levels).toEqual(['active', 'timeSensitive']);
   });
 
   it('falls back to a notification with the chosen tone when alarms are not allowed', async () => {

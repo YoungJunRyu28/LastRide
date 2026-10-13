@@ -1,6 +1,6 @@
 import { Notice } from '@/components/RideUI';
 import { Section, SettingsPage, soundLabel, useAlarmStatus } from '@/components/SettingsUI';
-import { Chip, Divider, Row } from '@/components/ui';
+import { Chip, Divider, Row, SectionLabel } from '@/components/ui';
 import { REMINDER_CHOICES, useLastRide } from '@/context/LastRideContext';
 import { useColors } from '@/hooks/useColors';
 import { alarmKitAvailable, effectiveAlarmSound, iosMajorVersion, requestAlarmAuthorization, sendTestAlarm } from '@/lib/notifications';
@@ -87,42 +87,43 @@ export default function ReminderSettingsScreen() {
         </View>
       </Section>
 
-      {Platform.OS === 'ios' && (
+      {/* Before iOS 26 there are no real alarms (no AlarmKit): only how to get them. */}
+      {Platform.OS === 'ios' && !alarmKitAvailable && (
+        <View style={styles.preAlarms}>
+          <SectionLabel>{ja ? 'アラーム' : 'ALARMS'}</SectionLabel>
+          <Notice
+            icon="alert-circle"
+            title={ja ? 'アラームはiOS 26以降で使えます' : 'Alarms need iOS 26 or later'}
+            body={
+              ja
+                ? `このiPhoneはiOS ${iosMajorVersion ?? ''}です。アップデートすると、マナーモードでも鳴るアラームを設定できます。iPhoneの設定 › 一般 › ソフトウェアアップデート`
+                : `This iPhone is on iOS ${iosMajorVersion ?? ''}. After updating, you can set alarms that ring even in silent mode. iPhone Settings › General › Software Update`
+            }
+          />
+        </View>
+      )}
+
+      {Platform.OS === 'ios' && alarmKitAvailable && (
         <Section
           label={ja ? 'アラーム' : 'ALARMS'}
           footer={
-            <View style={styles.footerStack}>
-              {alarmsEnabled && !alarmKitAvailable && (
-                <Notice
-                  icon="alert-circle"
-                  title={ja ? 'iOS 26以降でアラームになります' : 'Alarms need iOS 26 or later'}
-                  body={
-                    ja
-                      ? `このiPhoneはiOS ${iosMajorVersion ?? ''}です。今はアラームの時刻も、選んだ音の通知として届きます（マナーモード中は鳴りません）。iPhoneの設定 › 一般 › ソフトウェアアップデート からアップデートできます。`
-                      : `This iPhone is on iOS ${iosMajorVersion ?? ''}. For now, alarm times arrive as notifications with your chosen sound (silent in silent mode). Update in iPhone Settings › General › Software Update.`
-                  }
-                />
-              )}
-              {alarmsEnabled && (
-                <Text style={[styles.footer, { color: colors.mutedForeground }]}>
-                  {ja ? '同じ時刻は、通知かアラームのどちらか一方です。' : 'Each time is either a notification or an alarm.'}
-                </Text>
-              )}
-            </View>
+            alarmsEnabled ? (
+              <Text style={[styles.footer, { color: colors.mutedForeground }]}>
+                {ja
+                  ? '同じ時刻は、通知かアラームのどちらか一方です。アラームの時刻には、内容を残すための音なしの通知も届きます。'
+                  : 'Each time is either a notification or an alarm. Alarm times also leave a silent notification with the details.'}
+              </Text>
+            ) : null
           }
         >
           <Row
             testID="toggle-alarms"
             title={ja ? 'アラーム' : 'Alarms'}
-            subtitle={
-              alarmKitAvailable
-                ? ja ? 'マナーモードでも鳴ります' : 'Rings even in silent mode'
-                : ja ? 'iOS 26以降はマナーモードでも鳴ります' : 'Rings in silent mode from iOS 26'
-            }
+            subtitle={ja ? 'マナーモードでも鳴ります' : 'Rings even in silent mode'}
             switchValue={alarmsEnabled}
             onSwitch={(enabled) => void switchAlarms(enabled)}
           />
-          {alarmsEnabled && alarmKitAvailable && alarmStatus === 'denied' && (
+          {alarmsEnabled && alarmStatus === 'denied' && (
             <>
               <Divider />
               <Row
@@ -192,6 +193,6 @@ export default function ReminderSettingsScreen() {
 const styles = StyleSheet.create({
   chips: { flexDirection: 'row', gap: 8, paddingHorizontal: 12, paddingVertical: 12 },
   alarmChips: { paddingTop: 0 },
-  footerStack: { gap: 8 },
+  preAlarms: { gap: 8 },
   footer: { fontSize: 12, lineHeight: 17, paddingHorizontal: 4 },
 });
