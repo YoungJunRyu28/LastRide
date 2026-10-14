@@ -20,10 +20,13 @@ function positiveIntEnv(name: string, fallback: number): number {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+// Per instance, in memory: lookups (bundled timetables, ODPT) must not wake the
+// database just to count requests. API Gateway throttling caps the total.
 const publicLookupLimiter = rateLimitMiddleware({
   limit: positiveIntEnv("PUBLIC_LOOKUP_RATE_LIMIT_PER_MINUTE", 60),
   windowMs: 60_000,
   key: (req) => `public-lookup:${requestAddress(req)}`,
+  shared: false,
 });
 
 router.use(

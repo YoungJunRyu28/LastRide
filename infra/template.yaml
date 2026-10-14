@@ -34,7 +34,6 @@ Parameters:
 Conditions:
   UseCanary: !Equals [!Ref EnableCanary, "true"]
   HasAlarmEmail: !Not [!Equals [!Ref AlarmEmail, ""]]
-  IsProduction: !Equals [!Ref Stage, production]
   BusinessEnabled: !Equals [!Ref EnableBusiness, "true"]
   ReservesConcurrency: !Equals [!Ref ReserveConcurrency, "true"]
 
@@ -159,6 +158,22 @@ Resources:
           ENTERPRISE_BOOTSTRAP_EMAILS: ""
           ENTERPRISE_BOOTSTRAP_ORGANIZATION_NAME: LastRide Business
           ENTERPRISE_PUSH_INCLUDE_NAME: "false"
+          # Group leave-time alerts: one EventBridge one-time schedule, kept pointing
+          # at the next alert due (src/lib/leaveAlertSchedule.ts).
+          LEAVE_ALERT_SCHEDULE_NAME: !Sub "lastride-${Stage}-leave-alert"
+          LEAVE_ALERT_TARGET_ARN: !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:lastride-${Stage}-scheduled:live"
+          LEAVE_ALERT_ROLE_ARN: !GetAtt LeaveAlertSchedulerRole.Arn
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - scheduler:GetSchedule
+                - scheduler:CreateSchedule
+                - scheduler:UpdateSchedule
+              Resource: !Sub "arn:${AWS::Partition}:scheduler:${AWS::Region}:${AWS::AccountId}:schedule/default/lastride-${Stage}-leave-alert"
+            - Effect: Allow
+              Action: iam:PassRole
+              Resource: !GetAtt LeaveAlertSchedulerRole.Arn
       DeploymentPreference:
         Enabled: !If [UseCanary, true, false]
         Type: Canary10Percent5Minutes
@@ -179,6 +194,32 @@ Resources:
             ApiId: !Ref HttpApi
             Path: /{proxy+}
             Method: ANY
+
+  # Lets EventBridge Scheduler call the scheduled function for the one-time
+  # leave-alert schedule (the ScheduleV2 events below get their own roles).
+  LeaveAlertSchedulerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: scheduler.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+      Policies:
+        - PolicyName: InvokeScheduledFunction
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:lastride-${Stage}-scheduled"
+                  - !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:lastride-${Stage}-scheduled:*"
 
   ScheduledFunction:
     Type: AWS::Serverless::Function
@@ -210,13 +251,33 @@ Resources:
           ENTERPRISE_BOOTSTRAP_EMAILS: ""
           ENTERPRISE_BOOTSTRAP_ORGANIZATION_NAME: LastRide Business
           ENTERPRISE_PUSH_INCLUDE_NAME: "false"
-      # Staging runs the jobs rarely so a scale-to-zero Postgres can sleep.
+          # Group leave-time alerts: one EventBridge one-time schedule, kept pointing
+          # at the next alert due (src/lib/leaveAlertSchedule.ts).
+          LEAVE_ALERT_SCHEDULE_NAME: !Sub "lastride-${Stage}-leave-alert"
+          LEAVE_ALERT_TARGET_ARN: !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:lastride-${Stage}-scheduled:live"
+          LEAVE_ALERT_ROLE_ARN: !GetAtt LeaveAlertSchedulerRole.Arn
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - scheduler:GetSchedule
+                - scheduler:CreateSchedule
+                - scheduler:UpdateSchedule
+              Resource: !Sub "arn:${AWS::Partition}:scheduler:${AWS::Region}:${AWS::AccountId}:schedule/default/lastride-${Stage}-leave-alert"
+            - Effect: Allow
+              Action: iam:PassRole
+              Resource: !GetAtt LeaveAlertSchedulerRole.Arn
+      # The jobs run rarely so the scale-to-zero Postgres (Neon; free plan is 100
+      # CU-hours a month) can sleep: any query more often than every ~5 minutes keeps
+      # it awake, which alone would use ~180 CU-hours a month.
       Events:
         Cleanup:
           Type: ScheduleV2
           Properties:
             OmitName: true
-            ScheduleExpression: !If [IsProduction, rate(5 minutes), rate(30 minutes)]
+            # Once a day at 08:05 JST, just after group nights end at 08:00.
+            ScheduleExpression: "cron(5 8 * * ? *)"
+            ScheduleExpressionTimezone: Asia/Tokyo
             Input: '{"task":"cleanup"}'
             FlexibleTimeWindow:
               Mode: "OFF"
@@ -230,8 +291,12 @@ Resources:
           Type: ScheduleV2
           Properties:
             OmitName: true
-            # Every minute on staging too: group leave-time alerts only fire within 10 minutes of the time.
-            ScheduleExpression: rate(1 minute)
+            # Fallback only: alerts are sent by the one-time leave-alert schedule. This
+            # catches one a missed update left behind (alerts stay valid for 10 minutes),
+            # every 30 minutes, 20:00-01:59 JST, so the database can sleep in between.
+            # (Business departure alerts would need a tighter rate when Business returns.)
+            ScheduleExpression: "cron(*/30 20-23,0-1 * * ? *)"
+            ScheduleExpressionTimezone: Asia/Tokyo
             Input: '{"task":"departureAlerts"}'
             FlexibleTimeWindow:
               Mode: "OFF"
@@ -245,7 +310,9 @@ Resources:
           Type: ScheduleV2
           Properties:
             OmitName: true
-            ScheduleExpression: !If [IsProduction, rate(5 minutes), rate(30 minutes)]
+            # Once a day: only Business push receipts are checked (Business is off for v1).
+            ScheduleExpression: "cron(10 8 * * ? *)"
+            ScheduleExpressionTimezone: Asia/Tokyo
             Input: '{"task":"pushReceipts"}'
             FlexibleTimeWindow:
               Mode: "OFF"

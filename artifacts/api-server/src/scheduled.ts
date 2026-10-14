@@ -10,7 +10,7 @@
  * unchanged; only how they get invoked changes, from an in-process timer to
  * three separate EventBridge Scheduler rules calling this Lambda with a
  * different `task` each time, at the same rates the original loop used
- * (5 min, 1 min, 5 min — see infra/template.yaml).
+ * (production: 5 min, 1 min, 5 min; staging runs them far less often — see infra/template.yaml).
  */
 import { isDatabaseConfigured } from "@workspace/db";
 import {
@@ -22,6 +22,7 @@ import { purgeExpiredRateLimits } from "./lib/rateLimit";
 import { purgeExpiredEnterpriseData } from "./lib/enterpriseStore";
 import { purgeEndedGroupNights, purgeInactiveGroupMembers } from "./lib/groupStore";
 import { dispatchGroupLeaveAlerts } from "./lib/groupNotifications";
+import { scheduleNextLeaveAlert } from "./lib/leaveAlertSchedule";
 import { logger } from "./lib/logger";
 
 export type ScheduledTask = "cleanup" | "departureAlerts" | "pushReceipts";
@@ -79,6 +80,8 @@ export async function handler(event: ScheduledEvent) {
       if (groupLeaveAlerts > 0) {
         logger.info({ groupLeaveAlerts }, "Sent group leave-time alerts");
       }
+      // Point the one-time schedule at the next alert due (never throws).
+      await scheduleNextLeaveAlert({ onlyEarlier: false });
       return;
     }
     case "pushReceipts": {

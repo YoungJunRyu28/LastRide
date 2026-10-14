@@ -8,7 +8,7 @@
  * changes, night start/end and participation updates are serialized per group.
  */
 import { randomUUID } from "node:crypto";
-import { and, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, ne, or } from "drizzle-orm";
+import { and, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, min, ne, or } from "drizzle-orm";
 import {
   getDb,
   groupMembersTable,
@@ -817,6 +817,37 @@ export type ClaimedGroupLeaveAlert = {
  * updated leave-by re-arms only when it moves later than the alerted time.
  * The conditional UPDATE makes concurrent scheduled runs collapse to one.
  */
+/**
+ * When the next leave-time alert is due: the earliest unsent leave time in a
+ * night that hasn't ended (one still inside the grace period counts as due now).
+ * Same conditions as claimDueGroupLeaveAlerts, without the "already due" bound.
+ */
+export async function nextGroupLeaveAlertAt(now = new Date()): Promise<Date | null> {
+  const db = getDb();
+  const lowerBound = new Date(now.getTime() - GROUP_LEAVE_ALERT_GRACE_MS);
+  const [row] = await db
+    .select({ next: min(groupNightParticipantsTable.leaveBy) })
+    .from(groupNightParticipantsTable)
+    .innerJoin(
+      groupNightsTable,
+      eq(groupNightParticipantsTable.nightId, groupNightsTable.id),
+    )
+    .where(
+      and(
+        gt(groupNightsTable.endsAt, now),
+        gte(groupNightParticipantsTable.leaveBy, lowerBound),
+        or(
+          isNull(groupNightParticipantsTable.leaveAlertSentFor),
+          lt(
+            groupNightParticipantsTable.leaveAlertSentFor,
+            groupNightParticipantsTable.leaveBy,
+          ),
+        ),
+      ),
+    );
+  return row?.next ?? null;
+}
+
 export async function claimDueGroupLeaveAlerts(
   now = new Date(),
 ): Promise<ClaimedGroupLeaveAlert[]> {

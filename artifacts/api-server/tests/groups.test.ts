@@ -26,6 +26,7 @@ import {
   endGroupTonightRecord,
   getGroupDetailRecord,
   claimDueGroupLeaveAlerts,
+  nextGroupLeaveAlertAt,
   GROUP_MEMBER_LIMIT,
   joinGroupRecord,
   leaveGroupRecord,
@@ -537,6 +538,24 @@ describe("tonight", () => {
     await setGroupTonightParticipationRecord(groupId, cai.token, leaveBy);
     const [alert] = await claimDueGroupLeaveAlerts(new Date(leaveBy.getTime() + 60_000));
     expect(alert.recipients.map((r) => r.memberId).sort()).toEqual([host.id, bea.id].sort());
+  });
+
+  it("the next leave-time alert due is the earliest unsent one, and moves on once sent", async () => {
+    const { groupId, host, members } = await groupWithMembers(["Bea", "Cai"]);
+    const [bea, cai] = members;
+    await startGroupTonightRecord(groupId, host.token);
+    const early = new Date(tonightWindow().endsAt.getTime() - 3 * 60 * 60_000);
+    const late = new Date(early.getTime() + 20 * 60_000);
+    const before = new Date(early.getTime() - 60 * 60_000);
+    expect(await nextGroupLeaveAlertAt(before)).toBeNull();
+
+    await setGroupTonightParticipationRecord(groupId, cai.token, late);
+    await setGroupTonightParticipationRecord(groupId, bea.token, early);
+    expect(await nextGroupLeaveAlertAt(before)).toEqual(early);
+
+    // Bea's alert is sent: next up is Cai's.
+    await claimDueGroupLeaveAlerts(new Date(early.getTime() + 60_000));
+    expect(await nextGroupLeaveAlertAt(new Date(early.getTime() + 60_000))).toEqual(late);
   });
 
   it("leave-time alerts skip members who muted メンバーの出発時刻", async () => {

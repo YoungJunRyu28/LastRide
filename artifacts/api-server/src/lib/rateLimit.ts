@@ -111,7 +111,13 @@ export function rateLimitMiddleware(input: {
   limit: number;
   windowMs: number;
   key: (req: Request) => string;
+  /**
+   * Count in Postgres across all instances (default), or in memory per
+   * instance: looser, but it never wakes a scale-to-zero database.
+   */
+  shared?: boolean;
 }) {
+  const shared = input.shared ?? true;
   const localFallback = new FixedWindowLimiter(input.limit, input.windowMs);
   // Used when the shared limiter's database is unreachable. Each warm Lambda
   // instance keeps its own window, so allow a quarter of the normal budget
@@ -125,7 +131,7 @@ export function rateLimitMiddleware(input: {
   return async (req: Request, res: Response, next: NextFunction) => {
     let result: RateLimitResult;
     try {
-      result = isDatabaseConfigured()
+      result = shared && isDatabaseConfigured()
         ? await checkSharedRateLimit(
             input.key(req),
             input.limit,

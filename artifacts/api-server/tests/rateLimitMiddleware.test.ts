@@ -59,3 +59,23 @@ describe("rateLimitMiddleware during a database outage", () => {
     }
   });
 });
+
+describe("rateLimitMiddleware with shared: false", () => {
+  it("counts in memory with the full limit and never touches the database", async () => {
+    // getDb throws in this file: the full budget (not a quarter) shows it was never called.
+    const middleware = rateLimitMiddleware({
+      limit: 3,
+      windowMs: 60_000,
+      key: () => "lookup-client",
+      shared: false,
+    });
+    const outcomes: number[] = [];
+    for (let request = 0; request < 4; request += 1) {
+      const res = fakeResponse();
+      const next = vi.fn();
+      await middleware({} as Request, res as unknown as Response, next);
+      outcomes.push(next.mock.calls.length > 0 ? 200 : res.statusCode);
+    }
+    expect(outcomes).toEqual([200, 200, 200, 429]);
+  });
+});

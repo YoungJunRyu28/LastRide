@@ -1,5 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { isDatabaseConfigured } from "@workspace/db";
+import { scheduleNextLeaveAlert } from "../lib/leaveAlertSchedule";
 import {
   CreateGroupBody,
   CreateGroupHeader,
@@ -343,6 +344,8 @@ router.put("/groups/:groupId/tonight/me", memberLimiter, async (req, res) => {
     res.status(400).json({ error: "Leave-by time is outside tonight" });
     return;
   }
+  // A new or earlier leave time may be the next alert due (never throws).
+  if (body.data.leaveBy) await scheduleNextLeaveAlert({ onlyEarlier: true });
   sendDetail(res, result.group);
 });
 
