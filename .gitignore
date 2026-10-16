@@ -40,3 +40,6 @@ android/
 __pycache__/
 *.pyc
 .aws-sam/
+
+# Gradle caches (Android tooling, e.g. editor extensions syncing native modules)
+.gradle/
