@@ -36,6 +36,8 @@ async function turnstileOk(token, ip, secret) {
   if (ip) form.append("remoteip", ip);
   const result = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", { method: "POST", body: form });
   const data = await result.json().catch(() => ({}));
+  // Why it failed (e.g. invalid-input-secret, invalid-input-response): visible with `wrangler tail`.
+  if (data.success !== true) console.error("turnstile failed", JSON.stringify(data["error-codes"] ?? []), data.hostname ?? "");
   return data.success === true;
 }
 
@@ -53,6 +55,7 @@ export default {
     const name = String(input.get("name") ?? "").replace(/[\r\n]+/g, " ").trim().slice(0, 100);
     const email = String(input.get("email") ?? "").trim().slice(0, 200);
     const category = String(input.get("category") ?? "other");
+    const title = String(input.get("subject") ?? "").replace(/[\r\n]+/g, " ").trim().slice(0, 100);
     const message = String(input.get("message") ?? "").trim();
     const language = input.get("lang") === "en" ? "en" : "ja";
     const token = String(input.get("cf-turnstile-response") ?? "");
@@ -63,8 +66,9 @@ export default {
     if (!token || !(await turnstileOk(token, request.headers.get("CF-Connecting-IP"), env.TURNSTILE_SECRET)))
       return json(403, { error: "turnstile" });
 
-    const subject = `[LastRide ${category}] ${message.split("\n")[0].slice(0, 60)}`;
-    const body = [`From: ${name || "(no name)"} <${email}>`, `Category: ${category}`, `Language: ${language}`, "", message].join("\n");
+    // The form's 件名, or (older pages) the message's first line.
+    const subject = `[LastRide ${category}] ${title || message.split("\n")[0].slice(0, 60)}`;
+    const body = [`From: ${name || "(no name)"} <${email}>`, `Category: ${category}`, `Language: ${language}`, ...(title ? [`Subject: ${title}`] : []), "", message].join("\n");
     const raw = [
       `From: ${header("LastRide contact form")} <${env.CONTACT_FROM}>`,
       `To: <${env.CONTACT_TO}>`,
@@ -81,7 +85,9 @@ export default {
 
     try {
       await env.SEND.send(new EmailMessage(env.CONTACT_FROM, env.CONTACT_TO, raw));
-    } catch {
+    } catch (error) {
+      // E.g. the destination isn't a verified address. No message content or addresses logged.
+      console.error("send failed", String(error?.message ?? error));
       return json(502, { error: "send" });
     }
     return json(200, { ok: true });

@@ -7,7 +7,7 @@
 <link rel="alternate" hreflang="ja" href="https://lastride.jp/support/">
 <link rel="alternate" hreflang="en" href="https://lastride.jp/en/support/">
 <link rel="alternate" hreflang="x-default" href="https://lastride.jp/support/">
-<link rel="stylesheet" href="/style.css?v=4">
+<link rel="stylesheet" href="/style.css?v=5">
 <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png">
 <link rel="icon" href="/favicon.png" sizes="64x64" type="image/png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
@@ -35,23 +35,30 @@
   </div>
 
 
-  <form class="card contact-form" id="contact-form" data-sitekey="0x4AAAAAAFYplvzCpZxEyY_d" hidden>
-    <h2 class="form-title">フォームで送る</h2>
+  <form class="contact-form" id="contact-form" data-sitekey="0x4AAAAAAFYplvzCpZxEyY_d" hidden novalidate>
+    <div class="form-head">
+      <h2 class="form-title">フォームで送る</h2>
+      <p class="muted">返信はご入力のメールアドレスにお送りします。</p>
+    </div>
     <input type="hidden" name="lang" value="ja">
-    <label>お名前（任意）<input name="name" autocomplete="name" maxlength="100"></label>
-    <label>メールアドレス<input name="email" type="email" autocomplete="email" required maxlength="200"></label>
-    <label>種類
-      <select name="category">
-        <option value="bug">不具合</option>
-        <option value="question">質問</option>
-        <option value="business">法人・イベント</option>
-        <option value="other">その他</option>
-      </select>
-    </label>
-    <label>内容<textarea name="message" rows="6" required maxlength="4000"></textarea></label>
+    <fieldset class="field">
+      <legend>種類</legend>
+      <div class="chip-options">
+        <label class="chip-option"><input type="radio" name="category" value="question" checked><span>質問</span></label>
+        <label class="chip-option"><input type="radio" name="category" value="bug"><span>不具合</span></label>
+        <label class="chip-option"><input type="radio" name="category" value="business"><span>法人・イベント</span></label>
+        <label class="chip-option"><input type="radio" name="category" value="other"><span>その他</span></label>
+      </div>
+    </fieldset>
+    <div class="field-row">
+      <label class="field"><span class="field-label">お名前 <small>任意</small></span><input name="name" autocomplete="name" maxlength="100" placeholder="帰り 太郎"></label>
+      <label class="field"><span class="field-label">メールアドレス</span><input name="email" type="email" autocomplete="email" inputmode="email" required maxlength="200" placeholder="you@example.com"></label>
+    </div>
+    <label class="field"><span class="field-label">件名</span><input name="subject" required maxlength="100" placeholder="例：渋谷駅の終電の時刻が違う"></label>
+    <label class="field"><span class="field-label">内容<small class="counter" aria-live="off">0 / 4000</small></span><textarea name="message" rows="6" required maxlength="4000" placeholder="不具合の場合は、iPhoneの機種・iOSのバージョン・起きた時刻と駅名を添えてください。"></textarea></label>
     <div class="cf-turnstile"></div>
-    <p><button class="btn btn-dark" type="submit">送信</button></p>
-    <p class="muted form-status" role="status" aria-live="polite"></p>
+    <button class="btn btn-amber form-submit" type="submit">送信する</button>
+    <p class="form-status" role="status" aria-live="polite" hidden></p>
   </form>
   <script>
     // Shown only once the Turnstile site key is set; otherwise the email address above is the way to write.
@@ -67,23 +74,34 @@
       document.head.appendChild(script);
       var status = form.querySelector(".form-status");
       var button = form.querySelector("button");
+      var message = form.querySelector("textarea");
+      var counter = form.querySelector(".counter");
+      message.addEventListener("input", function () { counter.textContent = message.value.length + " / 4000"; });
+      function show(text, kind) {
+        status.hidden = false;
+        status.className = "form-status " + kind;
+        status.textContent = text;
+      }
       form.addEventListener("submit", function (event) {
         event.preventDefault();
+        if (!form.checkValidity()) {
+          form.reportValidity();
+          return;
+        }
         button.disabled = true;
-        status.textContent = "送信中…";
+        show("送信中…", "pending");
         fetch("/api/contact", { method: "POST", body: new FormData(form) })
           .then(function (response) { return response.json().catch(function () { return {}; }).then(function (data) { return { ok: response.ok, data: data }; }); })
           .then(function (result) {
             if (result.ok) {
               form.reset();
-              status.textContent = "送信しました。数日以内にメールで返信します。";
+              counter.textContent = "0 / 4000";
+              show("送信しました。通常、数日以内にメールで返信します。", "ok");
             } else {
-              status.textContent = result.data.error === "email"
-                ? "メールアドレスを確認してください。"
-                : "送信できませんでした。support@lastride.jp までメールでお送りください。";
+              show(result.data.error === "email" ? "メールアドレスを確認してください。" : "送信できませんでした。support@lastride.jp までメールでお送りください。", "error");
             }
           })
-          .catch(function () { status.textContent = "送信できませんでした。support@lastride.jp までメールでお送りください。"; })
+          .catch(function () { show("送信できませんでした。support@lastride.jp までメールでお送りください。", "error"); })
           .finally(function () {
             button.disabled = false;
             if (window.turnstile) window.turnstile.reset();
