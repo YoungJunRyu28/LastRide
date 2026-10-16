@@ -12,6 +12,7 @@
 import { stationNames } from '@/lib/appleTransit';
 import { AppleMaps, type Place } from '@/modules/apple-maps/src';
 import type { Coordinates, NearbyStation, StationOption, WalkingRoute, WalkingSpeed } from '@/lib/stations';
+import { bilingualStationName } from '@/lib/stationNames';
 
 const SPEED_MULTIPLIER: Record<WalkingSpeed, number> = { relaxed: 0.8, normal: 1, fast: 1.2 };
 /** How far to look for stations around the user. */
@@ -52,11 +53,12 @@ export function isRailwayStation(place: Pick<Place, 'name'>): boolean {
 }
 
 function toStation(place: Place): StationOption {
-  const base = stationBaseName(place.name);
+  // Apple names it in the iPhone's language: fill in the other one (lib/stationNames).
+  const { name, nameJa } = bilingualStationName(stationBaseName(place.name));
   const region = [place.administrativeArea, place.locality].filter(Boolean).join('');
   return {
-    name: base,
-    nameJa: base,
+    name,
+    nameJa,
     latitude: place.latitude,
     longitude: place.longitude,
     ...(region ? { regionJa: region } : {}),

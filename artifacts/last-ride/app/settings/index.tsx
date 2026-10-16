@@ -5,8 +5,10 @@ import { usePremium } from '@/context/PremiumContext';
 import { useColors } from '@/hooks/useColors';
 import { SUPPORT_URL, TERMS_URL, TOKUSHOHO_URL, siteLink } from '@/lib/links';
 import { alarmKitAvailable } from '@/lib/notifications';
+import { isTestFlightBuild } from '@/modules/last-ride-alarm/src';
 import { recommendedLeaveTime } from '@/lib/reliability';
 import { MINUTE_MS } from '@/lib/time';
+import { WIDGET_THEMES } from '@/lib/widgetThemes';
 import { Feather } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
@@ -20,9 +22,11 @@ export default function SettingsScreen() {
     language, destination, leaveMargin,
     reminderIntervals, alarmsEnabled, alarmIntervals, alarmSound, notificationsAllowed,
     nightLocationMode, backgroundAllowed,
-    demoActive, setDemoNow, nowMs, plan, currentTime, leaveBy,
+    demoActive, setDemoNow, nowMs, plan, currentTime, leaveBy, widgetTheme,
   } = useLastRide();
-  const { isPremium, live: premiumLive, setTestPremium } = usePremium();
+  const { isPremium, live: premiumLive, setTestPremium, testOverride } = usePremium();
+  // Test tools: dev builds, and TestFlight installs (detected at run time; never App Store).
+  const testTools = __DEV__ || isTestFlightBuild;
   const [alarmStatus] = useAlarmStatus(alarmsEnabled);
   const ja = language === 'ja';
 
@@ -99,6 +103,21 @@ export default function SettingsScreen() {
           onPress={() => router.push('/settings/margin')}
         />
         <Divider />
+        {isPremium && (
+          <>
+            <Row
+              testID="open-widget-theme"
+              icon="droplet"
+              title={ja ? 'ウィジェットの色' : 'Widget colours'}
+              value={(() => {
+                const theme = WIDGET_THEMES.find((entry) => entry.id === widgetTheme);
+                return theme ? (ja ? theme.ja : theme.en) : undefined;
+              })()}
+              onPress={() => router.push('/settings/widget-theme')}
+            />
+            <Divider />
+          </>
+        )}
         <Row
           testID="open-language"
           icon="globe"
@@ -143,11 +162,37 @@ export default function SettingsScreen() {
         <Row testID="open-reset" icon="trash-2" title={ja ? 'データを消去' : 'Erase data'} onPress={() => router.push('/settings/reset')} />
       </Section>
 
-      {__DEV__ && (
+      {testTools && (
         <Section
-          label={ja ? 'デモモード（開発用）' : 'DEMO MODE (DEV ONLY)'}
-          footer={ja ? 'デモ中は1分＝1秒で進みます。通知は夜のトラッキング中のみ届きます。' : 'While the demo clock runs, 1 minute = 1 second. Notifications need tracking on.'}
+          label={__DEV__ ? (ja ? 'デモモード（開発用）' : 'DEMO MODE (DEV ONLY)') : ja ? 'テスト用（TestFlightのみ）' : 'TESTING (TESTFLIGHT ONLY)'}
+          footer={
+            ja
+              ? 'デモ中は1分＝1秒で進みます。通知は夜のトラッキング中のみ届きます。App Store版には表示されません。'
+              : 'While the demo clock runs, 1 minute = 1 second. Notifications need tracking on. Not shown in the App Store version.'
+          }
         >
+          {premiumLive && isTestFlightBuild && (
+            <>
+              <Row
+                testID="toggle-testflight-premium"
+                title={ja ? 'プレミアム（この端末だけ）' : 'Premium (this phone only)'}
+                subtitle={
+                  testOverride
+                    ? ja ? 'テスト用に上書き中。購入・解約はされません。' : 'Overridden for testing. Nothing is bought or cancelled.'
+                    : ja ? '実際の購入状態です。切り替えるとテスト用に上書きします。' : 'Your real purchase state. Switching overrides it for testing.'
+                }
+                switchValue={isPremium}
+                onSwitch={setTestPremium}
+              />
+              {testOverride && (
+                <>
+                  <Divider />
+                  <Row testID="reset-testflight-premium" title={ja ? '実際の購入状態に戻す' : 'Back to the real purchase state'} onPress={() => setTestPremium(null)} />
+                </>
+              )}
+              <Divider />
+            </>
+          )}
           {!premiumLive && (
             <>
               <Row

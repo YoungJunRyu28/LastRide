@@ -26,6 +26,8 @@ const REPLAN_AFTER_MS = 10 * MINUTE_MS;
 /** Location updates arrive every 150–200 m; most don't change the plan, so skip them to save API calls. */
 export function shouldReplan(previous: NightPlan | null, coordinates: Coordinates, nowMs: number): boolean {
   if (!previous) return true;
+  // The train a frozen plan was held for has left: re-plan from here at once.
+  if (previous.frozenUntil !== undefined && nowMs >= previous.frozenUntil) return true;
   return distanceBetween(previous.coordinates, coordinates) >= REPLAN_DISTANCE_METERS || nowMs - previous.computedAt >= REPLAN_AFTER_MS;
 }
 
@@ -59,8 +61,18 @@ export type StationChoice = {
    */
   trainChoice?: number;
   nightLastTrain?: TrainTime;
-  /** Recommended leave time for the real last train, for the backup reminder. */
+  /** Recommended leave time for the real last train (closest-train choice after a station change). */
   nightLastLeaveAt?: number;
+  /**
+   * With 2本前 chosen: the trains between it and the real last train (1本前),
+   * earliest first. Once the chosen train has left, the plan moves on to these.
+   */
+  nightLaterTrains?: TrainTime[];
+  /**
+   * Set while "on the way" (lib/onTheWay.ts): the departure of the train the
+   * plan is held for. Once it has passed, the next update re-plans from here.
+   */
+  frozenUntil?: number;
 };
 
 /** Arrival stations worth comparing: the saved home station, plus this many near the home address. */
@@ -472,8 +484,12 @@ export type ReminderPlan = {
   minutesBefore: number;
   fireAt: number;
   missedCheckIn?: true;
-  /** On an earlier train: one notification at the real last train's leave time, in case that one was missed. */
-  lastTrainBackup?: true;
+  /**
+   * Heading for an earlier train (1本前 / 2本前): at its departure, "did you make
+   * it?" with 〔乗った〕 / 〔乗れなかった〕 (lib/boarding.ts). No leave time for the
+   * next train in it: that is only known once re-planned from where the user is.
+   */
+  boardedCheck?: true;
   /** Delivered as an alarm (AlarmKit) rather than a notification. */
   alarm?: true;
 };
@@ -487,7 +503,16 @@ export function buildReminderPlans(
   choice: Pick<StationChoice, 'leaveByMs' | 'recommendedLeaveByMs' | 'safetyMarginMinutes' | 'walkingMinutes' | 'lastTrain' | 'nightLastTrain' | 'nightLastLeaveAt'>,
   intervals: number[],
   nowMs: number,
-  { missedCheckIn = true, alarmIntervals = [] }: { missedCheckIn?: boolean; alarmIntervals?: number[] } = {},
+  {
+    missedCheckIn = true,
+    alarmIntervals = [],
+    includePast = false,
+  }: {
+    missedCheckIn?: boolean;
+    alarmIntervals?: number[];
+    /** Keep reminders whose time has passed (lib/reminderLedger decides on catch-up). */
+    includePast?: boolean;
+  } = {},
 ): ReminderPlan[] {
   const leaveAt = recommendedLeaveTime(choice);
   const reminders: ReminderPlan[] = [...new Set([...intervals, ...alarmIntervals])]
@@ -497,14 +522,13 @@ export function buildReminderPlans(
       fireAt: leaveAt - minutesBefore * MINUTE_MS,
       ...(alarmIntervals.includes(minutesBefore) ? { alarm: true as const } : {}),
     }));
-  // Heading for an earlier train: if it's missed, still say when the last train needs you to go.
-  if (choice.nightLastLeaveAt !== undefined && choice.nightLastLeaveAt > leaveAt)
-    reminders.push({ minutesBefore: 0, fireAt: choice.nightLastLeaveAt, lastTrainBackup: true });
+  // Heading for an earlier train: when it departs, ask whether it was caught.
+  if (choice.nightLastTrain) reminders.push({ minutesBefore: 0, fireAt: choice.lastTrain.departsAt, boardedCheck: true });
   if (missedCheckIn)
     reminders.push({
       minutesBefore: 0,
       fireAt: missedCheckInAt(choice),
       missedCheckIn: true,
     });
-  return reminders.filter((reminder) => reminder.fireAt > nowMs + 5000);
+  return includePast ? reminders : reminders.filter((reminder) => reminder.fireAt > nowMs + 5000);
 }

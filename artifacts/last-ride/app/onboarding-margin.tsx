@@ -48,7 +48,7 @@ export default function OnboardingMarginScreen() {
         <Text style={{ color: colors.foreground }}>{clock(EXAMPLE_LATEST_MINUTES)}</Text>
         {ja ? ' → ' : ' → leave at '}
         <Text style={[styles.exampleTime, { color: colors.primary }]}>{clock(EXAMPLE_LATEST_MINUTES - leaveMargin)}</Text>
-        {ja ? 'に出発' : ''}
+        {ja ? 'に出る' : ''}
       </Text>
       <Text style={[styles.footnote, { color: colors.mutedForeground }]}>
         {ja

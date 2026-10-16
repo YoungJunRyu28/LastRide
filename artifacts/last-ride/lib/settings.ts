@@ -3,6 +3,7 @@
  * background-location task, which runs in a separate JS runtime.
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { DEFAULT_WIDGET_THEME, isWidgetTheme, type WidgetThemeId } from '@/lib/widgetThemes';
 import { BASE_SAFETY_MARGIN_MINUTES, parseLeaveMargin, type LeaveMargin } from '@/lib/reliability';
 import type { Coordinates, StationOption } from '@/lib/stations';
 import { addressForDisk, hasPosition, rememberTonight, resolveAddress, resolveStation, stationForDisk } from '@/lib/storedPlaces';
@@ -39,6 +40,10 @@ export const STORAGE_KEYS = {
   tonightDestination: 'lastride-tonight-destination',
   /** 終電 / 1本前 / 2本前 for tonight: { choice, until }; lapses at 05:00 after the night. */
   trainChoice: 'lastride-train-choice',
+  trainChoiceOverride: 'lastride-train-choice-override',
+  reminderLedger: 'lastride-reminder-ledger',
+  /** Colour theme of the widgets and the Live Activity (lib/widgetThemes). */
+  widgetTheme: 'lastride-widget-theme',
 } as const;
 
 /**
@@ -98,6 +103,7 @@ export type Settings = {
   tonightDestination: StationOption | null;
   /** Tonight's train: 0 = 終電, 1 = 1本前, 2 = 2本前 (lib/trainChoice). */
   trainChoice: number;
+  widgetTheme: WidgetThemeId;
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -117,6 +123,7 @@ export const DEFAULT_SETTINGS: Settings = {
   nightLocationMode: 'ask',
   tonightDestination: null,
   trainChoice: 0,
+  widgetTheme: DEFAULT_WIDGET_THEME,
 };
 
 function parseHomeStation(raw: string | null): StationOption | null {
@@ -325,6 +332,7 @@ export async function readSettings(): Promise<Settings> {
     nightLocationMode: nightLocationMode === 'foreground' || nightLocationMode === 'background' ? nightLocationMode : 'ask',
     tonightDestination,
     trainChoice: await readTrainChoice(),
+    widgetTheme: await readWidgetTheme(),
   };
 }
 
@@ -351,7 +359,42 @@ export async function readTrainChoice(nowMs = Date.now()): Promise<number> {
   }
 }
 
+/**
+ * After an automatic station change: the train used at that station instead of
+ * the chosen slot (the one with the closest leave time). Tonight only; cleared
+ * when the user picks a train themselves.
+ */
+export type TrainChoiceOverride = { station: string; fromStation: string; choice: number; until: number };
+
+export async function readTrainChoiceOverride(nowMs = Date.now()): Promise<TrainChoiceOverride | null> {
+  try {
+    const raw = await AsyncStorage.getItem(STORAGE_KEYS.trainChoiceOverride);
+    if (!raw) return null;
+    const value = JSON.parse(raw) as Partial<TrainChoiceOverride>;
+    if (typeof value.until !== 'number' || nowMs >= value.until) return null;
+    if (typeof value.station !== 'string' || typeof value.fromStation !== 'string') return null;
+    if (value.choice !== 0 && value.choice !== 1 && value.choice !== 2) return null;
+    return value as TrainChoiceOverride;
+  } catch {
+    return null;
+  }
+}
+
+export async function writeTrainChoiceOverride(override: TrainChoiceOverride | null): Promise<void> {
+  if (!override) await AsyncStorage.removeItem(STORAGE_KEYS.trainChoiceOverride).catch(() => undefined);
+  else await AsyncStorage.setItem(STORAGE_KEYS.trainChoiceOverride, JSON.stringify(override)).catch(() => undefined);
+}
+
 export async function writeTrainChoice(choice: number, until: number): Promise<void> {
   if (choice === 0) await AsyncStorage.removeItem(STORAGE_KEYS.trainChoice).catch(() => undefined);
   else await AsyncStorage.setItem(STORAGE_KEYS.trainChoice, JSON.stringify({ choice, until })).catch(() => undefined);
+}
+
+export async function readWidgetTheme(): Promise<WidgetThemeId> {
+  const raw = await AsyncStorage.getItem(STORAGE_KEYS.widgetTheme).catch(() => null);
+  return isWidgetTheme(raw) ? raw : DEFAULT_WIDGET_THEME;
+}
+
+export async function writeWidgetTheme(theme: WidgetThemeId): Promise<void> {
+  await AsyncStorage.setItem(STORAGE_KEYS.widgetTheme, theme);
 }

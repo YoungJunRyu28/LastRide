@@ -5,6 +5,7 @@ import {
   type EnterpriseEventDetail,
 } from "@workspace/api-client-react";
 import { useLastRide } from "@/context/LastRideContext";
+import { eventJoinLink } from "@/lib/inviteLinks";
 import { useColors } from "@/hooks/useColors";
 import { businessEnabled } from "@/lib/features";
 import { enterpriseRequestOptions } from "@/lib/enterpriseHostAuth";
@@ -40,14 +41,7 @@ function formatLeaveTime(value: string | null, ja: boolean): string {
   }).format(new Date(value));
 }
 
-function joinLink(token: string): string {
-  const configured = process.env.EXPO_PUBLIC_APP_JOIN_BASE_URL?.replace(
-    /\/+$/,
-    "",
-  );
-  const base = configured ? `${configured}/join` : "last-ride://join";
-  return `${base}?token=${encodeURIComponent(token)}`;
-}
+const joinLink = eventJoinLink;
 
 function BusinessEventScreen() {
   const colors = useColors();

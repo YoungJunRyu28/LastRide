@@ -3,3 +3,6 @@
   Referrer-Policy: strict-origin-when-cross-origin
   X-Frame-Options: DENY
   Permissions-Policy: geolocation=(), camera=(), microphone=()
+
+/.well-known/apple-app-site-association
+  Content-Type: application/json

@@ -7,7 +7,7 @@
 <link rel="alternate" hreflang="ja" href="https://lastride.jp/support/">
 <link rel="alternate" hreflang="en" href="https://lastride.jp/en/support/">
 <link rel="alternate" hreflang="x-default" href="https://lastride.jp/support/">
-<link rel="stylesheet" href="/style.css?v=3">
+<link rel="stylesheet" href="/style.css?v=4">
 <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png">
 <link rel="icon" href="/favicon.png" sizes="64x64" type="image/png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
@@ -33,6 +33,64 @@
   <p><b>Contact</b><br><a href="mailto:support@lastride.jp">support@lastride.jp</a></p>
   <p class="muted">For bug reports, please include your iPhone model, iOS version, and the time and place (station). We usually reply within a few days.</p>
   </div>
+
+  <form class="card contact-form" id="contact-form" data-sitekey="0x4AAAAAAFYplvzCpZxEyY_d" hidden>
+    <h2 class="form-title">Send a message</h2>
+    <input type="hidden" name="lang" value="en">
+    <label>Name (optional)<input name="name" autocomplete="name" maxlength="100"></label>
+    <label>Email<input name="email" type="email" autocomplete="email" required maxlength="200"></label>
+    <label>Topic
+      <select name="category">
+        <option value="bug">A problem</option>
+        <option value="question">A question</option>
+        <option value="business">Business / events</option>
+        <option value="other">Something else</option>
+      </select>
+    </label>
+    <label>Message<textarea name="message" rows="6" required maxlength="4000"></textarea></label>
+    <div class="cf-turnstile"></div>
+    <p><button class="btn btn-dark" type="submit">Send</button></p>
+    <p class="muted form-status" role="status" aria-live="polite"></p>
+  </form>
+  <script>
+    // Shown only once the Turnstile site key is set; otherwise the email address above is the way to write.
+    (function () {
+      var form = document.getElementById("contact-form");
+      var key = form.getAttribute("data-sitekey");
+      if (!key || key === "TURNSTILE_SITE_KEY") return;
+      form.hidden = false;
+      form.querySelector(".cf-turnstile").setAttribute("data-sitekey", key);
+      var script = document.createElement("script");
+      script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js";
+      script.async = true;
+      document.head.appendChild(script);
+      var status = form.querySelector(".form-status");
+      var button = form.querySelector("button");
+      form.addEventListener("submit", function (event) {
+        event.preventDefault();
+        button.disabled = true;
+        status.textContent = "Sending…";
+        fetch("/api/contact", { method: "POST", body: new FormData(form) })
+          .then(function (response) { return response.json().catch(function () { return {}; }).then(function (data) { return { ok: response.ok, data: data }; }); })
+          .then(function (result) {
+            if (result.ok) {
+              form.reset();
+              status.textContent = "Sent. We’ll reply by email within a few days.";
+            } else {
+              status.textContent = result.data.error === "email"
+                ? "Please check your email address."
+                : "Couldn’t send. Please email support@lastride.jp instead.";
+            }
+          })
+          .catch(function () { status.textContent = "Couldn’t send. Please email support@lastride.jp instead."; })
+          .finally(function () {
+            button.disabled = false;
+            if (window.turnstile) window.turnstile.reset();
+          });
+      });
+    })();
+  </script>
+
   <h2>Frequently asked questions</h2>
   <h3>The times don’t match reality</h3>
   <p>Times are estimates based on Public Transportation Open Data Center and Apple Maps data. Times marked “approx.” couldn’t be confirmed as a train. Please check station information too, and tell us about any difference — please don’t contact the rail operators.</p>

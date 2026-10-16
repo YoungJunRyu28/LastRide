@@ -10,6 +10,7 @@ type NativeAlarmModule = {
   cancelAll(): Promise<void>;
   previewSound(fileName: string): Promise<void>;
   liveActivitiesEnabled?(): Promise<boolean>;
+  isTestFlight?(): boolean;
 };
 
 /** The iOS major version (e.g. 18), or null off iOS. */
@@ -34,3 +35,15 @@ export const alarmKit = {
 export function liveActivitiesAllowed(): Promise<boolean | null> {
   return native?.liveActivitiesEnabled ? native.liveActivitiesEnabled().catch(() => null) : Promise.resolve(null);
 }
+
+/**
+ * Running a TestFlight install (never an App Store one, though it's the same
+ * binary). False off iOS and in builds from before this check existed.
+ */
+export const isTestFlightBuild: boolean = (() => {
+  try {
+    return native?.isTestFlight?.() === true;
+  } catch {
+    return false;
+  }
+})();

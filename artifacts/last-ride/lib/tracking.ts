@@ -14,15 +14,17 @@ import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import { Platform } from 'react-native';
 import { syncEnterpriseLeaveBy } from '@/lib/enterpriseParticipation';
+import { holdOnTheWay, keepOnTheWay } from '@/lib/onTheWay';
+import { heldTrain, readAnswered, readBoarded } from '@/lib/boarding';
 import { recommendedLeaveTime } from '@/lib/reliability';
 import { endLiveActivity, syncLiveActivity } from '@/lib/liveActivity';
 import { syncWidgets } from '@/lib/widgets';
-import { scheduleReminders } from '@/lib/notifications';
-import { buildReminderPlans, planNight, shouldReplan, trackingEndsAt, trackingHardStopAt, type NightPlan } from '@/lib/planner';
-import { hasCoordinates, readSettings } from '@/lib/settings';
-import { applyTrainChoice, effectiveTrainChoice, trainOptions } from '@/lib/trainChoice';
+import { notifyLockFallback, scheduleReminders, cancelAllReminders } from '@/lib/notifications';
+import { buildReminderPlans, planNight, sameStation, shouldReplan, trackingEndsAt, trackingHardStopAt, type NightPlan } from '@/lib/planner';
+import { hasCoordinates, readSettings, readTrainChoiceOverride, trainChoiceUntil, writePinnedStation, writeTrainChoiceOverride } from '@/lib/settings';
+import { applyTrainChoice, choiceAt, closestChoice, effectiveTrainChoice, trainChoiceLabel, trainOptions } from '@/lib/trainChoice';
 import type { Coordinates } from '@/lib/stations';
-import { formatJstTime } from '@/lib/time';
+import { formatJstTime, serviceDate } from '@/lib/time';
 import { syncSharedLeaveBy } from '@/lib/groupSharing';
 
 export const LOCATION_TASK = 'lastride-night-tracking';
@@ -59,21 +61,67 @@ async function recomputeFromLocation(coordinates: Coordinates): Promise<void> {
     await stopBackgroundTracking();
     return;
   }
+  // 〔乗った〕: on the earlier train, the night is over (lib/boarding.ts).
+  if (await readBoarded(now)) {
+    await stopBackgroundTracking();
+    await cancelAllReminders().catch(() => undefined);
+    return;
+  }
   if (!shouldReplan(previous, coordinates, now)) return;
-  const basePlan = await planNight(coordinates, settings.homeStation, settings.leaveMargin, now, { pinned: settings.pinnedStation, homeAddress: settings.homeAddress });
+  let override = await readTrainChoiceOverride(now);
+  // The plan in force before this update, with tonight's train choice.
+  const before = previous ? trainOptions(previous, settings.leaveMargin, now) : [];
+  const previousPlan = previous ? applyTrainChoice(previous, before, effectiveTrainChoice(before, choiceAt(settings.trainChoice, override, previous.station.nameJa))) : null;
+  // On the way (past the leave time, train not gone): keep tonight's station and
+  // times until the train departs, then re-plan from here (lib/onTheWay.ts).
+  const kept = previous && previousPlan && holdOnTheWay(previous, previousPlan, now)
+    ? keepOnTheWay(previous, coordinates, now, previousPlan.lastTrain.departsAt)
+    : null;
+  const basePlan = kept ?? await planNight(coordinates, settings.homeStation, settings.leaveMargin, now, { pinned: settings.pinnedStation, homeAddress: settings.homeAddress });
   if (!(await isTrackingFlagOn())) return; // stopped while we were computing
+  // The station locked for tonight can't get you home any more: back to automatic, and say so.
+  if (settings.pinnedStation && !basePlan.pinned) {
+    await writePinnedStation(null);
+    await notifyLockFallback(settings.pinnedStation, basePlan, settings.language ?? 'en').catch(() => undefined);
+  }
   // The snapshot keeps the plan as found; the app applies tonight's train choice itself.
   await AsyncStorage.setItem(SNAPSHOT_KEY, JSON.stringify(basePlan));
   // 終電 / 1本前 / 2本前, falling back to a later train once the chosen one can't be made.
+  // After an automatic station change, the train there with the closest leave time.
+  if (previous && previousPlan && settings.trainChoice > 0 && !sameStation(previous.station, basePlan.station) && override?.station !== basePlan.station.nameJa) {
+    const choice = closestChoice(trainOptions(basePlan, settings.leaveMargin, now), recommendedLeaveTime(previousPlan));
+    override = choice === settings.trainChoice
+      ? null
+      : { station: basePlan.station.nameJa, fromStation: previous.station.nameJa, choice, until: trainChoiceUntil(basePlan.lastTrain.departsAt) };
+    await writeTrainChoiceOverride(override);
+  }
   const options = trainOptions(basePlan, settings.leaveMargin, now);
-  const plan = applyTrainChoice(basePlan, options, effectiveTrainChoice(options, settings.trainChoice));
+  const preferred = choiceAt(settings.trainChoice, override, basePlan.station.nameJa);
+  const effective = effectiveTrainChoice(options, preferred);
+  // The earlier train headed for has departed and 乗れましたか？ isn't answered: one follow-up (lib/boarding.ts).
+  const gone = preferred > effective ? options.find((option) => option.choice === effective + 1 && !option.catchable) : undefined;
+  const goneAt = gone?.station.lastTrain.departsAt;
+  // Only from a plan made after the departure (not one still held), so the times are real.
+  const followUpFor = goneAt !== undefined && basePlan.computedAt >= goneAt && !basePlan.frozenUntil && (await readAnswered()) !== goneAt ? goneAt : undefined;
+  const plan = applyTrainChoice(basePlan, options, effective);
   const language = settings.language ?? 'en';
-  await scheduleReminders(buildReminderPlans(plan, settings.reminderIntervals, now, { missedCheckIn: settings.missedCheckIn, alarmIntervals: settings.alarmIntervals }), {
+  await scheduleReminders(buildReminderPlans(plan, settings.reminderIntervals, now, { missedCheckIn: settings.missedCheckIn, alarmIntervals: settings.alarmIntervals, includePast: true }), {
     leaveBy: formatJstTime(recommendedLeaveTime(plan)),
     station: language === 'ja' ? plan.station.nameJa : plan.station.name,
     language,
-    lastTrainLeaveBy: plan.nightLastLeaveAt === undefined ? undefined : formatJstTime(plan.nightLastLeaveAt),
-  }, { sound: settings.alarmSound, vibrate: settings.reminderVibrate });
+    held: heldTrain(plan, language === 'ja'),
+  }, { sound: settings.alarmSound, vibrate: settings.reminderVibrate }, {
+    night: serviceDate((plan.nightLastTrain ?? plan.lastTrain).departsAt),
+    choiceKey: String(settings.trainChoice),
+    stationKey: plan.station.nameJa,
+    leaveAtMs: recommendedLeaveTime(plan),
+    trainDepartsAtMs: plan.lastTrain.departsAt,
+    trainLabel: trainChoiceLabel(effective, language === 'ja'),
+    trainDeparts: formatJstTime(plan.lastTrain.departsAt),
+    switchedToClosest: override?.station === plan.station.nameJa,
+    followUpFor,
+    followUpLabel: gone ? trainChoiceLabel(gone.choice, language === 'ja') : undefined,
+  });
   await syncLiveActivity(plan, language, now).catch(() => undefined);
   const destinationLabel = settings.tonightDestination
     ? language === 'ja' ? settings.tonightDestination.nameJa : settings.tonightDestination.name
@@ -162,7 +210,10 @@ export async function startBackgroundTracking(): Promise<boolean> {
       accuracy: Location.Accuracy.Balanced,
       distanceInterval: 200, // meters moved before an update
       timeInterval: 180000, // at most every 3 minutes (Android)
-      pausesUpdatesAutomatically: true,
+      // iOS would otherwise pause updates after a while in one place (a bar) and may
+      // not resume until a big move: you'd leave without the plan following you.
+      // Updates still only come on movement, so standing still costs little.
+      pausesUpdatesAutomatically: false,
       showsBackgroundLocationIndicator: true,
       foregroundService: {
         notificationTitle: 'LastRide is watching the clock',

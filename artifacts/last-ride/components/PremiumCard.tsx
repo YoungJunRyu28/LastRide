@@ -53,7 +53,7 @@ export function PremiumCard({
         {lock ? (
           <View style={[styles.preview, styles.lockPreview, { backgroundColor: colors.background, borderColor: colors.input }]}>
             <Text style={[styles.previewSmall, { color: colors.mutedForeground }]} numberOfLines={1}>
-              {ja ? `${leaveAt}までに出発` : `Leave by ${leaveAt}`}
+              {ja ? `${leaveAt}までに出る` : `Leave by ${leaveAt}`}
             </Text>
             <Text style={[styles.previewBig, { color: colors.primary }]}>{countdown}</Text>
           </View>

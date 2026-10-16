@@ -127,4 +127,34 @@ describe('reminder delivery', () => {
     expect(mocks.alarmSchedule).not.toHaveBeenCalled();
     expect(mocks.notificationSchedule).not.toHaveBeenCalled();
   });
+
+  it('with tonight’s record: a small re-plan after 出る時間です never sends it again; a station change is told once, then reminders still ahead come again', async () => {
+    mocks.store.delete(STORAGE_KEYS.reminderLedger);
+    const start = Date.now();
+    const info = (leaveAtMs: number, stationKey: string) => ({
+      night: '20261016', choiceKey: '0', stationKey, leaveAtMs, trainDepartsAtMs: start + 3_600_000,
+      trainLabel: '終電', trainDeparts: '23:45',
+    });
+    const leaveNow = (fireAt: number) => [{ minutesBefore: 0, fireAt }];
+    try {
+      vi.useFakeTimers({ now: start });
+      await scheduleReminders(leaveNow(start + 60_000), text, { sound: 'default', vibrate: true }, info(start + 60_000, '新宿'));
+      expect(mocks.notificationSchedule).toHaveBeenCalledTimes(1);
+      // Two minutes later 今すぐ出発 has gone out; walking toward the station moves the leave time later.
+      vi.setSystemTime(start + 120_000);
+      await scheduleReminders(leaveNow(start + 300_000), text, { sound: 'default', vibrate: true }, info(start + 300_000, '新宿'));
+      expect(mocks.notificationSchedule).toHaveBeenCalledTimes(1);
+      // The plan switches station: one notice, sent now, and 出る時間です again at the new time.
+      await scheduleReminders(leaveNow(start + 300_000), text, { sound: 'default', vibrate: true }, info(start + 300_000, '新宿三丁目'));
+      expect(mocks.notificationSchedule).toHaveBeenCalledTimes(3);
+      const calls = mocks.notificationSchedule.mock.calls as unknown as Array<[{ content: { title: string }; trigger: unknown }]>;
+      expect(calls[1][0].content.title).toBe('LastRide — 出発駅が変わりました');
+      expect(calls[1][0].trigger).toBeNull();
+      expect(calls[2][0].content.title).toBe('LastRide — 出る時間です');
+      expect(calls[2][0].trigger).not.toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
+

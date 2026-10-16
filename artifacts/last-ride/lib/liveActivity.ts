@@ -19,6 +19,8 @@ import {
 } from "@/lib/liveActivityContent";
 import type { NightPlan } from "@/lib/planner";
 import { readPremiumCache } from "@/lib/premiumCache";
+import { readWidgetTheme } from "@/lib/settings";
+import type { WidgetThemeId } from "@/lib/widgetThemes";
 import {
   countdownNotificationAvailable,
   dismissCountdown,
@@ -47,9 +49,11 @@ export async function syncLiveActivity(
   nowMs = Date.now(),
   /** Known premium state; read from the on-disk cache when omitted (background task). */
   premium?: boolean,
+  /** The widgets' colour theme; read from settings when omitted. */
+  theme?: WidgetThemeId,
 ): Promise<void> {
   if (!liveActivityEnabled && !countdownNotificationAvailable) return;
-  const content = liveActivityContent(plan, language, nowMs);
+  const content = liveActivityContent(plan, language, nowMs, theme ?? (await readWidgetTheme()));
   if (!content || !(premium ?? (await readPremiumCache()))) {
     await endLiveActivity();
     return;

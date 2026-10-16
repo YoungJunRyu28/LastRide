@@ -374,7 +374,8 @@ export function CountdownRing({
   label: string;
   value: string;
   size?: number;
-  tone?: 'primary' | 'destructive' | 'muted';
+  /** 'train': counting to a train's departure (after the leave time). */
+  tone?: 'primary' | 'train' | 'destructive' | 'muted';
   /** A small line under the value, e.g. "● トラッキング中". */
   caption?: string;
 }) {
@@ -383,7 +384,8 @@ export function CountdownRing({
   const radius = (size - stroke) / 2;
   const circumference = 2 * Math.PI * radius;
   const clamped = Math.max(0, Math.min(1, fraction));
-  const color = tone === 'destructive' ? colors.destructive : tone === 'muted' ? colors.mutedForeground : colors.primary;
+  const color =
+    tone === 'destructive' ? colors.destructive : tone === 'muted' ? colors.mutedForeground : tone === 'train' ? colors.train : colors.primary;
   return (
     <View style={{ width: size, height: size }} accessible accessibilityLabel={`${label} ${value}`}>
       <Svg width={size} height={size}>

@@ -1,93 +1,120 @@
 /**
- * Home/lock widgets: the timeline handed to WidgetKit for the night.
+ * The widgets over a night: the live timeline while tracking, tonight's train
+ * when not, the first train after the last has gone, and the next day.
  */
 import { describe, expect, test } from "vitest";
-import type { StationOption } from "@/lib/stations";
+import type { NightPlan } from "@/lib/planner";
+import { applyTrainChoice, trainOptions } from "@/lib/trainChoice";
+import type { TrainTime } from "@/lib/timetable";
+import { MINUTE_MS } from "@/lib/time";
 import { widgetMessage, widgetTimeline } from "@/lib/widgetContent";
+import { widgetPalette } from "@/lib/widgetThemes";
 
-/** Epoch ms for a wall-clock time in Japan (UTC+9). */
 function jst(hours: number, minutes = 0) {
   return Date.UTC(2026, 9, 9, hours - 9, minutes);
 }
+function train(dep: number, arr: number, before?: TrainTime[]): TrainTime {
+  return { departsAt: dep, arrivesAt: arr, source: "live", ...(before ? { before } : {}) };
+}
 
-const shibuya = { name: "Shibuya", nameJa: "渋谷", latitude: 35.658, longitude: 139.701 } as StationOption;
-const oshiage = { name: "Oshiage", nameJa: "押上", latitude: 35.71, longitude: 139.813 } as StationOption;
-const plan = {
-  leaveByMs: jst(23, 41),
-  lastTrain: { departsAt: jst(23, 52), arrivesAt: jst(24, 24), source: "live" as const },
-  walkingMinutes: 8,
-  station: shibuya,
-  destination: oshiage,
-};
+const shibuya = { name: "Shibuya", nameJa: "渋谷", latitude: 35.658, longitude: 139.701 };
+const kikuna = { name: "Kikuna", nameJa: "菊名", latitude: 35.51, longitude: 139.63 };
+// Last 23:45 (leave 23:36); 1本前 23:36 (leave 23:27).
+const last = train(jst(23, 45), jst(24, 37), [train(jst(23, 36), jst(24, 28))]);
 
-describe("widgetTimeline", () => {
-  test("counts down to leave-by, then to the last train, then ends", () => {
-    const entries = widgetTimeline(plan, "自宅", "ja", jst(23, 0));
-    expect(entries.map((entry) => entry.date.getTime())).toEqual([jst(23, 0), jst(23, 37), jst(23, 57)]);
-    expect(entries[0].props).toMatchObject({
-      kind: "plan",
-      heading: "帰り時 · 自宅へ",
-      bigTime: "23:37",
-      inline: "23:37 出発 · 終電 23:52",
-      countdownLabel: "出発まで",
-      countdownTo: jst(23, 37),
-      footer: "23:37 渋谷",
-      arrival: "押上着 00:24",
-    });
-    expect(entries[1].props).toMatchObject({ countdownLabel: "終電まで", countdownTo: jst(23, 52), bigTime: "23:52" });
-    expect(entries[2].props).toEqual(widgetMessage("ja", "ended"));
+function night(lastTrain = last, computedAt = jst(23, 0)): NightPlan {
+  const leaveByMs = lastTrain.departsAt - 5 * MINUTE_MS;
+  const base = {
+    station: shibuya,
+    walkingMinutes: 2,
+    distanceMeters: 150,
+    lastTrain,
+    leaveByMs,
+    safetyMarginMinutes: 4,
+    recommendedLeaveByMs: leaveByMs - 4 * MINUTE_MS,
+    destination: kikuna,
+  };
+  return { ...base, coordinates: shibuya, alternatives: [], autoPick: base, pinned: false, computedAt };
+}
+
+const at = (entries: ReturnType<typeof widgetTimeline>, ms: number) =>
+  [...entries].reverse().find((entry) => entry.date.getTime() <= ms)!.props;
+
+describe("tracking: the live timeline", () => {
+  const entries = widgetTimeline(night(), "自宅", "ja", jst(23, 0), { tracking: true });
+
+  test("counts to the leave time, then the train, as the app does", () => {
+    const before = at(entries, jst(23, 10));
+    expect(before).toMatchObject({ kind: "live", label: "ここを出るまで", tone: "leave", countdownTo: jst(23, 36), from: "渋谷駅から" });
+    expect(before.stops.map((stop) => [stop.time, stop.short, stop.state])).toEqual([
+      ["23:36", "出る 23:36", "next"],
+      ["23:45", "終電", "later"],
+    ]);
+    const after = at(entries, jst(23, 40));
+    expect(after).toMatchObject({ label: "終電 23:45発まで", tone: "train", countdownTo: jst(23, 45) });
+    expect(after.stops.map((stop) => stop.state)).toEqual(["done", "next"]);
   });
 
-  test("starts on the last-train countdown once leave-by has passed", () => {
-    const entries = widgetTimeline(plan, "Home", "en", jst(23, 45));
-    expect(entries).toHaveLength(2);
-    expect(entries[0].props).toMatchObject({ inline: "Leave now · last 23:52", shownAt: jst(23, 45) });
+  test("the lock-screen line has times only", () => {
+    expect(at(entries, jst(23, 10)).inline).toBe("23:36に出る · 23:45発");
+    expect(at(entries, jst(23, 40)).inline).toBe("急いで · 終電 23:45発");
   });
 
-  test("shows only the ended notice after the last train", () => {
-    const entries = widgetTimeline(plan, "Home", "en", jst(24, 30));
-    expect(entries).toHaveLength(1);
-    expect(entries[0].props.kind).toBe("message");
+  test("after the last train: the ended notice, then the next day from 05:00", () => {
+    expect(at(entries, jst(23, 50))).toMatchObject({ kind: "message", message: "今夜の終電は発車しました" });
+    expect(at(entries, jst(29, 0))).toMatchObject({ kind: "message", icon: "moon", message: "今夜の出発時刻は、帰り時を開くと表示" });
   });
 
-  test("marks an approximate (Apple, maybe-walking) last train as 目安", () => {
-    const approx = { ...plan, lastTrain: { ...plan.lastTrain, source: "apple" as const, approximate: true } };
-    const entries = widgetTimeline(approx, "自宅", "ja", jst(23, 0));
-    expect(entries[0].props.inline).toBe("23:37 出発 · 終電 23:52（目安）");
+  test("with the first train known, it shows that instead", () => {
+    const first = train(jst(29, 12) - 5 * MINUTE_MS, jst(30, 1));
+    const withFirst = widgetTimeline(night(), "自宅", "ja", jst(23, 0), { tracking: true, firstTrain: first });
+    expect(at(withFirst, jst(24, 30))).toMatchObject({ kind: "first", title: "終電は発車しました", trainHeading: "始発 · 渋谷発", trainTime: "05:07" });
   });
 
-  test("labels an Apple arrival as roughly when you leave the station", () => {
-    const apple = { ...plan, lastTrain: { ...plan.lastTrain, source: "apple" as const } };
-    expect(widgetTimeline(apple, "自宅", "ja", jst(23, 0))[0].props.arrival).toBe("押上 00:24ごろ");
-  });
-
-  test("shows the leave time until the last hour, then a live countdown", () => {
-    const entries = widgetTimeline(plan, "自宅", "ja", jst(21, 0));
-    expect(entries.map((entry) => entry.date.getTime())).toEqual([jst(21, 0), jst(22, 37), jst(23, 37), jst(23, 57)]);
-    expect(entries[0].props).toMatchObject({ phase: "time", bigTime: "23:37", from: "渋谷発" });
-    expect(entries[1].props).toMatchObject({ phase: "countdown", countdownTo: jst(23, 37), barFrom: jst(22, 37) });
+  test("1本前: its departure on the rail, then on to the last train", () => {
+    const options = trainOptions(night(), 4, jst(23, 0));
+    const chosen = widgetTimeline(applyTrainChoice(night(), options, 1), "自宅", "en", jst(23, 0), { tracking: true });
+    expect(at(chosen, jst(23, 30))).toMatchObject({ label: "23:36 train in", countdownTo: jst(23, 36) });
+    expect(at(chosen, jst(23, 30)).stops.map((stop) => stop.short)).toEqual(["Left", "23:36", "Last"]);
+    expect(at(chosen, jst(23, 40))).toMatchObject({ label: "Last train 23:45 in", countdownTo: jst(23, 45) });
+    expect(at(chosen, jst(23, 40)).stops.map((stop) => stop.short)).toEqual(["Left", "Gone", "Last 23:45"]);
   });
 });
 
-describe("heading for an earlier train (1本前)", () => {
-  // 1本前 leaves 23:36 (latest leave 23:25, recommended 23:21); the last train is 23:52 (leave 23:37).
-  const earlier = {
-    ...plan,
-    leaveByMs: jst(23, 25),
-    recommendedLeaveByMs: jst(23, 21),
-    lastTrain: { departsAt: jst(23, 36), arrivesAt: jst(24, 8), source: "live" as const },
-    trainChoice: 1,
-    nightLastTrain: plan.lastTrain,
-    nightLastLeaveAt: jst(23, 37),
-  };
+describe("not tracking", () => {
+  test("live just after the check, then tonight's train time leads", () => {
+    const entries = widgetTimeline(night(last, jst(23, 0)), "自宅", "ja", jst(23, 0), { tracking: false });
+    expect(at(entries, jst(23, 20)).kind).toBe("live");
+    expect(at(entries, jst(23, 31))).toMatchObject({
+      kind: "plan",
+      trainHeading: "終電 · 渋谷",
+      trainTime: "23:45",
+      trainSuffix: "発",
+      leaveLine: "出る 23:36（目安）",
+      checked: "23:00に確認",
+      inline: "終電 23:45発 · 23:00確認",
+    });
+  });
 
-  test("shows the earlier train, then switches to the last train once it can't be made", () => {
-    const entries = widgetTimeline(earlier, "自宅", "ja", jst(23, 0));
-    expect(entries[0].props).toMatchObject({ bigTime: "23:21", detail: "1本前 23:36 · 徒歩8分" });
-    // From 23:25 (1本前's latest leave time) the widget is the last train's.
-    const switched = entries.find((entry) => entry.date.getTime() === jst(23, 25));
-    expect(switched?.props).toMatchObject({ detail: "終電 23:52 · 徒歩8分", countdownTo: jst(23, 37) });
-    // And it only says "ended" after the real last train.
-    expect(entries[entries.length - 1].date.getTime()).toBe(jst(23, 57));
+  test("an old check goes straight to the train time", () => {
+    const entries = widgetTimeline(night(last, jst(21, 0)), "Home", "en", jst(22, 0), { tracking: false });
+    expect(entries[0].props).toMatchObject({ kind: "plan", trainHeading: "Last train · Shibuya", trainSuffix: "dep.", checked: "Checked 21:00" });
+  });
+});
+
+describe("messages", () => {
+  test("say why there is no route", () => {
+    expect(widgetMessage("ja", "location-off")).toMatchObject({ message: "位置情報がオフです", icon: "alert" });
+    expect(widgetMessage("en", "near-home").message).toBe("You’re near your destination");
+  });
+
+  test("never promote a purchase", () => {
+    expect(widgetMessage("en", "premium").message).toBe("Open LastRide to set up this widget");
+  });
+
+  test("use the chosen theme", () => {
+    expect(widgetMessage("en", "morning", "paper").colors).toEqual(widgetPalette("paper"));
+    expect(widgetPalette("paper").dark).toBe(false);
+    expect(widgetPalette().background).toBe("#0a1322");
   });
 });

@@ -9,6 +9,7 @@ import {
   getGroup,
   joinGroup,
   joinGroupTonight,
+  leaveGroupTonight,
   resetGroupMembership,
   updateMyGroupMembership,
   type GroupDetail,
@@ -60,6 +61,10 @@ type GroupsValue = {
   tonightGroup: GroupDetail | null;
   /** A group active tonight that you haven't joined yet (the home screen offers 参加). */
   tonightOpenGroup: GroupDetail | null;
+  /** Every group you're sharing your leave time with tonight. */
+  sharingTonight: GroupDetail[];
+  /** 今夜はやめる in each of them (you stay in the groups). */
+  stopSharingTonight: () => Promise<void>;
 };
 
 const GroupsContext = createContext<GroupsValue | null>(null);
@@ -283,6 +288,24 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
         ) ?? null,
     [groups],
   );
+  const sharingTonight = useMemo(
+    () =>
+      groups
+        .map((entry) => entry.detail)
+        .filter(
+          (detail): detail is GroupDetail =>
+            !!detail && detail.tonight.active && detail.tonight.participants.some((participant) => participant.memberId === detail.me.memberId),
+        ),
+    [groups],
+  );
+  const stopSharingTonight = useCallback(async () => {
+    await Promise.all(
+      sharingTonight.map(async (detail) => {
+        const result = await leaveGroupTonight(detail.id, memberOptions(detail.id)).catch(() => null);
+        if (result) apply(result);
+      }),
+    );
+  }, [sharingTonight, memberOptions, apply]);
   const tonightOpenGroup = useMemo(
     () =>
       tonightGroup
@@ -294,8 +317,8 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
   );
 
   const value = useMemo(
-    () => ({ groups, loading, available, refresh, memberOptions, apply, forget, leaveAll, create, join, tonightGroup, tonightOpenGroup }),
-    [groups, loading, available, refresh, memberOptions, apply, forget, leaveAll, create, join, tonightGroup, tonightOpenGroup],
+    () => ({ groups, loading, available, refresh, memberOptions, apply, forget, leaveAll, create, join, tonightGroup, tonightOpenGroup, sharingTonight, stopSharingTonight }),
+    [groups, loading, available, refresh, memberOptions, apply, forget, leaveAll, create, join, tonightGroup, tonightOpenGroup, sharingTonight, stopSharingTonight],
   );
   return <GroupsContext.Provider value={value}>{children}</GroupsContext.Provider>;
 }

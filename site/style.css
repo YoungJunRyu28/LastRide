@@ -260,3 +260,27 @@ th { color: var(--muted); font-weight: 700; width: 32%; background: #fbfcfe; }
 .founder-social-link:focus-visible { outline:3px solid var(--amber); outline-offset:3px; }
 .founder-linkedin-mark { display:inline-grid; place-items:center; width:1.32rem; height:1.32rem; border-radius:.22rem; background:#0a66c2; color:white; font:bold .73rem Arial,sans-serif; }
 @media(prefers-reduced-motion:reduce) { .founder-social-link { transition:none; } }
+
+/* Phones: icon or number beside the title, text below, so each card is about half as tall. */
+@media (max-width: 639px) {
+  .step, .feature { display: grid; grid-template-columns: auto 1fr; column-gap: 0.85rem; row-gap: 0.45rem; align-items: center; padding: 1.1rem 1.15rem; }
+  .step .num, .feature .icon { margin-bottom: 0; }
+  .step .num { width: 2.1rem; height: 2.1rem; }
+  .feature .icon { width: 2.3rem; height: 2.3rem; border-radius: 0.75rem; }
+  .feature .icon svg { width: 1.2rem; height: 1.2rem; }
+  .step h3, .feature h3 { margin: 0; font-size: 1.02rem; }
+  .step p, .feature p { grid-column: 1 / -1; font-size: 0.9rem; }
+  .steps, .features { gap: 0.75rem; }
+  .shot { width: min(12.5rem, 56vw); }
+  .shot img { border-radius: 1.8rem; border-width: 0.38rem; }
+}
+
+/* Contact form (support pages). */
+.contact-form { display: grid; gap: 0.9rem; margin-top: 1rem; }
+.contact-form .form-title { margin: 0; font-size: 1.1rem; }
+.contact-form label { display: grid; gap: 0.35rem; font-weight: 700; font-size: 0.9rem; }
+.contact-form input, .contact-form select, .contact-form textarea { font: inherit; font-weight: 400; padding: 0.65rem 0.8rem; border: 1px solid var(--border); border-radius: 0.7rem; background: var(--bg); color: var(--text); width: 100%; box-sizing: border-box; }
+.contact-form textarea { resize: vertical; min-height: 8rem; }
+.contact-form p { margin: 0; }
+.contact-form button[disabled] { opacity: 0.6; }
+.contact-form[hidden] { display: none; }

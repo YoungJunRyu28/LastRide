@@ -1,4 +1,5 @@
 import { Feather } from '@expo/vector-icons';
+import { groupInviteLink } from '@/lib/inviteLinks';
 import {
   disbandGroup,
   endGroupTonight,
@@ -13,7 +14,6 @@ import {
   type GroupDetail,
   type GroupMemberSummary,
 } from '@workspace/api-client-react';
-import * as Linking from 'expo-linking';
 import { router, useLocalSearchParams } from 'expo-router';
 import React, { useState } from 'react';
 import { Alert, Modal, Platform, Pressable, ScrollView, Share, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
@@ -46,7 +46,7 @@ function confirm(title: string, message: string, action: string, cancel: string,
 
 function inviteMessage(detail: GroupDetail, ja: boolean) {
   if (!detail.invite) return null;
-  const link = Linking.createURL('group-join', { queryParams: { invite: detail.invite.inviteToken } });
+  const link = groupInviteLink(detail.invite.inviteToken);
   return ja
     ? `「${detail.name}」に参加して、帰る時間を共有しよう（帰り時アプリ）\n${link}\n招待コード：${detail.invite.joinCode}`
     : `Join “${detail.name}” on LastRide to share leave times\n${link}\nInvite code: ${detail.invite.joinCode}`;

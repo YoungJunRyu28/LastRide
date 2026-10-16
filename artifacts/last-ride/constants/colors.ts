@@ -53,6 +53,9 @@ const night = {
 
   // Line colour used for the station tag on the map card
   line: '#8F76D6',
+
+  // Counting to a train (the leave time is primary): timeline rail, countdown after leaving
+  train: '#B9ADFF',
 };
 
 const colors = {

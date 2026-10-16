@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { useLastRide } from "@/context/LastRideContext";
 import { businessEnabled } from "@/lib/features";
 import type { NotificationTarget } from "@/lib/notifications";
+import { BOARDED_ACTION, NOT_BOARDED_ACTION } from "@/lib/boarding";
 
 const TARGETS: NotificationTarget[] = [
   "/ride",
@@ -17,7 +18,7 @@ const TARGETS: NotificationTarget[] = [
  */
 export function NotificationRouter() {
   const response = Notifications.useLastNotificationResponse();
-  const { isHydrated, homeStation } = useLastRide();
+  const { isHydrated, homeStation, answerBoarding } = useLastRide();
   const pathname = usePathname();
   const handled = useRef<string | null>(null);
 
@@ -36,6 +37,12 @@ export function NotificationRouter() {
     handled.current = id;
     void Notifications.clearLastNotificationResponseAsync();
 
+    // 乗れましたか？: 〔乗った〕 / 〔乗れなかった〕 (lib/boarding.ts). A plain tap opens
+    // the home screen, which asks the same question.
+    const departsAt = typeof data?.boardedCheck === "number" ? data.boardedCheck : undefined;
+    if (departsAt !== undefined && response.actionIdentifier === BOARDED_ACTION) void answerBoarding(true, departsAt);
+    if (departsAt !== undefined && response.actionIdentifier === NOT_BOARDED_ACTION) void answerBoarding(false, departsAt);
+
     if (isBusinessTarget && typeof data?.eventId === "string") {
       router.replace({
         pathname: "/business-event",
@@ -52,7 +59,7 @@ export function NotificationRouter() {
     if (TARGETS.includes(target as NotificationTarget) && target !== pathname) {
       router.replace(target as "/ride" | "/alternatives");
     }
-  }, [response, isHydrated, homeStation, pathname]);
+  }, [response, isHydrated, homeStation, pathname, answerBoarding]);
 
   return null;
 }

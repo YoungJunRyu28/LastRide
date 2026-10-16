@@ -5,7 +5,7 @@
  * "leave at").
  */
 import { describe, expect, it } from "vitest";
-import { firstTrainSearchStart, lastTrainArriveBy, searchFirstTrain, searchLastTrain, type EtaQuery } from "@/lib/appleTransit";
+import { firstTrainSearchStart, lastTrainArriveBy, searchFirstTrain, searchLastTrain, searchTrainsBefore, type EtaQuery } from "@/lib/appleTransit";
 
 /** Epoch ms for a JST clock time on the night of 10 Oct 2026; hours past midnight as 24, 25… */
 function jst(hours: number, minutes = 0) {
@@ -113,5 +113,51 @@ describe("firstTrainSearchStart", () => {
   it("looks from now once trains are running again", () => {
     expect(firstTrainSearchStart(jst(28, 20))).toBe(jst(28, 20));
     expect(firstTrainSearchStart(jst(29, 29))).toBe(jst(29, 29));
+  });
+});
+
+describe("searchTrainsBefore", () => {
+  // Trains every 10 minutes from the station, feeding a last leg that runs only every 30–60.
+  const board = [
+    { dep: jst(23, 0), arr: jst(23, 50) },
+    { dep: jst(23, 10), arr: jst(23, 50) },
+    { dep: jst(23, 20), arr: jst(24, 20) },
+    { dep: jst(23, 30), arr: jst(24, 20) },
+    { dep: jst(23, 40), arr: jst(24, 50) },
+  ];
+  const last = { departsAt: jst(23, 40), arrivesAt: jst(24, 50) };
+
+  it("finds the train before on the station board that gets home earlier", async () => {
+    const found = await searchTrainsBefore(simulatedMapKit(board, null), last, jst(22));
+    // 1本前: 23:30 (home 00:20); 2本前: 23:10 (home 23:50), not 23:20 (also home 00:20).
+    expect(found.map((train) => [train.departsAt, train.arrivesAt])).toEqual([
+      [jst(23, 30), jst(24, 20)],
+      [jst(23, 10), jst(23, 50)],
+    ]);
+  });
+
+  it("picks the later of two trains that arrive together (one waits at a change)", async () => {
+    const waits = [
+      { dep: jst(23, 20), arr: jst(24, 20) },
+      { dep: jst(23, 24), arr: jst(24, 20) },
+      { dep: jst(23, 40), arr: jst(24, 50) },
+    ];
+    const [before] = await searchTrainsBefore(simulatedMapKit(waits, null), last, jst(22), 1);
+    expect(before.departsAt).toBe(jst(23, 24));
+  });
+
+  it("stays within MapKit's limits", async () => {
+    const query = simulatedMapKit(board, null);
+    await searchTrainsBefore(query, last, jst(22));
+    expect(query.calls).toBeLessThanOrEqual(16);
+  });
+
+  it("can't look back at trains that have already left", async () => {
+    expect(await searchTrainsBefore(simulatedMapKit(board, null), last, jst(23, 38))).toEqual([]);
+  });
+
+  it("offers nothing when there's no earlier train within two hours", async () => {
+    const lonely = [{ dep: jst(21, 0), arr: jst(22, 0) }, { dep: jst(23, 40), arr: jst(24, 50) }];
+    expect(await searchTrainsBefore(simulatedMapKit(lonely, null), last, jst(20))).toEqual([]);
   });
 });

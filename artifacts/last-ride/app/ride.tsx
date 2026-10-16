@@ -22,12 +22,17 @@ import { formatCountdown } from "@/lib/countdown";
 import { useSecondClock } from "@/hooks/useSecondClock";
 import { shortLineName } from "@/lib/timetable";
 import { trainChoiceLabel } from "@/lib/trainChoice";
+import { phaseAt, phaseLabel } from "@/lib/nightPhase";
+import { TimelineRail } from "@/components/TimelineRail";
+import { boardedButtons } from "@/lib/boarding";
+import { PlaceholderBlock } from "@/components/Placeholder";
 import { Feather } from "@expo/vector-icons";
 import {
   getTrainDisruptions,
   joinGroupTonight,
   type TrainDisruption,
 } from "@workspace/api-client-react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
@@ -48,10 +53,39 @@ import { liveActivitiesAllowed } from "@/modules/last-ride-alarm/src";
 
 /** The ring empties over the last hour before leave-by. */
 const RING_WINDOW_MS = 60 * 60 * 1000;
+const ALWAYS_CARD_KEY = "lastride-always-card";
+
+/**
+ * The "update when closed?" card: shown while tracking only while open, until
+ * closed for tonight (stored as tonight's service date) or for good ("never").
+ */
+function useAlwaysCard(active: boolean) {
+  const [state, setState] = useState<string | null | undefined>(undefined);
+  useEffect(() => {
+    if (!active) return;
+    AsyncStorage.getItem(ALWAYS_CARD_KEY)
+      .then((value) => setState(value))
+      .catch(() => setState(null));
+  }, [active]);
+  const tonight = serviceDate(Date.now());
+  const save = (value: string) => {
+    setState(value);
+    void AsyncStorage.setItem(ALWAYS_CARD_KEY, value).catch(() => undefined);
+  };
+  return {
+    show: state !== undefined && state !== "never" && state !== tonight,
+    dismissTonight: () => save(tonight),
+    dismissForever: () => save("never"),
+  };
+}
+
 /** The countdown ring, and the start button that stands in for it until tonight is started. */
 const HERO_SIZE = 140;
 
 /** "1:05" above an hour (h:mm), "13:42" below it (mm:ss). */
+/** A plan can be refreshed by hand this soon after it was made. */
+const REFRESH_COOLDOWN_MS = 30_000;
+
 export default function RideScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -80,16 +114,26 @@ export default function RideScreen() {
     stopTracking,
     nightLocationMode,
     backgroundAllowed,
+    switchTrackingToBackground,
     notificationsAllowed,
     trainChoice,
     effectiveTrainChoice,
     trainChoices,
     setTrainChoice,
+    trainChoiceOverride,
+    chooseDepartureStation,
+    lockFallback,
+    dismissLockFallback,
+    boarded,
+    boardingQuestion,
+    answerBoarding,
+    undoBoarded,
   } = useLastRide();
   const ja = language === "ja";
   const station = ja ? stationNameJa : stationName;
   const [disruptions, setDisruptions] = useState<TrainDisruption[]>([]);
   const [showOtherStations, setShowOtherStations] = useState(false);
+  const [showRoute, setShowRoute] = useState(false);
   const clockMs = useSecondClock(nowMs, demoActive);
   // "Stop tracking" from the Android countdown notification opens last-ride://ride?stop=1.
   const { stop } = useLocalSearchParams<{ stop?: string }>();
@@ -99,7 +143,7 @@ export default function RideScreen() {
     router.setParams({ stop: undefined });
   }, [stop, trackingMode, stopTracking]);
   const { isPremium } = usePremium();
-  const { tonightGroup, tonightOpenGroup, apply: applyGroup, memberOptions } = useGroups();
+  const { tonightGroup, tonightOpenGroup, apply: applyGroup, memberOptions, sharingTonight, stopSharingTonight } = useGroups();
   const [joiningGroup, setJoiningGroup] = useState(false);
   /** 参加 on the home screen: shares your current leave time with tonight's group. */
   const joinOpenGroup = async () => {
@@ -147,10 +191,42 @@ export default function RideScreen() {
     return () => subscription.remove();
   }, [isPremium, trackingMode]);
 
+  // 停止 while sharing with a group: ask whether to stop sharing too (the time
+  // would otherwise stay as last sent, no longer following you).
+  const alwaysCard = useAlwaysCard(trackingMode === "foreground");
+  const confirmStop = () => {
+    if (sharingTonight.length === 0) {
+      void stopTracking();
+      return;
+    }
+    const names = sharingTonight.map((group) => group.name).join(ja ? "、" : ", ");
+    Alert.alert(
+      ja ? "グループへの共有も止めますか？" : "Stop sharing with your group too?",
+      ja
+        ? `${names}に今夜の出発時刻を共有しています。トラッキングを止めると、時刻は更新されなくなります。`
+        : `You’re sharing tonight’s leave time with ${names}. Once tracking stops, it won’t be updated.`,
+      [
+        { text: ja ? "共有は続ける" : "Keep sharing", onPress: () => void stopTracking() },
+        {
+          text: ja ? "共有も止める" : "Stop sharing too",
+          style: "destructive",
+          onPress: () => {
+            void stopTracking();
+            void stopSharingTonight();
+          },
+        },
+      ],
+    );
+  };
+
   const freshness = plan ? planFreshness(plan.computedAt, nowMs) : null;
   const planAge = plan ? planAgeMinutes(plan.computedAt, nowMs) : null;
+  const canRefresh = !!plan && !isLocating && nowMs - plan.computedAt >= REFRESH_COOLDOWN_MS;
   const leaveAt = plan ? recommendedLeaveTime(plan) : null;
-  const msLeft = leaveAt !== null ? leaveAt - clockMs : null;
+  // What the ring counts, the same as the widgets and the Live Activity: the
+  // leave time, then (on the way) the train's departure.
+  const phase = plan ? phaseAt(plan, clockMs) : null;
+  const msLeft = phase ? phase.countdownTo - clockMs : null;
   const departed = status === "departed";
 
   useEffect(() => {
@@ -210,16 +286,29 @@ export default function RideScreen() {
         : plan.destination.name
       : null;
 
-  const ringTone =
-    status === "hurry" ? "destructive" : departed ? "muted" : "primary";
-  const ringLabel = departed
+  // 〔乗った〕: on the earlier train; the night is over (lib/boarding.ts).
+  const onBoard = boarded !== null;
+  const ringTone = departed || onBoard ? "muted" : phase?.kind === "train" ? "train" : "primary";
+  const ringLabel = onBoard
+    ? trainChoiceLabel(boarded.choice, ja)
+    : departed || !phase
     ? ja
       ? "終電"
       : "Last train"
-    : ja
-      ? "出発まで"
-      : "Leave in";
-  const ringValue = departed
+    : phase.kind === "leave"
+      ? ja
+        ? "出るまで"
+        : "Leave in"
+      : phase.last
+        ? ja
+          ? "終電まで"
+          : "Last train in"
+        : phaseLabel(phase, ja).label;
+  const ringValue = onBoard
+    ? ja
+      ? "乗車済み"
+      : "On board"
+    : departed
     ? ja
       ? "発車済み"
       : "Gone"
@@ -308,6 +397,26 @@ export default function RideScreen() {
           />
         </View>
 
+        {lockFallback && (
+          <Card style={styles.banner}>
+            <Feather name="unlock" color={colors.primary} size={18} />
+            <Text style={[styles.note, styles.flex, { color: colors.foreground }]}>
+              {ja
+                ? `固定した${lockFallback.nameJa}駅からは帰れないため、自動で選んでいます`
+                : `${lockFallback.name} can’t get you home any more, so the station is chosen automatically`}
+            </Text>
+            <Pressable
+              testID="dismiss-lock-fallback"
+              onPress={dismissLockFallback}
+              accessibilityRole="button"
+              accessibilityLabel={ja ? "閉じる" : "Dismiss"}
+              hitSlop={10}
+            >
+              <Feather name="x" size={18} color={colors.mutedForeground} />
+            </Pressable>
+          </Card>
+        )}
+
         {plan?.pinned &&
           (() => {
             const gain = Math.round(
@@ -323,7 +432,7 @@ export default function RideScreen() {
                 <Feather name="map-pin" color={colors.primary} size={18} />
                 <View style={styles.flex}>
                   <Text style={[styles.rowTitle, { color: colors.foreground }]}>
-                    {ja ? `${station}を選択中` : `You picked ${station}`}
+                    {ja ? `${station}駅に固定中` : `Locked to ${station}`}
                   </Text>
                   <Text
                     style={[
@@ -391,8 +500,67 @@ export default function RideScreen() {
         {/* Location turned off: shown up top, even while a saved plan is still on screen */}
         {locationError === "permission" && <LocationOffCard ja={ja} />}
 
-        {/* 終電 / 1本前 / 2本前: kept for tonight; a train that can't be made any more is greyed out */}
-        {plan && !departed && trainChoices.length > 1 && (
+        {/* 終電 / 1本前 / 2本前: kept for tonight; a train is greyed out once it has departed */}
+        {/* 乗れましたか？: the earlier train headed for has just departed */}
+        {boardingQuestion && (
+          <Card style={styles.alwaysCard}>
+            <Text style={[styles.rowTitle, { color: colors.foreground }]}>
+              {ja
+                ? `${trainChoiceLabel(boardingQuestion.choice, true)}（${formatJstTime(boardingQuestion.departsAt)}発）に乗れましたか？`
+                : `Did you make the ${formatJstTime(boardingQuestion.departsAt)} train (${trainChoiceLabel(boardingQuestion.choice, false).toLowerCase()})?`}
+            </Text>
+            <Text style={[styles.note, { color: colors.mutedForeground }]}>
+              {ja
+                ? `乗れなかった場合は、今いる場所から${trainChoiceLabel(effectiveTrainChoice, true)}に間に合う時刻を計算します。`
+                : `If not, LastRide works out your leave time for the ${effectiveTrainChoice ? `${trainChoiceLabel(effectiveTrainChoice, false).toLowerCase()} train` : "last train"} from where you are.`}
+            </Text>
+            <View style={styles.lockRow}>
+              <Pressable
+                testID="boarded-yes"
+                onPress={() => void answerBoarding(true)}
+                accessibilityRole="button"
+                style={({ pressed }) => [styles.smallButton, { backgroundColor: colors.primary, borderColor: colors.primary, opacity: pressed ? 0.85 : 1 }]}
+              >
+                <Text style={[styles.smallButtonText, { color: colors.primaryForeground }]}>{boardedButtons(ja ? "ja" : "en").boarded}</Text>
+              </Pressable>
+              <Pressable
+                testID="boarded-no"
+                onPress={() => void answerBoarding(false)}
+                accessibilityRole="button"
+                style={({ pressed }) => [styles.smallButton, { borderColor: colors.input, opacity: pressed ? 0.7 : 1 }]}
+              >
+                <Text style={[styles.smallButtonText, { color: colors.foreground }]}>{boardedButtons(ja ? "ja" : "en").notBoarded}</Text>
+              </Pressable>
+            </View>
+          </Card>
+        )}
+
+        {/* 〔乗った〕: the train taken; reminders and tracking are off for tonight */}
+        {onBoard && (
+          <Card style={styles.banner}>
+            <Feather name="check-circle" color={colors.primary} size={18} />
+            <View style={styles.flex}>
+              <Text style={[styles.rowTitle, { color: colors.foreground }]}>
+                {ja
+                  ? `${trainChoiceLabel(boarded.choice, true)}（${formatJstTime(boarded.trainDepartsAt)}発）に乗車しました`
+                  : `On the ${formatJstTime(boarded.trainDepartsAt)} train (${trainChoiceLabel(boarded.choice, false).toLowerCase()})`}
+              </Text>
+              <Text style={[styles.note, { color: colors.mutedForeground }]}>
+                {ja ? "今夜のリマインダーとトラッキングは止めました。" : "Tonight’s reminders and tracking are off."}
+              </Text>
+            </View>
+            <Pressable
+              testID="undo-boarded"
+              onPress={undoBoarded}
+              accessibilityRole="button"
+              style={({ pressed }) => [styles.smallButton, { borderColor: colors.input, opacity: pressed ? 0.7 : 1 }]}
+            >
+              <Text style={[styles.smallButtonText, { color: colors.foreground }]}>{ja ? "取り消す" : "Undo"}</Text>
+            </Pressable>
+          </Card>
+        )}
+
+        {plan && !departed && !onBoard && trainChoices.length > 1 && (
           <View>
             <View
               accessibilityRole="radiogroup"
@@ -410,13 +578,17 @@ export default function RideScreen() {
                     accessibilityRole="radio"
                     accessibilityState={{ checked: selected, disabled: !option.catchable }}
                     accessibilityLabel={
-                      option.catchable
+                      !option.catchable
                         ? ja
-                          ? `${label} ${formatJstTime(option.departsAt)}発`
-                          : `${label}, ${formatJstTime(option.departsAt)}`
-                        : ja
-                          ? `${label}は間に合いません`
-                          : `${label}: too late`
+                          ? `${label}は発車しました`
+                          : `${label}: gone`
+                        : option.late && !selected
+                          ? ja
+                            ? `${label} ${formatJstTime(option.departsAt)}発、急げば間に合います`
+                            : `${label}, ${formatJstTime(option.departsAt)}, only if you hurry`
+                          : ja
+                            ? `${label} ${formatJstTime(option.departsAt)}発`
+                            : `${label}, ${formatJstTime(option.departsAt)}`
                     }
                     style={({ pressed }) => [
                       styles.trainSegment,
@@ -435,20 +607,26 @@ export default function RideScreen() {
                     <Text
                       style={[
                         styles.trainSegmentTime,
-                        { color: selected ? colors.primaryForeground : colors.subtle },
+                        { color: selected ? colors.primaryForeground : option.late && option.catchable ? colors.destructive : colors.subtle },
                       ]}
                     >
-                      {option.catchable ? formatJstTime(option.departsAt) : ja ? "間に合わず" : "Too late"}
+                      {option.catchable ? formatJstTime(option.departsAt) : ja ? "発車済" : "Gone"}
                     </Text>
                   </Pressable>
                 );
               })}
             </View>
-            {trainChoice > effectiveTrainChoice && (
+            {trainChoiceOverride && leaveAt !== null ? (
               <Text style={[styles.note, styles.switchNote, { color: colors.mutedForeground }]}>
                 {ja
-                  ? `${trainChoiceLabel(trainChoice, true)}には間に合わないため、${trainChoiceLabel(effectiveTrainChoice, true)}にしています`
-                  : `Too late for ${trainChoiceLabel(trainChoice, false).toLowerCase()}, so this is the ${effectiveTrainChoice ? trainChoiceLabel(effectiveTrainChoice, false).toLowerCase() : "last train"}`}
+                  ? `駅が${station}駅に変わったため、出る時刻がいちばん近い${trainChoiceLabel(effectiveTrainChoice, true)}（${formatJstTime(leaveAt)}に出る）にしています`
+                  : `Your station changed to ${station}, so this is the ${trainChoiceLabel(effectiveTrainChoice, false).toLowerCase()} train, the closest leave time (${formatJstTime(leaveAt)})`}
+              </Text>
+            ) : trainChoice > effectiveTrainChoice && !boardingQuestion && (
+              <Text style={[styles.note, styles.switchNote, { color: colors.mutedForeground }]}>
+                {ja
+                  ? `${trainChoiceLabel(trainChoice, true)}は発車したため、${trainChoiceLabel(effectiveTrainChoice, true)}にしています`
+                  : `${trainChoiceLabel(trainChoice, false)} has left, so this is the ${effectiveTrainChoice ? trainChoiceLabel(effectiveTrainChoice, false).toLowerCase() : "last train"}`}
               </Text>
             )}
           </View>
@@ -456,7 +634,7 @@ export default function RideScreen() {
 
         {/* Tonight at a glance: start tonight (or the countdown once started), the time to leave, and how late is too late */}
         <View style={styles.hero}>
-          {isLocationReady && !departed && trackingMode === null ? (
+          {isLocationReady && !departed && !onBoard && trackingMode === null ? (
             <Pressable
               testID="start-tracking"
               onPress={() => void startTracking()}
@@ -482,17 +660,20 @@ export default function RideScreen() {
               label={ringLabel}
               value={ringValue}
               tone={ringTone}
-              caption={trackingMode !== null && !departed ? (ja ? "● トラッキング中" : "● Tracking") : undefined}
             />
           )}
           <View style={styles.heroCopy}>
             <Text style={[styles.heroLabel, { color: colors.mutedForeground }]}>
-              {departed
+              {onBoard
+                ? ja
+                  ? "着く時刻（目安）"
+                  : "Arriving ~"
+                : departed
                 ? ja
                   ? "終電は発車しました"
                   : "The last train has left"
                 : ja
-                  ? "この時刻に出発"
+                  ? "ここを出る時刻"
                   : "Leave at"}
             </Text>
             <Text
@@ -502,68 +683,111 @@ export default function RideScreen() {
               numberOfLines={1}
               style={[
                 styles.leaveTime,
-                { color: departed ? colors.mutedForeground : colors.primary },
+                { color: departed || onBoard ? colors.mutedForeground : colors.primary },
               ]}
             >
-              {leaveAt !== null ? formatJstTime(leaveAt) : "--:--"}
+              {onBoard
+                ? boarded.arrivesAt
+                  ? formatJstTime(boarded.arrivesAt)
+                  : "--:--"
+                : leaveAt !== null
+                  ? formatJstTime(leaveAt)
+                  : "--:--"}
             </Text>
-            {plan && (
+            {plan && !onBoard && (
               <Text style={[styles.heroMeta, { color: colors.subtle }]}>
                 {ja ? `遅くとも ${formatJstTime(plan.leaveByMs)}` : `Latest ${formatJstTime(plan.leaveByMs)}`}
                 {lastTrainSource === "sample" ? (ja ? "（仮）" : "*") : ""}
                 {plan.lastTrain.approximate ? (ja ? "（目安）" : " (approx.)") : ""}
               </Text>
             )}
-            {plan && freshness && (
-              <Pressable
-                testID="plan-freshness"
-                disabled={freshness === "fresh"}
-                onPress={() => void requestLocation()}
-                accessibilityRole={freshness === "fresh" ? undefined : "button"}
-                hitSlop={8}
-                style={styles.freshness}
-              >
-                {freshness !== "fresh" && (
-                  <Feather
-                    name={freshness === "stale" ? "alert-triangle" : "refresh-cw"}
-                    size={12}
-                    color={
-                      freshness === "stale"
-                        ? colors.destructive
-                        : colors.mutedForeground
-                    }
-                  />
-                )}
-                <Text
-                  style={[
-                    styles.note,
-                    {
-                      color:
-                        freshness === "stale"
-                          ? colors.destructive
-                          : colors.mutedForeground,
-                    },
-                  ]}
-                >
-                  {planAge === 0
-                    ? ja
-                      ? "最新"
-                      : "Up to date"
-                    : ja
-                      ? `${planAge}分前に更新`
-                      : `Updated ${planAge} min ago`}
-                  {freshness === "fresh"
-                    ? ""
-                    : ja
-                      ? " · タップで更新"
-                      : " · tap to refresh"}
-                </Text>
-              </Pressable>
-            )}
           </View>
         </View>
 
-        {departed && (
+        {/* Tonight on one line, then what the app is doing: tracking (with 停止) or when it last checked (with 更新) */}
+        {plan && !departed && !onBoard && <TimelineRail plan={plan} nowMs={clockMs} ja={ja} />}
+        {plan && freshness && !onBoard && (!departed || trackingMode !== null) && (
+          <View style={styles.statusLine}>
+            <Pressable
+              testID="plan-freshness"
+              // Refresh any time, except straight after a lookup (no hammering Apple Maps).
+              disabled={!canRefresh}
+              onPress={() => void requestLocation()}
+              accessibilityRole={canRefresh ? "button" : undefined}
+              accessibilityHint={canRefresh ? (ja ? "タップで更新" : "Tap to refresh") : undefined}
+              hitSlop={8}
+              style={[styles.flex, styles.freshness]}
+            >
+              {trackingMode !== null && <View style={[styles.liveDot, { backgroundColor: colors.primary }]} />}
+              <Text
+                numberOfLines={1}
+                style={[styles.note, { color: freshness === "stale" ? colors.destructive : colors.mutedForeground }]}
+              >
+                {trackingMode !== null ? (
+                  <>
+                    <Text style={[styles.statusStrong, { color: colors.foreground }]}>{ja ? "トラッキング中" : "Tracking"}</Text>
+                    {planAge === 0
+                      ? ja
+                        ? " · たった今確認"
+                        : " · checked just now"
+                      : ja
+                        ? ` · ${planAge}分前に確認`
+                        : ` · checked ${planAge} min ago`}
+                  </>
+                ) : ja ? (
+                  `${formatJstTime(plan.computedAt)}に確認`
+                ) : (
+                  `Checked ${formatJstTime(plan.computedAt)}`
+                )}
+              </Text>
+              {trackingMode !== null && canRefresh && (
+                <Feather
+                  name={freshness === "stale" ? "alert-triangle" : "refresh-cw"}
+                  size={12}
+                  color={freshness === "stale" ? colors.destructive : colors.mutedForeground}
+                />
+              )}
+            </Pressable>
+            {trackingMode !== null ? (
+              <Pressable
+                testID="stop-tracking"
+                onPress={confirmStop}
+                accessibilityRole="button"
+                style={({ pressed }) => [styles.smallButton, { borderColor: colors.input, opacity: pressed ? 0.7 : 1 }]}
+              >
+                <Text style={[styles.smallButtonText, { color: colors.foreground }]}>{ja ? "停止" : "Stop"}</Text>
+              </Pressable>
+            ) : (
+              <Pressable
+                testID="refresh-plan"
+                disabled={!canRefresh}
+                onPress={() => void requestLocation()}
+                accessibilityRole="button"
+                style={({ pressed }) => [
+                  styles.smallButton,
+                  styles.lockButton,
+                  { borderColor: colors.input, opacity: !canRefresh ? 0.4 : pressed ? 0.7 : 1 },
+                ]}
+              >
+                <Feather name="refresh-cw" size={13} color={colors.foreground} />
+                <Text style={[styles.smallButtonText, { color: colors.foreground }]}>{ja ? "更新" : "Refresh"}</Text>
+              </Pressable>
+            )}
+          </View>
+        )}
+        {trackingMode === "foreground" && (
+          <Text style={[styles.note, { color: colors.mutedForeground }]}>
+            {nightLocationMode === "background" && backgroundAllowed === false
+              ? ja
+                ? "位置情報が「常に」ではないため、開いている間だけ更新します。"
+                : "Location isn’t “Always”, so this updates only while open."
+              : ja
+                ? "アプリを開いている間だけ更新します。"
+                : "Updates while the app is open."}
+          </Text>
+        )}
+
+        {departed && !onBoard && (
           <Pressable
             testID="missed-prompt"
             onPress={() => router.replace("/alternatives")}
@@ -607,8 +831,72 @@ export default function RideScreen() {
           />
         ))}
 
+        {(tonightGroup ?? tonightOpenGroup) &&
+          (() => {
+            const group = (tonightGroup ?? tonightOpenGroup)!;
+            const joined = tonightGroup !== null;
+            const count = group.tonight.participants.length;
+            return (
+              <Pressable
+                testID="group-strip"
+                onPress={() => router.push({ pathname: "/group/[id]", params: { id: group.id } })}
+                accessibilityRole="button"
+                style={({ pressed }) => [
+                  styles.trackRow,
+                  { backgroundColor: colors.card, borderColor: joined ? colors.border : colors.primary, opacity: pressed ? 0.85 : 1 },
+                ]}
+              >
+                <Feather name="users" color={colors.primary} size={18} />
+                <View style={styles.flex}>
+                  <Text numberOfLines={1} style={[styles.rowTitle, { color: colors.foreground }]}>
+                    {group.name}
+                  </Text>
+                  <Text numberOfLines={1} style={[styles.note, { color: joined ? colors.primary : colors.mutedForeground }]}>
+                    {joined
+                      ? ja
+                        ? `● 出発時刻を共有中 · 今夜${count}人${nextInGroup?.leaveBy ? ` · 次は${nextInGroup.displayName}さん ${formatJstTime(Date.parse(nextInGroup.leaveBy))}` : ""}`
+                        : `● Sharing your leave time · ${count} tonight${nextInGroup?.leaveBy ? ` · next: ${nextInGroup.displayName} ${formatJstTime(Date.parse(nextInGroup.leaveBy))}` : ""}`
+                      : ja
+                        ? `今夜の会がはじまりました · ${count}人参加中`
+                        : `Tonight has started · ${count} joined`}
+                  </Text>
+                </View>
+                {joined ? (
+                  <Feather name="chevron-right" color={colors.mutedForeground} size={18} />
+                ) : (
+                  <Pressable
+                    testID="group-strip-join"
+                    onPress={() => void joinOpenGroup()}
+                    disabled={joiningGroup}
+                    accessibilityRole="button"
+                    accessibilityLabel={ja ? `${group.name}に今夜参加する` : `Join ${group.name} tonight`}
+                    hitSlop={8}
+                    style={({ pressed }) => [
+                      styles.smallButton,
+                      styles.joinButton,
+                      { backgroundColor: colors.primary, opacity: joiningGroup ? 0.6 : pressed ? 0.85 : 1 },
+                    ]}
+                  >
+                    <Text style={[styles.smallButtonText, { color: colors.primaryForeground }]}>
+                      {ja ? "今夜参加" : "Join"}
+                    </Text>
+                  </Pressable>
+                )}
+              </Pressable>
+            );
+          })()}
+
+        {/* Still finding tonight's route: hold the places of the map and the train card */}
+        {!plan && isLocating && (
+          <>
+            <PlaceholderBlock height={140} />
+            <PlaceholderBlock height={120} />
+          </>
+        )}
+
         {plan && (
           <MapCard
+            height={140}
             // The plan's own position until fresh GPS arrives (e.g. right after relaunch).
             you={userCoordinates ?? plan.coordinates}
             target={plan.station}
@@ -654,12 +942,6 @@ export default function RideScreen() {
                 </View>
                 <Text style={[styles.heroMeta, { color: colors.mutedForeground }]}>
                   {[
-                    // The line, when known (Apple Maps doesn't say).
-                    firstLeg
-                      ? ja
-                        ? `${shortLineName(firstLeg.line)} ${firstLeg.to}方面`
-                        : `${firstLeg.lineEn ?? shortLineName(firstLeg.line)} to ${firstLeg.toEn ?? firstLeg.to}`
-                      : null,
                     arrivalMs
                       ? // Apple's arrival can be at the station's map point (a walk out
                         // past the gates) when the station place wasn't found: say so.
@@ -671,18 +953,11 @@ export default function RideScreen() {
                           ? `${formatJstTime(arrivalMs)} ${destination}着`
                           : `${destination} ${formatJstTime(arrivalMs)}`
                       : null,
-                    // Apple doesn't say how many changes a route has.
-                    plan.lastTrain.source === "apple"
-                      ? null
-                      : plan.lastTrain.transfers
+                    // Heading for an earlier train: the last train is the fallback.
+                    plan.nightLastTrain
                       ? ja
-                        ? `乗換${plan.lastTrain.transfers}回`
-                        : `${plan.lastTrain.transfers} transfer${plan.lastTrain.transfers > 1 ? "s" : ""}`
-                      : ja
-                        ? "乗換なし"
-                        : "Direct",
-                    plan.lastTrain.fareYen
-                      ? `¥${plan.lastTrain.fareYen.toLocaleString("en-US")}`
+                        ? `乗れなければ終電 ${formatJstTime(plan.nightLastTrain.departsAt)}`
+                        : `else last train ${formatJstTime(plan.nightLastTrain.departsAt)}`
                       : null,
                   ]
                     .filter(Boolean)
@@ -691,21 +966,67 @@ export default function RideScreen() {
               </View>
             </View>
 
-            {(plan.lastTrain.legs?.length ?? 0) > 1 &&
-              plan.lastTrain.legs!.map((leg) => (
-                <View key={`${leg.line}-${leg.departsAt}`} style={styles.leg}>
-                  <Text style={[styles.legTime, { color: colors.subtle }]}>
-                    {formatJstTime(leg.departsAt)}
-                  </Text>
-                  <Text
-                    style={[styles.note, styles.flex, { color: colors.mutedForeground }]}
+            {/* The route, folded: changes, lines and fare; tap for each leg */}
+            {(() => {
+              const legs = plan.lastTrain.legs ?? [];
+              const lines = legs.length > 1
+                ? legs.map((leg) => (ja ? shortLineName(leg.line) : leg.lineEn ?? shortLineName(leg.line))).join(" → ")
+                : firstLeg
+                  ? ja
+                    ? `${shortLineName(firstLeg.line)} ${firstLeg.to}方面`
+                    : `${firstLeg.lineEn ?? shortLineName(firstLeg.line)} to ${firstLeg.toEn ?? firstLeg.to}`
+                  : null;
+              const summary = [
+                // Apple doesn't say how many changes a route has, or the line.
+                plan.lastTrain.source === "apple"
+                  ? null
+                  : plan.lastTrain.transfers
+                    ? ja
+                      ? `乗換${plan.lastTrain.transfers}回`
+                      : `${plan.lastTrain.transfers} transfer${plan.lastTrain.transfers > 1 ? "s" : ""}`
+                    : ja
+                      ? "乗換なし"
+                      : "Direct",
+                lines,
+                plan.lastTrain.fareYen ? `¥${plan.lastTrain.fareYen.toLocaleString("en-US")}` : null,
+              ]
+                .filter(Boolean)
+                .join(" · ");
+              if (!summary) return null;
+              const foldable = legs.length > 1;
+              return (
+                <>
+                  <Pressable
+                    testID="toggle-route"
+                    disabled={!foldable}
+                    onPress={() => setShowRoute((value) => !value)}
+                    accessibilityRole={foldable ? "button" : undefined}
+                    accessibilityState={foldable ? { expanded: showRoute } : undefined}
+                    style={({ pressed }) => [styles.routeToggle, { opacity: pressed ? 0.7 : 1 }]}
                   >
-                    {ja
-                      ? `${leg.from} → ${leg.to} · ${shortLineName(leg.line)}`
-                      : `${leg.fromEn ?? leg.from} → ${leg.toEn ?? leg.to} · ${leg.lineEn ?? shortLineName(leg.line)}`}
-                  </Text>
-                </View>
-              ))}
+                    <Text numberOfLines={showRoute ? undefined : 1} style={[styles.note, styles.flex, { color: colors.subtle }]}>
+                      {summary}
+                    </Text>
+                    {foldable && (
+                      <Feather name={showRoute ? "chevron-up" : "chevron-down"} size={16} color={colors.mutedForeground} />
+                    )}
+                  </Pressable>
+                  {showRoute &&
+                    legs.map((leg) => (
+                      <View key={`${leg.line}-${leg.departsAt}`} style={styles.leg}>
+                        <Text style={[styles.legTime, { color: colors.subtle }]}>
+                          {formatJstTime(leg.departsAt)}
+                        </Text>
+                        <Text style={[styles.note, styles.flex, { color: colors.mutedForeground }]}>
+                          {ja
+                            ? `${leg.from} → ${leg.to} · ${shortLineName(leg.line)}`
+                            : `${leg.fromEn ?? leg.from} → ${leg.toEn ?? leg.to} · ${leg.lineEn ?? shortLineName(leg.line)}`}
+                        </Text>
+                      </View>
+                    ))}
+                </>
+              );
+            })()}
 
             {plan.lastTrain.source === "live" && (
               <Pressable
@@ -818,116 +1139,89 @@ export default function RideScreen() {
                 )}
               </>
             )}
-            {trackingMode !== null && (
-              <>
-                <View style={[styles.divider, { backgroundColor: colors.border }]} />
-                <View style={styles.trackingFooter}>
-                  <View style={[styles.liveDot, { backgroundColor: colors.primary }]} />
-                  <View style={styles.flex}>
-                    <Text style={[styles.rowTitle, { color: colors.foreground }]}>
-                      {ja ? "夜のトラッキング中" : "Tracking tonight"}
-                    </Text>
-                    <Text style={[styles.note, { color: colors.mutedForeground }]}>
-                      {trackingMode === "background"
-                        ? ja
-                          ? "閉じても更新。終電後に自動で停止。"
-                          : "Updates when closed; stops after the last train."
-                        : nightLocationMode === "background" && backgroundAllowed === false
-                          ? ja
-                            ? "位置情報が「常に」ではないため、開いている間だけ更新します。"
-                            : "Location isn’t “Always”, so this updates only while open."
-                          : ja
-                            ? "アプリを開いている間だけ更新します。"
-                            : "Updates while the app is open."}
-                    </Text>
-                  </View>
-                  <Pressable
-                    testID="stop-tracking"
-                    onPress={() => void stopTracking()}
-                    accessibilityRole="button"
-                    style={({ pressed }) => [
-                      styles.smallButton,
-                      { borderColor: colors.input, opacity: pressed ? 0.7 : 1 },
-                    ]}
-                  >
-                    <Text style={[styles.smallButtonText, { color: colors.foreground }]}>
-                      {ja ? "停止" : "Stop"}
-                    </Text>
-                  </Pressable>
-                </View>
-              </>
-            )}
+            {/* Lock tonight's station: this one, or any station by search */}
+            <View style={[styles.divider, { backgroundColor: colors.border }]} />
+            <View style={styles.lockRow}>
+              {!plan.pinned && (
+                <Pressable
+                  testID="lock-station"
+                  onPress={() => void chooseDepartureStation(plan.station)}
+                  accessibilityRole="button"
+                  style={({ pressed }) => [styles.smallButton, styles.lockButton, { borderColor: colors.input, opacity: pressed ? 0.7 : 1 }]}
+                >
+                  <Feather name="lock" size={13} color={colors.foreground} />
+                  <Text style={[styles.smallButtonText, { color: colors.foreground }]}>
+                    {ja ? "この駅に固定" : "Lock this station"}
+                  </Text>
+                </Pressable>
+              )}
+              <Pressable
+                testID="choose-station"
+                onPress={() => router.push("/departure-station")}
+                accessibilityRole="button"
+                style={({ pressed }) => [styles.smallButton, styles.lockButton, { borderColor: colors.input, opacity: pressed ? 0.7 : 1 }]}
+              >
+                <Feather name="search" size={13} color={colors.foreground} />
+                <Text style={[styles.smallButtonText, { color: colors.foreground }]}>
+                  {ja ? "駅を選ぶ" : "Choose station"}
+                </Text>
+              </Pressable>
+            </View>
+
           </Card>
         )}
 
-        {(tonightGroup ?? tonightOpenGroup) &&
-          (() => {
-            const group = (tonightGroup ?? tonightOpenGroup)!;
-            const joined = tonightGroup !== null;
-            const count = group.tonight.participants.length;
-            return (
+
+
+        {/* Tracking only while open: suggest 閉じても更新 (iOS "Always"); at most once a night */}
+        {trackingMode === "foreground" && alwaysCard.show && (
+          <Card style={styles.alwaysCard}>
+            <View style={styles.alwaysHead}>
+              <Feather name="moon" color={colors.primary} size={18} />
+              <Text style={[styles.rowTitle, styles.flex, { color: colors.foreground }]}>
+                {ja ? "閉じても更新しますか？" : "Keep updating when closed?"}
+              </Text>
               <Pressable
-                testID="group-strip"
-                onPress={() => router.push({ pathname: "/group/[id]", params: { id: group.id } })}
+                testID="always-card-close"
+                onPress={alwaysCard.dismissTonight}
                 accessibilityRole="button"
-                style={({ pressed }) => [
-                  styles.trackRow,
-                  { backgroundColor: colors.card, borderColor: joined ? colors.border : colors.primary, opacity: pressed ? 0.85 : 1 },
-                ]}
+                accessibilityLabel={ja ? "閉じる" : "Close"}
+                hitSlop={10}
               >
-                <Feather name="users" color={colors.primary} size={18} />
-                <View style={styles.flex}>
-                  <Text numberOfLines={1} style={[styles.rowTitle, { color: colors.foreground }]}>
-                    {group.name}
-                  </Text>
-                  <Text numberOfLines={1} style={[styles.note, { color: joined ? colors.primary : colors.mutedForeground }]}>
-                    {joined
-                      ? ja
-                        ? `● 出発時刻を共有中 · 今夜${count}人${nextInGroup?.leaveBy ? ` · 次は${nextInGroup.displayName}さん ${formatJstTime(Date.parse(nextInGroup.leaveBy))}` : ""}`
-                        : `● Sharing your leave time · ${count} tonight${nextInGroup?.leaveBy ? ` · next: ${nextInGroup.displayName} ${formatJstTime(Date.parse(nextInGroup.leaveBy))}` : ""}`
-                      : ja
-                        ? `今夜の会がはじまりました · ${count}人参加中`
-                        : `Tonight has started · ${count} joined`}
-                  </Text>
-                </View>
-                {joined ? (
-                  <Feather name="chevron-right" color={colors.mutedForeground} size={18} />
-                ) : (
-                  <Pressable
-                    testID="group-strip-join"
-                    onPress={() => void joinOpenGroup()}
-                    disabled={joiningGroup}
-                    accessibilityRole="button"
-                    accessibilityLabel={ja ? `${group.name}に今夜参加する` : `Join ${group.name} tonight`}
-                    hitSlop={8}
-                    style={({ pressed }) => [
-                      styles.smallButton,
-                      styles.joinButton,
-                      { backgroundColor: colors.primary, opacity: joiningGroup ? 0.6 : pressed ? 0.85 : 1 },
-                    ]}
-                  >
-                    <Text style={[styles.smallButtonText, { color: colors.primaryForeground }]}>
-                      {ja ? "今夜参加" : "Join"}
-                    </Text>
-                  </Pressable>
-                )}
+                <Feather name="x" size={18} color={colors.mutedForeground} />
               </Pressable>
-            );
-          })()}
-
-
-        {trackingMode === "foreground" && nightLocationMode === "background" && backgroundAllowed === false && (
-          <Pressable
-            testID="open-location-settings"
-            onPress={() => void Linking.openSettings()}
-            accessibilityRole="link"
-            hitSlop={8}
-            style={styles.settingsLink}
-          >
-            <Text style={[styles.settingsLinkText, { color: colors.primary }]}>
-              {ja ? "設定で位置情報を「常に」にする ›" : "Set location to “Always” in Settings ›"}
+            </View>
+            <Text style={[styles.note, { color: colors.mutedForeground }]}>
+              {ja
+                ? "今はアプリを開いている間だけ更新します。閉じている間は駅や出る時刻を計算し直せないため、リマインダーは最後に確認した場所の時刻で届きます。"
+                : "Right now LastRide updates only while it’s open. While closed it can’t re-plan your station or leave time, so reminders use where you last were."}
             </Text>
-          </Pressable>
+            <View style={styles.lockRow}>
+              <Pressable
+                testID="always-card-enable"
+                onPress={() =>
+                  void switchTrackingToBackground().then((ok) => {
+                    if (!ok) void Linking.openSettings();
+                  })
+                }
+                accessibilityRole="button"
+                style={({ pressed }) => [styles.smallButton, { backgroundColor: colors.primary, borderColor: colors.primary, opacity: pressed ? 0.85 : 1 }]}
+              >
+                <Text style={[styles.smallButtonText, { color: colors.primaryForeground }]}>
+                  {ja ? "閉じても更新にする" : "Update when closed"}
+                </Text>
+              </Pressable>
+              <Pressable
+                testID="always-card-never"
+                onPress={alwaysCard.dismissForever}
+                accessibilityRole="button"
+                hitSlop={8}
+                style={({ pressed }) => [styles.alwaysNever, { opacity: pressed ? 0.6 : 1 }]}
+              >
+                <Text style={[styles.note, { color: colors.mutedForeground }]}>{ja ? "今後表示しない" : "Don’t show again"}</Text>
+              </Pressable>
+            </View>
+          </Card>
         )}
 
         {locationError !== "permission" && !isLocationReady && (
@@ -1090,7 +1384,6 @@ const styles = StyleSheet.create({
   trainSegmentLabel: { fontSize: 11, fontWeight: "800" },
   trainSegmentTime: { fontFamily: DIGITS, fontSize: 15 },
   switchNote: { marginTop: 6, paddingHorizontal: 4 },
-  trackingFooter: { alignItems: "center", flexDirection: "row", gap: 10 },
   heroCopy: { flex: 1, gap: 2 },
   heroLabel: { fontSize: 12, fontWeight: "700" },
   leaveTime: { fontFamily: DIGITS, fontSize: 66, letterSpacing: -1.5, lineHeight: 70 },
@@ -1121,4 +1414,12 @@ const styles = StyleSheet.create({
   smallButton: { borderRadius: 12, borderWidth: 1, borderColor: "transparent", paddingHorizontal: 14, paddingVertical: 9 },
   joinButton: { borderWidth: 0 },
   smallButtonText: { fontSize: 13, fontWeight: "800" },
+  lockRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  alwaysCard: { gap: 10 },
+  alwaysHead: { alignItems: "center", flexDirection: "row", gap: 10 },
+  alwaysNever: { justifyContent: "center", minHeight: 36, paddingHorizontal: 6 },
+  routeToggle: { alignItems: "center", flexDirection: "row", gap: 6 },
+  statusLine: { alignItems: "center", flexDirection: "row", gap: 10, marginTop: -4 },
+  statusStrong: { fontWeight: "700" },
+  lockButton: { alignItems: "center", flexDirection: "row", gap: 6 },
 });

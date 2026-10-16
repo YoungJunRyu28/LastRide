@@ -2,7 +2,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import type { ReminderPlan } from '@/lib/planner';
-import { REMINDER_SOUNDS, type ReminderDelivery, type ReminderSound } from '@/lib/settings';
+import { planDelivery, type DeliveryContext, type ReminderLedger } from '@/lib/reminderLedger';
+import { BOARDED_ACTION, BOARDED_CATEGORY, boardedButtons, boardedFollowUp, boardedNotificationId, boardedQuestion, NOT_BOARDED_ACTION, type HeldTrain } from '@/lib/boarding';
+import { REMINDER_SOUNDS, STORAGE_KEYS, type ReminderDelivery, type ReminderSound } from '@/lib/settings';
 import { alarmKit, alarmKitAvailable, type AlarmAuthorization } from '../modules/last-ride-alarm/src';
 
 let configured = false;
@@ -12,7 +14,7 @@ const webTimers: ReturnType<typeof setTimeout>[] = [];
 // use these keys to replace, not accumulate, locally scheduled notifications.
 const OWNED_IDS_KEY = 'lastride-owned-notification-ids';
 const SIGNATURE_KEY = 'lastride-reminder-signature';
-const SCHEDULER_VERSION = 6;
+const SCHEDULER_VERSION = 8;
 
 export { alarmKitAvailable };
 export { iosMajorVersion } from '../modules/last-ride-alarm/src';
@@ -121,6 +123,8 @@ async function present(
   target: NotificationTarget = '/ride', vibrate = true, sound: string | null = null, urgent = false,
   /** Silent and passive: kept in Notification Center without sound or lighting the screen. */
   silent = false,
+  /** Buttons (a registered category), extra data for the tap, and a fixed id (same id = replaces). */
+  extra: { category?: string; data?: Record<string, unknown>; identifier?: string } = {},
 ) {
   const delayMs = fireAt === null ? 0 : Math.max(0, fireAt - Date.now());
   if (Platform.OS === 'web') {
@@ -139,6 +143,7 @@ async function present(
   configure();
   await ensureChannel();
   const id = await Notifications.scheduleNotificationAsync({
+    ...(extra.identifier ? { identifier: extra.identifier } : {}),
     // timeSensitive lets the alert break through Focus modes once the app has the
     // Time Sensitive Notifications entitlement. On iOS, vibration follows the
     // phone's Sounds & Haptics settings; there's no per-notification switch.
@@ -147,7 +152,8 @@ async function present(
       title, body,
       sound: silent ? false : (Platform.OS === 'ios' && sound) || true,
       interruptionLevel: silent ? 'passive' : urgent ? 'timeSensitive' : 'active',
-      data: { target },
+      data: { target, ...extra.data },
+      ...(extra.category ? { categoryIdentifier: extra.category } : {}),
     },
     trigger: delayMs < 1000
       ? null
@@ -179,18 +185,53 @@ export function cancelAllReminders(): Promise<void> {
   return enqueue(cancelOwned);
 }
 
+/** The station locked for tonight can't get you home any more: the app went back to automatic. */
+export function notifyLockFallback(
+  locked: { name: string; nameJa: string },
+  plan: { station: { name: string; nameJa: string }; lastTrain: { departsAt: number } },
+  language: 'ja' | 'en',
+): Promise<void> {
+  const time = new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(plan.lastTrain.departsAt));
+  const text = language === 'ja'
+    ? { title: 'LastRide — 出発駅を自動に戻しました', body: `固定した${locked.nameJa}駅からは帰れなくなったため、${plan.station.nameJa}駅（${time}発）にしています。` }
+    : { title: 'LastRide — back to automatic', body: `${locked.name} can’t get you home any more, so you’re now leaving from ${plan.station.name} (${time} train).` };
+  return enqueue(() => present(text.title, text.body, null, '/ride', true, null, true));
+}
+
+function stationNotice(text: ReminderText, info: DeliveryInfo) {
+  if (text.language === 'ja') {
+    return {
+      title: 'LastRide — 出発駅が変わりました',
+      body:
+        `${text.station}から${info.trainLabel}（${info.trainDeparts}発）。${text.leaveBy}に出る。` +
+        (info.switchedToClosest ? `駅が変わったため、出る時刻がいちばん近い${info.trainLabel}にしています。` : ''),
+    };
+  }
+  return {
+    title: 'LastRide — your station changed',
+    body:
+      `Now from ${text.station}: ${info.trainLabel}, ${info.trainDeparts}. Leave at ${text.leaveBy}.` +
+      (info.switchedToClosest ? ` Switched to the ${info.trainLabel} train, the closest leave time.` : ''),
+  };
+}
+
+function timeNotice(text: ReminderText, info: DeliveryInfo) {
+  return text.language === 'ja'
+    ? { title: 'LastRide — 出る時刻が変わりました', body: `${text.leaveBy}に出て${text.station}へ（${info.trainDeparts}発）。` }
+    : { title: 'LastRide — new leave time', body: `Leave for ${text.station} at ${text.leaveBy} (${info.trainDeparts} train).` };
+}
+
 export type ReminderText = {
   leaveBy: string;
   station: string;
   language: 'ja' | 'en';
-  /** Set when heading for an earlier train (1本前 / 2本前): the real last train's leave time. */
-  lastTrainLeaveBy?: string;
+  /** Heading for an earlier train (1本前 / 2本前): it and the one after it (lib/boarding.ts). */
+  held?: HeldTrain;
 };
-function reminderText({ leaveBy, station, language, lastTrainLeaveBy }: ReminderText, { minutesBefore, missedCheckIn, lastTrainBackup }: ReminderPlan) {
-  if (lastTrainBackup) {
-    return language === 'ja'
-      ? { title: 'LastRide — 終電に乗るなら今', body: `${lastTrainLeaveBy ?? ''}は終電に間に合う最後の出発時刻です。${station}へ。` }
-      : { title: 'LastRide — leave now for the last train', body: `${lastTrainLeaveBy ?? 'Now'} is the last time to leave for the last train. Head to ${station}.` };
+function reminderText({ leaveBy, station, language, held }: ReminderText, { minutesBefore, missedCheckIn, boardedCheck }: ReminderPlan) {
+  if (boardedCheck && held) {
+    const { title, body } = boardedQuestion(held, language);
+    return { title, body };
   }
   if (missedCheckIn) {
     return language === 'ja'
@@ -198,17 +239,18 @@ function reminderText({ leaveBy, station, language, lastTrainLeaveBy }: Reminder
       : { title: 'LastRide — missed the last train?', body: 'Tap to see the first train, a taxi estimate, and places to wait nearby.' };
   }
   if (minutesBefore === 0) {
-    if (lastTrainLeaveBy) {
+    // Only the next train's departure: its leave time depends on where the user will be.
+    if (held) {
       return language === 'ja'
-        ? { title: 'LastRide — 今すぐ出発', body: `${station}へ歩き始めましょう。乗り遅れても、終電は${lastTrainLeaveBy}までに出れば間に合います。` }
-        : { title: 'LastRide — leave now', body: `Start walking to ${station}. If you miss this train, leave by ${lastTrainLeaveBy} for the last one.` };
+        ? { title: 'LastRide — 出る時間です', body: `${station}へ歩き始めましょう。乗り遅れても、${held.next}は${held.nextDeparts}発です。` }
+        : { title: 'LastRide — leave now', body: `Start walking to ${station}. If you miss this train, ${held.next} leaves at ${held.nextDeparts}.` };
     }
     return language === 'ja'
-      ? { title: 'LastRide — 今すぐ出発', body: `${station}へ歩き始めましょう。終電に間に合う最後のタイミングです。` }
+      ? { title: 'LastRide — 出る時間です', body: `${station}へ歩き始めましょう。終電に間に合う最後のタイミングです。` }
       : { title: 'LastRide — leave now', body: `Start walking to ${station} now to make the last train.` };
   }
   return language === 'ja'
-    ? { title: `LastRide — あと${minutesBefore}分`, body: `${leaveBy}に${station}へ出発。そろそろ支度を。` }
+    ? { title: `LastRide — あと${minutesBefore}分`, body: `${leaveBy}に出て${station}へ。そろそろ支度を。` }
     : { title: `LastRide — ${minutesBefore} min to go`, body: `Leave for ${station} by ${leaveBy}. Time to wrap up.` };
 }
 
@@ -228,23 +270,117 @@ function newAlarmId(): string {
  * updates from the app and the background task don't churn the OS schedule.
  * Never requests alarm permission: this also runs in the headless location task.
  */
+/** What a station-change notice says about the train (with the reminder record). */
+export type DeliveryInfo = DeliveryContext & {
+  /** 「1本前」 / 「終電」 / "1 before"… */
+  trainLabel: string;
+  /** Its departure, e.g. "23:33". */
+  trainDeparts: string;
+  /** The station changed and the app picked the train with the closest leave time. */
+  switchedToClosest?: boolean;
+  /** With `followUpFor`: the departed train's label (「1本前」), for 「…に乗れなかったなら」. */
+  followUpLabel?: string;
+};
+
+/** 〔乗った〕 / 〔乗れなかった〕 on the 乗れましたか？ notification. Both open the app (lib/boarding.ts). */
+async function registerBoardedCategory(language: 'ja' | 'en') {
+  if (Platform.OS === 'web') return;
+  const text = boardedButtons(language);
+  await Notifications.setNotificationCategoryAsync(BOARDED_CATEGORY, [
+    { identifier: BOARDED_ACTION, buttonTitle: text.boarded, options: { opensAppToForeground: true } },
+    { identifier: NOT_BOARDED_ACTION, buttonTitle: text.notBoarded, options: { opensAppToForeground: true } },
+  ]).catch(() => undefined);
+}
+
+async function readLedger(): Promise<ReminderLedger | null> {
+  try {
+    const raw = await AsyncStorage.getItem(STORAGE_KEYS.reminderLedger);
+    return raw ? (JSON.parse(raw) as ReminderLedger) : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Schedules tonight's reminders. With `delivery` (night tracking), the reminder
+ * record (lib/reminderLedger) makes re-plans safe: nothing already sent is sent
+ * again, reminders pushed into the past are caught up (latest only), and a
+ * station change or a big leave-time move gets one notice. Without it (demo
+ * mode), the plans are simply scheduled.
+ */
 export function scheduleReminders(
   plans: ReminderPlan[],
   text: ReminderText,
   { sound, vibrate }: Pick<ReminderDelivery, 'sound' | 'vibrate'> = { sound: 'default', vibrate: true },
+  delivery?: DeliveryInfo,
 ): Promise<void> {
   return enqueue(async () => {
-    const wantsAlarm = plans.some((plan) => plan.alarm);
+    const now = Date.now();
+    const decided = delivery ? planDelivery(await readLedger(), delivery, plans, now) : null;
+    const upcoming = decided ? decided.schedule : plans;
+    const wantsAlarm = upcoming.some((plan) => plan.alarm);
     const alarmAuthorization = wantsAlarm && alarmKitAvailable ? await alarmKit.status().catch(() => 'denied') : 'unsupported';
     // Permission can change in iOS Settings without the plans changing; a schedule
     // made of stand-in notifications must be replaced once alarms are allowed.
-    const signature = JSON.stringify([SCHEDULER_VERSION, plans, text, sound, vibrate, alarmAuthorization]);
+    const signature = JSON.stringify([
+      SCHEDULER_VERSION, upcoming, text, sound, vibrate, alarmAuthorization,
+      decided && [decided.catchUp, decided.stationChanged, decided.timeShifted, decided.followUp, decided.ledger.sent, decided.ledger.stationKey],
+    ]);
     if (Platform.OS !== 'web' && (await AsyncStorage.getItem(SIGNATURE_KEY).catch(() => null)) === signature) return;
     await cancelOwned();
     const language = text.language;
-    for (const plan of plans) {
+    if (decided && delivery) {
+      // Told once: where you leave from now, or that the leave time moved after a reminder.
+      if (decided.followUp && delivery.followUpFor !== undefined) {
+        // 乗れましたか？ unanswered: the times from here, with the same buttons, in place of the question.
+        const notice = boardedFollowUp(
+          {
+            goneLabel: delivery.followUpLabel ?? delivery.trainLabel,
+            nextLabel: delivery.trainLabel,
+            nextDeparts: delivery.trainDeparts,
+            station: text.station,
+            leaveBy: text.leaveBy,
+            leavePassed: delivery.leaveAtMs <= now,
+          },
+          language,
+        );
+        await registerBoardedCategory(language);
+        await present(notice.title, notice.body, null, '/ride', vibrate, null, true, false, {
+          category: BOARDED_CATEGORY,
+          data: { boardedCheck: delivery.followUpFor },
+          identifier: boardedNotificationId(delivery.followUpFor),
+        });
+      }
+      if (decided.stationChanged) {
+        const notice = stationNotice(text, delivery);
+        await present(notice.title, notice.body, null, '/ride', vibrate, null, true);
+      } else if (decided.timeShifted) {
+        const notice = timeNotice(text, delivery);
+        await present(notice.title, notice.body, null, '/ride', vibrate, null, true);
+      }
+      if (decided.catchUp) {
+        const minutesLeft = Math.round((delivery.leaveAtMs - now) / 60_000);
+        const late = { ...decided.catchUp, minutesBefore: decided.catchUp.minutesBefore > 0 && minutesLeft > 0 ? minutesLeft : 0 };
+        const { title, body } = reminderText(text, late);
+        const tone = late.alarm ? soundFile(sound === 'default' ? 'urgent' : sound) : null;
+        await present(title, body, null, '/ride', vibrate, tone, true);
+      }
+      await AsyncStorage.setItem(STORAGE_KEYS.reminderLedger, JSON.stringify(decided.ledger)).catch(() => undefined);
+    }
+    if (upcoming.some((plan) => plan.boardedCheck) && text.held) await registerBoardedCategory(language);
+    for (const plan of upcoming) {
       // A delayed background task must never turn an expired alarm into an instant notification.
       if (plan.fireAt < Date.now() - 1000) continue;
+      if (plan.boardedCheck) {
+        if (!text.held) continue;
+        const { title, body } = reminderText(text, plan);
+        await present(title, body, plan.fireAt, '/ride', vibrate, null, false, false, {
+          category: BOARDED_CATEGORY,
+          data: { boardedCheck: plan.fireAt },
+          identifier: boardedNotificationId(plan.fireAt),
+        });
+        continue;
+      }
       const { title, body } = reminderText(text, plan);
       const target = plan.missedCheckIn ? '/alternatives' : '/ride';
       if (plan.alarm && alarmAuthorization === 'authorized' && plan.fireAt > Date.now() + 1000) {
@@ -261,7 +397,7 @@ export function scheduleReminders(
       // An alarm's stand-in never uses the plain notification sound (or it'd be just another reminder).
       const tone = plan.alarm ? soundFile(sound === 'default' ? 'urgent' : sound) : null;
       // Time Sensitive (breaks through Focus) only where being late means missing the train.
-      const urgent = plan.alarm === true || plan.lastTrainBackup === true || (plan.minutesBefore === 0 && !plan.missedCheckIn);
+      const urgent = plan.alarm === true || (plan.minutesBefore === 0 && !plan.missedCheckIn);
       await present(title, body, plan.fireAt, target, vibrate, tone, urgent);
     }
     await AsyncStorage.setItem(SIGNATURE_KEY, signature).catch(() => undefined);

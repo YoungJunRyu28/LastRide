@@ -25,6 +25,14 @@ public class LastRideAlarmModule: Module {
       }
     }
 
+    /**
+     * Installed from TestFlight: its receipt is a sandbox receipt. App Store
+     * installs (the same binary) have a normal one, so test tools stay hidden there.
+     */
+    Function("isTestFlight") { () -> Bool in
+      return Bundle.main.appStoreReceiptURL?.lastPathComponent == "sandboxReceipt"
+    }
+
     /** Whether Live Activities are allowed for the app (Settings › LastRide › ライブアクティビティ). */
     AsyncFunction("liveActivitiesEnabled") { () -> Bool in
       guard #available(iOS 16.2, *) else { return false }

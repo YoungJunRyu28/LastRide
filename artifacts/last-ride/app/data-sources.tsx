@@ -12,6 +12,7 @@ import { SUPPORT_EMAIL } from '@/lib/links';
 const ODPT_URL = 'https://www.odpt.org/';
 const CC_BY_URL = 'https://creativecommons.org/licenses/by/4.0/deed.ja';
 const APPLE_LEGAL_URL = 'https://gspe21-ssl.ls.apple.com/html/attribution.html';
+const OSM_COPYRIGHT_URL = 'https://www.openstreetmap.org/copyright';
 
 /**
  * Data sources and the notices their licences require. ODPT's 公共交通オープン
@@ -91,6 +92,14 @@ export default function DataSourcesScreen() {
                 'Times marked “approx.” are estimates that couldn’t be confirmed as a train. Please double-check them.',
               ],
           { label: ja ? 'Apple Mapsの法的情報' : 'Apple Maps legal notices', url: APPLE_LEGAL_URL },
+        )}
+
+        {section(
+          'OpenStreetMap',
+          ja
+            ? ['駅名の英語表記（日本語との対応）は、OpenStreetMapのデータを利用しています。© OpenStreetMap contributors（ODbL）。']
+            : ['English station names (and their Japanese pairs) use OpenStreetMap data. © OpenStreetMap contributors, available under the Open Database Licence (ODbL).'],
+          { label: '© OpenStreetMap contributors', url: OSM_COPYRIGHT_URL },
         )}
       </ScrollView>
     </View>

@@ -30,6 +30,7 @@ import {
 } from "@/lib/stayPricing";
 import { shortLineName } from "@/lib/timetable";
 import { Feather } from "@expo/vector-icons";
+import { PlaceholderBlock } from "@/components/Placeholder";
 import {
   getNearbyPlaces,
   getPartwayTrainTaxi,
@@ -1126,11 +1127,13 @@ export default function AlternativesScreen() {
             </View>
 
             {isLoadingStays ? (
-              <View style={styles.loadingRow}>
-                <ActivityIndicator color={colors.primary} />
+              <View style={styles.placeholderList}>
                 <Text style={[styles.note, { color: colors.mutedForeground }]}>
                   {ja ? "周辺を検索中…" : "Searching around you…"}
                 </Text>
+                <PlaceholderBlock height={64} radius={16} />
+                <PlaceholderBlock height={64} radius={16} />
+                <PlaceholderBlock height={64} radius={16} />
               </View>
             ) : staysError ? (
               <Pressable
@@ -1691,6 +1694,7 @@ const styles = StyleSheet.create({
   },
   chipText: { fontWeight: "700", fontSize: 11 },
   loadingRow: { alignItems: "center", flexDirection: "row", gap: 12 },
+  placeholderList: { gap: 10 },
   locationPrompt: {
     alignItems: "center",
     borderRadius: 18,

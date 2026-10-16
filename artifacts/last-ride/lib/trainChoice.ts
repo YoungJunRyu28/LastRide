@@ -4,9 +4,9 @@
  * The preference is kept for the night and re-applied to every new plan (the
  * user moving, a re-plan in the background), so reminders, the lock screen,
  * widgets and groups all follow it. It is a preference, not a promise: once a
- * chosen train can no longer be made (its latest leave time has passed, or a
- * move to another station made it earlier), the plan falls back to the next
- * later train that still can, down to the last train itself.
+ * chosen train has departed, the plan falls back to the next later train,
+ * down to the last train itself. Between its leave time and its departure the
+ * chosen train is kept ("on the way"), so the times don't jump mid-walk.
  */
 import { STATION_BUFFER_MINUTES, withMargin, type NightPlan, type StationChoice } from '@/lib/planner';
 import type { LeaveMargin } from '@/lib/reliability';
@@ -40,7 +40,32 @@ export function lastTrainFallback<T extends Pick<NightPlan, 'lastTrain' | 'night
     arriveHomeMs: last.arrivesAt === undefined ? undefined : last.arrivesAt + (plan.walkHomeMinutes ?? 0) * MINUTE_MS,
     nightLastTrain: undefined,
     nightLastLeaveAt: undefined,
+    nightLaterTrains: undefined,
     trainChoice: undefined,
+  };
+}
+
+type FallbackPlan = Pick<NightPlan, 'lastTrain' | 'nightLastTrain' | 'nightLastLeaveAt' | 'nightLaterTrains' | 'walkingMinutes' | 'walkHomeMinutes' | 'leaveByMs' | 'recommendedLeaveByMs' | 'safetyMarginMinutes' | 'arriveHomeMs' | 'trainChoice'>;
+
+/**
+ * The plan for the next later train, once the chosen one has left: 2本前 →
+ * 1本前 → 終電. Its leave time keeps the chosen train's margin. Null when the
+ * plan already heads for the last train.
+ */
+export function nextTrainFallback<T extends FallbackPlan>(plan: T): T | null {
+  const [next, ...rest] = plan.nightLaterTrains ?? [];
+  if (!next || !plan.trainChoice) return lastTrainFallback(plan);
+  const margin = plan.leaveByMs - recommendedLeaveTime(plan);
+  const leaveByMs = next.departsAt - (plan.walkingMinutes + STATION_BUFFER_MINUTES) * MINUTE_MS;
+  return {
+    ...plan,
+    lastTrain: next,
+    leaveByMs,
+    recommendedLeaveByMs: leaveByMs - margin,
+    safetyMarginMinutes: undefined,
+    arriveHomeMs: next.arrivesAt === undefined ? undefined : next.arrivesAt + (plan.walkHomeMinutes ?? 0) * MINUTE_MS,
+    nightLaterTrains: rest,
+    trainChoice: plan.trainChoice - 1,
   };
 }
 
@@ -48,8 +73,14 @@ export type TrainOption = {
   choice: TrainChoice;
   /** The plan's station with this train. */
   station: StationChoice;
-  /** Its latest leave time hasn't passed. The last train is always offered. */
+  /**
+   * The train hasn't left yet. Someone who left on time may still be walking to
+   * it, so a train stays usable until it departs, not just until its latest
+   * leave time. The last train is always offered.
+   */
   catchable: boolean;
+  /** Its latest leave time has passed: only made by hurrying (or already on the way). */
+  late: boolean;
 };
 
 /** The same station and walk, heading for `train` instead. */
@@ -70,17 +101,42 @@ function choiceFor(plan: StationChoice, train: TrainTime, leaveMargin: LeaveMarg
 export function trainOptions(plan: StationChoice, leaveMargin: LeaveMargin, nowMs: number): TrainOption[] {
   const earlier = (plan.lastTrain.before ?? []).slice(0, 2);
   return [
-    { choice: 0, station: plan, catchable: true },
+    { choice: 0, station: plan, catchable: true, late: nowMs > plan.leaveByMs },
     ...earlier.map((train, index): TrainOption => {
       const station = choiceFor(plan, train, leaveMargin);
-      return { choice: (index + 1) as TrainChoice, station, catchable: nowMs <= station.leaveByMs };
+      return { choice: (index + 1) as TrainChoice, station, catchable: nowMs < train.departsAt, late: nowMs > station.leaveByMs };
     }),
   ];
 }
 
 /**
- * The train actually used for `preferred`: that one while it can still be
- * made, else the next later one that can (1本前 gone → 終電).
+ * After the station changes automatically: the option at the new station whose
+ * leave time is closest to the one planned before (people pick 1本前 to leave at
+ * about a certain time, not for the slot). Only trains that can still be made
+ * from here (their leave time hasn't passed); the last train otherwise.
+ */
+export function closestChoice(options: TrainOption[], plannedLeaveMs: number): TrainChoice {
+  let best: TrainOption | null = null;
+  for (const option of options) {
+    if (!option.catchable || (option.late && option.choice !== 0)) continue;
+    const gap = Math.abs(recommendedLeaveTime(option.station) - plannedLeaveMs);
+    if (!best || gap < Math.abs(recommendedLeaveTime(best.station) - plannedLeaveMs)) best = option;
+  }
+  return best?.choice ?? 0;
+}
+
+/** The slot in force at `stationNameJa`: an override for that station, else the user's choice. */
+export function choiceAt(
+  preference: number,
+  override: { station: string; choice: number } | null,
+  stationNameJa: string,
+): number {
+  return override && override.station === stationNameJa ? override.choice : preference;
+}
+
+/**
+ * The train actually used for `preferred`: that one until it departs, then
+ * the next later one (2本前 gone → 1本前 → 終電), as lib/nightPhase.ts does.
  */
 export function effectiveTrainChoice(options: TrainOption[], preferred: number): TrainChoice {
   let index = Math.max(0, Math.min(preferred, options.length - 1));
@@ -108,5 +164,7 @@ export function applyTrainChoice(plan: NightPlan, options: TrainOption[], choice
     trainChoice: choice,
     nightLastTrain: plan.lastTrain,
     nightLastLeaveAt: recommendedLeaveTime(plan),
+    // `before` is latest first; the trains after the chosen one, earliest first.
+    nightLaterTrains: (plan.lastTrain.before ?? []).slice(0, choice - 1).reverse(),
   };
 }

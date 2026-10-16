@@ -13,11 +13,14 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import { Platform } from 'react-native';
 import Purchases, { type CustomerInfo, type PurchasesPackage } from 'react-native-purchases';
 import { writePremiumCache } from '@/lib/premiumCache';
+import { isTestFlightBuild } from '@/modules/last-ride-alarm/src';
 
 export const PREMIUM_ENTITLEMENT = 'premium';
 /** Saved destinations the free plan allows (tonight-only trips are always free). */
 export const FREE_DESTINATIONS = 1;
 const TEST_PREMIUM_KEY = 'lastride-test-premium';
+/** TestFlight only: "true"/"false" overrides the real entitlement on this phone. */
+const TESTFLIGHT_PREMIUM_KEY = 'lastride-testflight-premium';
 const TEST_USER_KEY = 'lastride-test-user-id';
 
 const apiKey =
@@ -50,8 +53,14 @@ type PremiumValue = {
   plans: PlanChoice[];
   purchase: (plan: PlanChoice) => Promise<PurchaseResult>;
   restore: () => Promise<boolean>;
-  /** Test mode only: turn premium on or off locally. */
-  setTestPremium: (enabled: boolean) => void;
+  /**
+   * Test mode (no RevenueCat keys), or TestFlight: turn premium on or off
+   * locally. On TestFlight it overrides the real entitlement on this phone
+   * only (the server still sees the real one); null goes back to it.
+   */
+  setTestPremium: (enabled: boolean | null) => void;
+  /** TestFlight: premium is overridden locally (setTestPremium). */
+  testOverride: boolean;
   /** RevenueCat's (anonymous) user id; the server checks the entitlement with it. */
   appUserId: () => Promise<string>;
 };
@@ -75,7 +84,16 @@ function trialDays(pkg: PurchasesPackage): number | null {
 }
 
 export function PremiumProvider({ children }: { children: React.ReactNode }) {
-  const [isPremium, setIsPremium] = useState(false);
+  const [entitled, setIsPremium] = useState(false);
+  // TestFlight only: a local on/off over the real entitlement.
+  const [override, setOverride] = useState<boolean | null>(null);
+  const isPremium = override ?? entitled;
+  useEffect(() => {
+    if (!isTestFlightBuild || !premiumLive) return;
+    void AsyncStorage.getItem(TESTFLIGHT_PREMIUM_KEY)
+      .then((value) => setOverride(value === 'true' ? true : value === 'false' ? false : null))
+      .catch(() => undefined);
+  }, []);
   const [ready, setReady] = useState(false);
   const [plans, setPlans] = useState<PlanChoice[]>(premiumLive ? [] : TEST_PLANS);
 
@@ -117,8 +135,17 @@ export function PremiumProvider({ children }: { children: React.ReactNode }) {
     if (ready) void writePremiumCache(isPremium);
   }, [isPremium, ready]);
 
-  const setTestPremium = useCallback((enabled: boolean) => {
-    if (premiumLive) return;
+  const setTestPremium = useCallback((enabled: boolean | null) => {
+    if (premiumLive) {
+      if (!isTestFlightBuild) return;
+      setOverride(enabled);
+      void (enabled === null
+        ? AsyncStorage.removeItem(TESTFLIGHT_PREMIUM_KEY)
+        : AsyncStorage.setItem(TESTFLIGHT_PREMIUM_KEY, String(enabled))
+      ).catch(() => undefined);
+      return;
+    }
+    if (enabled === null) return;
     setIsPremium(enabled);
     void AsyncStorage.setItem(TEST_PREMIUM_KEY, String(enabled)).catch(() => undefined);
   }, []);
@@ -164,8 +191,8 @@ export function PremiumProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ isPremium, ready, live: premiumLive, plans, purchase, restore, setTestPremium, appUserId }),
-    [isPremium, ready, plans, purchase, restore, setTestPremium, appUserId],
+    () => ({ isPremium, ready, live: premiumLive, plans, purchase, restore, setTestPremium, testOverride: override !== null, appUserId }),
+    [isPremium, ready, plans, purchase, restore, setTestPremium, override, appUserId],
   );
   return <PremiumContext.Provider value={value}>{children}</PremiumContext.Provider>;
 }

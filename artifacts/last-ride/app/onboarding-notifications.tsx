@@ -39,7 +39,7 @@ export default function OnboardingNotificationsScreen() {
         title={ja ? '出発の時間を\nお知らせします' : 'We’ll tell you\nwhen to go'}
         lead={
           ja
-            ? '夜のトラッキング中だけ、出発前のリマインダーと「今すぐ出発」を通知します。'
+            ? '夜のトラッキング中だけ、出る前のリマインダーと「出る時間です」を通知します。'
             : 'Only while night tracking is on: reminders before you need to leave, and a “leave now”.'
         }
       />

@@ -1,0 +1,13 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["8BKFRUR55U.jp.lastride.app"],
+        "components": [
+          { "/": "/join", "?": { "token": "?*" }, "comment": "Business event invites: /join?token=…" },
+          { "/": "/group-join", "?": { "invite": "?*" }, "comment": "Group invites: /group-join?invite=…" }
+        ]
+      }
+    ]
+  }
+}

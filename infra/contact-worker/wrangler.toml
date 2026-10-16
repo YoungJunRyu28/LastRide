@@ -1,0 +1,20 @@
+# The website's contact form (site/support/): checks Cloudflare Turnstile and
+# sends the message to support through Email Routing. Deploy with
+#   npx wrangler deploy
+# after:
+#   - Email Routing is on for lastride.jp, and the inbox that receives
+#     support@ is a verified destination address;
+#   - npx wrangler secret put TURNSTILE_SECRET   (the Turnstile widget's secret key)
+#   - npx wrangler secret put CONTACT_TO         (that verified inbox address)
+#   - the widget's site key is set in site/support/ and site/en/support/ (data-sitekey).
+name = "lastride-contact"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+routes = [{ pattern = "lastride.jp/api/contact", zone_name = "lastride.jp" }]
+
+[vars]
+# Sender on lastride.jp (any address on a zone with Email Routing on).
+CONTACT_FROM = "contact-form@lastride.jp"
+
+[[send_email]]
+name = "SEND"

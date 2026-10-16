@@ -144,10 +144,23 @@ export async function appleLastTrain(from: StationOption, to: StationOption, now
   return found ? { ...found, source: 'apple' } : null;
 }
 
+/** How far back from the next train each "leave at" question looks when finding an earlier one. */
+const EARLIER_SEARCH_OFFSETS_MIN = [5, 10, 15, 20, 30, 40, 55, 70, 90, 120];
+/** Most MapKit questions for one earlier train (so a sparse route can't exhaust the request limit). */
+const EARLIER_QUERY_BUDGET = 8;
+
 /**
- * The trains before `last` (1本前, 2本前), latest first: the last train again,
- * with a deadline just before the previous one's arrival. Stops at the first
- * gap (no train, or one more than EARLIER_TRAINS_WINDOW_MS earlier).
+ * The trains before `last` (1本前, 2本前), latest first. Each is the latest
+ * train leaving the station before the next one that still gets home
+ * *earlier* than it, so 1本前 is the train before on the station board.
+ *
+ * Found by departure, not by "arrive by": MapKit's arrive-by answer is its
+ * preferred route, not always the latest departure, so stepping back by
+ * arrival skipped trains (gaps like 12 then 63 minutes). Here "leave at" is
+ * asked a few minutes before the next train, further back each time; from the
+ * first train found it then looks just after it for a later one that still
+ * arrives earlier than the next train. Stops at the first gap: no train within
+ * EARLIER_TRAINS_WINDOW_MS, a walk, or past times (MapKit can't look back).
  */
 export async function searchTrainsBefore(
   query: EtaQuery,
@@ -156,17 +169,52 @@ export async function searchTrainsBefore(
   count = EARLIER_TRAIN_COUNT,
 ): Promise<Array<Omit<TrainTime, 'source'>>> {
   const found: Array<Omit<TrainTime, 'source'>> = [];
-  let previous = last;
-  for (let attempt = 0; found.length < count && attempt < count + 2; attempt++) {
-    if (previous.arrivesAt === undefined) break;
-    const train = await searchLastTrain(query, nowMs, previous.arrivesAt - MINUTE_MS);
-    if (!train || train.approximate) break;
-    if (train.departsAt < last.departsAt - EARLIER_TRAINS_WINDOW_MS) break;
-    // An earlier arrival on the same departure (a faster change) isn't another train.
-    if (train.departsAt < previous.departsAt) found.push(train);
-    previous = train;
+  const earliest = last.departsAt - EARLIER_TRAINS_WINDOW_MS;
+  let next = last;
+  while (found.length < count) {
+    const train = await trainBefore(query, next, earliest, nowMs);
+    if (!train) break;
+    found.push(train);
+    next = train;
   }
   return found;
+}
+
+/** The latest train leaving before `next` that arrives earlier than it, or null. */
+async function trainBefore(
+  query: EtaQuery,
+  next: Pick<TrainTime, 'departsAt' | 'arrivesAt'>,
+  earliest: number,
+  nowMs: number,
+): Promise<Omit<TrainTime, 'source'> | null> {
+  if (next.arrivesAt === undefined) return null;
+  const arriveBefore = next.arrivesAt - MINUTE_MS;
+  let budget = EARLIER_QUERY_BUDGET;
+  for (const offset of EARLIER_SEARCH_OFFSETS_MIN) {
+    const departAt = next.departsAt - offset * MINUTE_MS;
+    // Past times: MapKit answers with a later trip, so it can't find these.
+    if (departAt < earliest || departAt <= nowMs || budget-- <= 0) return null;
+    const eta = await query({ departAt }).catch(() => null);
+    if (!eta) return null;
+    if (eta.departureMs >= next.departsAt || eta.arrivalMs > arriveBefore) continue;
+    if (eta.departureMs - departAt <= NEAR_MS) {
+      // Leaving right away could be a walk: never offer one as a train.
+      if (budget-- <= 0) return null;
+      if ((await isWalkLeaving(query, eta, departAt)) !== false) return null;
+    }
+    // A later train with the same (or an earlier) arrival, e.g. one that waits at a
+    // change, is the better 1本前: look just after the one found.
+    let best = eta;
+    while (budget-- > 0) {
+      const after = best.departureMs + MINUTE_MS;
+      const later = await query({ departAt: after }).catch(() => null);
+      if (!later || later.departureMs >= next.departsAt || later.arrivalMs > arriveBefore || later.departureMs <= best.departureMs) break;
+      if (later.departureMs - after <= NEAR_MS && (budget-- <= 0 || (await isWalkLeaving(query, later, after)) !== false)) break;
+      best = later;
+    }
+    return times(best);
+  }
+  return null;
 }
 
 export async function appleTrainsBefore(from: StationOption, to: StationOption, last: TrainTime, nowMs: number): Promise<TrainTime[]> {

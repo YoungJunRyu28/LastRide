@@ -52,22 +52,31 @@ describe('the train options', () => {
   });
 });
 
-describe('falling back when a chosen train can no longer be made', () => {
+describe('falling back when a chosen train has left', () => {
   test('keeps the chosen train while its latest leave time is ahead', () => {
     const options = trainOptions(plan(), 4, jst(23, 30));
     expect(effectiveTrainChoice(options, 1)).toBe(1);
+    expect(options[1].late).toBe(false);
   });
 
-  test('moves to the next later train once the chosen one is gone', () => {
-    // 2本前 latest is 23:22: at 23:25 it falls back to 1本前 (latest 23:31).
-    expect(effectiveTrainChoice(trainOptions(plan(), 4, jst(23, 25)), 2)).toBe(1);
-    // At 23:35 1本前 has gone too: the last train.
-    expect(effectiveTrainChoice(trainOptions(plan(), 4, jst(23, 35)), 2)).toBe(0);
+  test('keeps it after the leave time, on the way, until the train departs', () => {
+    // 2本前 latest is 23:22, departs 23:27: at 23:25 still 2本前, marked late.
+    const options = trainOptions(plan(), 4, jst(23, 25));
+    expect(effectiveTrainChoice(options, 2)).toBe(2);
+    expect(options[2].late).toBe(true);
   });
 
-  test('a move to a farther station can put the chosen train out of reach', () => {
-    // Same trains, but now a 12-minute walk: 1本前 latest is 23:21, gone at 23:25.
-    expect(effectiveTrainChoice(trainOptions(plan(last, 12), 4, jst(23, 25)), 1)).toBe(0);
+  test('moves to the next later train once the chosen one has departed', () => {
+    expect(effectiveTrainChoice(trainOptions(plan(), 4, jst(23, 27)), 2)).toBe(1);
+    // 1本前 departs 23:36: from then on, the last train.
+    expect(effectiveTrainChoice(trainOptions(plan(), 4, jst(23, 36)), 2)).toBe(0);
+  });
+
+  test('a move to a farther station makes the chosen train late, not gone', () => {
+    // Same trains, but now a 12-minute walk: 1本前 latest is 23:21.
+    const options = trainOptions(plan(last, 12), 4, jst(23, 25));
+    expect(effectiveTrainChoice(options, 1)).toBe(1);
+    expect(options[1].late).toBe(true);
   });
 
   test('asks for 2本前 where only 1本前 exists: uses 1本前', () => {
@@ -94,13 +103,13 @@ describe('a plan heading for an earlier train', () => {
     expect(rideStatus(chosen, jst(23, 40))).not.toBe('departed');
   });
 
-  test('reminders follow the chosen train, with one backup for the last train', () => {
+  test('reminders follow the chosen train, then ask at its departure whether it was caught', () => {
     const reminders = buildReminderPlans(chosen, [15, 0], jst(23, 0), { missedCheckIn: true });
     expect(reminders).toEqual([
       { minutesBefore: 15, fireAt: jst(23, 12) },
       { minutesBefore: 0, fireAt: jst(23, 27) },
-      // The last train's own leave time (23:45 − 5 − 4 = 23:36).
-      { minutesBefore: 0, fireAt: jst(23, 36), lastTrainBackup: true },
+      // 乗れましたか？ when 1本前 departs; no last-train leave time (it depends on where you'll be).
+      { minutesBefore: 0, fireAt: jst(23, 36), boardedCheck: true },
       { minutesBefore: 0, fireAt: jst(23, 48), missedCheckIn: true },
     ]);
   });

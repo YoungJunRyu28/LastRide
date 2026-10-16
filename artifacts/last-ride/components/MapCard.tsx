@@ -57,6 +57,9 @@ export function openWalkingRoute(to: Point) {
   void Linking.openURL(url).catch(() => undefined);
 }
 
+/** Kept clear at the bottom of the map for the attribution and "Open route in Maps". */
+const BOTTOM_BAND = 34;
+
 /** How close the walk-to-the-station map can zoom: about two blocks top to bottom. */
 const WALK_MIN_SPAN_METERS = 280;
 
@@ -73,9 +76,14 @@ function frameFor(points: Point[], width: number, height: number, minSpanMeters 
   const cos = Math.cos((center.latitude * Math.PI) / 180);
   const northSpan = (Math.max(...lats) - Math.min(...lats)) * METERS_PER_DEGREE;
   const eastSpan = (Math.max(...lons) - Math.min(...lons)) * METERS_PER_DEGREE * cos;
-  // Fit both directions with a margin, with a floor so a short walk isn't a blur.
-  const spanMeters = Math.max(minSpanMeters, northSpan * 1.6, (eastSpan * 1.4 * height) / width);
-  return { center, spanMeters, width, height };
+  // Fit both directions with a margin, with a floor so a short walk isn't a blur,
+  // into the part of the card above the bottom row ("Open route in Maps").
+  const content = height - BOTTOM_BAND;
+  const contentSpan = Math.max(minSpanMeters, northSpan * 1.6, (eastSpan * 1.4 * content) / width);
+  const spanMeters = (contentSpan * height) / content;
+  // Move the centre south so the points sit in that upper part.
+  const shiftMeters = (BOTTOM_BAND / 2) * (spanMeters / height);
+  return { center: { latitude: center.latitude - shiftMeters / METERS_PER_DEGREE, longitude: center.longitude }, spanMeters, width, height };
 }
 
 function project(frame: Frame, point: Point) {
