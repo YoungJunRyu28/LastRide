@@ -10,41 +10,57 @@ import { readMemberships } from "@/lib/groupMemberships";
 
 const SHARING_KEY = "lastride-group-sharing";
 
+// Foreground group effects and background tasks can update different groups
+// in the same tick. Serialize writes to avoid last-writer-wins data loss.
+let mutationTail: Promise<void> = Promise.resolve();
+function serializeMutation<T>(work: () => Promise<T>): Promise<T> {
+  const result = mutationTail.then(work);
+  mutationTail = result.then(() => undefined, () => undefined);
+  return result;
+}
+
 /** Smaller changes than this aren't worth a request (and a database wake-up). */
 export const LEAVE_BY_RESEND_MS = 60_000;
 
 type Sharing = Record<string, string | null>;
 
-async function read(): Promise<Sharing> {
+async function read(strict = false): Promise<Sharing> {
   try {
     const raw = await AsyncStorage.getItem(SHARING_KEY);
     const parsed: unknown = raw ? JSON.parse(raw) : {};
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Sharing) : {};
-  } catch {
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+      throw new Error("Invalid stored sharing state");
+    return parsed as Sharing;
+  } catch (error) {
+    if (strict) throw error;
     return {};
   }
 }
 
 async function write(sharing: Sharing) {
-  await AsyncStorage.setItem(SHARING_KEY, JSON.stringify(sharing)).catch(() => undefined);
+  await AsyncStorage.setItem(SHARING_KEY, JSON.stringify(sharing));
 }
 
 /** Notes that this phone shares with `groupId` tonight, with the time the server has. */
 export async function markSharing(groupId: string, leaveBy: string | null): Promise<void> {
-  const sharing = await read();
-  if (groupId in sharing && sharing[groupId] === leaveBy) return;
-  await write({ ...sharing, [groupId]: leaveBy });
+  await serializeMutation(async () => {
+    const sharing = await read(true);
+    if (groupId in sharing && sharing[groupId] === leaveBy) return;
+    await write({ ...sharing, [groupId]: leaveBy });
+  });
 }
 
 export async function stopSharing(groupId: string): Promise<void> {
-  const sharing = await read();
-  if (!(groupId in sharing)) return;
-  const { [groupId]: _removed, ...rest } = sharing;
-  await write(rest);
+  await serializeMutation(async () => {
+    const sharing = await read(true);
+    if (!(groupId in sharing)) return;
+    const { [groupId]: _removed, ...rest } = sharing;
+    await write(rest);
+  });
 }
 
 export async function clearSharing(): Promise<void> {
-  await AsyncStorage.removeItem(SHARING_KEY).catch(() => undefined);
+  await serializeMutation(() => AsyncStorage.removeItem(SHARING_KEY));
 }
 
 /** Whether `next` differs enough from what the group last got to send it. */
@@ -58,6 +74,7 @@ export function leaveByChanged(previous: string | null | undefined, next: string
  * it changed by a minute or more. For background tracking; never throws.
  */
 export async function syncSharedLeaveBy(leaveByMs: number): Promise<void> {
+  await mutationTail;
   const sharing = await read();
   const groupIds = Object.keys(sharing);
   if (groupIds.length === 0) return;

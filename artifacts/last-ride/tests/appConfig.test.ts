@@ -44,8 +44,27 @@ describe("app.config.js", () => {
       resolveWith({
         EAS_BUILD_PROFILE: "production",
         EXPO_PUBLIC_API_URL: "https://api.invalid.example",
+        ENABLE_REMOTE_PUSH: "true",
+        ENABLE_UNIVERSAL_LINKS: "true",
+        EXPO_PUBLIC_APP_JOIN_BASE_URL: "https://lastride.jp",
       }),
     ).not.toThrow();
+  });
+
+  it("refuses a public binary without remote pushes or verified invite links", () => {
+    expect(() => resolveWith({
+      EAS_BUILD_PROFILE: "production",
+      EXPO_PUBLIC_API_URL: "https://api.invalid.example",
+      ENABLE_REMOTE_PUSH: undefined,
+      ENABLE_UNIVERSAL_LINKS: "true",
+      EXPO_PUBLIC_APP_JOIN_BASE_URL: "https://lastride.jp",
+    })).toThrow("ENABLE_REMOTE_PUSH");
+    expect(() => resolveWith({
+      EAS_BUILD_PROFILE: "production",
+      EXPO_PUBLIC_API_URL: "https://api.invalid.example",
+      ENABLE_REMOTE_PUSH: "true",
+      ENABLE_UNIVERSAL_LINKS: undefined,
+    })).toThrow("ENABLE_UNIVERSAL_LINKS");
   });
 
   it("does not require an API URL outside release profiles", () => {
@@ -78,6 +97,7 @@ describe("app.config.js", () => {
     expect(withFlag.ios.associatedDomains).toEqual(["applinks:join.example"]);
     expect(withFlag.android.intentFilters[0].data).toEqual([
       { scheme: "https", host: "join.example", pathPrefix: "/join" },
+      { scheme: "https", host: "join.example", pathPrefix: "/group-join" },
     ]);
   });
 

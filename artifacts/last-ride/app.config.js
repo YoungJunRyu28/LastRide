@@ -43,6 +43,17 @@ module.exports = ({ config }) => {
   }
   const joinUrl = enableUniversalLinks ? new URL(joinBase) : null;
 
+  // Consumer groups use remote push and verified invite links in production.
+  // Don't publish a silently crippled store binary when release flags are
+  // missing. Internal preview/free-signing builds remain opt-in.
+  if (process.env.EAS_BUILD_PROFILE === "production") {
+    if (!enableRemotePush)
+      throw new Error('Production builds require ENABLE_REMOTE_PUSH=true');
+    if (!enableUniversalLinks)
+      throw new Error('Production builds require ENABLE_UNIVERSAL_LINKS=true');
+  }
+
+
   const basePlugins = enableRemotePush
     ? (config.plugins || []).filter(
         (plugin) => plugin !== "./plugins/withoutPushEntitlement",
@@ -125,6 +136,11 @@ module.exports = ({ config }) => {
                   scheme: "https",
                   host: joinUrl.hostname,
                   pathPrefix: "/join",
+                },
+                {
+                  scheme: "https",
+                  host: joinUrl.hostname,
+                  pathPrefix: "/group-join",
                 },
               ],
               category: ["BROWSABLE", "DEFAULT"],

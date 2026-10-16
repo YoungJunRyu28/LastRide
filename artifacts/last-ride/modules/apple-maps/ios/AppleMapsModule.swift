@@ -194,6 +194,18 @@ public class AppleMapsModule: Module {
     }
 
     AsyncFunction("snapshot") { (request: SnapshotRequest, promise: Promise) in
+      let center = request.center.location
+      guard CLLocationCoordinate2DIsValid(center),
+            request.center.latitude.isFinite, request.center.longitude.isFinite,
+            request.spanMeters.isFinite, request.spanMeters > 1, request.spanMeters < 2_000_000,
+            request.width.isFinite, request.height.isFinite,
+            request.width >= 1, request.width <= 4096,
+            request.height >= 1, request.height <= 4096,
+            abs(request.center.latitude) <= 85,
+            request.spanMeters * request.width / request.height < 2_000_000 else {
+        promise.reject("ERR_SNAPSHOT_INPUT", "Invalid map center, dimensions or span")
+        return
+      }
       let options = MKMapSnapshotter.Options()
       // spanMeters is the vertical extent; the horizontal follows the image's
       // aspect ratio so JS can project coordinates onto the image linearly.

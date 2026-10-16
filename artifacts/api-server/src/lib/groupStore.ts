@@ -810,6 +810,7 @@ async function pushRecipients(
 export const GROUP_LEAVE_ALERT_GRACE_MS = 10 * 60_000;
 
 export type ClaimedGroupLeaveAlert = {
+  nightId: string;
   groupId: string;
   groupName: string;
   memberId: string;
@@ -935,6 +936,7 @@ export async function claimDueGroupLeaveAlerts(
         .returning({ memberId: groupNightParticipantsTable.memberId });
       if (!won) return null;
       return {
+        nightId: candidate.nightId,
         groupId: candidate.groupId,
         groupName: candidate.groupName,
         memberId: candidate.memberId,
@@ -952,6 +954,30 @@ export async function claimDueGroupLeaveAlerts(
     if (alert) claimed.push(alert);
   }
   return claimed;
+}
+
+/**
+ * A total Expo send failure must not be marked delivered forever. Release
+ * only the exact claim we won: no rollback if the member changed leave-by,
+ * the night changed, or another dispatch has superseded this alert.
+ *
+ * NOTE: this only addresses zero-ticket failures. Per-recipient durable
+ * delivery and Expo receipt reconciliation still require the outbox in R02.
+ */
+export async function releaseFailedGroupLeaveAlert(
+  alert: ClaimedGroupLeaveAlert,
+): Promise<void> {
+  await getDb()
+    .update(groupNightParticipantsTable)
+    .set({ leaveAlertSentFor: null })
+    .where(
+      and(
+        eq(groupNightParticipantsTable.nightId, alert.nightId),
+        eq(groupNightParticipantsTable.memberId, alert.memberId),
+        eq(groupNightParticipantsTable.leaveBy, alert.leaveBy),
+        eq(groupNightParticipantsTable.leaveAlertSentFor, alert.leaveBy),
+      ),
+    );
 }
 
 // ---------------------------------------------------------------------------

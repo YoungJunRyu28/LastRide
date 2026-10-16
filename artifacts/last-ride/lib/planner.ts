@@ -337,7 +337,15 @@ async function evaluateCandidates(
         const walk = knownWalk ?? (await walkingRoute(coordinates, station, WALKING_PACE));
         const legs = await Promise.all(
           destinations.map(async (destination): Promise<StationChoice | null> => {
-            const lastTrain = await getLastTrain(station, destination.station, nightOf);
+            // A single operator/provider failure must not discard another
+            // destination's successful train lookup for this same station.
+            let lastTrain: TrainTime | null;
+            try {
+              lastTrain = await getLastTrain(station, destination.station, nightOf);
+            } catch {
+              lookupFailed = true;
+              return null;
+            }
             if (!lastTrain) return null;
             const leaveByMs = lastTrain.departsAt - (walk.walkingMinutes + STATION_BUFFER_MINUTES) * MINUTE_MS;
             const base: StationChoice = {

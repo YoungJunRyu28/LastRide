@@ -3,6 +3,7 @@ import { router, usePathname } from "expo-router";
 import { useEffect, useRef } from "react";
 import { useLastRide } from "@/context/LastRideContext";
 import { businessEnabled } from "@/lib/features";
+import { shouldDeferNotificationNavigation } from "@/lib/notificationNavigation";
 import type { NotificationTarget } from "@/lib/notifications";
 import { BOARDED_ACTION, NOT_BOARDED_ACTION } from "@/lib/boarding";
 
@@ -27,10 +28,9 @@ export function NotificationRouter() {
     const data = response.notification.request.content.data;
     const target = data?.target;
     const isBusinessTarget = target === "/business-event";
-    if (isBusinessTarget && !businessEnabled) return;
-    if (!isBusinessTarget && !homeStation) return;
-    if (!isBusinessTarget && (pathname === "/" || pathname === "/home-station"))
-      return;
+    if (shouldDeferNotificationNavigation({
+      target, pathname, hasHomeStation: Boolean(homeStation), businessEnabled,
+    })) return;
 
     const id = response.notification.request.identifier;
     if (handled.current === id) return;

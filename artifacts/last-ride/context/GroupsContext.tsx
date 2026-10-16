@@ -29,6 +29,7 @@ import {
   type GroupMembership,
 } from "@/lib/groupMemberships";
 import { clearSharing, markSharing, stopSharing } from "@/lib/groupSharing";
+import { GroupRefreshGuard } from "@/lib/groupRefreshGuard";
 import { onGroupUpdated, startGroupUpdates } from "@/lib/groupUpdates";
 import { expoPushToken } from "@/lib/pushToken";
 import { recommendedLeaveTime } from "@/lib/reliability";
@@ -84,6 +85,10 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
   const available = !!apiBaseUrl;
   const membershipsRef = useRef(memberships);
   membershipsRef.current = memberships;
+  const refreshGuard = useRef(new GroupRefreshGuard());
+  // One registration per group, language and OS push token per app session.
+  // Re-check each time the app becomes active (permission or token can change).
+  const deviceRegistrations = useRef<Record<string, string>>({});
 
   const memberOptions = useCallback(
     (groupId: string): RequestInit => {
@@ -94,6 +99,7 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
   );
 
   const apply = useCallback((detail: GroupDetail) => {
+    refreshGuard.current.changed(detail.id);
     setDetails((current) => ({ ...current, [detail.id]: detail }));
     const known = membershipsRef.current.find((item) => item.groupId === detail.id);
     if (known && known.name !== detail.name) {
@@ -104,6 +110,8 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const forget = useCallback(async (groupId: string) => {
+    refreshGuard.current.changed(groupId);
+    delete deviceRegistrations.current[groupId];
     await removeMembership(groupId);
     await stopSharing(groupId);
     setMemberships((current) => current.filter((item) => item.groupId !== groupId));
@@ -125,8 +133,10 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
             headers: { "X-Member-Token": membership.memberToken },
             signal: controller.signal,
           });
-        } catch {
-          // Offline or already gone: the server cleanup handles what's left.
+        } catch (error) {
+          // A confirmed 404 means the server already removed this membership.
+          // Network outages must NOT destroy the only local host credential.
+          if (errorStatus(error) !== 404) throw error;
         } finally {
           clearTimeout(timer);
         }
@@ -134,8 +144,10 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
     );
     await clearMemberships();
     await clearSharing();
+    for (const member of list) refreshGuard.current.changed(member.groupId);
     setMemberships([]);
     setDetails({});
+    deviceRegistrations.current = {};
   }, []);
 
   const refresh = useCallback(async () => {
@@ -145,16 +157,19 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
       return;
     }
-    await Promise.all(
-      list.map(async (membership) => {
-        try {
-          apply(await getGroup(membership.groupId, { headers: { "X-Member-Token": membership.memberToken } }));
-        } catch (error) {
-          // 404: disbanded, removed, or the token is no longer valid.
-          if (errorStatus(error) === 404) await forget(membership.groupId);
-        }
-      }),
-    );
+    await Promise.all(list.map(async (membership) => {
+      const ticket = refreshGuard.current.begin(membership.groupId);
+      try {
+        const detail = await getGroup(membership.groupId, {
+          headers: { "X-Member-Token": membership.memberToken },
+        });
+        if (refreshGuard.current.isCurrent(ticket)) apply(detail);
+      } catch (error) {
+        // Don't let a stale 404 delete a membership after a successful mutation.
+        if (errorStatus(error) === 404 && refreshGuard.current.isCurrent(ticket))
+          await forget(membership.groupId);
+      }
+    }));
     setLoading(false);
   }, [available, apply, forget]);
 
@@ -164,10 +179,12 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
       if (!available) return;
       const membership = (await readMemberships()).find((item) => item.groupId === groupId);
       if (!membership) return;
+      const ticket = refreshGuard.current.begin(groupId);
       try {
-        apply(await getGroup(groupId, { headers: { "X-Member-Token": membership.memberToken } }));
+        const detail = await getGroup(groupId, { headers: { "X-Member-Token": membership.memberToken } });
+        if (refreshGuard.current.isCurrent(ticket)) apply(detail);
       } catch (error) {
-        if (errorStatus(error) === 404) await forget(groupId);
+        if (errorStatus(error) === 404 && refreshGuard.current.isCurrent(ticket)) await forget(groupId);
       }
     },
     [available, apply, forget],
@@ -199,29 +216,48 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
       const mine =
         detail.tonight.active &&
         detail.tonight.participants.find((participant) => participant.memberId === detail.me.memberId);
-      if (mine) void markSharing(detail.id, mine.leaveBy ? new Date(mine.leaveBy).toISOString() : null);
-      else void stopSharing(detail.id);
+      if (mine) void markSharing(detail.id, mine.leaveBy ? new Date(mine.leaveBy).toISOString() : null).catch(() => undefined);
+      else void stopSharing(detail.id).catch(() => undefined);
     }
   }, [details]);
 
-  /** Registers push and language for a new membership; failures just mean no group pushes. */
-  const registerDevice = useCallback(
-    async (detail: GroupDetail, memberToken: string) => {
-      const token = await expoPushToken();
+  /**
+   * Re-register existing members when the app reopens or notification
+   * permissions / Expo push token / language changes. A null token explicitly
+   * unregisters a revoked notification permission on the server.
+   *
+   * No extra prompt is shown; expoPushToken checks existing permission only.
+   */
+  const refreshDeviceRegistrations = useCallback(async () => {
+    if (!available) return;
+    const members = await readMemberships();
+    if (members.length === 0) return;
+    const token = await expoPushToken();
+    const locale = language ?? "ja";
+    const signature = JSON.stringify([locale, token]);
+    await Promise.all(members.map(async (membership) => {
+      if (deviceRegistrations.current[membership.groupId] === signature) return;
       try {
-        apply(
-          await updateMyGroupMembership(
-            detail.id,
-            { language: language ?? "ja", ...(token ? { expoPushToken: token } : {}) },
-            { headers: { "X-Member-Token": memberToken } },
-          ),
+        const detail = await updateMyGroupMembership(
+          membership.groupId,
+          { language: locale, expoPushToken: token },
+          { headers: { "X-Member-Token": membership.memberToken } },
         );
+        deviceRegistrations.current[membership.groupId] = signature;
+        apply(detail);
       } catch {
-        // Keep the membership; the next refresh shows it anyway.
+        // Keep the capability and retry on the next foreground transition.
       }
-    },
-    [apply, language],
-  );
+    }));
+  }, [available, language, apply]);
+
+  useEffect(() => {
+    void refreshDeviceRegistrations();
+    const listener = AppState.addEventListener("change", (state) => {
+      if (state === "active") void refreshDeviceRegistrations();
+    });
+    return () => listener.remove();
+  }, [refreshDeviceRegistrations, memberships]);
 
   const remember = useCallback(
     async (memberToken: string, detail: GroupDetail, displayName: string) => {
@@ -230,9 +266,9 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
       await writeDisplayName(displayName);
       setMemberships((current) => [...current.filter((item) => item.groupId !== detail.id), membership]);
       apply(detail);
-      void registerDevice(detail, memberToken);
+      // The membership effect registers push and language once saved.
     },
-    [apply, registerDevice],
+    [apply],
   );
 
   const create = useCallback(

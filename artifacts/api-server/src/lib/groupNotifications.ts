@@ -7,7 +7,7 @@ import { and, eq, inArray, isNotNull, ne } from "drizzle-orm";
 import { getDb, groupMembersTable } from "@workspace/db";
 import { EXPO_PUSH_BATCH_SIZE } from "./enterpriseNotifications";
 import { logger } from "./logger";
-import { claimDueGroupLeaveAlerts } from "./groupStore";
+import { claimDueGroupLeaveAlerts, releaseFailedGroupLeaveAlert } from "./groupStore";
 
 export type GroupLanguage = "ja" | "en";
 
@@ -223,7 +223,7 @@ export async function dispatchGroupLeaveAlerts(
   const alerts = await claimDueGroupLeaveAlerts(now);
   let sent = 0;
   for (const alert of alerts) {
-    sent += await sendGroupPush(
+    const accepted = await sendGroupPush(
       alert.groupId,
       {
         kind: "leave_time",
@@ -233,6 +233,20 @@ export async function dispatchGroupLeaveAlerts(
       },
       alert.recipients,
     );
+    sent += accepted;
+    if (alert.recipients.length > 0 && accepted === 0) {
+      // Expo outage / rejection: the scheduler must be able to retry.
+      // Releasing is guarded by the exact group-night + leave-by claim.
+      try {
+        await releaseFailedGroupLeaveAlert(alert);
+        logger.warn(
+          { groupId: alert.groupId, memberId: alert.memberId },
+          "Group departure push accepted by no device; released alert for retry",
+        );
+      } catch (err) {
+        logger.error({ err }, "Failed to re-arm undelivered group departure alert");
+      }
+    }
   }
   return sent;
 }

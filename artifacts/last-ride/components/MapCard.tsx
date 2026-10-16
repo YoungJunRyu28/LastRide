@@ -14,6 +14,7 @@ import { Image, Linking, Platform, Pressable, StyleSheet, Text, View } from 'rea
 import Svg, { Path, Polyline } from 'react-native-svg';
 import { useColors } from '@/hooks/useColors';
 import { AppleMaps } from '@/modules/apple-maps/src';
+import { isSafeMapSnapshotFrame, isValidMapCoordinate } from '@/lib/mapSnapshotGuard';
 
 type Point = { latitude: number; longitude: number };
 
@@ -168,7 +169,15 @@ export function MapCard({
     ...(pins ?? []).filter((pin): pin is MapPin & Point => pin.latitude !== undefined && pin.longitude !== undefined),
   ];
   const framePoints = [...geoPoints, ...(frameTo ?? [])];
-  const frame = AppleMaps && width > 0 && framePoints.length >= 2 ? frameFor(framePoints, width, height, showWalk ? WALK_MIN_SPAN_METERS : undefined) : null;
+  const hasValidFrame =
+    framePoints.length >= 2 &&
+    framePoints.every(isValidMapCoordinate) &&
+    Number.isFinite(width) && Number.isFinite(height) &&
+    width >= 1 && width <= 4096 && height >= 1 && height <= 4096;
+  const candidateFrame = AppleMaps && hasValidFrame
+    ? frameFor(framePoints, width, height, showWalk ? WALK_MIN_SPAN_METERS : undefined)
+    : null;
+  const frame = candidateFrame && isSafeMapSnapshotFrame(candidateFrame) ? candidateFrame : null;
   const snapshot = useSnapshot(frame);
 
   return (
