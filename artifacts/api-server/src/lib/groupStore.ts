@@ -817,6 +817,24 @@ export type ClaimedGroupLeaveAlert = {
  * updated leave-by re-arms only when it moves later than the alerted time.
  * The conditional UPDATE makes concurrent scheduled runs collapse to one.
  */
+/** The member id behind a member token, or null (e.g. before they leave the group). */
+export async function groupMemberIdForToken(
+  groupId: string,
+  memberToken: string,
+): Promise<string | null> {
+  const [row] = await getDb()
+    .select({ id: groupMembersTable.id })
+    .from(groupMembersTable)
+    .where(
+      and(
+        eq(groupMembersTable.groupId, groupId),
+        eq(groupMembersTable.memberTokenHash, hashCapability(memberToken)),
+      ),
+    )
+    .limit(1);
+  return row?.id ?? null;
+}
+
 /**
  * When the next leave-time alert is due: the earliest unsent leave time in a
  * night that hasn't ended (one still inside the grace period counts as due now).

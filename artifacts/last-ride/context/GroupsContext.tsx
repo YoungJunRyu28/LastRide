@@ -26,10 +26,10 @@ import {
   writeDisplayName,
   type GroupMembership,
 } from "@/lib/groupMemberships";
+import { clearSharing, markSharing, stopSharing } from "@/lib/groupSharing";
+import { onGroupUpdated, startGroupUpdates } from "@/lib/groupUpdates";
 import { expoPushToken } from "@/lib/pushToken";
 import { recommendedLeaveTime } from "@/lib/reliability";
-
-const REFRESH_MS = 60_000;
 
 export type GroupEntry = {
   membership: GroupMembership;
@@ -98,6 +98,7 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
 
   const forget = useCallback(async (groupId: string) => {
     await removeMembership(groupId);
+    await stopSharing(groupId);
     setMemberships((current) => current.filter((item) => item.groupId !== groupId));
     setDetails((current) => {
       const { [groupId]: _removed, ...rest } = current;
@@ -125,6 +126,7 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
       }),
     );
     await clearMemberships();
+    await clearSharing();
     setMemberships([]);
     setDetails({});
   }, []);
@@ -149,17 +151,51 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
     setLoading(false);
   }, [available, apply, forget]);
 
+  /** Reloads one group (after a silent "group updated" push). */
+  const refreshGroup = useCallback(
+    async (groupId: string) => {
+      if (!available) return;
+      const membership = (await readMemberships()).find((item) => item.groupId === groupId);
+      if (!membership) return;
+      try {
+        apply(await getGroup(groupId, { headers: { "X-Member-Token": membership.memberToken } }));
+      } catch (error) {
+        if (errorStatus(error) === 404) await forget(groupId);
+      }
+    },
+    [available, apply, forget],
+  );
+
+  // No polling (it would keep the server's database awake): refresh on opening
+  // the app, and when the server says a group changed (lib/groupUpdates).
   useEffect(() => {
     void refresh();
-    const timer = setInterval(() => void refresh(), REFRESH_MS);
-    const subscription = AppState.addEventListener("change", (state) => {
+    const appState = AppState.addEventListener("change", (state) => {
       if (state === "active") void refresh();
     });
+    const stopUpdates = startGroupUpdates();
+    const stopListening = onGroupUpdated((groupId) => {
+      if (AppState.currentState !== "active") return; // refreshed on opening anyway
+      void (groupId ? refreshGroup(groupId) : refresh());
+    });
     return () => {
-      clearInterval(timer);
-      subscription.remove();
+      appState.remove();
+      stopUpdates();
+      stopListening();
     };
-  }, [refresh]);
+  }, [refresh, refreshGroup]);
+
+  // Remember which groups this phone shares with tonight (and the time they
+  // have), so background tracking can keep them current (lib/groupSharing).
+  useEffect(() => {
+    for (const detail of Object.values(details)) {
+      const mine =
+        detail.tonight.active &&
+        detail.tonight.participants.find((participant) => participant.memberId === detail.me.memberId);
+      if (mine) void markSharing(detail.id, mine.leaveBy ? new Date(mine.leaveBy).toISOString() : null);
+      else void stopSharing(detail.id);
+    }
+  }, [details]);
 
   /** Registers push and language for a new membership; failures just mean no group pushes. */
   const registerDevice = useCallback(

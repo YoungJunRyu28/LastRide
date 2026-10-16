@@ -638,7 +638,7 @@ describe("groups HTTP routes", () => {
   let server: Server;
   let baseUrl: string;
   const realFetch = globalThis.fetch;
-  let pushes: Array<{ to: string; body: string }> = [];
+  let pushes: Array<{ to: string; body?: string; kind?: string }> = [];
   let premium = true;
 
   beforeAll(async () => {
@@ -691,9 +691,10 @@ describe("groups HTTP routes", () => {
         if (url.startsWith("https://exp.host/")) {
           const batch = JSON.parse(String(init?.body)) as Array<{
             to: string;
-            body: string;
+            body?: string;
+            data?: { kind?: string };
           }>;
-          pushes.push(...batch.map(({ to, body }) => ({ to, body })));
+          pushes.push(...batch.map(({ to, body, data }) => ({ to, body, kind: data?.kind })));
           return new Response(
             JSON.stringify({ data: batch.map(() => ({ status: "ok", id: "t" })) }),
             { status: 200 },
@@ -858,12 +859,17 @@ describe("groups HTTP routes", () => {
       token: host.token,
     });
     expect(started.status).toBe(201);
-    expect(pushes.map((push) => push.body).sort()).toEqual(
+    const visible = pushes.filter((push) => push.body);
+    expect(visible.map((push) => push.body).sort()).toEqual(
       [
         "金曜会: ホストが今夜の会を始めました",
         "金曜会: The host started tonight's meetup",
       ].sort(),
     );
+    // Every other member's app is also told silently to refresh (not the host's own).
+    const silent = pushes.filter((push) => push.kind === "group_updated");
+    expect(silent).toHaveLength(2);
+    expect(silent.every((push) => push.body === undefined)).toBe(true);
     expect((await call("POST", `/groups/${groupId}/tonight`, { token: host.token })).status).toBe(200);
 
     const leaveBy = new Date(tonightWindow().endsAt.getTime() - 60 * 60_000);
@@ -877,6 +883,23 @@ describe("groups HTTP routes", () => {
       body: { leaveBy: new Date(tonightWindow().endsAt.getTime() + 60_000).toISOString() },
     });
     expect(outside.status).toBe(400);
+  });
 
+  it("a member's new leave time silently updates the others' apps, not their own", async () => {
+    const { groupId, host, members } = await groupWithMembers(["Bea"]);
+    const [bea] = members;
+    await setPush(groupId, host.token, "host");
+    await setPush(groupId, bea.token, "bea");
+    await call("POST", `/groups/${groupId}/tonight`, { token: host.token });
+    pushes = [];
+    const leaveBy = new Date(tonightWindow().endsAt.getTime() - 60 * 60_000);
+    const response = await call("PUT", `/groups/${groupId}/tonight/me`, {
+      token: bea.token,
+      body: { leaveBy: leaveBy.toISOString() },
+    });
+    expect(response.status).toBe(200);
+    expect(pushes).toEqual([
+      { to: expect.stringContaining("host"), body: undefined, kind: "group_updated" },
+    ]);
   });
 });

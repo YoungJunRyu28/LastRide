@@ -23,6 +23,7 @@ import { hasCoordinates, readSettings } from '@/lib/settings';
 import { applyTrainChoice, effectiveTrainChoice, trainOptions } from '@/lib/trainChoice';
 import type { Coordinates } from '@/lib/stations';
 import { formatJstTime } from '@/lib/time';
+import { syncSharedLeaveBy } from '@/lib/groupSharing';
 
 export const LOCATION_TASK = 'lastride-night-tracking';
 const SNAPSHOT_KEY = 'lastride-tracking-snapshot';
@@ -79,6 +80,9 @@ async function recomputeFromLocation(coordinates: Coordinates): Promise<void> {
     : settings.destinations.find((destination) => destination.id === settings.activeDestinationId)?.label ?? (language === 'ja' ? plan.destination.nameJa : plan.destination.name);
   await syncWidgets(plan, destinationLabel, language, now).catch(() => undefined);
   await syncEnterpriseLeaveBy(recommendedLeaveTime(plan)).catch(() => undefined);
+  // Groups you're sharing with tonight get the new time (if it moved a minute or more),
+  // so friends' alerts are right even with LastRide closed.
+  await syncSharedLeaveBy(recommendedLeaveTime(plan)).catch(() => undefined);
 }
 
 // Must be registered at module scope so the OS can invoke it headlessly.

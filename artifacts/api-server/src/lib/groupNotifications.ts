@@ -3,7 +3,7 @@
  * started / a member's leave time). Never put promotions, upsells or
  * marketing copy in these: they go to members who never paid for anything.
  */
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, ne } from "drizzle-orm";
 import { getDb, groupMembersTable } from "@workspace/db";
 import { EXPO_PUSH_BATCH_SIZE } from "./enterpriseNotifications";
 import { logger } from "./logger";
@@ -81,12 +81,72 @@ type ExpoPushTicket = {
  * removed from the member so we stop sending to them, and the member is marked
  * so the nightly cleanup removes them sooner if the app doesn't come back.
  */
+/**
+ * A silent push (no banner, sound or badge) telling a member's app that the
+ * group changed, so an open app refreshes it at once instead of polling.
+ */
+export type GroupUpdatedMessage = {
+  to: string;
+  data: { kind: "group_updated"; groupId: string };
+  _contentAvailable: true;
+  priority: "normal";
+};
+
+export function buildGroupUpdatedMessages(
+  groupId: string,
+  tokens: string[],
+): GroupUpdatedMessage[] {
+  return tokens.map((to) => ({
+    to,
+    data: { kind: "group_updated", groupId },
+    _contentAvailable: true,
+    priority: "normal",
+  }));
+}
+
+/**
+ * Tells the group's other members' apps that something they see changed
+ * (a leave time, who's in tonight, a member joining or leaving, a name).
+ * Never throws. The database is already awake for the change itself.
+ */
+export async function notifyGroupUpdated(
+  groupId: string,
+  exceptMemberId: string | null,
+): Promise<number> {
+  try {
+    const rows = await getDb()
+      .select({ token: groupMembersTable.expoPushToken })
+      .from(groupMembersTable)
+      .where(
+        and(
+          eq(groupMembersTable.groupId, groupId),
+          isNotNull(groupMembersTable.expoPushToken),
+          ...(exceptMemberId ? [ne(groupMembersTable.id, exceptMemberId)] : []),
+        ),
+      );
+    const tokens = rows.map((row) => row.token).filter((token): token is string => !!token);
+    return await postExpoMessages(groupId, buildGroupUpdatedMessages(groupId, tokens));
+  } catch (err) {
+    logger.warn({ err }, "Failed to notify a group of an update");
+    return 0;
+  }
+}
+
 export async function sendGroupPush(
   groupId: string,
   event: GroupPushEvent,
   recipients: GroupPushRecipient[],
 ): Promise<number> {
   if (recipients.length === 0) return 0;
+  return postExpoMessages(groupId, buildGroupPushMessages(groupId, event, recipients));
+}
+
+/** Sends to Expo in batches; clears tokens Expo reports as DeviceNotRegistered. */
+async function postExpoMessages(
+  groupId: string,
+  messages: Array<{ to: string }>,
+): Promise<number> {
+  if (messages.length === 0) return 0;
   const headers: Record<string, string> = {
     Accept: "application/json",
     "Content-Type": "application/json",
@@ -94,7 +154,6 @@ export async function sendGroupPush(
   const accessToken = process.env.EXPO_ACCESS_TOKEN?.trim();
   if (accessToken) headers.Authorization = "Bearer " + accessToken;
 
-  const messages = buildGroupPushMessages(groupId, event, recipients);
   let accepted = 0;
   const unregistered: string[] = [];
 

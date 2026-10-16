@@ -16,12 +16,13 @@ import {
 import { rateLimitMiddleware, requestAddress } from "../lib/rateLimit";
 import { hashCapability } from "../lib/enterpriseTokens";
 import { checkPremiumEntitlement } from "../lib/revenueCat";
-import { sendGroupPush } from "../lib/groupNotifications";
+import { notifyGroupUpdated, sendGroupPush } from "../lib/groupNotifications";
 import {
   createGroupRecord,
   disbandGroupRecord,
   endGroupTonightRecord,
   getGroupDetailRecord,
+  groupMemberIdForToken,
   joinGroupRecord,
   leaveGroupRecord,
   leaveGroupTonightRecord,
@@ -167,6 +168,8 @@ router.post("/groups/join", joinLimiter, async (req, res) => {
     res.status(409).json({ error: "This group is full" });
     return;
   }
+  // Everyone else sees the new member straight away.
+  await notifyGroupUpdated(result.group.id, result.group.me.memberId);
   res.status(201).json(
     JoinGroupResponse.parse({
       memberToken: result.memberToken,
@@ -198,6 +201,7 @@ router.patch("/groups/:groupId", memberLimiter, async (req, res) => {
   }
   if (result.kind === "not-found") return notFound(res);
   if (result.kind === "forbidden") return forbidden(res);
+  await notifyGroupUpdated(auth.groupId, result.group.me.memberId);
   sendDetail(res, result.group);
 });
 
@@ -247,6 +251,7 @@ router.delete(
       res.status(404).json({ error: "Member not found" });
       return;
     }
+    await notifyGroupUpdated(auth.groupId, result.group.me.memberId);
     sendDetail(res, result.group);
   },
 );
@@ -271,12 +276,17 @@ router.patch("/groups/:groupId/me", memberLimiter, async (req, res) => {
     return;
   }
   if (result.kind === "not-found") return notFound(res);
+  // Only a new name shows to others (language and switches are private).
+  if (body.data.displayName !== undefined) {
+    await notifyGroupUpdated(auth.groupId, result.group.me.memberId);
+  }
   sendDetail(res, result.group);
 });
 
 router.delete("/groups/:groupId/me", memberLimiter, async (req, res) => {
   const auth = memberRequest(req, res);
   if (!auth) return;
+  const leaving = await groupMemberIdForToken(auth.groupId, auth.token);
   const result = await leaveGroupRecord(auth.groupId, auth.token);
   if (result.kind === "not-found") return notFound(res);
   if (result.kind === "host") {
@@ -285,6 +295,7 @@ router.delete("/groups/:groupId/me", memberLimiter, async (req, res) => {
     });
     return;
   }
+  await notifyGroupUpdated(auth.groupId, leaving);
   res.status(204).end();
 });
 
@@ -292,8 +303,11 @@ router.delete("/groups/:groupId/me", memberLimiter, async (req, res) => {
 router.post("/groups/:groupId/me/reset", memberLimiter, async (req, res) => {
   const auth = memberRequest(req, res);
   if (!auth) return;
+  const leaving = await groupMemberIdForToken(auth.groupId, auth.token);
   const result = await leaveGroupRecord(auth.groupId, auth.token, { disbandIfHost: true });
   if (result.kind === "not-found") return notFound(res);
+  // A host's reset disbands the group: there's no one left to tell.
+  await notifyGroupUpdated(auth.groupId, leaving);
   res.status(204).end();
 });
 
@@ -309,6 +323,8 @@ router.post("/groups/:groupId/tonight", memberLimiter, async (req, res) => {
       { kind: "tonight_started", groupName: result.groupName },
       result.recipients,
     );
+    // Also members who switched the 今夜の開始 notification off.
+    await notifyGroupUpdated(auth.groupId, result.group.me.memberId);
   }
   sendDetail(res, result.group, result.started ? 201 : 200);
 });
@@ -319,6 +335,7 @@ router.delete("/groups/:groupId/tonight", memberLimiter, async (req, res) => {
   const result = await endGroupTonightRecord(auth.groupId, auth.token);
   if (result.kind === "not-found") return notFound(res);
   if (result.kind === "forbidden") return forbidden(res);
+  await notifyGroupUpdated(auth.groupId, result.group.me.memberId);
   sendDetail(res, result.group);
 });
 
@@ -346,6 +363,8 @@ router.put("/groups/:groupId/tonight/me", memberLimiter, async (req, res) => {
   }
   // A new or earlier leave time may be the next alert due (never throws).
   if (body.data.leaveBy) await scheduleNextLeaveAlert({ onlyEarlier: true });
+  // Others see the new time (or that this member is in tonight) at once.
+  await notifyGroupUpdated(auth.groupId, result.group.me.memberId);
   sendDetail(res, result.group);
 });
 
@@ -357,6 +376,7 @@ router.delete(
     if (!auth) return;
     const result = await leaveGroupTonightRecord(auth.groupId, auth.token);
     if (result.kind === "not-found") return notFound(res);
+    await notifyGroupUpdated(auth.groupId, result.group.me.memberId);
     sendDetail(res, result.group);
   },
 );

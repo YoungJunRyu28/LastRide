@@ -15,7 +15,8 @@
       },
       "infoPlist": {
         "UIBackgroundModes": [
-          "location"
+          "location",
+          "remote-notification"
         ],
         "CFBundleLocalizations": [
           "ja",

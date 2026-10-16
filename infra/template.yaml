@@ -310,8 +310,10 @@ Resources:
           Type: ScheduleV2
           Properties:
             OmitName: true
-            # Once a day: only Business push receipts are checked (Business is off for v1).
+            # Once a day. It only checks Business push receipts, so it's off unless
+            # Business is enabled (EnableBusiness); group pushes don't need it.
             ScheduleExpression: "cron(10 8 * * ? *)"
+            State: !If [BusinessEnabled, ENABLED, DISABLED]
             ScheduleExpressionTimezone: Asia/Tokyo
             Input: '{"task":"pushReceipts"}'
             FlexibleTimeWindow:
