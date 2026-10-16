@@ -226,6 +226,8 @@ router.post("/groups/:groupId/invite", memberLimiter, async (req, res) => {
   const result = await rotateGroupInviteRecord(auth.groupId, auth.token);
   if (result.kind === "not-found") return notFound(res);
   if (result.kind === "forbidden") return forbidden(res);
+  // Members share the invite too: refresh their copy, or they'd send a dead link.
+  await notifyGroupUpdated(auth.groupId, null);
   res.status(201).json(RotateGroupInviteResponse.parse(result.invite));
 });
 

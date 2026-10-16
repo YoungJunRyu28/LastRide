@@ -134,7 +134,8 @@ describe("group creation and joining", () => {
     expect(joined.kind).toBe("joined");
     if (joined.kind !== "joined") return;
     expect(joined.group.me.role).toBe("member");
-    expect(joined.group.invite).toBeNull();
+    // Members can invite too: the same link and code as the host.
+    expect(joined.group.invite?.joinCode).toBe(invite.joinCode);
     expect(joined.group.members.map((member) => member.displayName)).toEqual([
       "Ann",
       "Dan",

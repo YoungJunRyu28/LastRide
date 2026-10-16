@@ -16,7 +16,7 @@ export interface GroupDetail {
   memberLimit: number;
   me: GroupMe;
   members: GroupMemberSummary[];
-  /** Host only. Null for members, and for the host when the server cannot recover the current invite (rotate to get a fresh one). */
+  /** The current invite link and join code, for every member (only the host can replace it). Null when the server cannot recover it (the host rotates to get a fresh one). */
   invite: GroupInvite | null;
   tonight: GroupTonight;
 }

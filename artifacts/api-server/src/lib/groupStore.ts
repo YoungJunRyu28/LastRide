@@ -221,12 +221,11 @@ async function loadDetail(
       role: member.role,
     }));
 
+  // Every member can invite (link, code, QR); only the host can replace it.
   let invite: GroupDetail["invite"] = null;
-  if (me.role === "host") {
-    const secret =
-      freshInvite ?? openGroupInvite(group.id, group.inviteCiphertext);
-    if (secret) invite = { ...secret, rotatedAt: group.inviteRotatedAt };
-  }
+  const secret =
+    freshInvite ?? openGroupInvite(group.id, group.inviteCiphertext);
+  if (secret) invite = { ...secret, rotatedAt: group.inviteRotatedAt };
 
   const [night] = await tx
     .select()

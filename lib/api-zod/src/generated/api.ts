@@ -715,7 +715,7 @@ export const CreateGroupResponse = zod.object({
   "inviteToken": zod.string(),
   "joinCode": zod.string(),
   "rotatedAt": zod.coerce.date()
-}),zod.null()]).describe('Host only. Null for members, and for the host when the server cannot recover the current invite (rotate to get a fresh one).'),
+}),zod.null()]).describe('The current invite link and join code, for every member (only the host can replace it). Null when the server cannot recover it (the host rotates to get a fresh one).'),
   "tonight": zod.object({
   "active": zod.boolean(),
   "serviceDate": zod.string().nullable().describe('Japan service day (04:00 JST boundary) as YYYY-MM-DD'),
@@ -782,7 +782,7 @@ export const JoinGroupResponse = zod.object({
   "inviteToken": zod.string(),
   "joinCode": zod.string(),
   "rotatedAt": zod.coerce.date()
-}),zod.null()]).describe('Host only. Null for members, and for the host when the server cannot recover the current invite (rotate to get a fresh one).'),
+}),zod.null()]).describe('The current invite link and join code, for every member (only the host can replace it). Null when the server cannot recover it (the host rotates to get a fresh one).'),
   "tonight": zod.object({
   "active": zod.boolean(),
   "serviceDate": zod.string().nullable().describe('Japan service day (04:00 JST boundary) as YYYY-MM-DD'),
@@ -837,7 +837,7 @@ export const GetGroupResponse = zod.object({
   "inviteToken": zod.string(),
   "joinCode": zod.string(),
   "rotatedAt": zod.coerce.date()
-}),zod.null()]).describe('Host only. Null for members, and for the host when the server cannot recover the current invite (rotate to get a fresh one).'),
+}),zod.null()]).describe('The current invite link and join code, for every member (only the host can replace it). Null when the server cannot recover it (the host rotates to get a fresh one).'),
   "tonight": zod.object({
   "active": zod.boolean(),
   "serviceDate": zod.string().nullable().describe('Japan service day (04:00 JST boundary) as YYYY-MM-DD'),
@@ -898,7 +898,7 @@ export const UpdateGroupResponse = zod.object({
   "inviteToken": zod.string(),
   "joinCode": zod.string(),
   "rotatedAt": zod.coerce.date()
-}),zod.null()]).describe('Host only. Null for members, and for the host when the server cannot recover the current invite (rotate to get a fresh one).'),
+}),zod.null()]).describe('The current invite link and join code, for every member (only the host can replace it). Null when the server cannot recover it (the host rotates to get a fresh one).'),
   "tonight": zod.object({
   "active": zod.boolean(),
   "serviceDate": zod.string().nullable().describe('Japan service day (04:00 JST boundary) as YYYY-MM-DD'),
@@ -994,7 +994,7 @@ export const RemoveGroupMemberResponse = zod.object({
   "inviteToken": zod.string(),
   "joinCode": zod.string(),
   "rotatedAt": zod.coerce.date()
-}),zod.null()]).describe('Host only. Null for members, and for the host when the server cannot recover the current invite (rotate to get a fresh one).'),
+}),zod.null()]).describe('The current invite link and join code, for every member (only the host can replace it). Null when the server cannot recover it (the host rotates to get a fresh one).'),
   "tonight": zod.object({
   "active": zod.boolean(),
   "serviceDate": zod.string().nullable().describe('Japan service day (04:00 JST boundary) as YYYY-MM-DD'),
@@ -1062,7 +1062,7 @@ export const UpdateMyGroupMembershipResponse = zod.object({
   "inviteToken": zod.string(),
   "joinCode": zod.string(),
   "rotatedAt": zod.coerce.date()
-}),zod.null()]).describe('Host only. Null for members, and for the host when the server cannot recover the current invite (rotate to get a fresh one).'),
+}),zod.null()]).describe('The current invite link and join code, for every member (only the host can replace it). Null when the server cannot recover it (the host rotates to get a fresh one).'),
   "tonight": zod.object({
   "active": zod.boolean(),
   "serviceDate": zod.string().nullable().describe('Japan service day (04:00 JST boundary) as YYYY-MM-DD'),
@@ -1153,7 +1153,7 @@ export const StartGroupTonightResponse = zod.object({
   "inviteToken": zod.string(),
   "joinCode": zod.string(),
   "rotatedAt": zod.coerce.date()
-}),zod.null()]).describe('Host only. Null for members, and for the host when the server cannot recover the current invite (rotate to get a fresh one).'),
+}),zod.null()]).describe('The current invite link and join code, for every member (only the host can replace it). Null when the server cannot recover it (the host rotates to get a fresh one).'),
   "tonight": zod.object({
   "active": zod.boolean(),
   "serviceDate": zod.string().nullable().describe('Japan service day (04:00 JST boundary) as YYYY-MM-DD'),
@@ -1206,7 +1206,7 @@ export const EndGroupTonightResponse = zod.object({
   "inviteToken": zod.string(),
   "joinCode": zod.string(),
   "rotatedAt": zod.coerce.date()
-}),zod.null()]).describe('Host only. Null for members, and for the host when the server cannot recover the current invite (rotate to get a fresh one).'),
+}),zod.null()]).describe('The current invite link and join code, for every member (only the host can replace it). Null when the server cannot recover it (the host rotates to get a fresh one).'),
   "tonight": zod.object({
   "active": zod.boolean(),
   "serviceDate": zod.string().nullable().describe('Japan service day (04:00 JST boundary) as YYYY-MM-DD'),
@@ -1263,7 +1263,7 @@ export const JoinGroupTonightResponse = zod.object({
   "inviteToken": zod.string(),
   "joinCode": zod.string(),
   "rotatedAt": zod.coerce.date()
-}),zod.null()]).describe('Host only. Null for members, and for the host when the server cannot recover the current invite (rotate to get a fresh one).'),
+}),zod.null()]).describe('The current invite link and join code, for every member (only the host can replace it). Null when the server cannot recover it (the host rotates to get a fresh one).'),
   "tonight": zod.object({
   "active": zod.boolean(),
   "serviceDate": zod.string().nullable().describe('Japan service day (04:00 JST boundary) as YYYY-MM-DD'),
@@ -1316,7 +1316,7 @@ export const LeaveGroupTonightResponse = zod.object({
   "inviteToken": zod.string(),
   "joinCode": zod.string(),
   "rotatedAt": zod.coerce.date()
-}),zod.null()]).describe('Host only. Null for members, and for the host when the server cannot recover the current invite (rotate to get a fresh one).'),
+}),zod.null()]).describe('The current invite link and join code, for every member (only the host can replace it). Null when the server cannot recover it (the host rotates to get a fresh one).'),
   "tonight": zod.object({
   "active": zod.boolean(),
   "serviceDate": zod.string().nullable().describe('Japan service day (04:00 JST boundary) as YYYY-MM-DD'),
