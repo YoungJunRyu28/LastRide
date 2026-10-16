@@ -343,6 +343,8 @@ export async function joinGroupRecord(input: {
   joinCode?: string;
   displayName: string;
   language?: GroupLanguage;
+  /** Member tokens the device already holds: joining a group it's already in returns that membership. */
+  knownMemberTokens?: string[];
 }) {
   const displayName = cleanName(input.displayName);
   if (!displayName) return { kind: "invalid" as const };
@@ -364,9 +366,16 @@ export async function joinGroupRecord(input: {
     if (!group) return { kind: "invalid" as const };
 
     const members = await tx
-      .select({ id: groupMembersTable.id })
+      .select({ id: groupMembersTable.id, memberTokenHash: groupMembersTable.memberTokenHash })
       .from(groupMembersTable)
       .where(eq(groupMembersTable.groupId, group.id));
+    // Already in this group on this device (e.g. the host opening their own invite):
+    // the existing membership, never a second member for the same person.
+    for (const token of input.knownMemberTokens ?? []) {
+      const existing = members.find((member) => member.memberTokenHash === hashCapability(token));
+      if (existing)
+        return { kind: "already" as const, memberToken: token, group: await loadDetail(tx, group.id, existing.id) };
+    }
     if (members.length >= GROUP_MEMBER_LIMIT) return { kind: "full" as const };
 
     const memberToken = createCapabilityToken();

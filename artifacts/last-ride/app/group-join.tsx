@@ -32,11 +32,16 @@ export default function JoinGroupScreen() {
   const submit = async () => {
     setBusy(true);
     try {
-      const group = await join({
+      const { group, alreadyMember } = await join({
         ...(invite ? { inviteToken: invite } : { joinCode: code.trim().toUpperCase() }),
         displayName: displayName.trim(),
       });
       router.replace({ pathname: '/group/[id]', params: { id: group.id } });
+      if (alreadyMember)
+        Alert.alert(
+          ja ? 'すでに参加しています' : 'You’re already in this group',
+          ja ? `「${group.name}」にはこのiPhoneで参加済みです。` : `This iPhone is already in “${group.name}”.`,
+        );
     } catch (error) {
       const status = errorStatus(error);
       Alert.alert(

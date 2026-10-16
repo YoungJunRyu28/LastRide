@@ -168,6 +168,12 @@ router.post("/groups/join", joinLimiter, async (req, res) => {
     res.status(409).json({ error: "This group is full" });
     return;
   }
+  if (result.kind === "already") {
+    res.status(200).json(
+      JoinGroupResponse.parse({ memberToken: result.memberToken, group: result.group, alreadyMember: true }),
+    );
+    return;
+  }
   // Everyone else sees the new member straight away.
   await notifyGroupUpdated(result.group.id, result.group.me.memberId);
   res.status(201).json(

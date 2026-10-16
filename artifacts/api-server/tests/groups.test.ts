@@ -141,6 +141,31 @@ describe("group creation and joining", () => {
     ]);
   });
 
+  it("joining your own group again returns your membership, never a second member", async () => {
+    const created = await createGroupRecord({ name: "金曜会", displayName: "Ann" });
+    if (created.kind !== "created" || !created.group.invite) throw new Error("setup");
+    const other = await createGroupRecord({ name: "別の会", displayName: "Ann" });
+    if (other.kind !== "created") throw new Error("setup");
+    // The host opens their own invite link (this device also holds another group's token).
+    const again = await joinGroupRecord({
+      inviteToken: created.group.invite.inviteToken,
+      displayName: "Ann 2",
+      knownMemberTokens: [other.memberToken, created.memberToken],
+    });
+    expect(again.kind).toBe("already");
+    if (again.kind !== "already") return;
+    expect(again.memberToken).toBe(created.memberToken);
+    expect(again.group.me.role).toBe("host");
+    expect(again.group.members).toHaveLength(1);
+    // Tokens for other groups don't stop a real join.
+    const someoneElse = await joinGroupRecord({
+      inviteToken: created.group.invite.inviteToken,
+      displayName: "Bea",
+      knownMemberTokens: [other.memberToken],
+    });
+    expect(someoneElse.kind).toBe("joined");
+  });
+
   it("rejects unknown codes and blank names", async () => {
     await groupWithMembers([]);
     expect(
@@ -764,6 +789,21 @@ describe("groups HTTP routes", () => {
     expect(await getGroupDetailRecord(groupId, members[0].token)).toBeNull();
     const again = await call("POST", `/groups/${groupId}/me/reset`, { token: host.token });
     expect(again.status).toBe(404);
+  });
+
+  it("joining your own group over HTTP: 200 with alreadyMember, no new member", async () => {
+    const created = await createGroupRecord({ name: "金曜会", displayName: "Ann" });
+    if (created.kind !== "created" || !created.group.invite) throw new Error("setup");
+    // Over HTTP: 200 with alreadyMember, not 201.
+    const response = await call("POST", "/groups/join", {
+      body: { joinCode: created.group.invite.joinCode, displayName: "Ann", knownMemberTokens: [created.memberToken] },
+    });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { alreadyMember?: boolean; memberToken: string };
+    expect(body.alreadyMember).toBe(true);
+    expect(body.memberToken).toBe(created.memberToken);
+    const members = await getDb().select().from(groupMembersTable).where(eq(groupMembersTable.groupId, created.group.id));
+    expect(members).toHaveLength(1);
   });
 
   it("join is free, and host-only routes reject members with 403", async () => {

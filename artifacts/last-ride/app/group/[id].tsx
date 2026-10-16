@@ -1,5 +1,6 @@
 import { Feather } from '@expo/vector-icons';
 import { groupInviteLink } from '@/lib/inviteLinks';
+import QRCode from 'react-native-qrcode-svg';
 import {
   disbandGroup,
   endGroupTonight,
@@ -44,6 +45,11 @@ function confirm(title: string, message: string, action: string, cancel: string,
   ]);
 }
 
+/** "ABCD1234" → "ABCD-1234", easier to read out (joining ignores the dash). */
+function formatJoinCode(code: string): string {
+  return code.length === 8 ? `${code.slice(0, 4)}-${code.slice(4)}` : code;
+}
+
 function inviteMessage(detail: GroupDetail, ja: boolean) {
   if (!detail.invite) return null;
   const link = groupInviteLink(detail.invite.inviteToken);
@@ -65,6 +71,7 @@ export default function GroupScreen() {
   const [sheet, setSheet] = useState<Sheet>(null);
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
+  const [showQr, setShowQr] = useState(false);
   const detail = groups.find((entry) => entry.membership.groupId === id)?.detail ?? null;
   const back = () => (router.canGoBack() ? router.back() : router.replace('/groups'));
 
@@ -351,6 +358,56 @@ export default function GroupScreen() {
           </Text>
         </View>
 
+        {/* Host: the code to read out, a QR to scan, or the link to send */}
+        {detail.invite && (
+          <Card style={styles.inviteCard}>
+            <View style={styles.inviteHead}>
+              <View style={styles.flex}>
+                <Text style={[styles.inviteLabel, { color: colors.mutedForeground }]}>{ja ? '招待コード' : 'Invite code'}</Text>
+                <Text selectable testID="group-join-code" style={[styles.inviteCode, { color: colors.foreground }]}>
+                  {formatJoinCode(detail.invite.joinCode)}
+                </Text>
+              </View>
+            </View>
+            <Text style={[styles.note, { color: colors.mutedForeground }]}>
+              {ja
+                ? '参加する人は「グループ」タブの「招待コードで参加」で入力できます。'
+                : 'Others can enter it under Groups → Join with a code.'}
+            </Text>
+            {showQr && (
+              <View style={styles.qrWrap}>
+                <QRCode value={groupInviteLink(detail.invite.inviteToken)} size={200} quietZone={10} backgroundColor="#FFFFFF" color="#000000" />
+                <Text style={[styles.note, styles.center, { color: colors.mutedForeground }]}>
+                  {ja ? 'iPhoneのカメラで読み取ると、招待リンクが開きます。' : 'Scan with the iPhone camera to open the invite link.'}
+                </Text>
+              </View>
+            )}
+            <View style={styles.inviteButtons}>
+              <Pressable
+                testID="toggle-invite-qr"
+                onPress={() => setShowQr((value) => !value)}
+                accessibilityRole="button"
+                accessibilityState={{ expanded: showQr }}
+                style={({ pressed }) => [styles.inviteButton, { borderColor: colors.input, opacity: pressed ? 0.7 : 1 }]}
+              >
+                <Feather name="maximize" size={15} color={colors.foreground} />
+                <Text style={[styles.invitePillText, { color: colors.foreground }]}>
+                  {showQr ? (ja ? 'QRコードを閉じる' : 'Hide QR code') : ja ? 'QRコード' : 'QR code'}
+                </Text>
+              </Pressable>
+              <Pressable
+                testID="share-invite"
+                onPress={() => void share()}
+                accessibilityRole="button"
+                style={({ pressed }) => [styles.inviteButton, { borderColor: colors.input, opacity: pressed ? 0.7 : 1 }]}
+              >
+                <Feather name="share" size={15} color={colors.foreground} />
+                <Text style={[styles.invitePillText, { color: colors.foreground }]}>{ja ? 'リンクを共有' : 'Share link'}</Text>
+              </Pressable>
+            </View>
+          </Card>
+        )}
+
         {tonight.active ? (
           <>
             <Card highlighted style={styles.tonightCard}>
@@ -481,6 +538,15 @@ const styles = StyleSheet.create({
   content: { gap: 14, paddingBottom: 32, paddingHorizontal: 20 },
   topbar: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
   topActions: { alignItems: 'center', flexDirection: 'row', gap: 8 },
+  inviteCard: { gap: 12, padding: 18 },
+  flex: { flex: 1 },
+  center: { textAlign: 'center' },
+  inviteHead: { alignItems: 'center', flexDirection: 'row', gap: 12 },
+  inviteLabel: { fontSize: 12, fontWeight: '700' },
+  inviteCode: { fontSize: 28, fontVariant: ['tabular-nums'], fontWeight: '900', letterSpacing: 2, marginTop: 2 },
+  inviteButtons: { flexDirection: 'row', gap: 10 },
+  inviteButton: { alignItems: 'center', borderRadius: 14, borderWidth: 1, flex: 1, flexDirection: 'row', gap: 6, justifyContent: 'center', minHeight: 44, paddingHorizontal: 12 },
+  qrWrap: { alignItems: 'center', gap: 10, paddingVertical: 4 },
   invitePill: { alignItems: 'center', borderRadius: 18, borderWidth: 1, flexDirection: 'row', gap: 6, paddingHorizontal: 12, paddingVertical: 9 },
   invitePillText: { fontSize: 13, fontWeight: '700' },
   heading: { gap: 4 },

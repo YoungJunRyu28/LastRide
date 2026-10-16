@@ -24,4 +24,11 @@ export interface JoinGroupRequest {
      */
   displayName: string;
   language?: GroupLanguage;
+  /**
+     * Member tokens this device already holds (for any group). If one is a member of the group being joined, no new member is added: that membership is returned (200, alreadyMember), so a device can't join its own group twice.
+     * @maxItems 50
+     * @items.minLength 32
+     * @items.maxLength 256
+     */
+  knownMemberTokens?: string[];
 }

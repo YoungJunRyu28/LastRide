@@ -542,6 +542,11 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/JoinGroupRequest" }
       responses:
+        "200":
+          description: Already a member (one of knownMemberTokens); nothing changed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GroupSession" }
         "201":
           description: Anonymous group membership
           content:
@@ -860,6 +865,15 @@ components:
         joinCode: { type: string, minLength: 4, maxLength: 12 }
         displayName: { type: string, minLength: 1, maxLength: 40 }
         language: { $ref: "#/components/schemas/GroupLanguage" }
+        knownMemberTokens:
+          type: array
+          maxItems: 50
+          description: >-
+            Member tokens this device already holds (for any group). If one is
+            a member of the group being joined, no new member is added: that
+            membership is returned (200, alreadyMember), so a device can't join
+            its own group twice.
+          items: { type: string, minLength: 32, maxLength: 256 }
       required: [displayName]
     UpdateGroupRequest:
       type: object
@@ -957,6 +971,9 @@ components:
           type: string
           description: Per-group capability. Store it on the device only; it is never shown again.
         group: { $ref: "#/components/schemas/GroupDetail" }
+        alreadyMember:
+          type: boolean
+          description: Join only — this device was already a member; nothing changed.
       required: [memberToken, group]
     TrainRoute:
       type: object

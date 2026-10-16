@@ -9,6 +9,7 @@ import {
   getGroup,
   joinGroup,
   joinGroupTonight,
+  leaveGroup,
   leaveGroupTonight,
   resetGroupMembership,
   updateMyGroupMembership,
@@ -56,7 +57,8 @@ type GroupsValue = {
    */
   leaveAll: () => Promise<void>;
   create: (name: string, displayName: string) => Promise<GroupDetail>;
-  join: (input: { inviteToken?: string; joinCode?: string; displayName: string }) => Promise<GroupDetail>;
+  /** `alreadyMember`: this phone was already in the group; nothing changed. */
+  join: (input: { inviteToken?: string; joinCode?: string; displayName: string }) => Promise<{ group: GroupDetail; alreadyMember: boolean }>;
   /** The group you're in tonight (opted in, night active), for the Leave strip and If missed. */
   tonightGroup: GroupDetail | null;
   /** A group active tonight that you haven't joined yet (the home screen offers 参加). */
@@ -247,11 +249,23 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
 
   const join = useCallback(
     async (input: { inviteToken?: string; joinCode?: string; displayName: string }) => {
-      const session = await joinGroup({ ...input, language: language ?? "ja" });
+      // The tokens this phone holds: the server returns the existing membership
+      // instead of adding the same person twice (e.g. the host opening their own link).
+      const knownMemberTokens = membershipsRef.current.map((item) => item.memberToken).slice(0, 50);
+      const session = await joinGroup({ ...input, language: language ?? "ja", knownMemberTokens });
+      const existing = membershipsRef.current.find((item) => item.groupId === session.group.id);
+      if (session.alreadyMember || existing) {
+        // An older server added a second member anyway: remove it again at once.
+        if (!session.alreadyMember && existing)
+          void leaveGroup(session.group.id, { headers: { "X-Member-Token": session.memberToken } }).catch(() => undefined);
+        // Never replace the membership this phone already has (a host would lose hosting).
+        apply(session.group);
+        return { group: session.group, alreadyMember: true };
+      }
       await remember(session.memberToken, session.group, input.displayName);
-      return session.group;
+      return { group: session.group, alreadyMember: false };
     },
-    [language, remember],
+    [language, remember, apply],
   );
 
   // Keep tonight's leave-by current in every group you've opted into tonight.

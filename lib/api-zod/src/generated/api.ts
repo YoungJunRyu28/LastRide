@@ -727,7 +727,8 @@ export const CreateGroupResponse = zod.object({
   "leaveBy": zod.coerce.date().nullable()
 }).describe('Privacy-minimal. No location, route, station, or destination data.')).describe('Sorted by leaveBy (unknown last)')
 })
-})
+}),
+  "alreadyMember": zod.boolean().optional().describe('Join only — this device was already a member; nothing changed.')
 })
 
 
@@ -742,13 +743,19 @@ export const joinGroupBodyJoinCodeMax = 12;
 
 export const joinGroupBodyDisplayNameMax = 40;
 
+export const joinGroupBodyKnownMemberTokensItemMin = 32;
+export const joinGroupBodyKnownMemberTokensItemMax = 256;
+
+export const joinGroupBodyKnownMemberTokensMax = 50;
+
 
 
 export const JoinGroupBody = zod.object({
   "inviteToken": zod.string().min(joinGroupBodyInviteTokenMin).max(joinGroupBodyInviteTokenMax).optional(),
   "joinCode": zod.string().min(joinGroupBodyJoinCodeMin).max(joinGroupBodyJoinCodeMax).optional(),
   "displayName": zod.string().min(1).max(joinGroupBodyDisplayNameMax),
-  "language": zod.enum(['ja', 'en']).optional().describe('Language used for this member\'s push notifications')
+  "language": zod.enum(['ja', 'en']).optional().describe('Language used for this member\'s push notifications'),
+  "knownMemberTokens": zod.array(zod.string().min(joinGroupBodyKnownMemberTokensItemMin).max(joinGroupBodyKnownMemberTokensItemMax)).max(joinGroupBodyKnownMemberTokensMax).optional().describe('Member tokens this device already holds (for any group). If one is a member of the group being joined, no new member is added: that membership is returned (200, alreadyMember), so a device can\'t join its own group twice.')
 })
 
 export const JoinGroupResponse = zod.object({
@@ -787,7 +794,8 @@ export const JoinGroupResponse = zod.object({
   "leaveBy": zod.coerce.date().nullable()
 }).describe('Privacy-minimal. No location, route, station, or destination data.')).describe('Sorted by leaveBy (unknown last)')
 })
-})
+}),
+  "alreadyMember": zod.boolean().optional().describe('Join only — this device was already a member; nothing changed.')
 })
 
 

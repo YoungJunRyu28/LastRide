@@ -11,4 +11,6 @@ export interface GroupSession {
   /** Per-group capability. Store it on the device only; it is never shown again. */
   memberToken: string;
   group: GroupDetail;
+  /** Join only — this device was already a member; nothing changed. */
+  alreadyMember?: boolean;
 }
