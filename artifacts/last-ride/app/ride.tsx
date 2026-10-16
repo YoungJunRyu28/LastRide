@@ -389,6 +389,16 @@ export default function RideScreen() {
               </Text>
             )}
           </View>
+          {/* Free users: the way into Premium, always in the same place */}
+          {!isPremium && (
+            <IconButton
+              icon="star"
+              tone="accent"
+              label={ja ? "プレミアム" : "Premium"}
+              onPress={() => router.push("/paywall")}
+              testID="open-premium"
+            />
+          )}
           <IconButton
             icon="settings"
             label={ja ? "設定" : "Settings"}
@@ -514,22 +524,22 @@ export default function RideScreen() {
                 ? `乗れなかった場合は、今いる場所から${trainChoiceLabel(effectiveTrainChoice, true)}に間に合う時刻を計算します。`
                 : `If not, LastRide works out your leave time for the ${effectiveTrainChoice ? `${trainChoiceLabel(effectiveTrainChoice, false).toLowerCase()} train` : "last train"} from where you are.`}
             </Text>
-            <View style={styles.lockRow}>
+            <View style={styles.promptButtons}>
               <Pressable
                 testID="boarded-yes"
                 onPress={() => void answerBoarding(true)}
                 accessibilityRole="button"
-                style={({ pressed }) => [styles.smallButton, { backgroundColor: colors.primary, borderColor: colors.primary, opacity: pressed ? 0.85 : 1 }]}
+                style={({ pressed }) => [styles.smallButton, styles.promptButton, { backgroundColor: colors.primary, borderColor: colors.primary, opacity: pressed ? 0.85 : 1 }]}
               >
-                <Text style={[styles.smallButtonText, { color: colors.primaryForeground }]}>{boardedButtons(ja ? "ja" : "en").boarded}</Text>
+                <Text style={[styles.smallButtonText, styles.promptButtonText, { color: colors.primaryForeground }]}>{boardedButtons(ja ? "ja" : "en").boarded}</Text>
               </Pressable>
               <Pressable
                 testID="boarded-no"
                 onPress={() => void answerBoarding(false)}
                 accessibilityRole="button"
-                style={({ pressed }) => [styles.smallButton, { borderColor: colors.input, opacity: pressed ? 0.7 : 1 }]}
+                style={({ pressed }) => [styles.smallButton, styles.promptButton, { borderColor: colors.input, opacity: pressed ? 0.7 : 1 }]}
               >
-                <Text style={[styles.smallButtonText, { color: colors.foreground }]}>{boardedButtons(ja ? "ja" : "en").notBoarded}</Text>
+                <Text style={[styles.smallButtonText, styles.promptButtonText, { color: colors.foreground }]}>{boardedButtons(ja ? "ja" : "en").notBoarded}</Text>
               </Pressable>
             </View>
           </Card>
@@ -1415,7 +1425,10 @@ const styles = StyleSheet.create({
   joinButton: { borderWidth: 0 },
   smallButtonText: { fontSize: 13, fontWeight: "800" },
   lockRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  alwaysCard: { gap: 10 },
+  alwaysCard: { gap: 12, paddingHorizontal: 18, paddingVertical: 18 },
+  promptButtons: { flexDirection: "row", gap: 10, marginTop: 2 },
+  promptButton: { alignItems: "center", flex: 1, justifyContent: "center", minHeight: 46, paddingHorizontal: 12 },
+  promptButtonText: { textAlign: "center" },
   alwaysHead: { alignItems: "center", flexDirection: "row", gap: 10 },
   alwaysNever: { justifyContent: "center", minHeight: 36, paddingHorizontal: 6 },
   routeToggle: { alignItems: "center", flexDirection: "row", gap: 6 },

@@ -27,13 +27,17 @@ export function IconButton({
   label,
   onPress,
   testID,
+  tone = 'default',
 }: {
   icon: IconName;
   label: string;
   onPress: () => void;
   testID?: string;
+  /** 'accent': amber icon and outline (e.g. the Premium star). */
+  tone?: 'default' | 'accent';
 }) {
   const colors = useColors();
+  const accent = tone === 'accent';
   return (
     <Pressable
       testID={testID}
@@ -46,10 +50,10 @@ export function IconButton({
       hitSlop={6}
       style={({ pressed }) => [
         styles.iconButton,
-        { backgroundColor: colors.card, borderColor: colors.input, opacity: pressed ? 0.7 : 1 },
+        { backgroundColor: colors.card, borderColor: accent ? colors.primary : colors.input, opacity: pressed ? 0.7 : 1 },
       ]}
     >
-      <Feather name={icon} size={19} color={colors.foreground} />
+      <Feather name={icon} size={19} color={accent ? colors.primary : colors.foreground} />
     </Pressable>
   );
 }

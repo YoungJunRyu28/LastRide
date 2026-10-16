@@ -106,14 +106,17 @@ const LeaveWidget = (props: LeaveWidgetProps, environment: WidgetEnvironment) =>
   if (family === "accessoryRectangular") {
     if (props.kind === "live")
       return (
-        <VStack alignment="leading" spacing={2} modifiers={[open]}>
+        // The label gets its own line: next to the timer it was cut to 「ここを出…」.
+        <VStack alignment="leading" spacing={1} modifiers={[open]}>
           <HStack spacing={4}>
             <Image systemName="tram.fill" size={11} />
-            <Text modifiers={[font({ weight: "semibold", size: 12 }), lineLimit(1)]}>{props.label}</Text>
-            <Spacer />
-            <Text timerInterval={countdown} countsDown modifiers={[font({ weight: "bold", size: 13 }), monospacedDigit(), frame({ maxWidth: 64 })]} />
+            <Text modifiers={[font({ weight: "semibold", size: 12 }), lineLimit(1), minimumScaleFactor(0.75)]}>{props.label}</Text>
           </HStack>
-          <Text modifiers={[font({ weight: "bold", size: 15 }), lineLimit(1), minimumScaleFactor(0.8)]}>{props.inline}</Text>
+          <Text
+            timerInterval={countdown}
+            countsDown
+            modifiers={[font({ weight: "bold", design: "rounded", size: 22 }), monospacedDigit(), lineLimit(1), minimumScaleFactor(0.7)]}
+          />
           {liveBar ? (
             <ProgressView timerInterval={{ lower: new Date(liveBar.from), upper: new Date(liveBar.to) }} countsDown modifiers={[progressViewStyle("linear"), labelsHidden()]} />
           ) : null}
