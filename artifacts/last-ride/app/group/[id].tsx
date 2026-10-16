@@ -87,6 +87,9 @@ export default function GroupScreen() {
   }
 
   const host = detail.me.role === 'host';
+  /** Show the member limit from 40 (of 50), and say so when the group is full. */
+  const nearLimit = detail.members.length >= detail.memberLimit - 10;
+  const full = detail.members.length >= detail.memberLimit;
   const tonight = detail.tonight;
   const mine = tonight.participants.find((participant) => participant.memberId === detail.me.memberId);
   const hostName = detail.members.find((member) => member.role === 'host')?.displayName ?? '';
@@ -355,6 +358,8 @@ export default function GroupScreen() {
           <Text accessibilityRole="header" style={[styles.title, { color: colors.foreground }]}>{detail.name}</Text>
           <Text style={[styles.note, { color: colors.mutedForeground }]}>
             {ja ? `ホスト：${hostName} · メンバー${detail.members.length}人` : `Host: ${hostName} · ${detail.members.length} members`}
+            {/* The limit only once it's close: nobody needs to know about 50 otherwise. */}
+            {nearLimit ? (ja ? `（上限${detail.memberLimit}人）` : ` (limit ${detail.memberLimit})`) : ''}
           </Text>
         </View>
 
@@ -369,11 +374,19 @@ export default function GroupScreen() {
                 </Text>
               </View>
             </View>
-            <Text style={[styles.note, { color: colors.mutedForeground }]}>
-              {ja
-                ? '参加する人は「グループ」タブの「招待コードで参加」で入力できます。'
-                : 'Others can enter it under Groups → Join with a code.'}
-            </Text>
+            {full ? (
+              <Text style={[styles.note, { color: colors.destructive }]}>
+                {ja
+                  ? `満員（${detail.memberLimit}人）のため、新しいメンバーは参加できません。`
+                  : `The group is full (${detail.memberLimit}), so nobody new can join.`}
+              </Text>
+            ) : (
+              <Text style={[styles.note, { color: colors.mutedForeground }]}>
+                {ja
+                  ? '参加する人は「グループ」タブの「招待コードで参加」で入力できます。'
+                  : 'Others can enter it under Groups → Join with a code.'}
+              </Text>
+            )}
             {showQr && (
               <View style={styles.qrWrap}>
                 <QRCode value={groupInviteLink(detail.invite.inviteToken)} size={200} quietZone={10} backgroundColor="#FFFFFF" color="#000000" />
