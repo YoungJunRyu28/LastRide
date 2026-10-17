@@ -11,6 +11,7 @@ import { randomUUID } from "node:crypto";
 import { and, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, min, ne, or } from "drizzle-orm";
 import {
   getDb,
+  groupAlertDeliveriesTable,
   groupMembersTable,
   groupNightParticipantsTable,
   groupNightsTable,
@@ -935,6 +936,23 @@ export async function claimDueGroupLeaveAlerts(
         )
         .returning({ memberId: groupNightParticipantsTable.memberId });
       if (!won) return null;
+      const recipients = await pushRecipients(
+        tx,
+        candidate.groupId,
+        candidate.nightId,
+        candidate.memberId,
+        { leaveTime: true },
+      );
+      // Durable per-recipient delivery records and the sent-for marker commit
+      // together. A Lambda crash after this transaction cannot lose alerts.
+      if (recipients.length > 0) {
+        await tx.insert(groupAlertDeliveriesTable).values(recipients.map((recipient) => ({
+          nightId: candidate.nightId,
+          senderMemberId: candidate.memberId,
+          recipientMemberId: recipient.memberId,
+          leaveBy,
+        }))).onConflictDoNothing();
+      }
       return {
         nightId: candidate.nightId,
         groupId: candidate.groupId,
@@ -942,13 +960,7 @@ export async function claimDueGroupLeaveAlerts(
         memberId: candidate.memberId,
         displayName: candidate.displayName,
         leaveBy,
-        recipients: await pushRecipients(
-          tx,
-          candidate.groupId,
-          candidate.nightId,
-          candidate.memberId,
-          { leaveTime: true },
-        ),
+        recipients,
       };
     });
     if (alert) claimed.push(alert);
@@ -957,28 +969,10 @@ export async function claimDueGroupLeaveAlerts(
 }
 
 /**
- * A total Expo send failure must not be marked delivered forever. Release
- * only the exact claim we won: no rollback if the member changed leave-by,
- * the night changed, or another dispatch has superseded this alert.
- *
- * NOTE: this only addresses zero-ticket failures. Per-recipient durable
- * delivery and Expo receipt reconciliation still require the outbox in R02.
+ * Claims are permanent after enqueue: retry state is now per-recipient in the
+ * outbox, not a shared "sent-for" flag that could double-send on partial
+ * ticket success. The outbox is deleted by the group's nightly privacy purge.
  */
-export async function releaseFailedGroupLeaveAlert(
-  alert: ClaimedGroupLeaveAlert,
-): Promise<void> {
-  await getDb()
-    .update(groupNightParticipantsTable)
-    .set({ leaveAlertSentFor: null })
-    .where(
-      and(
-        eq(groupNightParticipantsTable.nightId, alert.nightId),
-        eq(groupNightParticipantsTable.memberId, alert.memberId),
-        eq(groupNightParticipantsTable.leaveBy, alert.leaveBy),
-        eq(groupNightParticipantsTable.leaveAlertSentFor, alert.leaveBy),
-      ),
-    );
-}
 
 // ---------------------------------------------------------------------------
 // Scheduled cleanup

@@ -97,3 +97,13 @@ Release requires every hard gate above, with independent review of changes to bi
 
 ### Publishing limitation
 The personal GitHub account can write repository files but lacks OAuth `workflow` scope. The existing `.github/workflows/ci.yml` is intentionally left unchanged; run the three Android Asset Links generator tests manually (`node --test scripts/generate-android-assetlinks.test.mjs`) until someone with workflow-editing permission incorporates them into CI.
+
+## Phase B work in the next commit — durable departure notifications
+
+**Schema:** `lib/db/drizzle/0012_lame_songbird.sql` adds `group_alert_deliveries`. Every row belongs to a `group_nights` row with `ON DELETE CASCADE`, so private departure times and Expo receipts are purged when the night is deleted. Do not broaden retention.
+
+**Algorithm:** (1) the existing conditional leave-time claim is committed together with an outbox row per opted-in recipient, (2) a worker takes batches using `FOR UPDATE SKIP LOCKED` and a 45-second lease, (3) Expo is called in batches and each ticket accepted or retried individually, (4) the scheduler considers both new due departures and outbox retry times, (5) a separate receipt job marks ticket outcomes and only invalidates the exact device token used when it was accepted. Failed writes leave an expiring lease rather than dropping the delivery. The retry is at-least-once, not exactly-once: a crash after Expo receives a ticket but before its ID is recorded can cause a duplicate.
+
+**IMPORTANT rollout:** apply the additive DB migration **before** deploying any server/Lambda code that reads or writes the outbox table. Otherwise departure workers and scheduler lookups will fail. Perform a staging migration and restore rehearsal before production. The repository CI uses ephemeral PostgreSQL and applies committed migrations, but does not authorize a production migration.
+
+**Known limitations:** group-start and silent group-update messages remain best effort; outbox covers **departure** alerts. The 10-minute grace window prevents stale notifications from being delivered too late. Expo acceptance only confirms receipt by Expo, not a locked-phone delivery guarantee. Native APNs and Firebase credentials/receipts still require signed physical-device verification. The cross-instance EventBridge schedule update race, unsupported rail operators and group-account recovery remain independent P1/P0 risks.

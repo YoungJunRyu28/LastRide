@@ -9,6 +9,7 @@ import { purgeExpiredRateLimits } from "./lib/rateLimit";
 import { purgeExpiredEnterpriseData } from "./lib/enterpriseStore";
 import { purgeEndedGroupNights, purgeInactiveGroupMembers } from "./lib/groupStore";
 import { dispatchGroupLeaveAlerts } from "./lib/groupNotifications";
+import { reconcileGroupPushReceipts } from "./lib/groupAlertOutbox";
 import { logger } from "./lib/logger";
 
 const rawPort = process.env["PORT"];
@@ -77,10 +78,11 @@ if (isDatabaseConfigured()) {
   };
   const checkPushReceipts = async () => {
     try {
-      const result = await reconcileEnterprisePushReceipts();
-      if (result.checked > 0) {
-        logger.info(result, "Checked enterprise push receipts");
-      }
+      const [result, group] = await Promise.all([
+        reconcileEnterprisePushReceipts(), reconcileGroupPushReceipts(),
+      ]);
+      if (result.checked > 0) logger.info(result, "Checked enterprise push receipts");
+      if (group.checked > 0) logger.info(group, "Checked group push receipts");
     } catch (err) {
       logger.error({ err }, "Enterprise push receipt worker failed");
     }

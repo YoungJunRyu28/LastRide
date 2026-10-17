@@ -20,6 +20,7 @@ import {
   UpdateScheduleCommand,
 } from "@aws-sdk/client-scheduler";
 import { nextGroupLeaveAlertAt } from "./groupStore";
+import { nextGroupOutboxRetryAt } from "./groupAlertOutbox";
 import { logger } from "./logger";
 
 type ScheduleConfig = { name: string; targetArn: string; roleArn: string };
@@ -79,7 +80,11 @@ export async function scheduleNextLeaveAlert({
   const config = scheduleConfig();
   if (!config) return;
   try {
-    const due = await nextGroupLeaveAlertAt(now);
+    const [unclaimedDue, retryDue] = await Promise.all([
+      nextGroupLeaveAlertAt(now), nextGroupOutboxRetryAt(now),
+    ]);
+    const due = [unclaimedDue, retryDue].filter((date): date is Date => date !== null)
+      .sort((a, b) => a.getTime() - b.getTime())[0];
     if (!due) return;
     const next = new Date(Math.max(due.getTime(), now.getTime() + MIN_LEAD_MS));
     next.setUTCMilliseconds(0);

@@ -7,7 +7,7 @@ This records the 58 findings from the static source audit. **Fixed** means the c
 | LR-001 | Android `/group-join` not in verified link filters | **Fixed in source** | Play-signed real-device link test |
 | LR-002 | Android production `assetlinks.json` absent/404 | **Partial** | Generate using real Play fingerprint; deploy site and verify 200 |
 | LR-003 | Android transit / geocoding missing vs iOS | **Pending P0** | Japan rail coverage, real geocoder and provider parity |
-| LR-004 | Group leave alert marked sent before delivery | **Partial** | Zero-ticket release done; implement per-recipient durable outbox |
+| LR-004 | Group leave alert marked sent before delivery | **Implemented, pending DB CI/release verification** | Transactional per-recipient enqueue and retry; crash-window duplicates possible |
 | LR-005 | Google Play background location review missing | **Pending P0** | Consent/declaration, real review footage |
 | LR-006 | Concurrent sharing map writes lose active group | **Fixed** | 20-group regression and storage fault tests |
 | LR-007 | Concurrent membership map writes lose token | **Fixed** | 20-join regression and storage fault tests |
@@ -34,7 +34,7 @@ This records the 58 findings from the static source audit. **Fixed** means the c
 | LR-028 | Generic group API error messages | **Pending** | Localized actionable error states |
 | LR-029 | Scheduling error suppressed; fallback misses alerts | **Pending P1** | Reliable persisted due job with retry/replay |
 | LR-030 | Concurrent EventBridge due writers race | **Pending P1** | CAS/leases + monotonic earliest due |
-| LR-031 | Group Expo push receipts unreconciled | **Pending P1** | Outbox receipt process and invalid-token reconciliation |
+| LR-031 | Group Expo push receipts unreconciled | **Implemented, pending CI** | Group Expo receipts reconciled; verify APNs/FCM delivery and receipt retention |
 | LR-032 | Motionless background task not guaranteed by OS | **Pending** | Local alarms and foreground recovery |
 | LR-033 | One destination request failure discards good routes | **Fixed in source** | Provider failure chaos/integration test |
 | LR-034 | Shared-IP route lookups exhaust limiter | **Pending** | Per-client budget and multicaller simulations |
@@ -55,7 +55,7 @@ This records the 58 findings from the static source audit. **Fixed** means the c
 | LR-049 | RevenueCat anonymous cross-platform IDs | **Pending** | Account-binding purchase restore strategy |
 | LR-050 | Hosting after Premium expiry | **Policy decision** | Choose lifecycle entitlement policy |
 | LR-051 | Native/OTA version compatibility and rollback | **Pending** | EAS staged rollback drill |
-| LR-052 | Group delivery metrics/ledger absent | **Pending** | Per-recipient outbox + metrics |
+| LR-052 | Group delivery metrics/ledger absent | **Partial** | Durable ledger implemented; add aggregate alerts/metrics/dashboard and SLO |
 | LR-053 | Old mobile binary vs new backend version skew | **Pending** | Compatibility fixtures and minimum versions |
 | LR-054 | Lost response creates duplicate group/membership | **Pending** | Client operation keys/server idempotency |
 | LR-055 | No two-device group/notification CI E2E | **Pending** | Real TestFlight/Play testing matrix |

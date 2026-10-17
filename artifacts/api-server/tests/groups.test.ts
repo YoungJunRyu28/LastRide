@@ -15,6 +15,7 @@ import { eq, inArray } from "drizzle-orm";
 import {
   apiRateLimitsTable,
   getDb,
+  groupAlertDeliveriesTable,
   groupMembersTable,
   groupNightParticipantsTable,
   groupNightsTable,
@@ -43,6 +44,7 @@ import {
 import { nightWindow, serviceDateFor } from "../src/lib/groupNight";
 import { clearEntitlementCache } from "../src/lib/revenueCat";
 import { dispatchGroupLeaveAlerts } from "../src/lib/groupNotifications";
+import { claimGroupDeliveryBatch, settleGroupDelivery } from "../src/lib/groupAlertOutbox";
 import app from "../src/app";
 
 /**
@@ -646,6 +648,40 @@ describe("tonight", () => {
     expect(await claimDueGroupLeaveAlerts(at(29))).toEqual([]);
     expect(await claimDueGroupLeaveAlerts(at(31))).toHaveLength(1);
     expect(await claimDueGroupLeaveAlerts(at(32))).toEqual([]);
+  });
+
+  it("atomically enqueues each recipient once, retries individual failures and expires with the night", async () => {
+    const { groupId, host, members } = await groupWithMembers(["Bea", "Cai"]);
+    const [bea, cai] = members;
+    for (const [member, name] of [[host, "host"], [bea, "bea"], [cai, "cai"]] as const)
+      await setPush(groupId, member.token, name);
+    await startGroupTonightRecord(groupId, host.token);
+    const leaveBy = new Date(tonightWindow().endsAt.getTime() - 2 * 60 * 60_000);
+    await setGroupTonightParticipationRecord(groupId, bea.token, leaveBy);
+    await setGroupTonightParticipationRecord(groupId, cai.token, null);
+    const dueAt = new Date(leaveBy.getTime() + 60_000);
+    const [alert] = await claimDueGroupLeaveAlerts(dueAt);
+    expect(alert.recipients).toHaveLength(2);
+    expect(await getDb().select().from(groupAlertDeliveriesTable)).toHaveLength(2);
+    expect(await claimDueGroupLeaveAlerts(dueAt)).toEqual([]);
+    expect(await getDb().select().from(groupAlertDeliveriesTable)).toHaveLength(2);
+
+    const leased = await claimGroupDeliveryBatch(dueAt);
+    expect(leased).toHaveLength(2);
+    expect(await claimGroupDeliveryBatch(dueAt)).toHaveLength(0);
+    const succeeded = leased[0];
+    const failed = leased[1];
+    await settleGroupDelivery(succeeded, { ticketId: "ticket-1" }, dueAt);
+    await settleGroupDelivery(failed, { error: "HTTP 503" }, dueAt);
+    const retryAt = new Date(dueAt.getTime() + 31_000);
+    const retryBatch = await claimGroupDeliveryBatch(retryAt);
+    expect(retryBatch.map((delivery) => delivery.id)).toEqual([failed.id]);
+    await settleGroupDelivery(retryBatch[0], { ticketId: "ticket-2" }, retryAt);
+    expect(await claimGroupDeliveryBatch(new Date(retryAt.getTime() + 60_000))).toHaveLength(0);
+
+    // The source's private leave-by time and push tickets never survive 08:00 JST.
+    expect(await purgeEndedGroupNights(tonightWindow().endsAt)).toBe(1);
+    expect(await getDb().select().from(groupAlertDeliveriesTable)).toEqual([]);
   });
 
   it("does not send stale leave-time alerts", async () => {

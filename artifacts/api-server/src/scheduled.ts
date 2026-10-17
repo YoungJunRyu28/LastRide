@@ -22,6 +22,7 @@ import { purgeExpiredRateLimits } from "./lib/rateLimit";
 import { purgeExpiredEnterpriseData } from "./lib/enterpriseStore";
 import { purgeEndedGroupNights, purgeInactiveGroupMembers } from "./lib/groupStore";
 import { dispatchGroupLeaveAlerts } from "./lib/groupNotifications";
+import { reconcileGroupPushReceipts } from "./lib/groupAlertOutbox";
 import { scheduleNextLeaveAlert } from "./lib/leaveAlertSchedule";
 import { logger } from "./lib/logger";
 
@@ -85,9 +86,11 @@ export async function handler(event: ScheduledEvent) {
       return;
     }
     case "pushReceipts": {
-      const result = await reconcileEnterprisePushReceipts();
-      if (result.checked > 0)
-        logger.info(result, "Checked enterprise push receipts");
+      const [result, group] = await Promise.all([
+        reconcileEnterprisePushReceipts(), reconcileGroupPushReceipts(),
+      ]);
+      if (result.checked > 0) logger.info(result, "Checked enterprise push receipts");
+      if (group.checked > 0) logger.info(group, "Checked group push receipts");
       return;
     }
     default: {

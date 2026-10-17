@@ -7,7 +7,8 @@ import { and, eq, inArray, isNotNull, ne } from "drizzle-orm";
 import { getDb, groupMembersTable } from "@workspace/db";
 import { EXPO_PUSH_BATCH_SIZE } from "./enterpriseNotifications";
 import { logger } from "./logger";
-import { claimDueGroupLeaveAlerts, releaseFailedGroupLeaveAlert } from "./groupStore";
+import { claimDueGroupLeaveAlerts } from "./groupStore";
+import { claimGroupDeliveryBatch, settleGroupDelivery } from "./groupAlertOutbox";
 
 export type GroupLanguage = "ja" | "en";
 
@@ -72,8 +73,13 @@ export function buildGroupPushMessages(
 
 type ExpoPushTicket = {
   status?: "ok" | "error";
+  id?: string;
+  message?: string;
   details?: { error?: string };
 };
+
+type GroupPushTicket = { ticketId: string } | { error: string };
+
 
 /**
  * Sends best-effort pushes. Never throws: a push outage must not fail the
@@ -141,73 +147,94 @@ export async function sendGroupPush(
   return postExpoMessages(groupId, buildGroupPushMessages(groupId, event, recipients));
 }
 
-/** Sends to Expo in batches; clears tokens Expo reports as DeviceNotRegistered. */
-async function postExpoMessages(
-  groupId: string,
-  messages: Array<{ to: string }>,
-): Promise<number> {
-  if (messages.length === 0) return 0;
+/**
+ * Send one Expo batch and retain every recipient's individual acceptance
+ * result. A successful HTTP status does not mean every push was accepted.
+ */
+async function postExpoTickets(messages: Array<{ to: string }>): Promise<GroupPushTicket[]> {
+  if (messages.length === 0) return [];
   const headers: Record<string, string> = {
     Accept: "application/json",
     "Content-Type": "application/json",
   };
   const accessToken = process.env.EXPO_ACCESS_TOKEN?.trim();
-  if (accessToken) headers.Authorization = "Bearer " + accessToken;
+  if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+  try {
+    const response = await fetch("https://exp.host/--/api/v2/push/send", {
+      method: "POST", headers, body: JSON.stringify(messages),
+      signal: AbortSignal.timeout(8_000),
+    });
+    if (!response.ok) {
+      logger.warn({ status: response.status }, "Group push batch rejected");
+      return messages.map(() => ({ error: `HTTP ${response.status}` }));
+    }
+    const payload = (await response.json()) as { data?: ExpoPushTicket | ExpoPushTicket[] };
+    const tickets = Array.isArray(payload.data) ? payload.data : payload.data ? [payload.data] : [];
+    return messages.map((_, index) => {
+      const ticket = tickets[index];
+      return ticket?.status === "ok" && typeof ticket.id === "string"
+        ? { ticketId: ticket.id }
+        : { error: ticket?.details?.error || ticket?.message || "MissingOrInvalidExpoTicket" };
+    });
+  } catch (err) {
+    logger.warn({ err, batchSize: messages.length }, "Group push batch failed");
+    return messages.map(() => ({ error: "ExpoNetworkError" }));
+  }
+}
 
+/** Best-effort group-start and silent change notifications, separate from durable departure alerts. */
+async function postExpoMessages(groupId: string, messages: Array<{ to: string }>): Promise<number> {
   let accepted = 0;
   const unregistered: string[] = [];
-
-  for (
-    let offset = 0;
-    offset < messages.length;
-    offset += EXPO_PUSH_BATCH_SIZE
-  ) {
+  for (let offset = 0; offset < messages.length; offset += EXPO_PUSH_BATCH_SIZE) {
     const batch = messages.slice(offset, offset + EXPO_PUSH_BATCH_SIZE);
-    try {
-      const response = await fetch("https://exp.host/--/api/v2/push/send", {
-        method: "POST",
-        headers,
-        body: JSON.stringify(batch),
-        signal: AbortSignal.timeout(8_000),
-      });
-      if (!response.ok) {
-        logger.warn({ status: response.status }, "Group push batch rejected");
-        continue;
-      }
-      const payload = (await response.json()) as {
-        data?: ExpoPushTicket | ExpoPushTicket[];
-      };
-      const tickets = Array.isArray(payload.data)
-        ? payload.data
-        : payload.data
-          ? [payload.data]
-          : [];
-      batch.forEach((message, index) => {
-        const ticket = tickets[index];
-        if (ticket?.status === "ok") accepted += 1;
-        else if (ticket?.details?.error === "DeviceNotRegistered") {
-          unregistered.push(message.to);
-        }
-      });
-    } catch (err) {
-      logger.warn({ err, batchSize: batch.length }, "Group push batch failed");
-    }
+    const results = await postExpoTickets(batch);
+    results.forEach((result, index) => {
+      if ("ticketId" in result) accepted += 1;
+      else if (result.error === "DeviceNotRegistered") unregistered.push(batch[index].to);
+    });
   }
-
   if (unregistered.length > 0) {
     try {
-      await getDb()
-        .update(groupMembersTable)
+      await getDb().update(groupMembersTable)
         .set({ expoPushToken: null, pushTokenInvalidAt: new Date(), updatedAt: new Date() })
-        .where(
-          and(
-            eq(groupMembersTable.groupId, groupId),
-            inArray(groupMembersTable.expoPushToken, unregistered),
-          ),
-        );
+        .where(and(eq(groupMembersTable.groupId, groupId), inArray(groupMembersTable.expoPushToken, unregistered)));
     } catch (err) {
       logger.warn({ err }, "Failed to clear unregistered group push tokens");
     }
+  }
+  return accepted;
+}
+
+/**
+ * Drain leased, per-device records. A failure for one device never prevents
+ * accepted tickets for another device from being persisted. Missing/429/5xx
+ * tickets are retried with bounded backoff while the alert remains timely.
+ */
+export async function dispatchGroupDeliveryOutbox(now = new Date()): Promise<number> {
+  let accepted = 0;
+  // The lease prevents concurrent processors from taking the same batch.
+  // Bound per-run work to avoid unbounded serverless invocation duration.
+  for (let round = 0; round < 5; round += 1) {
+    const deliveries = await claimGroupDeliveryBatch(now);
+    if (deliveries.length === 0) break;
+    const messages = deliveries.map((delivery) => buildGroupPushMessages(
+      delivery.groupId,
+      { kind: "leave_time", groupName: delivery.groupName,
+        displayName: delivery.displayName, leaveBy: delivery.leaveBy },
+      [{ memberId: delivery.recipientMemberId, expoPushToken: delivery.token, language: delivery.language }],
+    )[0]);
+    const tickets = await postExpoTickets(messages);
+    const settled = await Promise.allSettled(deliveries.map(async (delivery, index) => {
+      const ticket = tickets[index] ?? { error: "MissingExpoTicket" };
+      await settleGroupDelivery(delivery, ticket, now);
+      return "ticketId" in ticket;
+    }));
+    for (const item of settled) {
+      if (item.status === "fulfilled" && item.value) accepted += 1;
+      if (item.status === "rejected") logger.error({ err: item.reason }, "Group push ticket write failed; lease will expire");
+    }
+    if (deliveries.length < EXPO_PUSH_BATCH_SIZE) break;
   }
   return accepted;
 }
@@ -220,33 +247,8 @@ async function postExpoMessages(
 export async function dispatchGroupLeaveAlerts(
   now = new Date(),
 ): Promise<number> {
-  const alerts = await claimDueGroupLeaveAlerts(now);
-  let sent = 0;
-  for (const alert of alerts) {
-    const accepted = await sendGroupPush(
-      alert.groupId,
-      {
-        kind: "leave_time",
-        groupName: alert.groupName,
-        displayName: alert.displayName,
-        leaveBy: alert.leaveBy,
-      },
-      alert.recipients,
-    );
-    sent += accepted;
-    if (alert.recipients.length > 0 && accepted === 0) {
-      // Expo outage / rejection: the scheduler must be able to retry.
-      // Releasing is guarded by the exact group-night + leave-by claim.
-      try {
-        await releaseFailedGroupLeaveAlert(alert);
-        logger.warn(
-          { groupId: alert.groupId, memberId: alert.memberId },
-          "Group departure push accepted by no device; released alert for retry",
-        );
-      } catch (err) {
-        logger.error({ err }, "Failed to re-arm undelivered group departure alert");
-      }
-    }
-  }
-  return sent;
+  // Enqueue and advance the once-per-leave-time marker in one DB transaction.
+  // If a process exits at any later point, the next worker can drain rows.
+  await claimDueGroupLeaveAlerts(now);
+  return dispatchGroupDeliveryOutbox(now);
 }
