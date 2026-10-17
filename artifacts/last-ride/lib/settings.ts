@@ -209,6 +209,20 @@ function parseReminders(raw: string | null, fallback: number[]): number[] {
   }
 }
 
+/**
+ * Just the notification and alarm times, straight from storage: for the
+ * background task to use the current choice right when it schedules (the
+ * user may have changed it while the task was running).
+ */
+export async function readReminderTimes(): Promise<Pick<Settings, 'reminderIntervals' | 'alarmsEnabled' | 'alarmIntervals'>> {
+  const [reminders, alarmsEnabled, alarmTimes] = await Promise.all([
+    AsyncStorage.getItem(STORAGE_KEYS.reminders),
+    AsyncStorage.getItem(STORAGE_KEYS.alarmsEnabled),
+    AsyncStorage.getItem(STORAGE_KEYS.alarmTimes),
+  ]);
+  return parseReminderTimes(reminders, alarmsEnabled, alarmTimes);
+}
+
 /** Notification and alarm times; a time in both lists stays an alarm. */
 function parseReminderTimes(
   notifyRaw: string | null,

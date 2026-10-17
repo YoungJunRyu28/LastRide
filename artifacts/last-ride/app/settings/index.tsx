@@ -10,10 +10,22 @@ import { recommendedLeaveTime } from '@/lib/reliability';
 import { MINUTE_MS } from '@/lib/time';
 import { WIDGET_THEMES } from '@/lib/widgetThemes';
 import { Feather } from '@expo/vector-icons';
+import Constants from 'expo-constants';
 import { router } from 'expo-router';
+import * as Updates from 'expo-updates';
 import * as WebBrowser from 'expo-web-browser';
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+
+/** "ビルド 6 · アップデート 10/17 19:42（a1b2c3）", or "ビルド 6 · アップデートなし". */
+function runningVersion(ja: boolean): string {
+  const build = Constants.nativeBuildVersion ?? '?';
+  const head = ja ? `ビルド ${build}` : `Build ${build}`;
+  if (Updates.isEmbeddedLaunch || !Updates.updateId || !Updates.createdAt) return `${head} · ${ja ? 'アップデートなし（ビルドのまま）' : 'no update (as built)'}`;
+  const when = Updates.createdAt.toLocaleString(ja ? 'ja-JP' : 'en-GB', { timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  const id = Updates.updateId.slice(0, 6);
+  return ja ? `${head} · アップデート ${when}（${id}）` : `${head} · update ${when} (${id})`;
+}
 
 /** Settings, pushed from the gear on Leave. Each row opens a page for that setting. */
 export default function SettingsScreen() {
@@ -171,6 +183,13 @@ export default function SettingsScreen() {
               : 'While the demo clock runs, 1 minute = 1 second (or real time). Notifications need tracking on. Not shown in the App Store version.'
           }
         >
+          {/* Which code is running: the build, and the over-the-air update on top of it (if any). */}
+          <Row
+            testID="running-version"
+            title={ja ? '動作中のバージョン' : 'Running version'}
+            subtitle={runningVersion(ja)}
+          />
+          <Divider />
           {premiumLive && isTestFlightBuild && (
             <>
               <Row

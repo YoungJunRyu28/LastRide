@@ -21,7 +21,7 @@ import { endLiveActivity, syncLiveActivity } from '@/lib/liveActivity';
 import { syncWidgets } from '@/lib/widgets';
 import { notifyLockFallback, scheduleReminders, cancelAllReminders } from '@/lib/notifications';
 import { buildReminderPlans, planNight, sameStation, shouldReplan, trackingEndsAt, trackingHardStopAt, type NightPlan } from '@/lib/planner';
-import { hasCoordinates, readSettings, readTrainChoiceOverride, trainChoiceUntil, writePinnedStation, writeTrainChoiceOverride } from '@/lib/settings';
+import { hasCoordinates, readSettings, readTrainChoiceOverride, trainChoiceUntil, writePinnedStation, writeTrainChoiceOverride, readReminderTimes } from '@/lib/settings';
 import { applyTrainChoice, choiceAt, closestChoice, effectiveTrainChoice, trainChoiceLabel, trainOptions } from '@/lib/trainChoice';
 import type { Coordinates } from '@/lib/stations';
 import { formatJstTime, serviceDate } from '@/lib/time';
@@ -105,7 +105,9 @@ async function recomputeFromLocation(coordinates: Coordinates): Promise<void> {
   const followUpFor = goneAt !== undefined && basePlan.computedAt >= goneAt && !basePlan.frozenUntil && (await readAnswered()) !== goneAt ? goneAt : undefined;
   const plan = applyTrainChoice(basePlan, options, effective);
   const language = settings.language ?? 'en';
-  await scheduleReminders(buildReminderPlans(plan, settings.reminderIntervals, now, { missedCheckIn: settings.missedCheckIn, alarmIntervals: settings.alarmIntervals, includePast: true }), {
+  // Read again now: the user may have changed reminders or alarms while this ran.
+  const times = await readReminderTimes();
+  await scheduleReminders(buildReminderPlans(plan, times.reminderIntervals, now, { missedCheckIn: settings.missedCheckIn, alarmIntervals: times.alarmIntervals, includePast: true }), {
     leaveBy: formatJstTime(recommendedLeaveTime(plan)),
     station: language === 'ja' ? plan.station.nameJa : plan.station.name,
     language,

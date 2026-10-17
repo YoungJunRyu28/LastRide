@@ -35,10 +35,20 @@ async function writeOwnedIds(ids: string[]): Promise<void> {
 }
 
 // Serializes all schedule/cancel operations so an older reschedule can never
-// cancel or overwrite a newer one.
+// cancel or overwrite a newer one. Each gets a time limit: one that never
+// finishes (iOS not answering) must not hold every later reschedule back.
+const OPERATION_LIMIT_MS = 20_000;
 let queue: Promise<void> = Promise.resolve();
 function enqueue(operation: () => Promise<void>): Promise<void> {
-  queue = queue.then(operation, operation);
+  const limited = () =>
+    Promise.race([
+      operation(),
+      new Promise<void>((resolve) => setTimeout(() => {
+        console.warn('[LastRide] reminder scheduling timed out; moving on');
+        resolve();
+      }, OPERATION_LIMIT_MS)),
+    ]);
+  queue = queue.then(limited, limited);
   return queue;
 }
 
@@ -179,6 +189,11 @@ async function cancelOwned() {
   // schedule. AlarmKit only exposes alarms belonging to our app.
   await alarmKit.cancelAll().catch((error) => console.warn('[LastRide] Could not cancel alarms', error));
   await Promise.all(ids.map((id) => Notifications.cancelScheduledNotificationAsync(id).catch(() => undefined)));
+  // And everything else still scheduled: the app and its background task keep
+  // the owned list separately, so it can miss one (an alarm's silent companion
+  // that then still arrives). Every local notification is a reminder from here;
+  // ones already delivered aren't affected.
+  await Notifications.cancelAllScheduledNotificationsAsync().catch(() => undefined);
 }
 
 export function cancelAllReminders(): Promise<void> {

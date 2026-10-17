@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => {
     alarmCancel: vi.fn(async () => {}),
     notificationSchedule: vi.fn(async () => 'notification-id'),
     notificationCancel: vi.fn(async () => {}),
+    notificationCancelAll: vi.fn(async () => {}),
   };
 });
 
@@ -26,6 +27,7 @@ vi.mock('expo-notifications', () => ({
   getPermissionsAsync: vi.fn(async () => ({ granted: true })),
   scheduleNotificationAsync: mocks.notificationSchedule,
   cancelScheduledNotificationAsync: mocks.notificationCancel,
+  cancelAllScheduledNotificationsAsync: mocks.notificationCancelAll,
   SchedulableTriggerInputTypes: { DATE: 'date' },
 }));
 vi.mock('../modules/last-ride-alarm/src', () => ({
@@ -121,6 +123,9 @@ describe('reminder delivery', () => {
     await cancelAllReminders();
     expect(mocks.alarmCancel).toHaveBeenCalledTimes(2);
     expect(mocks.notificationCancel).toHaveBeenCalled();
+    // Everything still scheduled goes too, not just the tracked ids (the background
+    // task keeps its own list, so a silent alarm companion could otherwise survive).
+    expect(mocks.notificationCancelAll).toHaveBeenCalledTimes(2);
   });
 
   it('does not schedule stale alarms from a delayed background callback', async () => {
