@@ -47,8 +47,51 @@ describe("app.config.js", () => {
         ENABLE_REMOTE_PUSH: "true",
         ENABLE_UNIVERSAL_LINKS: "true",
         EXPO_PUBLIC_APP_JOIN_BASE_URL: "https://lastride.jp",
+        EXPO_ANDROID_GOOGLE_MAPS_API_KEY: `AIza${"a".repeat(35)}`,
       }),
     ).not.toThrow();
+  });
+
+  it("requires a native restricted Google Maps key for Play Store production", () => {
+    const env = {
+      EAS_BUILD_PROFILE: "production",
+      EXPO_PUBLIC_API_URL: "https://api.invalid.example",
+      ENABLE_REMOTE_PUSH: "true",
+      ENABLE_UNIVERSAL_LINKS: "true",
+      EXPO_PUBLIC_APP_JOIN_BASE_URL: "https://lastride.jp",
+    };
+    expect(() => resolveWith({ ...env, EXPO_ANDROID_GOOGLE_MAPS_API_KEY: undefined }))
+      .toThrow("EXPO_ANDROID_GOOGLE_MAPS_API_KEY");
+    expect(() => resolveWith({ ...env, EXPO_ANDROID_GOOGLE_MAPS_API_KEY: "bad-key" }))
+      .toThrow("EXPO_ANDROID_GOOGLE_MAPS_API_KEY");
+    const key = `AIza${"A".repeat(35)}`;
+    const configured = resolveWith({ ...env, EXPO_ANDROID_GOOGLE_MAPS_API_KEY: key });
+    expect(configured.android.config.googleMaps.apiKey).toBe(key);
+    expect(configured.extra.androidGoogleMapsEnabled).toBe(true);
+    expect(JSON.stringify(configured.extra)).not.toContain(key);
+  });
+
+  it("does not require the Android Maps key to ship an iOS-only production build", () => {
+    const configured = resolveWith({
+      EAS_BUILD_PROFILE: "production",
+      EAS_BUILD_PLATFORM: "ios",
+      EXPO_PUBLIC_API_URL: "https://api.invalid.example",
+      ENABLE_REMOTE_PUSH: "true",
+      ENABLE_UNIVERSAL_LINKS: "true",
+      EXPO_PUBLIC_APP_JOIN_BASE_URL: "https://lastride.jp",
+      EXPO_ANDROID_GOOGLE_MAPS_API_KEY: undefined,
+    });
+    expect(configured.extra.androidGoogleMapsEnabled).toBe(false);
+  });
+
+  it("keeps native Android Maps disabled with no key in preview builds", () => {
+    const configured = resolveWith({
+      EAS_BUILD_PROFILE: "preview",
+      EXPO_PUBLIC_API_URL: "https://api.invalid.example",
+      EXPO_ANDROID_GOOGLE_MAPS_API_KEY: undefined,
+    });
+    expect(configured.android.config?.googleMaps).toBeUndefined();
+    expect(configured.extra.androidGoogleMapsEnabled).toBe(false);
   });
 
   it("refuses a public binary without remote pushes or verified invite links", () => {

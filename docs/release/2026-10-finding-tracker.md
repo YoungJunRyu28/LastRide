@@ -6,7 +6,7 @@ This records the 58 findings from the static source audit. **Fixed** means the c
 | --- | --- | --- | --- |
 | LR-001 | Android `/group-join` not in verified link filters | **Fixed in source** | Play-signed real-device link test |
 | LR-002 | Android production `assetlinks.json` absent/404 | **Partial** | Generate using real Play fingerprint; deploy site and verify 200 |
-| LR-003 | Android transit / geocoding missing vs iOS | **Pending P0** | Japan rail coverage, real geocoder and provider parity |
+| LR-003 | Android transit / geocoding missing vs iOS | **Partial P0** | Native Google map and Android OS address geocoder added; full JR/private train coverage and real walking provider parity still blocked |
 | LR-004 | Group leave alert marked sent before delivery | **Implemented, pending DB CI/release verification** | Transactional per-recipient enqueue and retry; crash-window duplicates possible |
 | LR-005 | Google Play background location review missing | **Pending P0** | Consent/declaration, real review footage |
 | LR-006 | Concurrent sharing map writes lose active group | **Fixed** | 20-group regression and storage fault tests |
@@ -38,7 +38,7 @@ This records the 58 findings from the static source audit. **Fixed** means the c
 | LR-032 | Motionless background task not guaranteed by OS | **Pending** | Local alarms and foreground recovery |
 | LR-033 | One destination request failure discards good routes | **Fixed in source** | Provider failure chaos/integration test |
 | LR-034 | Shared-IP route lookups exhaust limiter | **Pending** | Per-client budget and multicaller simulations |
-| LR-035 | Straight-line walking ignores geography/barriers | **Pending** | Ground truth routing / explicit estimation labels |
+| LR-035 | Straight-line walking ignores geography/barriers | **Partial** | Android map shows ≈ on time and no fabricated route polyline; actual street routing / ground truth remains blocked |
 | LR-036 | iOS vs Android latest train results disagree | **Pending P0** | Provider parity corpus |
 | LR-037 | Changes under 60 sec not re-sent | **Decision pending** | Product spec + threshold tests |
 | LR-038 | Offline background leave change may never retry | **Pending** | Durable reconnection queue |

@@ -4,8 +4,9 @@
  *
  * On iOS builds with modules/apple-maps it shows an Apple map snapshot with
  * the route and labels drawn on top, plus Apple's attribution and legal link
- * (required whenever Apple map data is shown). Elsewhere it draws a stand-in
- * map. Apple's terms require Apple's transit data to be shown with an Apple
+ * (required whenever Apple map data is shown). Android uses the
+ * Google Maps native SDK when a restricted API key is provisioned; otherwise
+ * it uses the illustrated, non-geographic placeholder. Apple's terms require Apple's transit data to be shown with an Apple
  * map, so Apple-sourced times must only ship where the snapshot is available.
  */
 import { Feather } from '@expo/vector-icons';
@@ -14,6 +15,7 @@ import { Image, Linking, Platform, Pressable, StyleSheet, Text, View } from 'rea
 import Svg, { Path, Polyline } from 'react-native-svg';
 import { useColors } from '@/hooks/useColors';
 import { AppleMaps } from '@/modules/apple-maps/src';
+import GoogleMapCardBackground, { googleMapsConfigured } from './GoogleMapCardBackground';
 import { isSafeMapSnapshotFrame, isValidMapCoordinate } from '@/lib/mapSnapshotGuard';
 
 type Point = { latitude: number; longitude: number };
@@ -174,11 +176,12 @@ export function MapCard({
     framePoints.every(isValidMapCoordinate) &&
     Number.isFinite(width) && Number.isFinite(height) &&
     width >= 1 && width <= 4096 && height >= 1 && height <= 4096;
-  const candidateFrame = AppleMaps && hasValidFrame
+  const candidateFrame = (AppleMaps || googleMapsConfigured) && hasValidFrame
     ? frameFor(framePoints, width, height, showWalk ? WALK_MIN_SPAN_METERS : undefined)
     : null;
   const frame = candidateFrame && isSafeMapSnapshotFrame(candidateFrame) ? candidateFrame : null;
-  const snapshot = useSnapshot(frame);
+  const snapshot = useSnapshot(AppleMaps ? frame : null);
+  const googleReady = Platform.OS === 'android' && googleMapsConfigured && frame !== null;
 
   return (
     <Pressable
@@ -193,7 +196,17 @@ export function MapCard({
       ]}
     >
       <View pointerEvents="none" style={StyleSheet.absoluteFill}>
-        {snapshot ? (
+        {googleReady ? (
+          <GoogleMapCardBackground
+            frame={frame!}
+            you={you}
+            target={showWalk ? target : null}
+            path={showWalk ? path : undefined}
+            pins={pins}
+            stationTag={stationTag}
+            walkLabel={walkLabel ? `≈ ${walkLabel}` : undefined}
+          />
+        ) : snapshot ? (
           <RealOverlay
             frame={snapshot.frame}
             snapshot={snapshot.uri}
@@ -207,6 +220,12 @@ export function MapCard({
         ) : (
           <DrawnMap height={height} showWalk={showWalk} stationTag={stationTag} walkLabel={walkLabel} pins={pins} />
         )}
+
+        {Platform.OS === 'android' && !googleMapsConfigured && hasValidFrame ? (
+          <View style={styles.mapUnavailable}>
+            <Text style={styles.mapUnavailableText}>地図プレビュー未設定 / Map preview unavailable</Text>
+          </View>
+        ) : null}
 
         {onPress ? (
           <View style={[styles.openChip, { backgroundColor: 'rgba(10, 19, 34, 0.85)' }]}>
@@ -396,6 +415,8 @@ function DrawnMap({
 }
 
 const styles = StyleSheet.create({
+  mapUnavailable: { position: 'absolute', top: 6, left: 8, right: 8, alignItems: 'flex-start' },
+  mapUnavailableText: { backgroundColor: 'rgba(10, 19, 34, 0.84)', color: '#FFFFFF', fontSize: 10, paddingHorizontal: 7, paddingVertical: 4, borderRadius: 6 },
   card: { borderRadius: 22, borderWidth: 1, overflow: 'hidden' },
   road: { left: -40, position: 'absolute', right: -40 },
   avenue: { bottom: -40, position: 'absolute', top: -40, width: 10 },
