@@ -17,6 +17,7 @@ import {
   lineLimit,
   minimumScaleFactor,
   monospacedDigit,
+  multilineTextAlignment,
   padding,
   progressViewStyle,
   tint,
@@ -63,24 +64,28 @@ const LeaveCountdown = (props: LeaveCountdownProps, _environment: LiveActivityEn
       <ProgressView value={entry.state === "full" ? 1 : 0} modifiers={modifiers} />
     );
   };
+  // Each stop is a fixed column (dot, name, time) centred on its dot, so the
+  // last label sits inside the edge instead of running off it; the bars
+  // between stops stretch to fill the width.
   const rail = (p: typeof c) => (
-    <HStack spacing={0}>
-      {props.stops.map((stop, index) => (
-        <VStack key={index} alignment="trailing" spacing={3} modifiers={[frame({ maxWidth: 1000 })]}>
-          <HStack spacing={0}>
-            {bar(p, index)}
-            {dot(p, index)}
-          </HStack>
-          <Text modifiers={[font({ weight: "bold", size: 10 }), foregroundStyle(stopColor(p, index)), lineLimit(1), minimumScaleFactor(0.7)]}>{stop.short}</Text>
-        </VStack>
-      ))}
+    <HStack alignment="top" spacing={0}>
+      {props.stops.map((stop, index) => [
+        <VStack key={`bar-${index}`} modifiers={[padding({ top: 4 }), frame({ maxWidth: 1000 })]}>
+          {bar(p, index)}
+        </VStack>,
+        <VStack key={`stop-${index}`} alignment="center" spacing={2} modifiers={[frame({ width: 54 })]}>
+          {dot(p, index)}
+          <Text modifiers={[font({ weight: "bold", size: 10 }), foregroundStyle(stopColor(p, index)), lineLimit(1), minimumScaleFactor(0.7)]}>{stop.label}</Text>
+          <Text modifiers={[font({ weight: "heavy", design: "rounded", size: 10 }), monospacedDigit(), foregroundStyle(stopColor(p, index)), lineLimit(1), minimumScaleFactor(0.7)]}>{stop.time}</Text>
+        </VStack>,
+      ])}
     </HStack>
   );
   const timer = (size: number, color: string) => (
     <Text
       timerInterval={range}
       countsDown
-      modifiers={[font({ weight: "heavy", design: "rounded", size }), monospacedDigit(), foregroundStyle(color), lineLimit(1)]}
+      modifiers={[font({ weight: "heavy", design: "rounded", size }), monospacedDigit(), foregroundStyle(color), lineLimit(1), minimumScaleFactor(0.6)]}
     />
   );
 
@@ -101,27 +106,49 @@ const LeaveCountdown = (props: LeaveCountdownProps, _environment: LiveActivityEn
         {rail(c)}
       </VStack>
     ),
-    // A's shape: the label left of the camera, the countdown right of it.
+    // A's shape: the label left of the camera, the countdown right of it, both
+    // kept off the island's rounded ends. The countdown can run to hours while
+    // tracking, so its box fits "0:00:00" and it shrinks rather than cutting.
     compactLeading: (
-      <Text modifiers={[font({ weight: "bold", size: 12 }), foregroundStyle(islandTone), lineLimit(1), minimumScaleFactor(0.7)]}>{props.island}</Text>
+      <Text modifiers={[font({ weight: "bold", size: 12 }), foregroundStyle(islandTone), lineLimit(1), minimumScaleFactor(0.7), padding({ leading: 6 })]}>{props.island}</Text>
     ),
     compactTrailing: (
-      <Text timerInterval={range} countsDown modifiers={[font({ weight: "bold", design: "rounded" }), monospacedDigit(), foregroundStyle(islandTone), frame({ maxWidth: 56 })]} />
+      <Text
+        timerInterval={range}
+        countsDown
+        modifiers={[
+          font({ weight: "bold", design: "rounded", size: 14 }),
+          monospacedDigit(),
+          foregroundStyle(islandTone),
+          lineLimit(1),
+          minimumScaleFactor(0.6),
+          multilineTextAlignment("trailing"),
+          frame({ minWidth: 44, maxWidth: 66, alignment: "trailing" }),
+          padding({ trailing: 6 }),
+        ]}
+      />
     ),
     minimal: <Image systemName="tram.fill" modifiers={[foregroundStyle(islandTone)]} />,
     expandedLeading: (
-      <VStack alignment="leading" spacing={0} modifiers={[padding({ leading: 4 })]}>
-        <Text modifiers={[font({ weight: "bold", size: 12 }), foregroundStyle(islandTone), lineLimit(1)]}>{props.label}</Text>
-        {timer(26, islandTone)}
-      </VStack>
+      <Text modifiers={[font({ weight: "bold", size: 13 }), foregroundStyle(islandTone), lineLimit(1), minimumScaleFactor(0.7), padding({ leading: 8 })]}>{props.label}</Text>
     ),
     expandedTrailing: (
-      <VStack alignment="trailing" spacing={2} modifiers={[padding({ trailing: 4 })]}>
+      <VStack alignment="trailing" spacing={2} modifiers={[padding({ trailing: 8 })]}>
         <Text modifiers={[font({ weight: "bold", size: 13 }), lineLimit(1), minimumScaleFactor(0.7)]}>{props.from}</Text>
-        <Text modifiers={[font({ size: 11 }), foregroundStyle(ic.muted), lineLimit(1)]}>{props.choice}</Text>
+        <Text modifiers={[font({ size: 11 }), foregroundStyle(ic.muted), lineLimit(1), minimumScaleFactor(0.8)]}>{props.choice}</Text>
       </VStack>
     ),
-    expandedBottom: rail(ic),
+    // The countdown gets the full width here, above the rail, instead of a corner.
+    expandedBottom: (
+      <VStack alignment="leading" spacing={8} modifiers={[padding({ horizontal: 8, bottom: 4 })]}>
+        <Text
+          timerInterval={range}
+          countsDown
+          modifiers={[font({ weight: "heavy", design: "rounded", size: 32 }), monospacedDigit(), foregroundStyle(islandTone), lineLimit(1), minimumScaleFactor(0.6)]}
+        />
+        {rail(ic)}
+      </VStack>
+    ),
   };
 };
 

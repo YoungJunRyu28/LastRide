@@ -17,7 +17,9 @@ import {
   labelsHidden,
   lineLimit,
   minimumScaleFactor,
+  layoutPriority,
   monospacedDigit,
+  padding,
   progressViewStyle,
   tint,
   widgetURL,
@@ -112,11 +114,16 @@ const LeaveWidget = (props: LeaveWidgetProps, environment: WidgetEnvironment) =>
             <Image systemName="tram.fill" size={11} />
             <Text modifiers={[font({ weight: "semibold", size: 12 }), lineLimit(1), minimumScaleFactor(0.75)]}>{props.label}</Text>
           </HStack>
-          <Text
-            timerInterval={countdown}
-            countsDown
-            modifiers={[font({ weight: "bold", design: "rounded", size: 22 }), monospacedDigit(), lineLimit(1), minimumScaleFactor(0.7)]}
-          />
+          {/* The countdown left, what it counts to on the right: uses the width, cuts nothing. */}
+          <HStack alignment="firstTextBaseline" spacing={6}>
+            <Text
+              timerInterval={countdown}
+              countsDown
+              modifiers={[font({ weight: "bold", design: "rounded", size: 22 }), monospacedDigit(), lineLimit(1), minimumScaleFactor(0.7), layoutPriority(1)]}
+            />
+            <Spacer />
+            <Text modifiers={[font({ weight: "semibold", size: 13 }), lineLimit(1), minimumScaleFactor(0.7)]}>{props.target}</Text>
+          </HStack>
           {liveBar ? (
             <ProgressView timerInterval={{ lower: new Date(liveBar.from), upper: new Date(liveBar.to) }} countsDown modifiers={[progressViewStyle("linear"), labelsHidden()]} />
           ) : null}
@@ -276,17 +283,19 @@ const LeaveWidget = (props: LeaveWidgetProps, environment: WidgetEnvironment) =>
           </VStack>
         </HStack>
         <Spacer />
-        {/* The rail: equal columns, each a bar into its stop, the label ending at the dot. */}
-        <HStack spacing={0}>
-          {props.stops.map((stop, index) => (
-            <VStack key={index} alignment="trailing" spacing={3} modifiers={[frame({ maxWidth: 1000 })]}>
-              <HStack spacing={0}>
-                {bar(index)}
-                {dot(index, 13)}
-              </HStack>
-              <Text modifiers={[font({ weight: "bold", size: 11 }), foregroundStyle(stopColor(index)), lineLimit(1), minimumScaleFactor(0.7)]}>{stop.short}</Text>
-            </VStack>
-          ))}
+        {/* The rail: a fixed column per stop (dot, name, time) centred on its dot,
+            so the last label stays inside the edge; bars stretch in between. */}
+        <HStack alignment="top" spacing={0}>
+          {props.stops.map((stop, index) => [
+            <VStack key={`bar-${index}`} modifiers={[padding({ top: 5 }), frame({ maxWidth: 1000 })]}>
+              {bar(index)}
+            </VStack>,
+            <VStack key={`stop-${index}`} alignment="center" spacing={1} modifiers={[frame({ width: 56 })]}>
+              {dot(index, 13)}
+              <Text modifiers={[font({ weight: "bold", size: 11 }), foregroundStyle(stopColor(index)), lineLimit(1), minimumScaleFactor(0.7)]}>{stop.label}</Text>
+              <Text modifiers={[font({ weight: "heavy", design: "rounded", size: 11 }), monospacedDigit(), foregroundStyle(stopColor(index)), lineLimit(1), minimumScaleFactor(0.7)]}>{stop.time}</Text>
+            </VStack>,
+          ])}
         </HStack>
       </VStack>
     );
