@@ -30,7 +30,7 @@ This records the 58 findings from the static source audit. **Fixed** means the c
 | LR-024 | Host-transfer error promises unavailable transfer | **Pending** | Implement transfer or remove misleading error |
 | LR-025 | Duplicate group member on multiple personal devices | **Pending** | Identity/recovery plan |
 | LR-026 | iPhone-only copy appears on Android | **Partial** | Reset screen neutralized; full locale audit |
-| LR-027 | Group invite landing page shows only App Store | **Pending** | Platform-aware landing once Play listing is public |
+| LR-027 | Group invite landing page shows only App Store | **Partial** | Platform-aware links implemented; publish only after verified App Store / Play / Galaxy listings are live |
 | LR-028 | Generic group API error messages | **Pending** | Localized actionable error states |
 | LR-029 | Scheduling error suppressed; fallback misses alerts | **Pending P1** | Reliable persisted due job with retry/replay |
 | LR-030 | Concurrent EventBridge due writers race | **Implemented, pending CI** | Serialize read/modify/write with transaction-scoped PostgreSQL advisory lock and same-client lookups |

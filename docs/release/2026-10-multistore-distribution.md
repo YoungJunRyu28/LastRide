@@ -1,0 +1,135 @@
+# LastRide multi-store expansion — implementation and release gates (2026-10-17)
+
+**Status: development-ready, not approved for distribution.** This work is based on draft
+cross-platform hardening PR #40; it does not eliminate that PR's P0 Japanese last-train,
+walking-route, push delivery, database migration, identity/recovery, or Play background-location gates.
+Do not release either store binary or migrate production as part of this work.
+
+## Implemented
+
+- One Expo/React Native project and one backend remain shared across iOS and Android.
+- Google Play uses `EXPO_PUBLIC_ANDROID_STORE=google-play`, package `jp.lastride.app`,
+  and `EXPO_PUBLIC_REVENUECAT_ANDROID_KEY` (existing Play purchases).
+- Galaxy Store uses `EXPO_PUBLIC_ANDROID_STORE=galaxy`, package
+  `jp.lastride.app.galaxy`, `EXPO_PUBLIC_REVENUECAT_GALAXY_KEY`, and the
+  `react-native-purchases-store-galaxy` native addon. The `galaxy` EAS build
+  profile produces a store-ready APK, not a Google Play AAB.
+- The distinct Galaxy package avoids cross-store update/signing collisions when
+  Google Play holds an unavailable Google-generated app-signing key. Galaxy and
+  Play installs are **two Android applications**, sharing the backend and group
+  protocol; premium purchases remain tied to their respective store until a
+  verified user-account and purchase-portability design exists.
+- Release configuration refuses missing HTTPS API, remote push, universal links,
+  Android Maps key, or Galaxy RevenueCat key. A store build cannot use Galaxy TEST billing.
+- `/join/` and `/group-join/`, plus the homepage, offer iOS/Android download links
+  only for **verified public URLs** filled into `site/store-listings.js`.
+  Android links are prioritized on Android; iOS links on iPhone. Invite tokens
+  are never forwarded to a store URL. Unreleased listings have no clickable
+  placeholder link.
+- `scripts/generate-android-assetlinks.mjs` can output *two* Android
+  package/certificate associations when both real SHA-256 fingerprints are supplied.
+
+## Release ownership and key handling
+
+1. Verify **who controls** each Apple, Play, Galaxy, RevenueCat, EAS, domain,
+   backend and signing account before creating public commercial listings.
+   Store accounts, bank payouts, legal publisher name and app IP ownership are
+   separate matters; source-code permissions do not grant company ownership.
+2. Complete existing Play developer verification and register `jp.lastride.app`
+   only after verifying its intended permanent identity and legal publisher.
+   Google Play's **app signing certificate** and upload certificate are different.
+3. Create a Galaxy Store Seller Portal account, obtain Commercial Seller status,
+   and register package `jp.lastride.app.galaxy` (no need to use Play's signature).
+   Give each founder only the roles needed; do not share personal login passwords.
+4. In RevenueCat, add a **Galaxy Store** app to the existing project with the
+   Galaxy package ID and Samsung Seller Portal service-account credentials.
+   Create matching Galaxy monthly/annual products and entitlement mapping.
+   Store the **private** Samsung service-account key *only* in RevenueCat's
+   credential settings, not in a repository, public environment variable, or log.
+5. Configure `EXPO_PUBLIC_REVENUECAT_GALAXY_KEY` in EAS production environment
+   (this is a *public SDK key*, not the Samsung service-account secret).
+   Confirm `EXPO_PUBLIC_REVENUECAT_ANDROID_KEY` remains the Play public SDK key.
+6. Configure Android Google Maps SDK keys **per package and signing cert SHA-1**.
+   The Galaxy package may need an additional restricted key. Validate the
+   actual rendered maps on a Samsung device; a debug build is not proof.
+7. Create separate signing credentials for the Galaxy APK and **back them up**
+   securely. Never commit signing keys to GitHub. For the same-package strategy
+   in future, both stores must use identical signing certs; this branch intentionally
+   avoids that fragile requirement via distinct package IDs.
+
+## Verified app links before users receive invites
+
+- Read Play **app signing certificate SHA-256** from Play Console's App integrity,
+  and Galaxy distribution **signing certificate SHA-256** from the final APK/keystore
+  (not from a debug key or an unverified human transcription).
+- Run from the repo root:
+
+```sh
+ANDROID_PLAY_SIGNING_SHA256='REAL_PLAY_APP_SIGNING_SHA256' \
+ANDROID_GALAXY_SIGNING_SHA256='REAL_GALAXY_APK_SIGNING_SHA256' \
+node scripts/generate-android-assetlinks.mjs
+```
+
+- This writes `site/.well-known/assetlinks.json` for both
+  `jp.lastride.app` and `jp.lastride.app.galaxy`; **don't run with placeholders**.
+- Deploy the static site to `https://lastride.jp` through the authorized
+  hosting process. Verify HTTPS 200 JSON, without redirects, at
+  `/.well-known/assetlinks.json` and
+  `/.well-known/apple-app-site-association`.
+- Verify Android App Links using both **release-signed** APKs on actual devices,
+  including `/join?token=...`, `/group-join?invite=...`, no-app fallback,
+  browser behavior, existing install, and expired/rotated invites.
+- Only after each store listing is truly public, fill in that exact trusted
+  store URL (Google Play: `https://play.google.com/store/apps/details?id=jp.lastride.app`) in `site/store-listings.js`, deploy the site, and retest invitation
+  links. Do not substitute a guessed listing URL.
+
+## Build and testing
+
+```sh
+# Run in the workspace root:
+pnpm install --frozen-lockfile
+node --test scripts/distribution-config.test.mjs scripts/store-downloads.test.mjs \
+  scripts/generate-android-assetlinks.test.mjs
+pnpm run typecheck
+pnpm test
+
+# From artifacts/last-ride after EAS credentials / env setup:
+eas build --platform android --profile production  # Google Play AAB
+eas build --platform android --profile galaxy      # separate Galaxy APK
+eas build --platform ios --profile production
+```
+
+EAS production variables must include HTTPS `EXPO_PUBLIC_API_URL`,
+`EXPO_PUBLIC_APP_JOIN_BASE_URL`, `ENABLE_REMOTE_PUSH=true`,
+`ENABLE_UNIVERSAL_LINKS=true`, `EXPO_ANDROID_GOOGLE_MAPS_API_KEY`,
+and each store's RevenueCat public key. Validate Galaxy IAP with a **physical
+Galaxy handset** logged in to a Samsung account, including purchase, trial,
+cancel, restore, and server entitlement verification.
+
+Before any rollout: a Google Play internal testing review, Galaxy Store closed
+beta, and iOS TestFlight; 2-device cross-platform group tests (join/rejoin,
+notifications, ownership recovery, push token rotation), app links and installs,
+offline/timezone/transit checks, background location disclosures and consent,
+accessibility, database migration-before-code rehearsal, telemetry/rollback.
+
+## Later markets and distributors
+
+- **Uptodown / direct APK**: only use a deliberately compatible and correctly
+  signed billing/distribution variant. Never relabel a Google Play billing
+  binary as a Galaxy IAP build or upload an AAB as an APK.
+- **Huawei AppGallery / Xiaomi GetApps / OPPO / vivo**: each requires separate
+  checks for store policies, billing, Google Mobile Services availability,
+  geocoder/maps/push compatibility, privacy declarations and device coverage.
+  These are follow-on integrations, not automatic publishing targets.
+- **Web**: the site routes users to published iOS/Android listings; it does
+  not currently replace the native app's notifications, navigation or payments.
+
+## Remaining critical blockers (NOT completed here)
+
+1. Actual Play developer verification, listing approval, release signing certificates,
+   Galaxy Seller Portal / RevenueCat service account and Galaxy purchase products.
+2. Real production backend, real train data and street-level walking-route parity.
+3. Physical iOS/Android/Samsung QA, push/APNs/FCM, app links, IAP cross-store identity,
+   migrations and production rollback practice.
+4. Apple/Google/Samsung declarations, publisher identity, tax and payout setup,
+   confirmed store metadata/branding ownership.

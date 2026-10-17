@@ -1,5 +1,7 @@
 // Extends app.json with environment-specific native release settings.
-const RELEASE_PROFILES = ["production", "preview"];
+const RELEASE_PROFILES = ["production", "preview", "galaxy"];
+const STORE_RELEASE_PROFILES = ["production", "galaxy"];
+const ANDROID_STORES = ["google-play", "galaxy"];
 
 function isHttpsUrl(value) {
   try {
@@ -10,6 +12,29 @@ function isHttpsUrl(value) {
 }
 
 module.exports = ({ config }) => {
+  // Select the billing provider at build time; never infer it from the handset.
+  const androidStore = process.env.EXPO_PUBLIC_ANDROID_STORE?.trim() || "google-play";
+  if (!ANDROID_STORES.includes(androidStore)) {
+    throw new Error("EXPO_PUBLIC_ANDROID_STORE must be google-play or galaxy");
+  }
+  const profile = process.env.EAS_BUILD_PROFILE;
+  if (profile === "production" && androidStore !== "google-play") {
+    throw new Error("Google Play production builds must use google-play billing");
+  }
+  if (profile === "galaxy" && androidStore !== "galaxy") {
+    throw new Error("Galaxy builds must use galaxy billing");
+  }
+  if (profile === "galaxy" && process.env.EAS_BUILD_PLATFORM === "ios") {
+    throw new Error("Galaxy Store distribution only supports Android");
+  }
+  if (profile === "galaxy" && !process.env.EXPO_PUBLIC_REVENUECAT_GALAXY_KEY?.trim()) {
+    throw new Error("Galaxy releases require EXPO_PUBLIC_REVENUECAT_GALAXY_KEY");
+  }
+  if (STORE_RELEASE_PROFILES.includes(profile) &&
+      process.env.EXPO_PUBLIC_GALAXY_BILLING_MODE === "TEST") {
+    throw new Error("Store releases cannot use Galaxy test billing");
+  }
+
   const enableRemotePush = process.env.ENABLE_REMOTE_PUSH === "true";
   // Universal/App Links need the associated-domains entitlement, which free
   // (Personal Team) signing rejects, and the join domain must already serve
@@ -46,7 +71,7 @@ module.exports = ({ config }) => {
   // Consumer groups use remote push and verified invite links in production.
   // Don't publish a silently crippled store binary when release flags are
   // missing. Internal preview/free-signing builds remain opt-in.
-  if (process.env.EAS_BUILD_PROFILE === "production") {
+  if (STORE_RELEASE_PROFILES.includes(profile)) {
     if (!enableRemotePush)
       throw new Error('Production builds require ENABLE_REMOTE_PUSH=true');
     if (!enableUniversalLinks)
@@ -128,7 +153,7 @@ module.exports = ({ config }) => {
   if (androidMapsKey && !/^AIza[0-9A-Za-z_-]{35}$/.test(androidMapsKey)) {
     throw new Error('EXPO_ANDROID_GOOGLE_MAPS_API_KEY is not a valid Google Maps Android SDK key');
   }
-  if (process.env.EAS_BUILD_PROFILE === "production" &&
+  if (STORE_RELEASE_PROFILES.includes(profile) &&
       process.env.EAS_BUILD_PLATFORM !== "ios" && !androidMapsKey) {
     throw new Error('Production builds require EXPO_ANDROID_GOOGLE_MAPS_API_KEY');
   }
@@ -136,8 +161,12 @@ module.exports = ({ config }) => {
   const android = {
     ...config.android,
     ...(androidMapsKey ? { config: { ...(config.android?.config || {}), googleMaps: { apiKey: androidMapsKey } } } : {}),
+    // Separate Galaxy identity prevents a Google Play app-signing certificate
+    // from clashing with a separately signed Galaxy APK during updates.
+    // Both apps still talk to the same backend and accept group invite links.
     package:
-      process.env.ANDROID_PACKAGE_ID || config.android?.package,
+      process.env.ANDROID_PACKAGE_ID ||
+      (androidStore === "galaxy" ? `${config.android?.package}.galaxy` : config.android?.package),
     ...(joinUrl
       ? {
           intentFilters: [
@@ -172,6 +201,7 @@ module.exports = ({ config }) => {
     ...(config.extra || {}),
     liveActivityEnabled: enableLiveActivity,
     androidGoogleMapsEnabled: Boolean(androidMapsKey),
+    androidDistributionStore: androidStore,
     ...(easProjectId ? { eas: { projectId: easProjectId } } : {}),
   };
 

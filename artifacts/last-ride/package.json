@@ -73,6 +73,7 @@
     "react": "19.2.3",
     "react-native": "0.86.3",
     "react-native-purchases": "^10.12.2",
+    "react-native-purchases-store-galaxy": "10.12.2",
     "react-native-qrcode-svg": "6.3.26"
   }
 }

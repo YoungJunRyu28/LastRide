@@ -19,3 +19,11 @@ test('uses the actual package name and includes only the verified signing keys',
   assert.equal(links[0].target.sha256_cert_fingerprints.length, 1);
   assert.deepEqual(links[0].relation, ['delegate_permission/common.handle_all_urls']);
 });
+
+test('Galaxy association uses a second package and validated signing fingerprint', () => {
+  const playLinks = generateAssetLinks('jp.lastride.app', [sha]);
+  const galaxyLinks = generateAssetLinks('jp.lastride.app.galaxy', ['B2'.repeat(32)]);
+  assert.notEqual(playLinks[0].target.package_name, galaxyLinks[0].target.package_name);
+  assert.notEqual(playLinks[0].target.sha256_cert_fingerprints[0],
+    galaxyLinks[0].target.sha256_cert_fingerprints[0]);
+});

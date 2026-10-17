@@ -38,10 +38,12 @@
         <h1><span class="line"><span class="mark">終電</span>、</span><span class="line">もう逃さない。</span><span class="line"><span class="accent">帰る時間</span>を、先に。</span></h1>
         <p class="lead">今いる場所から、終電に間に合う「出発時刻」をお知らせします。近くの駅と徒歩時間、通知やアラームでのお知らせ、乗れなかったときの選択肢まで、ひとつのアプリで。</p>
         <div class="actions">
-          <span class="store" aria-disabled="true">
+          <span class="store" aria-disabled="true" data-store-placeholder="appStore">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm0 2v14h10V4H7zm5 15.2a1 1 0 1 0 0 2 1 1 0 0 0 0-2z"/></svg>
             <span><small>iPhone版</small><strong>App Storeで近日公開</strong></span>
           </span>
+          <span class="store" aria-disabled="true" data-store-placeholder="googlePlay"><span><small>Android版</small><strong>Google Playで近日公開</strong></span></span>
+          <div class="store-links" data-store-links data-lang="ja"></div>
           <a class="btn btn-ghost" href="#features">機能を見る</a>
         </div>
         <p class="note">基本機能は無料。プレミアムは14日間無料でお試しいただけます。</p>
@@ -166,7 +168,7 @@
       <div class="faq">
         <details><summary>アカウント登録は必要ですか？</summary><p>不要です。帰り先や設定はiPhoneの中に保存され、移動履歴は残りません。</p></details>
         <details><summary>位置情報はどう使われますか？</summary><p>最寄り駅と徒歩時間を調べるためだけに使います。アプリを閉じている間も使うのは、夜のトラッキングで「閉じても更新」を選んだときだけです。</p></details>
-        <details><summary>Androidには対応していますか？</summary><p>まずはiPhone版を公開予定です。</p></details>
+        <details><summary>Androidには対応していますか？</summary><p>iPhoneとAndroidの両方に対応する予定です。公開後、ページにダウンロード先を表示します。</p></details>
       </div>
       <p class="center" style="margin-top:1.5rem"><a href="/support/">そのほかの質問・お問い合わせ</a></p>
     </div>
@@ -176,13 +178,15 @@
     <div class="container">
       <div class="cta">
         <p class="eyebrow" style="color:#8fa2b8">Download</p>
-        <h2 class="heading"><span class="nw">帰り時を、</span><span class="nw"><span class="mark mark-dark">あなたのiPhoneに。</span></span></h2>
-        <p class="sub">iPhone版をApp Storeで近日公開予定です。</p>
+        <h2 class="heading"><span class="nw">帰り時を、</span><span class="nw"><span class="mark mark-dark">あなたのスマホに。</span></span></h2>
+        <p class="sub">iPhone版・Android版ともに準備中です。</p>
         <div class="actions">
-          <span class="store" aria-disabled="true">
+          <span class="store" aria-disabled="true" data-store-placeholder="appStore">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm0 2v14h10V4H7zm5 15.2a1 1 0 1 0 0 2 1 1 0 0 0 0-2z"/></svg>
             <span><small>iPhone版</small><strong>App Storeで近日公開</strong></span>
           </span>
+          <span class="store" aria-disabled="true" data-store-placeholder="googlePlay"><span><small>Android版</small><strong>Google Playで近日公開</strong></span></span>
+          <div class="store-links" data-store-links data-lang="ja"></div>
           <a class="btn btn-amber" href="mailto:support@lastride.jp">メールでお問い合わせ</a>
         </div>
       </div>
@@ -201,5 +205,7 @@
     <p>© 2026 LastRide（帰り時）· 開発：Nicholas Roberts、YoungJun Ryu</p>
   </div>
 </footer>
+<script src="/store-listings.js"></script>
+<script src="/store-downloads.js"></script>
 </body>
 </html>

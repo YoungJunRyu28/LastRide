@@ -40,6 +40,14 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
   const packageName = process.env.ANDROID_PACKAGE_ID || 'jp.lastride.app';
   const sha256 = process.env.ANDROID_PLAY_SIGNING_SHA256;
   const links = generateAssetLinks(packageName, [sha256]);
+  const galaxySha256 = process.env.ANDROID_GALAXY_SIGNING_SHA256;
+  const galaxyPackage = process.env.ANDROID_GALAXY_PACKAGE_ID || `${packageName}.galaxy`;
+  // Never publish a half-configured association or a fabricated signing key.
+  if (galaxySha256) {
+    if (galaxyPackage === packageName)
+      throw new Error('Galaxy package must differ from Play package unless cross-store signing is explicitly planned');
+    links.push(...generateAssetLinks(galaxyPackage, [galaxySha256]));
+  }
   const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
   const destination = resolve(root, 'site/.well-known/assetlinks.json');
   mkdirSync(dirname(destination), { recursive: true });

@@ -10,6 +10,15 @@ Default native application IDs:
 Local developers can override them with `IOS_BUNDLE_ID` and
 `ANDROID_PACKAGE_ID`.
 
+## Multi-store distribution
+
+A separate `galaxy` EAS profile builds the Samsung Galaxy Store APK with
+Galaxy-specific RevenueCat billing and the package `jp.lastride.app.galaxy`.
+This deliberately avoids Google Play app-signing certificate conflicts.
+**Do not upload the Google Play AAB or Google-billing APK to Galaxy Store.**
+See `docs/release/2026-10-multistore-distribution.md` for credentials,
+real certificate-based app links, signed-device tests and outstanding release gates.
+
 ## Internal Android testing
 
 The `preview` EAS profile produces an installable APK:

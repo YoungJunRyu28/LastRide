@@ -38,10 +38,12 @@
         <h1><span class="line">Never miss</span><span class="line">the <span class="mark">last train</span></span><span class="line"><span class="accent">home</span> again.</span></h1>
         <p class="lead">LastRide tells you exactly when to leave wherever you are in Japan to catch the last train home — with the nearest station and walk, reminders and alarms, and a plan B if you miss it.</p>
         <div class="actions">
-          <span class="store" aria-disabled="true">
+          <span class="store" aria-disabled="true" data-store-placeholder="appStore">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm0 2v14h10V4H7zm5 15.2a1 1 0 1 0 0 2 1 1 0 0 0 0-2z"/></svg>
             <span><small>For iPhone</small><strong>Coming soon to the App Store</strong></span>
           </span>
+          <span class="store" aria-disabled="true" data-store-placeholder="googlePlay"><span><small>For Android</small><strong>Coming soon to Google Play</strong></span></span>
+          <div class="store-links" data-store-links data-lang="en"></div>
           <a class="btn btn-ghost" href="#features">See features</a>
         </div>
         <p class="note">Free to use. Try Premium free for 14 days.</p>
@@ -167,7 +169,7 @@
         <details><summary>Do I need an account?</summary><p>No. Your destinations and settings stay on your iPhone, and no movement history is kept.</p></details>
         <details><summary>How is my location used?</summary><p>Only to find the nearest station and walking time. It’s used while the app is closed only if you choose “When closed” for night tracking.</p></details>
         <details><summary>Is the app in English?</summary><p>Yes. LastRide works in English and Japanese — switch any time in Settings.</p></details>
-        <details><summary>Is there an Android version?</summary><p>The iPhone version comes first.</p></details>
+        <details><summary>Is there an Android version?</summary><p>We are preparing both iOS and Android releases. Download links will appear when each store listing is public.</p></details>
       </div>
       <p class="center" style="margin-top:1.5rem"><a href="/en/support/">More questions and contact</a></p>
     </div>
@@ -177,13 +179,15 @@
     <div class="container">
       <div class="cta">
         <p class="eyebrow" style="color:#8fa2b8">Download</p>
-        <h2 class="heading"><span class="nw">Get LastRide</span> <span class="nw"><span class="mark mark-dark">on your iPhone.</span></span></h2>
-        <p class="sub">Coming soon to the App Store.</p>
+        <h2 class="heading"><span class="nw">Get LastRide</span> <span class="nw"><span class="mark mark-dark">on your phone.</span></span></h2>
+        <p class="sub">iOS and Android releases are in preparation.</p>
         <div class="actions">
-          <span class="store" aria-disabled="true">
+          <span class="store" aria-disabled="true" data-store-placeholder="appStore">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm0 2v14h10V4H7zm5 15.2a1 1 0 1 0 0 2 1 1 0 0 0 0-2z"/></svg>
             <span><small>For iPhone</small><strong>Coming soon to the App Store</strong></span>
           </span>
+          <span class="store" aria-disabled="true" data-store-placeholder="googlePlay"><span><small>For Android</small><strong>Coming soon to Google Play</strong></span></span>
+          <div class="store-links" data-store-links data-lang="en"></div>
           <a class="btn btn-amber" href="mailto:support@lastride.jp">Email us</a>
         </div>
       </div>
@@ -202,5 +206,7 @@
     <p>© 2026 LastRide · Made by Nicholas Roberts and YoungJun Ryu</p>
   </div>
 </footer>
+<script src="/store-listings.js"></script>
+<script src="/store-downloads.js"></script>
 </body>
 </html>

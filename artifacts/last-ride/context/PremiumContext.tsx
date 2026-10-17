@@ -12,6 +12,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { Platform } from 'react-native';
 import Purchases, { type CustomerInfo, type PurchasesPackage } from 'react-native-purchases';
+import { GALAXY_BILLING_MODE } from 'react-native-purchases-store-galaxy';
 import { writePremiumCache } from '@/lib/premiumCache';
 import { isTestFlightBuild } from '@/modules/last-ride-alarm/src';
 
@@ -23,11 +24,16 @@ const TEST_PREMIUM_KEY = 'lastride-test-premium';
 const TESTFLIGHT_PREMIUM_KEY = 'lastride-testflight-premium';
 const TEST_USER_KEY = 'lastride-test-user-id';
 
+// Store selection is part of the signed build, NOT a property of the Android
+// device. A Galaxy handset can install Google Play apps and vice versa.
+const galaxyDistribution = Platform.OS === 'android' && process.env.EXPO_PUBLIC_ANDROID_STORE === 'galaxy';
 const apiKey =
   Platform.OS === 'ios'
     ? process.env.EXPO_PUBLIC_REVENUECAT_IOS_KEY
     : Platform.OS === 'android'
-      ? process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_KEY
+      ? galaxyDistribution
+        ? process.env.EXPO_PUBLIC_REVENUECAT_GALAXY_KEY
+        : process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_KEY
       : undefined;
 
 /** True when real purchases go through RevenueCat. */
@@ -106,7 +112,19 @@ export function PremiumProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     let active = true;
-    Purchases.configure({ apiKey });
+    if (galaxyDistribution) {
+      // A real Galaxy Store app / Samsung IAP catalogue is required; a Google
+      // Play RevenueCat API key must never be used with Galaxy billing.
+      Purchases.configure({
+        apiKey,
+        store: 'GALAXY',
+        galaxyBillingMode: process.env.EXPO_PUBLIC_GALAXY_BILLING_MODE === 'TEST'
+          ? GALAXY_BILLING_MODE.TEST
+          : GALAXY_BILLING_MODE.PRODUCTION,
+      });
+    } else {
+      Purchases.configure({ apiKey });
+    }
     const listener = (info: CustomerInfo) => {
       if (active) setIsPremium(hasEntitlement(info));
     };
