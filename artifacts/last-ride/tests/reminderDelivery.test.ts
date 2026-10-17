@@ -77,14 +77,15 @@ describe('reminder delivery', () => {
     expect((await readSettings()).alarmIntervals).toEqual([]);
   });
 
-  it('schedules AlarmKit alarms for alarm times with the chosen sound and a localised Stop button', async () => {
+  it('schedules AlarmKit alarms for alarm times with Apple\'s alarm sound (whatever tone is chosen) and a localised Stop button', async () => {
     const now = Date.now();
     await scheduleReminders([
       { minutesBefore: 5, fireAt: now + 120000 },
       { minutesBefore: 0, fireAt: now + 180000, alarm: true },
     ], text, { sound: 'chime', vibrate: true });
     expect(mocks.alarmSchedule).toHaveBeenCalledOnce();
-    expect(mocks.alarmSchedule.mock.calls[0].slice(3)).toEqual(['chime', '停止']);
+    // Only Apple's alarm sound rings through silent mode, so a chosen tone isn't used for real alarms.
+    expect(mocks.alarmSchedule.mock.calls[0].slice(3)).toEqual(['default', '停止']);
     // The 5-minute notification, plus a silent companion for the alarm that keeps its details.
     expect(mocks.notificationSchedule).toHaveBeenCalledTimes(2);
     const [reminder, companion] = (mocks.notificationSchedule.mock.calls as unknown as [{ content: Record<string, unknown> }][]).map(([request]) => request.content);

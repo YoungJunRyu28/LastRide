@@ -1,11 +1,10 @@
 import { Notice } from '@/components/RideUI';
-import { Section, SettingsPage, soundLabel, useAlarmStatus } from '@/components/SettingsUI';
+import { Section, SettingsPage, useAlarmStatus } from '@/components/SettingsUI';
 import { Chip, Divider, Row, SectionLabel } from '@/components/ui';
 import { REMINDER_CHOICES, useLastRide } from '@/context/LastRideContext';
 import { useColors } from '@/hooks/useColors';
-import { alarmKitAvailable, effectiveAlarmSound, iosMajorVersion, requestAlarmAuthorization, sendTestAlarm } from '@/lib/notifications';
+import { alarmKitAvailable, iosMajorVersion, requestAlarmAuthorization, sendTestAlarm } from '@/lib/notifications';
 import { reminderLabel } from '@/lib/settings';
-import { router } from 'expo-router';
 import React from 'react';
 import { Alert, Linking, Platform, StyleSheet, Text, View } from 'react-native';
 
@@ -15,7 +14,7 @@ export default function ReminderSettingsScreen() {
   const {
     language, trackingMode,
     reminderIntervals, toggleReminderInterval, alarmsEnabled, setAlarmsEnabled, alarmIntervals, toggleAlarmInterval,
-    alarmSound, reminderVibrate, setReminderVibrate, notificationsAllowed,
+    reminderVibrate, setReminderVibrate, notificationsAllowed,
     missedCheckIn, setMissedCheckIn,
   } = useLastRide();
   const [alarmStatus, setAlarmStatus] = useAlarmStatus(alarmsEnabled);
@@ -42,7 +41,7 @@ export default function ReminderSettingsScreen() {
   const testAlarm = async () => {
     const status = await requestAlarmAuthorization().catch(() => 'denied');
     setAlarmStatus(status);
-    const sent = status === 'authorized' && (await sendTestAlarm(language ?? 'en', alarmSound).catch(() => false));
+    const sent = status === 'authorized' && (await sendTestAlarm(language ?? 'en').catch(() => false));
     if (!sent) alarmsNotAllowed();
   };
 
@@ -149,11 +148,11 @@ export default function ReminderSettingsScreen() {
                 ))}
               </View>
               <Divider />
+              {/* Real alarms: only Apple's alarm sound rings through silent mode, so no choice. */}
               <Row
-                testID="open-alarm-sound"
+                testID="alarm-sound-fixed"
                 title={ja ? '音' : 'Sound'}
-                value={soundLabel(effectiveAlarmSound(alarmSound), ja)}
-                onPress={() => router.push('/settings/sound')}
+                subtitle={ja ? 'iOS標準のアラーム音 · マナーモードでも鳴ります' : 'iOS alarm sound · rings even in silent mode'}
               />
               {alarmKitAvailable && (
                 <>

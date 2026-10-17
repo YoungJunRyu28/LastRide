@@ -1,9 +1,8 @@
 import { OnboardingFrame, OnboardingHeading, SETUP_STEPS } from '@/components/Onboarding';
-import { soundLabel } from '@/components/SettingsUI';
 import { Card, Chip, PrimaryButton, Row, TextButton } from '@/components/ui';
 import { REMINDER_CHOICES, useLastRide } from '@/context/LastRideContext';
 import { useColors } from '@/hooks/useColors';
-import { ALARM_SOUND_CHOICES, alarmKitAvailable, effectiveAlarmSound, iosMajorVersion, previewSound, requestAlarmAuthorization } from '@/lib/notifications';
+import { alarmKitAvailable, iosMajorVersion, requestAlarmAuthorization } from '@/lib/notifications';
 import { reminderLabel } from '@/lib/settings';
 import { router } from 'expo-router';
 import React, { useState } from 'react';
@@ -17,7 +16,7 @@ import { StyleSheet, Text, View } from 'react-native';
  */
 export default function OnboardingAlarmsScreen() {
   const colors = useColors();
-  const { language, alarmsEnabled, setAlarmsEnabled, alarmIntervals, toggleAlarmInterval, alarmSound, setAlarmSound } = useLastRide();
+  const { language, alarmsEnabled, setAlarmsEnabled, alarmIntervals, toggleAlarmInterval } = useLastRide();
   const ja = language === 'ja';
   const [asking, setAsking] = useState(false);
   const next = () => router.replace('/onboarding-margin');
@@ -113,24 +112,11 @@ export default function OnboardingAlarmsScreen() {
               </View>
 
               <View style={styles.section}>
-                <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-                  {ja ? '音' : 'Sound'}
-                  <Text style={[styles.sectionHint, { color: colors.mutedForeground }]}>{ja ? '（タップで試聴）' : '  (tap to hear)'}</Text>
+                <Text style={[styles.sectionTitle, { color: colors.foreground }]}>{ja ? '音' : 'Sound'}</Text>
+                {/* Only Apple's alarm sound rings through silent mode, so there's no choice. */}
+                <Text style={[styles.sectionHint, { color: colors.mutedForeground }]}>
+                  {ja ? 'iOS標準のアラーム音 · マナーモードでも鳴ります' : 'iOS alarm sound · rings even in silent mode'}
                 </Text>
-                <View style={styles.chips}>
-                  {ALARM_SOUND_CHOICES.map((sound) => (
-                    <Chip
-                      key={sound}
-                      testID={`alarm-sound-${sound}`}
-                      label={soundLabel(sound, ja)}
-                      selected={effectiveAlarmSound(alarmSound) === sound}
-                      onPress={() => {
-                        setAlarmSound(sound);
-                        previewSound(sound).catch(() => undefined);
-                      }}
-                    />
-                  ))}
-                </View>
               </View>
             </>
           )}

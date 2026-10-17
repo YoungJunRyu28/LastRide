@@ -264,7 +264,7 @@ function newAlarmId(): string {
 
 /**
  * Replaces all reminders for a tracking plan (fire times are real epoch ms).
- * Plans marked `alarm` become AlarmKit alarms on iOS 26+ when allowed; otherwise
+ * Plans marked `alarm` become AlarmKit alarms (iOS alarm sound) on iOS 26+ when allowed; otherwise
  * a time-sensitive notification with the chosen tone stands in for them.
  * Skips the work when the same set is already scheduled, so frequent location
  * updates from the app and the background task don't churn the OS schedule.
@@ -385,7 +385,9 @@ export function scheduleReminders(
       const target = plan.missedCheckIn ? '/alternatives' : '/ride';
       if (plan.alarm && alarmAuthorization === 'authorized' && plan.fireAt > Date.now() + 1000) {
         try {
-          await alarmKit.schedule(newAlarmId(), plan.fireAt, title, sound, stopLabel(language));
+          // Always Apple's alarm sound: only it rings through silent mode and a muted
+          // ringer; a bundled tone doesn't (tested on iOS 26).
+          await alarmKit.schedule(newAlarmId(), plan.fireAt, title, 'default', stopLabel(language));
           // The alarm rings; a silent notification keeps the details (station, times)
           // in Notification Center once it's stopped, and opens the app when tapped.
           await present(title, body, plan.fireAt, target, false, null, false, true);
@@ -412,10 +414,10 @@ function stopLabel(language: 'ja' | 'en'): string {
 export const TEST_ALARM_DELAY_MS = 5000;
 
 /** Schedules a real system alarm a few seconds ahead with `sound`; false when alarms aren't allowed. */
-export async function sendTestAlarm(language: 'ja' | 'en', sound: ReminderSound): Promise<boolean> {
+export async function sendTestAlarm(language: 'ja' | 'en'): Promise<boolean> {
   if (!alarmKitAvailable || (await alarmKit.status()) !== 'authorized') return false;
   await alarmKit.schedule(newAlarmId(), Date.now() + TEST_ALARM_DELAY_MS,
-    language === 'ja' ? 'LastRide — アラームのテスト' : 'LastRide — alarm test', sound, stopLabel(language));
+    language === 'ja' ? 'LastRide — アラームのテスト' : 'LastRide — alarm test', 'default', stopLabel(language));
   return true;
 }
 
