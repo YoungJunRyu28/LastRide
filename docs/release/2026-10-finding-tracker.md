@@ -33,7 +33,7 @@ This records the 58 findings from the static source audit. **Fixed** means the c
 | LR-027 | Group invite landing page shows only App Store | **Pending** | Platform-aware landing once Play listing is public |
 | LR-028 | Generic group API error messages | **Pending** | Localized actionable error states |
 | LR-029 | Scheduling error suppressed; fallback misses alerts | **Pending P1** | Reliable persisted due job with retry/replay |
-| LR-030 | Concurrent EventBridge due writers race | **Pending P1** | CAS/leases + monotonic earliest due |
+| LR-030 | Concurrent EventBridge due writers race | **Implemented, pending CI** | Serialize read/modify/write with transaction-scoped PostgreSQL advisory lock and same-client lookups |
 | LR-031 | Group Expo push receipts unreconciled | **Implemented, pending CI** | Group Expo receipts reconciled; verify APNs/FCM delivery and receipt retention |
 | LR-032 | Motionless background task not guaranteed by OS | **Pending** | Local alarms and foreground recovery |
 | LR-033 | One destination request failure discards good routes | **Fixed in source** | Provider failure chaos/integration test |

@@ -850,8 +850,8 @@ export async function groupMemberIdForToken(
  * night that hasn't ended (one still inside the grace period counts as due now).
  * Same conditions as claimDueGroupLeaveAlerts, without the "already due" bound.
  */
-export async function nextGroupLeaveAlertAt(now = new Date()): Promise<Date | null> {
-  const db = getDb();
+export async function nextGroupLeaveAlertAt(now = new Date(), tx?: Tx): Promise<Date | null> {
+  const db = tx ?? getDb();
   const lowerBound = new Date(now.getTime() - GROUP_LEAVE_ALERT_GRACE_MS);
   const [row] = await db
     .select({ next: min(groupNightParticipantsTable.leaveBy) })

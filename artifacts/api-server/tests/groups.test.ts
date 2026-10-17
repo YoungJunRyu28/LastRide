@@ -45,6 +45,7 @@ import { nightWindow, serviceDateFor } from "../src/lib/groupNight";
 import { clearEntitlementCache } from "../src/lib/revenueCat";
 import { dispatchGroupLeaveAlerts } from "../src/lib/groupNotifications";
 import { claimGroupDeliveryBatch, nextGroupOutboxRetryAt, settleGroupDelivery } from "../src/lib/groupAlertOutbox";
+import { withLeaveScheduleLock } from "../src/lib/leaveAlertSchedule";
 import app from "../src/app";
 
 /**
@@ -715,6 +716,29 @@ describe("tonight", () => {
     await updateGroupMembershipRecord(groupId, members[1].token, { leaveTimeAlerts: false });
     const delivery = await claimGroupDeliveryBatch(dueAt);
     expect(delivery.map((d) => d.recipientMemberId)).toEqual([host.id]);
+  });
+
+  it("serializes two independent schedule writers using a PostgreSQL advisory lock", async () => {
+    const entered: string[] = [];
+    let unblockFirst!: () => void;
+    let announceFirst!: () => void;
+    const firstStarted = new Promise<void>((resolve) => { announceFirst = resolve; });
+    const firstBlocked = new Promise<void>((resolve) => { unblockFirst = resolve; });
+    const first = withLeaveScheduleLock(async () => {
+      entered.push("first");
+      announceFirst();
+      await firstBlocked;
+    });
+    await firstStarted;
+    const second = withLeaveScheduleLock(async () => {
+      entered.push("second");
+    });
+    // The second writer cannot modify EventBridge while the first holds
+    // the transaction-scoped lock. Releasing the first also releases its lock.
+    expect(entered).toEqual(["first"]);
+    unblockFirst();
+    await Promise.all([first, second]);
+    expect(entered).toEqual(["first", "second"]);
   });
 
   it("does not send stale leave-time alerts", async () => {

@@ -22,6 +22,8 @@ const RETRY_START_MS = 30_000;
 const RECEIPT_DELAY_MS = 15 * 60_000;
 const RECEIPT_BATCH_SIZE = 100;
 
+type Db = ReturnType<typeof getDb>;
+type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 const recipientMember = alias(groupMembersTable, "recipient_member");
 
 export type PendingGroupDelivery = {
@@ -124,8 +126,8 @@ export async function settleGroupDelivery(
 }
 
 /** An earlier scheduled job cannot be forgotten after a crash. */
-export async function nextGroupOutboxRetryAt(now = new Date()): Promise<Date | null> {
-  const db = getDb();
+export async function nextGroupOutboxRetryAt(now = new Date(), tx?: Tx): Promise<Date | null> {
+  const db = tx ?? getDb();
   const [row] = await db.select({
     next: min(sql<Date>`greatest(${groupAlertDeliveriesTable.nextAttemptAt},
       coalesce(${groupAlertDeliveriesTable.leaseExpiresAt}, ${groupAlertDeliveriesTable.nextAttemptAt}))`),

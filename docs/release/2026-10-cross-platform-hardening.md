@@ -110,3 +110,6 @@ The personal GitHub account can write repository files but lacks OAuth `workflow
 
 ### Phase B group UI recovery
 Group list and group detail now re-fetch the latest server state when focused, and support native pull-to-refresh. This avoids polling every connected device continuously but does **not** make dropped silent pushes impossible; visible screens may remain stale until manually refreshed. Tests also cover changed leave times and notification opt-out after an alert has been queued.
+
+### Phase B concurrent schedule update protection
+One-time EventBridge schedule read/modify/write now happens while holding a transaction-scoped PostgreSQL advisory lock (key `472281, 7310`), so two Lambda instances cannot concurrently overwrite a newly advanced schedule. Both departure-time and retry-time lookups use the **same transaction client** to avoid pool exhaustion/deadlock at the production pool size of two. An integration regression starts overlapping lock holders and verifies serialized execution. Network/AWS failures can still prevent the external schedule from updating; the fallback EventBridge check remains mandatory and monitoring still needs to be added.
