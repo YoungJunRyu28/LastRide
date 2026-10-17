@@ -19,6 +19,7 @@ import { checkPremiumEntitlement } from "../lib/revenueCat";
 import { notifyGroupUpdated, sendGroupPush } from "../lib/groupNotifications";
 import {
   createGroupRecord,
+  recoverCreatedGroupRecord,
   disbandGroupRecord,
   endGroupTonightRecord,
   getGroupDetailRecord,
@@ -111,6 +112,7 @@ function sendDetail(res: Response, group: GroupDetail, status = 200) {
 router.post("/groups", createLimiter, async (req, res) => {
   const header = CreateGroupHeader.safeParse({
     "X-RevenueCat-App-User-Id": req.header("x-revenuecat-app-user-id"),
+    "X-Group-Create-Key": req.header("x-group-create-key") ?? undefined,
   });
   if (!header.success) {
     res.status(400).json({ error: "RevenueCat app user id required" });
@@ -120,6 +122,21 @@ router.post("/groups", createLimiter, async (req, res) => {
   if (!body.success) {
     res.status(400).json({ error: "Invalid group", issues: body.error.issues });
     return;
+  }
+
+  const creationKey = req.header("x-group-create-key");
+  if (creationKey !== undefined && !/^[a-f0-9]{64}$/i.test(creationKey)) {
+    res.status(400).json({ error: "Invalid group creation key" });
+    return;
+  }
+  if (creationKey) {
+    const recovered = await recoverCreatedGroupRecord(creationKey);
+    if (recovered) {
+      res.status(200).json(CreateGroupResponse.parse({
+        memberToken: recovered.memberToken, group: recovered.group,
+      }));
+      return;
+    }
   }
 
   const entitlement = await checkPremiumEntitlement(
@@ -134,12 +151,12 @@ router.post("/groups", createLimiter, async (req, res) => {
     return;
   }
 
-  const result = await createGroupRecord(body.data);
+  const result = await createGroupRecord(body.data, creationKey);
   if (result.kind === "invalid") {
     res.status(400).json({ error: "Group and display names cannot be blank" });
     return;
   }
-  res.status(201).json(
+  res.status(result.kind === "replayed" ? 200 : 201).json(
     CreateGroupResponse.parse({
       memberToken: result.memberToken,
       group: result.group,

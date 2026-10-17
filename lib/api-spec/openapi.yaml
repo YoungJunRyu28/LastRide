@@ -517,12 +517,18 @@ paths:
       summary: Create a persistent group (requires the premium entitlement)
       parameters:
         - $ref: "#/components/parameters/RevenueCatAppUserId"
+        - $ref: "#/components/parameters/GroupCreateKey"
       requestBody:
         required: true
         content:
           application/json:
             schema: { $ref: "#/components/schemas/CreateGroupRequest" }
       responses:
+        "200":
+          description: An earlier creation with the same high-entropy key was recovered; host capability is unchanged
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GroupSession" }
         "201":
           description: Group created; the caller is its host
           content:
@@ -775,6 +781,12 @@ components:
       in: header
       required: true
       schema: { type: string, minLength: 32, maxLength: 256 }
+    GroupCreateKey:
+      name: X-Group-Create-Key
+      in: header
+      required: false
+      description: Device-generated 256-bit hexadecimal creation capability, retained across failed POST retries
+      schema: { type: string, pattern: "^[a-fA-F0-9]{64}$", minLength: 64, maxLength: 64 }
     RevenueCatAppUserId:
       name: X-RevenueCat-App-User-Id
       in: header

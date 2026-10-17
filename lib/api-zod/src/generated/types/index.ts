@@ -33,6 +33,7 @@ export * from './getTaxiEstimateParams';
 export * from './getTrainDisruptionsParams';
 export * from './getWalkRoutePace';
 export * from './getWalkRouteParams';
+export * from './groupCreateKeyParameter';
 export * from './groupDetail';
 export * from './groupInvite';
 export * from './groupLanguage';

@@ -23,6 +23,7 @@ import {
 } from "@workspace/db";
 import {
   createGroupRecord,
+  recoverCreatedGroupRecord,
   disbandGroupRecord,
   endGroupTonightRecord,
   getGroupDetailRecord,
@@ -125,6 +126,34 @@ describe("group creation and joining", () => {
       .from(groupMembersTable)
       .where(eq(groupMembersTable.groupId, created.group.id));
     expect(member.memberTokenHash).not.toBe(created.memberToken);
+  });
+
+  it("same creation key recovers exactly one host after a lost response", async () => {
+    const creationKey = "c1".repeat(32);
+    const input = { name: "Friends", displayName: "Alice", language: "en" as const };
+    const first = await createGroupRecord(input, creationKey);
+    expect(first.kind).toBe("created");
+    if (first.kind !== "created") return;
+    expect(first.memberToken).toBe(creationKey);
+    const replay = await createGroupRecord(input, creationKey);
+    expect(replay.kind).toBe("replayed");
+    if (replay.kind !== "replayed") return;
+    expect(replay.group.id).toBe(first.group.id);
+    expect(replay.memberToken).toBe(first.memberToken);
+    expect(replay.group.me.role).toBe("host");
+    expect((await getDb().select().from(groupsTable))).toHaveLength(1);
+    expect((await getDb().select().from(groupMembersTable))).toHaveLength(1);
+    expect(await recoverCreatedGroupRecord("c2".repeat(32))).toBeNull();
+  });
+
+  it("concurrent create requests with the same key never create duplicate hosts", async () => {
+    const creationKey = "e5".repeat(32);
+    const input = { name: "Friends", displayName: "Alice" };
+    const results = await Promise.all(Array.from({ length: 8 }, () => createGroupRecord(input, creationKey)));
+    expect(results.filter((result) => result.kind === "created")).toHaveLength(1);
+    expect(new Set(results.map((result) => result.kind !== "invalid" ? result.group.id : "invalid")).size).toBe(1);
+    expect(await getDb().select().from(groupsTable)).toHaveLength(1);
+    expect(await getDb().select().from(groupMembersTable)).toHaveLength(1);
   });
 
   it("joins by short join code, case- and dash-insensitively", async () => {
@@ -871,6 +900,31 @@ describe("groups HTTP routes", () => {
     expect(session.memberToken.length).toBeGreaterThanOrEqual(32);
     expect(session.group.me.role).toBe("host");
     expect(session.group.invite.joinCode).toHaveLength(8);
+  });
+
+  it("HTTP retry recovers a paid host even if premium expires after the first accepted request", async () => {
+    const key = "a4".repeat(32);
+    const headers = { "X-RevenueCat-App-User-Id": "paid-user", "X-Group-Create-Key": key };
+    const created = await call("POST", "/groups", { body: createBody, headers });
+    expect(created.status).toBe(201);
+    const first = (await created.json()) as { memberToken: string; group: { id: string } };
+    expect(first.memberToken).toBe(key);
+    premium = false;
+    clearEntitlementCache();
+    const recovered = await call("POST", "/groups", { body: createBody, headers });
+    expect(recovered.status).toBe(200);
+    const replay = (await recovered.json()) as { memberToken: string; group: { id: string } };
+    expect(replay.memberToken).toBe(first.memberToken);
+    expect(replay.group.id).toBe(first.group.id);
+    expect(await getDb().select().from(groupsTable)).toHaveLength(1);
+    expect((await call("POST", "/groups", {
+      body: createBody,
+      headers: { "X-RevenueCat-App-User-Id": "paid-user", "X-Group-Create-Key": "not-a-valid-key" },
+    })).status).toBe(400);
+    expect((await call("POST", "/groups", {
+      body: createBody,
+      headers: { "X-RevenueCat-App-User-Id": "paid-user", "X-Group-Create-Key": "b5".repeat(32) },
+    })).status).toBe(402);
   });
 
   it("reset as host over HTTP disbands the group", async () => {

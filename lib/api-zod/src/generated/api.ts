@@ -673,10 +673,16 @@ export const LeaveEnterpriseEventResponse = zod.void()
  */
 export const createGroupHeaderXRevenueCatAppUserIdMax = 200;
 
+export const createGroupHeaderXGroupCreateKeyMin = 64;
+export const createGroupHeaderXGroupCreateKeyMax = 64;
+
+
+export const createGroupHeaderXGroupCreateKeyRegExp = new RegExp('^[a-fA-F0-9]{64}$');
 
 
 export const CreateGroupHeader = zod.object({
-  "X-RevenueCat-App-User-Id": zod.string().min(1).max(createGroupHeaderXRevenueCatAppUserIdMax)
+  "X-RevenueCat-App-User-Id": zod.string().min(1).max(createGroupHeaderXRevenueCatAppUserIdMax),
+  "X-Group-Create-Key": zod.string().min(createGroupHeaderXGroupCreateKeyMin).max(createGroupHeaderXGroupCreateKeyMax).regex(createGroupHeaderXGroupCreateKeyRegExp).optional().describe('Device-generated 256-bit hexadecimal creation capability, retained across failed POST retries')
 })
 
 export const createGroupBodyNameMax = 80;

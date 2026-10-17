@@ -29,6 +29,7 @@ import {
   type GroupMembership,
 } from "@/lib/groupMemberships";
 import { clearSharing, markSharing, stopSharing } from "@/lib/groupSharing";
+import { prepareGroupCreation, readPendingGroupCreation, finishGroupCreation } from "@/lib/pendingGroupCreation";
 import { GroupRefreshGuard } from "@/lib/groupRefreshGuard";
 import { onGroupUpdated, startGroupUpdates } from "@/lib/groupUpdates";
 import { expoPushToken } from "@/lib/pushToken";
@@ -124,6 +125,9 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const leaveAll = useCallback(async () => {
+    // An in-flight POST may already have created a host whose response never
+    // arrived. Prevent reset from hiding its only recovery credential.
+    if (await readPendingGroupCreation()) throw new Error("PENDING_GROUP_CREATION");
     const list = await readMemberships();
     await Promise.all(
       list.map(async (membership) => {
@@ -273,17 +277,53 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
     [apply],
   );
 
+  /**
+   * The creation capability is written before network I/O, and cleared only
+   * after the returned host membership was durably written on this device.
+   * A timeout, force-kill or response-loss cannot generate a second host.
+   */
+  const resumePendingCreation = useCallback(async () => {
+    const pending = await readPendingGroupCreation();
+    if (!pending) return null;
+    const session = await createGroup(
+      { name: pending.name, displayName: pending.displayName, language: pending.language },
+      { headers: {
+        "X-RevenueCat-App-User-Id": await appUserId(),
+        "X-Group-Create-Key": pending.creationKey,
+      } },
+    );
+    await remember(session.memberToken, session.group, pending.displayName);
+    await finishGroupCreation(pending.creationKey);
+    return session.group;
+  }, [appUserId, remember]);
+
   const create = useCallback(
     async (name: string, displayName: string) => {
+      const pending = await prepareGroupCreation(name, displayName, language ?? "ja");
       const session = await createGroup(
-        { name, displayName, language: language ?? "ja" },
-        { headers: { "X-RevenueCat-App-User-Id": await appUserId() } },
+        { name: pending.name, displayName: pending.displayName, language: pending.language },
+        { headers: {
+          "X-RevenueCat-App-User-Id": await appUserId(),
+          "X-Group-Create-Key": pending.creationKey,
+        } },
       );
-      await remember(session.memberToken, session.group, displayName);
+      await remember(session.memberToken, session.group, pending.displayName);
+      await finishGroupCreation(pending.creationKey);
       return session.group;
     },
     [appUserId, language, remember],
   );
+
+  // Restore a creation interrupted between the server's DB commit and the
+  // device's membership write. Never delete pending credentials on a 402/503.
+  const pendingRecoveryRunning = useRef(false);
+  useEffect(() => {
+    if (!isHydrated || !available || pendingRecoveryRunning.current) return;
+    pendingRecoveryRunning.current = true;
+    void resumePendingCreation().catch(() => undefined).finally(() => {
+      pendingRecoveryRunning.current = false;
+    });
+  }, [isHydrated, available, resumePendingCreation]);
 
   const join = useCallback(
     async (input: { inviteToken?: string; joinCode?: string; displayName: string }) => {

@@ -475,6 +475,11 @@ export interface HealthStatus {
 
 export type MemberTokenParameter = string;
 
+/**
+ * Device-generated 256-bit hexadecimal creation capability, retained across failed POST retries
+ */
+export type GroupCreateKeyParameter = string;
+
 export type RevenueCatAppUserIdParameter = string;
 
 export type ParticipantTokenParameter = string;

@@ -300,25 +300,61 @@ async function loadDetail(
 // Create / join
 // ---------------------------------------------------------------------------
 
+/**
+ * A creation capability is generated on the client BEFORE the first request.
+ * It also serves as the host's token, allowing recovery after response loss
+ * without storing a plaintext secret on the server. Lookup is restricted to
+ * the matching current host token so revoked/rotated hosts cannot recover.
+ */
+export async function recoverCreatedGroupRecord(creationToken: string) {
+  const hash = hashCapability(creationToken);
+  return getDb().transaction(async (tx) => {
+    const [row] = await tx.select({ group: groupsTable, member: groupMembersTable })
+      .from(groupsTable)
+      .innerJoin(groupMembersTable, and(
+        eq(groupMembersTable.groupId, groupsTable.id),
+        eq(groupMembersTable.role, "host"),
+        eq(groupMembersTable.memberTokenHash, hash),
+      ))
+      .where(eq(groupsTable.creationKeyHash, hash))
+      .limit(1);
+    if (!row) return null;
+    return {
+      kind: "replayed" as const,
+      memberToken: creationToken,
+      group: await loadDetail(tx, row.group.id, row.member.id),
+    };
+  });
+}
+
 export async function createGroupRecord(input: {
   name: string;
   displayName: string;
   language?: GroupLanguage;
-}) {
+}, creationToken?: string) {
   const name = cleanName(input.name);
   const displayName = cleanName(input.displayName);
   if (!name || !displayName) return { kind: "invalid" as const };
 
-  return withCredentialRetry(() =>
+  // Read the existing host first; a lost response can be retried without a
+  // second Premium check when the very same high-entropy capability is held.
+  if (creationToken) {
+    const existing = await recoverCreatedGroupRecord(creationToken);
+    if (existing) return existing;
+  }
+  try {
+  return await withCredentialRetry(() =>
     getDb().transaction(async (tx) => {
       const now = new Date();
       const invite = newInvite();
-      const memberToken = createCapabilityToken();
+      const memberToken = creationToken ?? createCapabilityToken();
       // Id generated up front so the invite ciphertext can be bound to it.
       const group = { id: randomUUID() };
       await tx
         .insert(groupsTable)
-        .values({ id: group.id, name, ...inviteColumns(group.id, invite, now) });
+        .values({ id: group.id, name,
+          ...(creationToken ? { creationKeyHash: hashCapability(creationToken) } : {}),
+          ...inviteColumns(group.id, invite, now) });
       const [member] = await tx
         .insert(groupMembersTable)
         .values({
@@ -336,6 +372,15 @@ export async function createGroupRecord(input: {
       };
     }),
   );
+  } catch (error) {
+    // Two concurrent POST retries can race on the unique creation key. After
+    // the failed insert transaction rolls back, return the winner's group.
+    if (creationToken && isUniqueViolation(error)) {
+      const existing = await recoverCreatedGroupRecord(creationToken);
+      if (existing) return existing;
+    }
+    throw error;
+  }
 }
 
 export async function joinGroupRecord(input: {
