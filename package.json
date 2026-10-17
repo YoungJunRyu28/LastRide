@@ -7,7 +7,7 @@
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck",
     "verify:migrations": "pnpm --filter @workspace/db run generate && git diff --exit-code -- lib/db/drizzle",
-    "test": "pnpm run verify:migrations && pnpm -r --if-present run test",
+    "test": "node --test scripts/check-transit-snapshot.test.mjs && pnpm run verify:migrations && pnpm -r --if-present run test",
     "verify:codegen": "pnpm --filter @workspace/api-spec run codegen && git diff --exit-code -- lib/api-client-react/src/generated lib/api-zod/src/generated",
     "build:ci": "pnpm --filter @workspace/api-server run build && pnpm --filter @workspace/last-ride run bundle:ci"
   },

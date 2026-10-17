@@ -48,7 +48,7 @@ This records the 58 findings from the static source audit. **Fixed** means the c
 | LR-042 | Revoked Android permission leaves tracking state stale | **Pending** | Reconcile on foreground and service lifecycle |
 | LR-043 | Same-name stations/location ambiguous | **Pending** | Disambiguation by coordinates/operator/prefecture |
 | LR-044 | Disruption feed failure appears as no incidents | **Pending** | Health/missing-data UI state |
-| LR-045 | Timetable snapshot age not enforced | **Pending** | Freshness cap in runtime and deploy preflight |
+| LR-045 | Timetable snapshot age not enforced | **Partial** | Deploy preflight rejects snapshots older than 30 days, future-dated/corrupt/empty; runtime expiry, provider and licensing audit still pending |
 | LR-046 | Midnight/GPS/transfer journey edge cases | **Pending** | Scenario corpus with real data |
 | LR-047 | Coordinates/invites in API parse exception message | **Partial** | URL query scrubbed in message and URL; audit remaining fields |
 | LR-048 | CI missing real credential/live deploy verification | **Partial** | Build flag gates added; real signed/device preflight missing |

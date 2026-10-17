@@ -52,7 +52,7 @@ if [[ -z "$SECRET_ID" ]]; then
   exit 2
 fi
 
-for cmd in aws sam pnpm python3 curl git; do
+for cmd in aws sam pnpm node python3 curl git; do
   command -v "$cmd" >/dev/null || { echo "$cmd is required" >&2; exit 2; }
 done
 
@@ -93,6 +93,9 @@ if [[ ! -s "$TRANSIT_SNAPSHOT" ]]; then
   echo "  cd artifacts/api-server && set -a; . ./.env; set +a; pnpm run transit:build" >&2
   exit 1
 fi
+# Block outdated/corrupt train data before reading secrets, mutating the DB,
+# or replacing running API tasks. The latest train is safety-critical.
+node scripts/check-transit-snapshot.mjs "$TRANSIT_SNAPSHOT"
 # Absolute, because the api-server build runs from its own directory.
 export TRANSIT_SNAPSHOT_PATH="$(cd "$(dirname "$TRANSIT_SNAPSHOT")" && pwd)/$(basename "$TRANSIT_SNAPSHOT")"
 
