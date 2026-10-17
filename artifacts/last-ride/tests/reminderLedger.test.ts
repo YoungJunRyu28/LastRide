@@ -153,4 +153,13 @@ describe('tonight’s reminder record', () => {
     expect(later.schedule.map(reminderKind)).toEqual(['m5', 'm0']);
     expect(later.catchUp).toBeNull();
   });
+
+  test('choosing the station yourself: no notice, no catch-up, reminders still ahead come again', () => {
+    const first = planDelivery(null, context(), reminders(31), at(0));
+    // 23:20: the user picks 神泉 (leave 23:33); 15分前 (23:18) is now past.
+    const chosen = planDelivery(first.ledger, context({ stationKey: '神泉', leaveAtMs: at(33), userStationChange: true }), reminders(33), at(20));
+    expect(chosen.stationChanged).toBe(false);
+    expect(chosen.catchUp).toBeNull();
+    expect(chosen.schedule.map(reminderKind)).toEqual(['m5', 'm0']);
+  });
 });

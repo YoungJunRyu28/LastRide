@@ -53,6 +53,12 @@ export type DeliveryContext = {
    * its departure. Gets one follow-up with the new times (lib/boarding.ts).
    */
   followUpFor?: number;
+  /**
+   * The user chose the station themselves (駅を選ぶ, この駅に固定, another
+   * station, 自動に戻す): a station change then gets no notice and no catch-up,
+   * since they're looking at it in the app.
+   */
+  userStationChange?: boolean;
 };
 
 export type DeliveryPlan = {
@@ -106,12 +112,14 @@ export function planDelivery(
     context.trainDepartsAtMs > known.trainDepartsAtMs;
   if (trainSwitched) for (const kind of [...sent]) if (kind.startsWith('m')) sent.delete(kind);
 
-  const stationChanged = !!known && known.stationKey !== context.stationKey;
+  const stationMoved = !!known && known.stationKey !== context.stationKey;
+  // Told only when the app moved the station by itself.
+  const stationChanged = stationMoved && !context.userStationChange;
   const remindedAlready = [...sent].some((kind) => kind.startsWith('m'));
   const timeShifted =
     !!known && !trainSwitched && !stationChanged && remindedAlready && Math.abs(context.leaveAtMs - known.leaveAtMs) >= SHIFT_NOTICE_MS;
-  // Told about the change: reminders still ahead at the new times can go out again.
-  if (stationChanged || timeShifted)
+  // Told about the change (or chose it): reminders still ahead at the new times can go out again.
+  if (stationMoved || timeShifted)
     for (const plan of plans) if (plan.fireAt > nowMs + 1000 && reminderKind(plan).startsWith('m')) sent.delete(reminderKind(plan));
   const followUpKind = context.followUpFor === undefined ? null : `f${context.followUpFor}`;
   const followUp = followUpKind !== null && !sent.has(followUpKind);
@@ -124,7 +132,8 @@ export function planDelivery(
   // Pushed into the past by a re-plan (or tracking started late): only the latest
   // one, never after the train has gone, and never the missed-train check-in.
   let catchUp: ReminderPlan | null = null;
-  if (nowMs < context.trainDepartsAtMs && !trainSwitched && !userSwitched) {
+  const userStation = stationMoved && !!context.userStationChange;
+  if (nowMs < context.trainDepartsAtMs && !trainSwitched && !userSwitched && !userStation) {
     for (const plan of due) {
       if (plan.missedCheckIn || plan.boardedCheck) continue;
       if (!catchUp || plan.fireAt > catchUp.fireAt) catchUp = plan;

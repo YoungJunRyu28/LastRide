@@ -115,6 +115,9 @@ export { REMINDER_CHOICES } from "@/lib/settings";
 export { searchAddresses, searchStations } from "@/lib/placeSearch";
 export type LocationErrorCode = LocationError["code"];
 
+/** A station change this soon after the user chose a station counts as theirs (no notice, no catch-up). */
+const MANUAL_STATION_WINDOW_MS = 60_000;
+
 /** Without night tracking, opening (or returning to) the app re-plans a plan this old. */
 const AUTO_REPLAN_AFTER_MS = 5 * MINUTE_MS;
 
@@ -438,6 +441,8 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     homeAddress,
   };
   const replanInFlight = useRef(false);
+  /** When the user last chose a station themselves (lib/reminderLedger userStationChange). */
+  const manualStationAt = useRef<number | null>(null);
   const planRef = useRef(basePlan);
   planRef.current = basePlan;
 
@@ -635,6 +640,8 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
         ...(boardingQuestion && plan.computedAt >= boardingQuestion.departsAt
           ? { followUpFor: boardingQuestion.departsAt, followUpLabel: trainChoiceLabel(boardingQuestion.choice, language === "ja") }
           : {}),
+        // A station the user just chose: no 「出発駅が変わりました」 and no catch-up.
+        userStationChange: manualStationAt.current !== null && Date.now() - manualStationAt.current < MANUAL_STATION_WINDOW_MS,
       });
     })();
   }, [
@@ -821,6 +828,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
   }, []);
 
   const setPinnedStation = useCallback((station: StationOption | null) => {
+    manualStationAt.current = Date.now();
     setLockFallback(null);
     setPinnedStationState(station);
     void writePinnedStation(station);
@@ -1225,6 +1233,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
    */
   const chooseDepartureStation = useCallback(
     async (station: StationOption) => {
+      manualStationAt.current = Date.now();
       setLockFallback(null);
       setPinnedStationState(station);
       void writePinnedStation(station);
