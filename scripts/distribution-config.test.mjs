@@ -102,6 +102,17 @@ test('Galaxy store refuses a Play key or RevenueCat secret in a public client co
   }
 });
 
+test('store-signed Android builds refuse unapproved package-name overrides', () => {
+  assert.throws(() => configured({ ...release, EAS_BUILD_PROFILE: 'production',
+    ANDROID_PACKAGE_ID: 'jp.lastride.app.test' }), /Android package jp.lastride.app/);
+  assert.throws(() => configured({ ...release, EAS_BUILD_PROFILE: 'galaxy',
+    EXPO_PUBLIC_ANDROID_STORE: 'galaxy', EXPO_PUBLIC_REVENUECAT_GALAXY_KEY: 'galx_valid_public',
+    EXPO_ANDROID_GALAXY_GOOGLE_MAPS_API_KEY: key,
+    ANDROID_PACKAGE_ID: 'jp.lastride.app.galaxy.test' }), /Android package jp.lastride.app.galaxy/);
+  const debug = configured({ ANDROID_PACKAGE_ID: 'jp.lastride.app.dev' });
+  assert.equal(debug.android.package, 'jp.lastride.app.dev');
+});
+
 test('Galaxy store never builds for iOS', () => {
   assert.throws(() => configured({ ...release, EAS_BUILD_PROFILE: 'galaxy',
     EAS_BUILD_PLATFORM: 'ios', EXPO_PUBLIC_ANDROID_STORE: 'galaxy',
@@ -112,5 +123,5 @@ test('Galaxy refuses reuse of Google Play package identity', () => {
   assert.throws(() => configured({ ...release, EAS_BUILD_PROFILE: 'galaxy',
     EXPO_PUBLIC_ANDROID_STORE: 'galaxy', EXPO_PUBLIC_REVENUECAT_GALAXY_KEY: 'galx_public',
     EXPO_ANDROID_GALAXY_GOOGLE_MAPS_API_KEY: key,
-    ANDROID_PACKAGE_ID: 'jp.lastride.app' }), /different package ID/);
+    ANDROID_PACKAGE_ID: 'jp.lastride.app' }), /different from Google Play/);
 });

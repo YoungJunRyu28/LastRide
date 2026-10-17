@@ -175,3 +175,14 @@ Test Store key or `sk_...` server secret fails release configuration; otherwise
 the app could silently enable the development premium switch and fail live
 purchases. Validation checks key class, **not actual server-side entitlement**.
 Keep RevenueCat server secrets solely in the API backend secret store.
+
+### Release package immutability
+
+The two Android store profiles now reject `ANDROID_PACKAGE_ID` overrides that
+would silently change the Google Play `jp.lastride.app` or Galaxy
+`jp.lastride.app.galaxy` package. Development builds may still use another
+package for isolated testing. This is important because Google Play's app
+signing certificate, Galaxy's APK signing identity, Android verified links,
+Maps API key restrictions and each store's subscription catalogue are tied
+to the exact package. To intentionally rename a production app, create and
+review a dedicated migration/listing plan rather than bypassing the guard.

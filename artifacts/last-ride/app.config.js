@@ -208,8 +208,16 @@ module.exports = ({ config }) => {
       : {}),
   };
 
-  if (profile === "galaxy" && android.package === config.android?.package) {
-    throw new Error("Galaxy releases must use a different package ID from Google Play");
+  // Store package IDs are permanent once published. A stray EAS secret or
+  // environment override must not silently produce a different application.
+  const playPackage = config.android?.package;
+  const galaxyPackage = `${playPackage}.galaxy`;
+  if (profile === "production" && process.env.EAS_BUILD_PLATFORM !== "ios" &&
+      android.package !== playPackage) {
+    throw new Error(`Google Play releases require Android package ${playPackage}`);
+  }
+  if (profile === "galaxy" && android.package !== galaxyPackage) {
+    throw new Error(`Galaxy releases require Android package ${galaxyPackage} (different from Google Play)`);
   }
 
   // The EAS project ID lives in app.json (set by `eas init`); EAS_PROJECT_ID
