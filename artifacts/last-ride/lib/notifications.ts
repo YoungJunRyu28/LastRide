@@ -3,6 +3,7 @@ import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import type { ReminderPlan } from '@/lib/planner';
 import { planDelivery, type DeliveryContext, type ReminderLedger } from '@/lib/reminderLedger';
+import { isNativeReminderScheduleIntact, type ScheduledLocalNotification } from '@/lib/notificationScheduleHealth';
 import { BOARDED_ACTION, BOARDED_CATEGORY, boardedButtons, boardedFollowUp, boardedNotificationId, boardedQuestion, NOT_BOARDED_ACTION, type HeldTrain } from '@/lib/boarding';
 import { REMINDER_SOUNDS, STORAGE_KEYS, type ReminderDelivery, type ReminderSound } from '@/lib/settings';
 import { alarmKit, alarmKitAvailable, type AlarmAuthorization } from '../modules/last-ride-alarm/src';
@@ -13,8 +14,9 @@ const webTimers: ReturnType<typeof setTimeout>[] = [];
 // Both the foreground app and the separate headless location-task JS runtime
 // use these keys to replace, not accumulate, locally scheduled notifications.
 const OWNED_IDS_KEY = 'lastride-owned-notification-ids';
+const SCHEDULED_ENTRIES_KEY = 'lastride-scheduled-local-notifications-v1';
 const SIGNATURE_KEY = 'lastride-reminder-signature';
-const SCHEDULER_VERSION = 8;
+const SCHEDULER_VERSION = 9;
 
 export { alarmKitAvailable };
 export { iosMajorVersion } from '../modules/last-ride-alarm/src';
@@ -32,6 +34,38 @@ async function readOwnedIds(): Promise<string[]> {
 
 async function writeOwnedIds(ids: string[]): Promise<void> {
   await AsyncStorage.setItem(OWNED_IDS_KEY, JSON.stringify(ids)).catch(() => undefined);
+}
+
+async function readScheduledEntries(): Promise<ScheduledLocalNotification[]> {
+  try {
+    const raw = await AsyncStorage.getItem(SCHEDULED_ENTRIES_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter((entry): entry is ScheduledLocalNotification =>
+      !!entry && typeof entry.id === 'string' && Number.isFinite(entry.fireAt)) : [];
+  } catch { return []; }
+}
+
+async function writeScheduledEntries(entries: ScheduledLocalNotification[]): Promise<void> {
+  await AsyncStorage.setItem(SCHEDULED_ENTRIES_KEY, JSON.stringify(entries)).catch(() => undefined);
+}
+
+/** Only consult the OS if the exact plan signature already matches. Reading
+ * native state on every replan would waste battery in background tracking. */
+async function nativeSchedulePresent(plans: ReminderPlan[], hasHeld: boolean): Promise<boolean> {
+  const now = Date.now();
+  const expected = plans.filter((plan) => plan.fireAt > now + 1000 && (!plan.boardedCheck || hasHeld)).length;
+  if (expected === 0) return true;
+  try {
+    const [persisted, scheduled] = await Promise.all([
+      readScheduledEntries(), Notifications.getAllScheduledNotificationsAsync(),
+    ]);
+    return isNativeReminderScheduleIntact(expected, persisted,
+      new Set(scheduled.map((entry) => entry.identifier)), now);
+  } catch {
+    // An OS query failing is not proof its schedule was lost. Avoid silently
+    // duplicating alerts; a later foreground plan can reconcile again.
+    return true;
+  }
 }
 
 // Serializes all schedule/cancel operations so an older reschedule can never
@@ -142,8 +176,12 @@ async function present(
   }
   configure();
   await ensureChannel();
+  // Prefix identifiers even before their AsyncStorage receipts are persisted.
+  // If a background task is killed between OS scheduling and storage, the next
+  // run can still enumerate and cancel orphaned alerts belonging to LastRide.
+  const identifier = extra.identifier ?? `lastride-local-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const id = await Notifications.scheduleNotificationAsync({
-    ...(extra.identifier ? { identifier: extra.identifier } : {}),
+    identifier,
     // timeSensitive lets the alert break through Focus modes once the app has the
     // Time Sensitive Notifications entitlement. On iOS, vibration follows the
     // phone's Sounds & Haptics settings; there's no per-notification switch.
@@ -166,6 +204,13 @@ async function present(
   const ids = await readOwnedIds();
   ids.push(id);
   await writeOwnedIds(ids);
+  // Immediate notices disappear from the pending OS schedule by design. Only
+  // record future alerts when checking whether queued reminders were lost.
+  if (fireAt !== null && delayMs >= 1000) {
+    const entries = await readScheduledEntries();
+    entries.push({ id, fireAt });
+    await writeScheduledEntries(entries);
+  }
 }
 
 async function cancelOwned() {
@@ -174,11 +219,19 @@ async function cancelOwned() {
   if (Platform.OS === 'web') return;
   configure();
   const ids = await readOwnedIds();
+  // Recover native schedules lost between scheduleNotificationAsync() and
+  // writing OWNED_IDS_KEY, but leave unrelated app notifications untouched.
+  const orphanIds = await Notifications.getAllScheduledNotificationsAsync()
+    .then((requests) => requests.map((request) => request.identifier).filter((id) =>
+      id.startsWith('lastride-local-') || id.startsWith('lastride-boarded-')))
+    .catch(() => [] as string[]);
   await writeOwnedIds([]);
+  await writeScheduledEntries([]);
   // Cancel native alarms even when the JS runtime died before persisting the
   // schedule. AlarmKit only exposes alarms belonging to our app.
   await alarmKit.cancelAll().catch((error) => console.warn('[LastRide] Could not cancel alarms', error));
-  await Promise.all(ids.map((id) => Notifications.cancelScheduledNotificationAsync(id).catch(() => undefined)));
+  await Promise.all([...new Set([...ids, ...orphanIds])]
+    .map((id) => Notifications.cancelScheduledNotificationAsync(id).catch(() => undefined)));
 }
 
 export function cancelAllReminders(): Promise<void> {
@@ -326,7 +379,8 @@ export function scheduleReminders(
       SCHEDULER_VERSION, upcoming, text, sound, vibrate, alarmAuthorization,
       decided && [decided.catchUp, decided.stationChanged, decided.timeShifted, decided.followUp, decided.ledger.sent, decided.ledger.stationKey],
     ]);
-    if (Platform.OS !== 'web' && (await AsyncStorage.getItem(SIGNATURE_KEY).catch(() => null)) === signature) return;
+    if (Platform.OS !== 'web' && (await AsyncStorage.getItem(SIGNATURE_KEY).catch(() => null)) === signature &&
+        await nativeSchedulePresent(upcoming, !!text.held)) return;
     await cancelOwned();
     const language = text.language;
     if (decided && delivery) {

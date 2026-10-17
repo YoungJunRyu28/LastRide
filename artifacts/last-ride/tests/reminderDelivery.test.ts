@@ -2,13 +2,21 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => {
   const store = new Map<string, string>();
+  const pending = new Map<string, { identifier: string }>();
+  let serial = 0;
   return {
     store,
+    pending,
     alarmStatus: vi.fn(async () => 'authorized'),
     alarmSchedule: vi.fn(async (_id: string, _fireAt: number, _title: string, _sound: string, _stop: string) => {}),
     alarmCancel: vi.fn(async () => {}),
-    notificationSchedule: vi.fn(async () => 'notification-id'),
-    notificationCancel: vi.fn(async () => {}),
+    notificationSchedule: vi.fn(async (request: { identifier?: string; trigger: unknown }) => {
+      const id = request.identifier ?? `generated-${++serial}`;
+      if (request.trigger !== null) pending.set(id, { identifier: id });
+      return id;
+    }),
+    notificationCancel: vi.fn(async (id: string) => { pending.delete(id); }),
+    notificationGetPending: vi.fn(async () => [...pending.values()]),
   };
 });
 
@@ -26,6 +34,7 @@ vi.mock('expo-notifications', () => ({
   getPermissionsAsync: vi.fn(async () => ({ granted: true })),
   scheduleNotificationAsync: mocks.notificationSchedule,
   cancelScheduledNotificationAsync: mocks.notificationCancel,
+  getAllScheduledNotificationsAsync: mocks.notificationGetPending,
   SchedulableTriggerInputTypes: { DATE: 'date' },
 }));
 vi.mock('../modules/last-ride-alarm/src', () => ({
@@ -49,6 +58,7 @@ describe('reminder delivery', () => {
   beforeEach(async () => {
     await cancelAllReminders();
     mocks.store.clear();
+    mocks.pending.clear();
     vi.clearAllMocks();
     mocks.alarmStatus.mockResolvedValue('authorized');
   });
@@ -113,6 +123,37 @@ describe('reminder delivery', () => {
   it('plays the default sound for ordinary notifications', async () => {
     await scheduleReminders([{ minutesBefore: 10, fireAt: Date.now() + 90000 }], text, { sound: 'urgent', vibrate: true });
     expect(mocks.notificationSchedule.mock.calls[0]).toMatchObject([{ content: { sound: true } }]);
+  });
+
+  it('does not churn an unchanged reminder schedule when OS still holds it', async () => {
+    const plans = [{ minutesBefore: 5, fireAt: Date.now() + 180000 }];
+    await scheduleReminders(plans, text);
+    expect(mocks.notificationSchedule).toHaveBeenCalledTimes(1);
+    await scheduleReminders(plans, text);
+    expect(mocks.notificationSchedule).toHaveBeenCalledTimes(1);
+    expect(mocks.notificationGetPending).toHaveBeenCalled();
+  });
+
+  it('rebuilds reminders on the next replan after native OS notifications are deleted', async () => {
+    const plans = [
+      { minutesBefore: 15, fireAt: Date.now() + 240000 },
+      { minutesBefore: 0, fireAt: Date.now() + 300000 },
+    ];
+    await scheduleReminders(plans, text);
+    expect(mocks.notificationSchedule).toHaveBeenCalledTimes(2);
+    const ids = [...mocks.pending.keys()];
+    mocks.pending.delete(ids[0]); // iOS/Android system or app settings cleared one alarm
+    await scheduleReminders(plans, text);
+    expect(mocks.notificationSchedule).toHaveBeenCalledTimes(4);
+    expect(mocks.pending.size).toBe(2);
+  });
+
+  it('cancels orphan OS alarms even when a killed headless task missed the storage receipt', async () => {
+    mocks.pending.set('lastride-local-crash-orphan', { identifier: 'lastride-local-crash-orphan' });
+    mocks.pending.set('other-feature-reminder', { identifier: 'other-feature-reminder' });
+    await cancelAllReminders();
+    expect(mocks.pending.has('lastride-local-crash-orphan')).toBe(false);
+    expect(mocks.pending.has('other-feature-reminder')).toBe(true);
   });
 
   it('cancels native alarms when resetting and rescheduling', async () => {

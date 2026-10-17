@@ -31,7 +31,7 @@ describe('Android native map geometry and safety', () => {
       ],
     });
     expect(out.markers.map((item) => item.id)).toEqual(['you', 'target', 'pin-0']);
-    expect(out.walkLine).toHaveLength(2);
+    expect(out.walkLine).toHaveLength(0); // invalid route point means no invented shortcut
   });
   test('native polyline and pin count bounded on 50k path input', () => {
     const path = Array.from({ length: 50_000 }, (_, i) => ({ latitude: 35.1 + i / 100_000, longitude: 139 }));

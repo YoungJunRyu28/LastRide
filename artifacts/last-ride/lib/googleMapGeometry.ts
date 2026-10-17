@@ -1,5 +1,6 @@
 /** Coordinate validation shared by Android Maps and map rendering. */
 import { isValidMapCoordinate } from "./mapSnapshotGuard";
+import { verifiedMapPath } from './verifiedMapPath';
 
 export type Point = { latitude: number; longitude: number };
 export type MapFrame = { center: Point; spanMeters: number; width: number; height: number };
@@ -32,10 +33,9 @@ export function googleMapOverlays(args: {
     if (p.latitude === undefined || p.longitude === undefined || !clean(p as Point)) continue;
     markers.push({ id: `pin-${i}`, coordinates: { latitude: p.latitude, longitude: p.longitude }, title: p.label.slice(0, 90) });
   }
-  const safePath = (path ?? []).filter(clean);
-  // Preserve the endpoints while limiting memory/GPU work for long routes.
-  const step = Math.max(1, Math.ceil(safePath.length / 450));
-  const simplified = safePath.filter((_p, i) => i % step === 0 || i === safePath.length - 1);
+  // A missing or corrupt vertex invalidates the whole route; joining valid
+  // vertices across a gap could send somebody across a river or highway.
+  const simplified = verifiedMapPath(path);
   // Never misrepresent a straight line (through buildings, rivers, rail
   // barriers) as a walking route. Until a verified path geometry is supplied,
   // markers alone are rendered; tapping opens actual directions in Google Maps.

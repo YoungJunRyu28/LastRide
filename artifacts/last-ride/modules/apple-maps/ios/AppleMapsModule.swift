@@ -64,6 +64,12 @@ public class AppleMapsModule: Module {
     }
 
     AsyncFunction("transitEta") { (request: EtaRequest, promise: Promise) in
+      guard Self.isValidPoint(request.from), Self.isValidPoint(request.to),
+            request.arriveBy.map({ $0.isFinite }) ?? true,
+            request.departAt.map({ $0.isFinite }) ?? true else {
+        promise.reject("ERR_COORDINATE", "Invalid transit origin, destination or time")
+        return
+      }
       self.mapItem(for: request.from) { source, _ in
         self.mapItem(for: request.to) { destination, destinationIsStation in
           let directions = MKDirections(request: self.directionsRequest(request, source: source, destination: destination, transport: .transit))
@@ -86,6 +92,10 @@ public class AppleMapsModule: Module {
     }
 
     AsyncFunction("walkingRoute") { (from: Coordinate, to: Coordinate, promise: Promise) in
+      guard Self.isValidPoint(from), Self.isValidPoint(to) else {
+        promise.reject("ERR_COORDINATE", "Invalid walking route coordinates")
+        return
+      }
       self.mapItem(for: to) { destination, _ in
       let request = MKDirections.Request()
       request.source = MKMapItem(placemark: MKPlacemark(coordinate: from.location))
@@ -112,6 +122,11 @@ public class AppleMapsModule: Module {
     }
 
     AsyncFunction("searchPlaces") { (query: String, center: Coordinate, radiusMeters: Double, promise: Promise) in
+      guard Self.isValidPoint(center), radiusMeters.isFinite,
+            radiusMeters > 0, radiusMeters <= 50_000 else {
+        promise.reject("ERR_COORDINATE", "Invalid local search center or radius")
+        return
+      }
       let request = MKLocalSearch.Request()
       request.naturalLanguageQuery = query
       request.region = MKCoordinateRegion(center: center.location, latitudinalMeters: radiusMeters * 2, longitudinalMeters: radiusMeters * 2)
@@ -128,6 +143,11 @@ public class AppleMapsModule: Module {
     }
 
     AsyncFunction("nearbyStations") { (center: Coordinate, radiusMeters: Double, promise: Promise) in
+      guard Self.isValidPoint(center), radiusMeters.isFinite,
+            radiusMeters > 0, radiusMeters <= 50_000 else {
+        promise.reject("ERR_COORDINATE", "Invalid station search center or radius")
+        return
+      }
       let request = MKLocalPointsOfInterestRequest(center: center.location, radius: radiusMeters)
       request.pointOfInterestFilter = MKPointOfInterestFilter(including: [.publicTransport])
       MKLocalSearch(request: request).start { response, error in
@@ -180,6 +200,10 @@ public class AppleMapsModule: Module {
     }
 
     AsyncFunction("drivingEta") { (from: Coordinate, to: Coordinate, promise: Promise) in
+      guard Self.isValidPoint(from), Self.isValidPoint(to) else {
+        promise.reject("ERR_COORDINATE", "Invalid driving route coordinates")
+        return
+      }
       let request = MKDirections.Request()
       request.source = MKMapItem(placemark: MKPlacemark(coordinate: from.location))
       request.destination = MKMapItem(placemark: MKPlacemark(coordinate: to.location))
@@ -251,14 +275,25 @@ public class AppleMapsModule: Module {
         }
         // Temporary file for this screen only; the OS clears the caches directory.
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("map-\(UUID().uuidString).png")
+        guard let png = image.pngData() else {
+          promise.reject("ERR_SNAPSHOT_WRITE", "Could not encode map snapshot as PNG")
+          return
+        }
         do {
-          try image.pngData()?.write(to: url)
+          try png.write(to: url, options: .atomic)
           promise.resolve(url.absoluteString)
         } catch {
           promise.reject("ERR_SNAPSHOT_WRITE", error.localizedDescription)
         }
       }
     }
+  }
+
+  /** Reject malformed locations before constructing MKPlacemark/MKLocalSearch.
+   * Invalid values can otherwise throw inside platform APIs in release builds. */
+  private static func isValidPoint(_ point: Coordinate) -> Bool {
+    point.latitude.isFinite && point.longitude.isFinite &&
+      abs(point.latitude) <= 85 && CLLocationCoordinate2DIsValid(point.location)
   }
 
   /** All of Japan, so searches don't drift to same-named places abroad. */

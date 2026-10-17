@@ -12,11 +12,12 @@
 import { Feather } from '@expo/vector-icons';
 import React, { useEffect, useState } from 'react';
 import { Image, Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-import Svg, { Path, Polyline } from 'react-native-svg';
+import Svg, { Polyline } from 'react-native-svg';
 import { useColors } from '@/hooks/useColors';
 import { AppleMaps } from '@/modules/apple-maps/src';
 import GoogleMapCardBackground, { googleMapsConfigured } from './GoogleMapCardBackground';
 import { isSafeMapSnapshotFrame, isValidMapCoordinate } from '@/lib/mapSnapshotGuard';
+import { verifiedMapPath } from '@/lib/verifiedMapPath';
 
 type Point = { latitude: number; longitude: number };
 
@@ -103,7 +104,8 @@ function project(frame: Frame, point: Point) {
  * loading / unavailable.
  */
 function useSnapshot(frame: Frame | null) {
-  const [shot, setShot] = useState<{ uri: string; frame: Frame } | null>(null);
+  const [shot, setShot] = useState<{ uri: string; frame: Frame; key: string } | null>(null);
+  const [failedKey, setFailedKey] = useState<string | null>(null);
   const key = frame
     ? `${frame.center.latitude.toFixed(4)},${frame.center.longitude.toFixed(4)},${Math.round(frame.spanMeters)},${Math.round(frame.width)}x${frame.height}`
     : null;
@@ -112,17 +114,26 @@ function useSnapshot(frame: Frame | null) {
     let active = true;
     void AppleMaps.snapshot({ center: frame.center, spanMeters: frame.spanMeters, width: frame.width, height: frame.height })
       .then((uri) => {
-        if (active) setShot(uri ? { uri, frame } : null);
+        if (!active) return;
+        setShot(uri && key ? { uri, frame, key } : null);
+        setFailedKey(uri ? null : key);
       })
       .catch(() => {
-        if (active) setShot(null);
+        if (!active) return;
+        setShot(null);
+        setFailedKey(key);
       });
     return () => {
       active = false;
     };
     // The key captures everything about the frame that changes the image.
   }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
-  return frame ? shot : null;
+  // Don't show old geographic tiles under a new user's position while the
+  // replacement image is still loading. The fallback cannot misplace a pin.
+  return {
+    snapshot: frame && shot?.key === key ? shot : null,
+    failed: !!key && key === failedKey,
+  };
 }
 
 export function MapCard({
@@ -165,6 +176,7 @@ export function MapCard({
   const colors = useColors();
   const [width, setWidth] = useState(0);
   const showWalk = !pins;
+  const safePath = verifiedMapPath(path);
   const geoPoints: Point[] = [
     ...(you ? [you] : []),
     ...(showWalk && target ? [target] : []),
@@ -180,7 +192,7 @@ export function MapCard({
     ? frameFor(framePoints, width, height, showWalk ? WALK_MIN_SPAN_METERS : undefined)
     : null;
   const frame = candidateFrame && isSafeMapSnapshotFrame(candidateFrame) ? candidateFrame : null;
-  const snapshot = useSnapshot(AppleMaps ? frame : null);
+  const { snapshot, failed: snapshotFailed } = useSnapshot(AppleMaps ? frame : null);
   const googleReady = Platform.OS === 'android' && googleMapsConfigured && frame !== null;
 
   return (
@@ -201,7 +213,7 @@ export function MapCard({
             frame={frame!}
             you={you}
             target={showWalk ? target : null}
-            path={showWalk ? path : undefined}
+            path={showWalk ? safePath : undefined}
             pins={pins}
             stationTag={stationTag}
             walkLabel={walkLabel ? `≈ ${walkLabel}` : undefined}
@@ -212,7 +224,7 @@ export function MapCard({
             snapshot={snapshot.uri}
             you={you ?? null}
             target={showWalk ? (target ?? null) : null}
-            path={path}
+            path={safePath}
             stationTag={stationTag}
             walkLabel={walkLabel}
             pins={pins}
@@ -221,9 +233,12 @@ export function MapCard({
           <DrawnMap height={height} showWalk={showWalk} stationTag={stationTag} walkLabel={walkLabel} pins={pins} />
         )}
 
-        {Platform.OS === 'android' && !googleMapsConfigured && hasValidFrame ? (
+        {(Platform.OS === 'ios' && !snapshot && !!AppleMaps && frame !== null ||
+          Platform.OS === 'android' && !googleMapsConfigured && hasValidFrame) ? (
           <View style={styles.mapUnavailable}>
-            <Text style={styles.mapUnavailableText}>地図プレビュー未設定 / Map preview unavailable</Text>
+            <Text style={styles.mapUnavailableText}>{Platform.OS === 'ios' && !snapshotFailed
+              ? '地図を読み込み中 / Loading map…'
+              : '地図プレビューを表示できません / Map preview unavailable'}</Text>
           </View>
         ) : null}
 
@@ -265,7 +280,9 @@ function RealOverlay({
   pins?: MapPin[];
 }) {
   const colors = useColors();
-  const line = you && target ? (path && path.length > 1 ? path : [you, target]).map((point) => project(frame, point)) : [];
+  // Never draw an imaginary straight-line walk on an Apple map when MapKit
+  // provided an ETA but not an actual polyline (barriers and crossings matter).
+  const line = you && target ? verifiedMapPath(path).map((point) => project(frame, point)) : [];
   const middle = line.length > 0 ? line[Math.floor(line.length / 2)] : null;
   const youPx = you ? project(frame, you) : null;
   const targetPx = target ? project(frame, target) : null;
@@ -293,11 +310,11 @@ function RealOverlay({
           <View style={[styles.stationDot, { backgroundColor: colors.line, borderColor: colors.map }]} />
         </View>
       ) : null}
-      {middle && walkLabel ? (
+      {walkLabel ? (
         <Text
           style={[
             styles.bubble,
-            { left: middle.x - 30, top: middle.y - 10, backgroundColor: colors.background, borderColor: colors.input, color: colors.foreground },
+            { left: middle ? middle.x - 30 : 10, top: middle ? middle.y - 10 : 10, backgroundColor: colors.background, borderColor: colors.input, color: colors.foreground },
           ]}
         >
           {walkLabel}
@@ -357,16 +374,6 @@ function DrawnMap({
 
       {showWalk && (
         <>
-          <Svg width="100%" height="100%" viewBox={`0 0 350 ${height}`} preserveAspectRatio="none" style={StyleSheet.absoluteFill}>
-            <Path
-              d={`M60 ${height - 38} C 100 ${height - 56}, 130 ${height * 0.53}, 170 ${height * 0.48} S 240 ${height * 0.34}, 270 ${height * 0.21}`}
-              stroke={colors.primary}
-              strokeWidth={4}
-              strokeLinecap="round"
-              strokeDasharray="2 9"
-              fill="none"
-            />
-          </Svg>
           <View style={[styles.you, { left: '14%', top: height - 49, borderColor: colors.primary }]} />
           {stationTag ? (
             <View style={[styles.stationTag, { left: '70%', top: 12 }]}>

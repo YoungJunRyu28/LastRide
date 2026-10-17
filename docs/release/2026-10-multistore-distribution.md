@@ -186,3 +186,61 @@ signing certificate, Galaxy's APK signing identity, Android verified links,
 Maps API key restrictions and each store's subscription catalogue are tied
 to the exact package. To intentionally rename a production app, create and
 review a dedicated migration/listing plan rather than bypassing the guard.
+
+## Phase 3 — iOS + Android reliability brushups (2026-10-17)
+
+### Reminder scheduling: recover from OS-cleared notifications
+
+The mobile scheduler previously trusted a persisted JSON signature even when
+iOS/Android no longer had a corresponding pending local notification (e.g., OS
+removed a reminder, pending requests were cleared or a headless process died).
+It now records **future native notification IDs and fire times** and, when a
+replan has the same signature, compares them with the OS pending queue before
+skipping. Missing entries trigger a rebuild. OS native identifiers are prefixed
+`lastride-local-` and group/boarding questions retain `lastride-boarded-`,
+so a crashed background-task window can be cleaned on the next schedule
+without deleting unrelated notifications from the app. Immediate notices
+are intentionally not counted as future pending reminders. A failed OS queue
+query does not cause repeated alarm storms; a later check retries.
+
+**Limit:** This improves recovery **when a new replan occurs**. It does not
+force iOS to wake a suspended app, bypass Focus/Doze, guarantee a foreground
+notification if permissions are denied, or reconstruct alerts at the exact
+instant the OS clears them. Validate with device-level sleep/background tests.
+
+### iOS MapKit vs Android map parity
+
+Both platforms now refuse to draw fictitious straight-line pedestrian routes
+when only endpoints or estimated walking time are available. A supplied real
+route polyline must have *every* coordinate finite and in the safe map range;
+one corrupt vertex invalidates the polyline rather than joining across an
+unknown gap. Long paths are downsampled with both endpoints retained.
+The iOS MapKit card won't retain an old location's map snapshot underneath
+new place markers while the next snapshot loads. Both platforms label map
+fallbacks when no real tile view is available. iOS-native MapKit validates
+origin/destination/radius/time before constructing native search/directions
+requests and rejects PNG encoding failure instead of handing JS a nonexistent
+file URI. MapKit search results are also filtered in JS to reject invalid
+coordinates before distance sorting. **Map rendering does not solve missing
+railway data, verified street-level walking geometry or provider coverage.**
+
+### Physical QA still needed before distributing
+
+- iPhone 15/16/17 and current OS where available, iOS older than 26 and
+  iOS 26+ AlarmKit: grant/deny/revoke time-sensitive notification access;
+  allow/deny background location and disable Precise Location; reschedule a
+  15-minute/leave-now reminder on an unchanged plan, re-plan after system
+  pending-alert cancellation and after background process termination.
+- TestFlight launch after an OTA rollback; change stations while previous
+  MapKit snapshot is loading; verify no wrong map image/route is displayed;
+  try data gaps, missing provider routes and bad coordinates.
+- Google Play Android and Galaxy Android: verify native map tiles, location
+  search, Doze/background notification behavior, battery restriction and OS
+  permission changes; verify no imaginary route crosses an obstacle.
+- Galaxy purchase/restore/trial/expiry and Play purchase/restore must be
+  tested with actual store accounts and correctly restricted signing keys.
+- The connected Mac currently has Xcode installed but Apple's Xcode license
+  has **not been accepted**. `swift-frontend -parse` passed; full iOS native
+  compile and simulator/device signing tests are **blocked until the owner
+  reviews and accepts the Xcode license**. Do not represent the Swift parse
+  check as an iOS app build.
