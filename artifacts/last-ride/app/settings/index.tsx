@@ -22,7 +22,7 @@ export default function SettingsScreen() {
     language, destination, leaveMargin,
     reminderIntervals, alarmsEnabled, alarmIntervals, alarmSound, notificationsAllowed,
     nightLocationMode, backgroundAllowed,
-    demoActive, setDemoNow, nowMs, plan, currentTime, leaveBy, widgetTheme,
+    demoActive, setDemoNow, demoSpeed, setDemoSpeed, nowMs, plan, currentTime, leaveBy, widgetTheme,
   } = useLastRide();
   const { isPremium, live: premiumLive, setTestPremium, testOverride } = usePremium();
   // Test tools: dev builds, and TestFlight installs (detected at run time; never App Store).
@@ -167,8 +167,8 @@ export default function SettingsScreen() {
           label={__DEV__ ? (ja ? 'デモモード（開発用）' : 'DEMO MODE (DEV ONLY)') : ja ? 'テスト用（TestFlightのみ）' : 'TESTING (TESTFLIGHT ONLY)'}
           footer={
             ja
-              ? 'デモ中は1分＝1秒で進みます。通知は夜のトラッキング中のみ届きます。App Store版には表示されません。'
-              : 'While the demo clock runs, 1 minute = 1 second. Notifications need tracking on. Not shown in the App Store version.'
+              ? 'デモ中は1分＝1秒で進みます（「実時間」で普通の速さ）。通知は夜のトラッキング中のみ届きます。App Store版には表示されません。'
+              : 'While the demo clock runs, 1 minute = 1 second (or real time). Notifications need tracking on. Not shown in the App Store version.'
           }
         >
           {premiumLive && isTestFlightBuild && (
@@ -226,6 +226,15 @@ export default function SettingsScreen() {
             )}
             {demoActive && <Chip testID="demo-reset" label={ja ? 'リセット' : 'Reset'} selected={false} onPress={() => setDemoNow(null)} />}
           </View>
+          {demoActive && (
+            <>
+              <Row title={ja ? '時刻の進み方' : 'Clock speed'} subtitle={ja ? '実時間はスクリーンショット用' : 'Real time for screenshots'} />
+              <View style={styles.chipRow}>
+                <Chip testID="demo-speed-fast" label={ja ? '60倍速' : '60×'} selected={demoSpeed !== 1} onPress={() => setDemoSpeed(60)} />
+                <Chip testID="demo-speed-real" label={ja ? '実時間' : 'Real time'} selected={demoSpeed === 1} onPress={() => setDemoSpeed(1)} />
+              </View>
+            </>
+          )}
         </Section>
       )}
     </SettingsPage>

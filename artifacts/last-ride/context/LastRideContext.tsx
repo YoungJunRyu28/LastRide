@@ -287,6 +287,9 @@ type RideContextValue = {
   setPinnedStation: (station: StationOption | null) => void;
   /** Development only: run a fast clock from `virtualMs`, or null to return to real time. */
   setDemoNow: (virtualMs: number | null) => void;
+  /** The demo clock's speed (60 = 1 minute a second, 1 = real time); keeps the current demo time. */
+  demoSpeed: number;
+  setDemoSpeed: (speed: number) => void;
   resetAll: () => Promise<void>;
   /** null = not tracking, 'background' = OS updates while app closed, 'foreground' = only while app open. */
   trackingMode: "background" | "foreground" | null;
@@ -390,6 +393,8 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
   const [demo, setDemo] = useState<{
     virtualAt: number;
     realAt: number;
+    /** Demo minutes per real minute: 60 to run through a night, 1 to hold still (screenshots). */
+    speed: number;
   } | null>(null);
   const [realNow, setRealNow] = useState(Date.now);
   // False until launch has checked whether tracking was on (and resumed it). Until
@@ -476,7 +481,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     return () => clearInterval(timer);
   }, [demoActive]);
   const nowMs = demo
-    ? demo.virtualAt + (realNow - demo.realAt) * DEMO_SPEED
+    ? demo.virtualAt + (realNow - demo.realAt) * demo.speed
     : realNow;
   // 終電 / 1本前 / 2本前 (lib/trainChoice): the plan heads for the chosen train
   // while it can still be made, then falls back to a later one. Recomputed only
@@ -576,7 +581,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
   const getNow = useCallback(() => {
     const current = demoRef.current;
     return current
-      ? current.virtualAt + (Date.now() - current.realAt) * DEMO_SPEED
+      ? current.virtualAt + (Date.now() - current.realAt) * current.speed
       : Date.now();
   }, []);
 
@@ -1097,8 +1102,9 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
   const setDemoNow = useCallback(
     (virtualMs: number | null) => {
       const realAt = Date.now();
+      const speed = demoRef.current?.speed ?? DEMO_SPEED;
       setRealNow(realAt);
-      setDemo(virtualMs === null ? null : { virtualAt: virtualMs, realAt });
+      setDemo(virtualMs === null ? null : { virtualAt: virtualMs, realAt, speed });
       void Haptics.selectionAsync();
       // Returning to real time: the sync effect reschedules real reminders.
       if (virtualMs === null) return;
@@ -1114,7 +1120,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
           alarmIntervals: delivered.alarms,
         }).map((reminder) => ({
           ...reminder,
-          fireAt: realAt + (reminder.fireAt - virtualMs) / DEMO_SPEED,
+          fireAt: realAt + (reminder.fireAt - virtualMs) / speed,
         }));
         await scheduleReminders(plans, {
           leaveBy: formatJstTime(recommendedLeaveTime(plan)),
@@ -1134,6 +1140,15 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       stationLabel,
     ],
   );
+
+  const setDemoSpeed = useCallback((speed: number) => {
+    const current = demoRef.current;
+    if (!current) return;
+    // Keep the demo time where it is; only its pace changes.
+    const realAt = Date.now();
+    setRealNow(realAt);
+    setDemo({ virtualAt: current.virtualAt + (realAt - current.realAt) * current.speed, realAt, speed });
+  }, []);
 
   const requestNotifications = useCallback(async () => {
     const allowed = await ensureNotificationPermission();
@@ -1717,6 +1732,8 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       toggleReminderInterval,
       setPinnedStation,
       setDemoNow,
+      demoSpeed: demo?.speed ?? DEMO_SPEED,
+      setDemoSpeed,
       resetAll,
       trackingMode,
       startTracking,
@@ -1767,6 +1784,8 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       tonightDestination,
       setTonightDestination,
       setDemoNow,
+      demo,
+      setDemoSpeed,
       setPinnedStation,
       setLanguage,
       setLeaveMargin,
