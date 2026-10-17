@@ -141,4 +141,16 @@ describe('tonight’s reminder record', () => {
     const again = planDelivery(next.ledger, context({ stationKey: '神泉', leaveAtMs: at(40), trainDepartsAtMs: at(45), followUpFor: at(36) }), reminders(40), at(38));
     expect(again.followUp).toBe(false);
   });
+
+  test('switching train yourself: no catch-up, only reminders still ahead', () => {
+    // Heading for 2本前 (leave 23:10); at 23:25 the user picks 1本前 (leave 23:15, already past).
+    const first = planDelivery(null, context({ choiceKey: '2', leaveAtMs: at(10), trainDepartsAtMs: at(27) }), reminders(10), at(-30));
+    const switched = planDelivery(first.ledger, context({ choiceKey: '1', leaveAtMs: at(15), trainDepartsAtMs: at(36) }), reminders(15), at(25));
+    expect(switched.catchUp).toBeNull();
+    expect(switched.schedule).toEqual([]);
+    // Picking a train whose reminders are still ahead schedules them as usual.
+    const later = planDelivery(first.ledger, context({ choiceKey: '0', leaveAtMs: at(40), trainDepartsAtMs: at(50) }), reminders(40), at(25));
+    expect(later.schedule.map(reminderKind)).toEqual(['m5', 'm0']);
+    expect(later.catchUp).toBeNull();
+  });
 });

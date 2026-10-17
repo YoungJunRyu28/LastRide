@@ -9,7 +9,8 @@
  * The record (shared by the app and background tracking) remembers what was
  * scheduled and what went out, per night and per train the user chose:
  * - a reminder already sent is never sent again (automatic changes keep the record);
- * - the user picking another train starts a fresh set for it;
+ * - the user picking another train starts a fresh set for it, with no catch-up:
+ *   they're looking at its leave time in the app, so only reminders still ahead go;
  * - reminders a re-plan pushed into the past: only the latest goes out, now;
  * - a station change, or a leave time moving 5+ minutes after a reminder already
  *   went out, gets one notice instead of silent new times, and then every
@@ -93,7 +94,8 @@ export function planDelivery(
     if (fireAt <= nowMs) sent.add(kind);
   }
   // The user chose another train: it gets its own full set.
-  if (known && known.choiceKey !== context.choiceKey) sent.clear();
+  const userSwitched = !!known && known.choiceKey !== context.choiceKey;
+  if (userSwitched) sent.clear();
   // The train departed and the plan moved on to the next one: a fresh set for it
   // (questions already asked stay asked).
   const trainSwitched =
@@ -122,7 +124,7 @@ export function planDelivery(
   // Pushed into the past by a re-plan (or tracking started late): only the latest
   // one, never after the train has gone, and never the missed-train check-in.
   let catchUp: ReminderPlan | null = null;
-  if (nowMs < context.trainDepartsAtMs && !trainSwitched) {
+  if (nowMs < context.trainDepartsAtMs && !trainSwitched && !userSwitched) {
     for (const plan of due) {
       if (plan.missedCheckIn || plan.boardedCheck) continue;
       if (!catchUp || plan.fireAt > catchUp.fireAt) catchUp = plan;
