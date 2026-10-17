@@ -56,8 +56,8 @@ const RING_WINDOW_MS = 60 * 60 * 1000;
 const ALWAYS_CARD_KEY = "lastride-always-card";
 
 /**
- * The "update when closed?" card: shown while tracking only while open, until
- * closed for tonight (stored as tonight's service date) or for good ("never").
+ * The "update when closed?" strip: shown while tracking only while open, until
+ * closed for tonight (stored as tonight's service date). It comes back the next night.
  */
 function useAlwaysCard(active: boolean) {
   const [state, setState] = useState<string | null | undefined>(undefined);
@@ -73,9 +73,8 @@ function useAlwaysCard(active: boolean) {
     void AsyncStorage.setItem(ALWAYS_CARD_KEY, value).catch(() => undefined);
   };
   return {
-    show: state !== undefined && state !== "never" && state !== tonight,
+    show: state !== undefined && state !== tonight,
     dismissTonight: () => save(tonight),
-    dismissForever: () => save("never"),
   };
 }
 
@@ -194,6 +193,13 @@ export default function RideScreen() {
   // 停止 while sharing with a group: ask whether to stop sharing too (the time
   // would otherwise stay as last sent, no longer following you).
   const alwaysCard = useAlwaysCard(trackingMode === "foreground");
+  // 今夜スタート starts tracking, not just notifications: say how, per the 夜の位置情報 setting.
+  const startNote =
+    nightLocationMode === "background" && backgroundAllowed !== false
+      ? { ja: "追跡と通知\n閉じても更新", en: "Tracking + reminders\nalso when closed" }
+      : nightLocationMode === "ask"
+        ? { ja: "追跡と通知を\n開始", en: "Starts tracking\n+ reminders" }
+        : { ja: "追跡と通知\n開いている間", en: "Tracking + reminders\nwhile open" };
   const confirmStop = () => {
     if (sharingTonight.length === 0) {
       void stopTracking();
@@ -649,7 +655,7 @@ export default function RideScreen() {
               testID="start-tracking"
               onPress={() => void startTracking()}
               accessibilityRole="button"
-              accessibilityLabel={ja ? "今夜スタート。リマインダーをオンにして、移動に合わせて更新" : "Start tonight. Turns reminders on and follows you"}
+              accessibilityLabel={ja ? `今夜スタート。${startNote.ja.replace("\n", "、")}` : `Start tonight. ${startNote.en.replace("\n", ", ")}`}
               style={({ pressed }) => [
                 styles.startCircle,
                 { backgroundColor: colors.primary, shadowColor: colors.primary, opacity: pressed ? 0.85 : 1 },
@@ -659,8 +665,8 @@ export default function RideScreen() {
               <Text maxFontSizeMultiplier={1.2} style={[styles.startTitle, { color: colors.primaryForeground }]}>
                 {ja ? "今夜スタート" : "Start tonight"}
               </Text>
-              <Text maxFontSizeMultiplier={1.2} style={[styles.startNote, { color: colors.primaryForeground }]}>
-                {ja ? "タップで通知オン" : "Turns reminders on"}
+              <Text numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.85} maxFontSizeMultiplier={1.2} style={[styles.startNote, { color: colors.primaryForeground }]}>
+                {ja ? startNote.ja : startNote.en}
               </Text>
             </Pressable>
           ) : (
@@ -785,7 +791,43 @@ export default function RideScreen() {
             )}
           </View>
         )}
-        {trackingMode === "foreground" && (
+        {/* Tracking only while open: a compact suggestion to update when closed
+            (iOS "Always"), closable for tonight; after that just the note. */}
+        {trackingMode === "foreground" && alwaysCard.show && (
+          <View style={[styles.alwaysStrip, { backgroundColor: colors.card, borderColor: colors.border }]}>
+            <Feather name="moon" color={colors.primary} size={16} />
+            <View style={styles.flex}>
+              <Text numberOfLines={1} style={[styles.alwaysTitle, { color: colors.foreground }]}>
+                {ja ? "開いている間だけ更新中" : "Updating only while open"}
+              </Text>
+              <Text numberOfLines={2} style={[styles.note, { color: colors.mutedForeground }]}>
+                {ja ? "閉じている間は駅や時刻が更新されません" : "Your station and times won’t update while closed"}
+              </Text>
+            </View>
+            <Pressable
+              testID="always-card-enable"
+              onPress={() =>
+                void switchTrackingToBackground().then((ok) => {
+                  if (!ok) void Linking.openSettings();
+                })
+              }
+              accessibilityRole="button"
+              style={({ pressed }) => [styles.smallButton, { backgroundColor: colors.primary, borderColor: colors.primary, opacity: pressed ? 0.85 : 1 }]}
+            >
+              <Text style={[styles.smallButtonText, { color: colors.primaryForeground }]}>{ja ? "閉じても更新" : "Keep updating"}</Text>
+            </Pressable>
+            <Pressable
+              testID="always-card-close"
+              onPress={alwaysCard.dismissTonight}
+              accessibilityRole="button"
+              accessibilityLabel={ja ? "今夜は閉じる" : "Close for tonight"}
+              hitSlop={10}
+            >
+              <Feather name="x" size={18} color={colors.mutedForeground} />
+            </Pressable>
+          </View>
+        )}
+        {trackingMode === "foreground" && !alwaysCard.show && (
           <Text style={[styles.note, { color: colors.mutedForeground }]}>
             {nightLocationMode === "background" && backgroundAllowed === false
               ? ja
@@ -1183,56 +1225,6 @@ export default function RideScreen() {
 
 
 
-        {/* Tracking only while open: suggest 閉じても更新 (iOS "Always"); at most once a night */}
-        {trackingMode === "foreground" && alwaysCard.show && (
-          <Card style={styles.alwaysCard}>
-            <View style={styles.alwaysHead}>
-              <Feather name="moon" color={colors.primary} size={18} />
-              <Text style={[styles.rowTitle, styles.flex, { color: colors.foreground }]}>
-                {ja ? "閉じても更新しますか？" : "Keep updating when closed?"}
-              </Text>
-              <Pressable
-                testID="always-card-close"
-                onPress={alwaysCard.dismissTonight}
-                accessibilityRole="button"
-                accessibilityLabel={ja ? "閉じる" : "Close"}
-                hitSlop={10}
-              >
-                <Feather name="x" size={18} color={colors.mutedForeground} />
-              </Pressable>
-            </View>
-            <Text style={[styles.note, { color: colors.mutedForeground }]}>
-              {ja
-                ? "今はアプリを開いている間だけ更新します。閉じている間は駅や出る時刻を計算し直せないため、リマインダーは最後に確認した場所の時刻で届きます。"
-                : "Right now LastRide updates only while it’s open. While closed it can’t re-plan your station or leave time, so reminders use where you last were."}
-            </Text>
-            <View style={styles.lockRow}>
-              <Pressable
-                testID="always-card-enable"
-                onPress={() =>
-                  void switchTrackingToBackground().then((ok) => {
-                    if (!ok) void Linking.openSettings();
-                  })
-                }
-                accessibilityRole="button"
-                style={({ pressed }) => [styles.smallButton, { backgroundColor: colors.primary, borderColor: colors.primary, opacity: pressed ? 0.85 : 1 }]}
-              >
-                <Text style={[styles.smallButtonText, { color: colors.primaryForeground }]}>
-                  {ja ? "閉じても更新にする" : "Update when closed"}
-                </Text>
-              </Pressable>
-              <Pressable
-                testID="always-card-never"
-                onPress={alwaysCard.dismissForever}
-                accessibilityRole="button"
-                hitSlop={8}
-                style={({ pressed }) => [styles.alwaysNever, { opacity: pressed ? 0.6 : 1 }]}
-              >
-                <Text style={[styles.note, { color: colors.mutedForeground }]}>{ja ? "今後表示しない" : "Don’t show again"}</Text>
-              </Pressable>
-            </View>
-          </Card>
-        )}
 
         {locationError !== "permission" && !isLocationReady && (
           <Pressable
@@ -1388,7 +1380,7 @@ const styles = StyleSheet.create({
     width: HERO_SIZE,
   },
   startTitle: { fontSize: 18, fontWeight: "900", marginTop: 4 },
-  startNote: { fontSize: 11, fontWeight: "700", opacity: 0.8 },
+  startNote: { fontSize: 11, fontWeight: "700", lineHeight: 14, opacity: 0.8, paddingHorizontal: 10, textAlign: "center" },
   trainSwitch: { borderRadius: 14, borderWidth: 1, flexDirection: "row", gap: 4, padding: 4 },
   trainSegment: { alignItems: "center", borderRadius: 10, flex: 1, justifyContent: "center", minHeight: 46, paddingVertical: 4 },
   trainSegmentLabel: { fontSize: 11, fontWeight: "800" },
@@ -1426,11 +1418,11 @@ const styles = StyleSheet.create({
   smallButtonText: { fontSize: 13, fontWeight: "800" },
   lockRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   alwaysCard: { gap: 12, paddingHorizontal: 18, paddingVertical: 18 },
+  alwaysStrip: { alignItems: "center", borderRadius: 16, borderWidth: 1, flexDirection: "row", gap: 10, paddingHorizontal: 14, paddingVertical: 10 },
+  alwaysTitle: { fontSize: 13, fontWeight: "800" },
   promptButtons: { flexDirection: "row", gap: 10, marginTop: 2 },
   promptButton: { alignItems: "center", flex: 1, justifyContent: "center", minHeight: 46, paddingHorizontal: 12 },
   promptButtonText: { textAlign: "center" },
-  alwaysHead: { alignItems: "center", flexDirection: "row", gap: 10 },
-  alwaysNever: { justifyContent: "center", minHeight: 36, paddingHorizontal: 6 },
   routeToggle: { alignItems: "center", flexDirection: "row", gap: 6 },
   statusLine: { alignItems: "center", flexDirection: "row", gap: 10, marginTop: -4 },
   statusStrong: { fontWeight: "700" },
