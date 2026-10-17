@@ -145,6 +145,15 @@ module.exports = ({ config }) => {
     },
   };
 
+  // App Store bundle IDs are immutable for a published listing. An EAS
+  // environment override is useful for Personal Team / preview development,
+  // but changing it for a production iOS binary would break its provisioning,
+  // subscription products, associated domains and widget app group.
+  if (profile === "production" && process.env.EAS_BUILD_PLATFORM === "ios" &&
+      ios.bundleIdentifier !== config.ios?.bundleIdentifier) {
+    throw new Error(`Production iOS requires bundle ID ${config.ios?.bundleIdentifier}`);
+  }
+
   // Inject a restricted native Android Maps SDK key at build time only.
   // Don't put this key in EXPO_PUBLIC_* or the JS bundle. Android-restricted
   // SDK keys are present in the native manifest by design; restrict them by

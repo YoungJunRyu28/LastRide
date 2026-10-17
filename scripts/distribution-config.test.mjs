@@ -13,7 +13,7 @@ const vars = [
   'EXPO_PUBLIC_REVENUECAT_ANDROID_KEY', 'EXPO_PUBLIC_REVENUECAT_IOS_KEY',
   'EXPO_PUBLIC_API_URL', 'EXPO_PUBLIC_APP_JOIN_BASE_URL',
   'EXPO_ANDROID_GOOGLE_MAPS_API_KEY', 'EXPO_ANDROID_GALAXY_GOOGLE_MAPS_API_KEY', 'ENABLE_REMOTE_PUSH',
-  'ENABLE_UNIVERSAL_LINKS', 'ANDROID_PACKAGE_ID',
+  'ENABLE_UNIVERSAL_LINKS', 'ANDROID_PACKAGE_ID', 'IOS_BUNDLE_ID',
 ];
 function configured(values) {
   const original = Object.fromEntries(vars.map(name => [name, process.env[name]]));
@@ -66,6 +66,19 @@ test('Play and Apple releases fail closed without a correct store-specific Reven
   const ios = configured({ ...release, EAS_BUILD_PROFILE: 'production',
     EAS_BUILD_PLATFORM: 'ios', EXPO_PUBLIC_REVENUECAT_IOS_KEY: 'appl_example_public_key' });
   assert.equal(ios.ios.bundleIdentifier, 'jp.lastride.app');
+});
+
+test('App Store production refuses bundle ID overrides but Personal Team development remains flexible', () => {
+  const releaseIOS = { ...release, EAS_BUILD_PROFILE: 'production',
+    EAS_BUILD_PLATFORM: 'ios', EXPO_PUBLIC_REVENUECAT_IOS_KEY: 'appl_realistic_public' };
+  assert.throws(() => configured({ ...releaseIOS, IOS_BUNDLE_ID: 'jp.lastride.app.personal' }),
+    /Production iOS requires bundle ID jp.lastride.app/);
+  const canonical = configured({ ...releaseIOS, IOS_BUNDLE_ID: 'jp.lastride.app' });
+  assert.equal(canonical.ios.bundleIdentifier, 'jp.lastride.app');
+  const preview = configured({ EAS_BUILD_PROFILE: 'preview',
+    EXPO_PUBLIC_API_URL: 'https://api.example.invalid',
+    IOS_BUNDLE_ID: 'jp.lastride.app.personal' });
+  assert.equal(preview.ios.bundleIdentifier, 'jp.lastride.app.personal');
 });
 
 test('Galaxy Store release uses a distinct package and verified release capabilities', () => {
@@ -124,4 +137,13 @@ test('Galaxy refuses reuse of Google Play package identity', () => {
     EXPO_PUBLIC_ANDROID_STORE: 'galaxy', EXPO_PUBLIC_REVENUECAT_GALAXY_KEY: 'galx_public',
     EXPO_ANDROID_GALAXY_GOOGLE_MAPS_API_KEY: key,
     ANDROID_PACKAGE_ID: 'jp.lastride.app' }), /different from Google Play/);
+});
+
+test('custom iOS MapKit module has a unique autolinked Swift class distinct from expo-maps', () => {
+  const metadata = JSON.parse(readFileSync(new URL('../artifacts/last-ride/modules/apple-maps/expo-module.config.json', import.meta.url), 'utf8'));
+  assert.deepEqual(metadata.apple.modules, ['LastRideAppleMapsModule']);
+  const native = readFileSync(new URL('../artifacts/last-ride/modules/apple-maps/ios/LastRideAppleMapsModule.swift', import.meta.url), 'utf8');
+  assert.match(native, /public class LastRideAppleMapsModule: Module/);
+  assert.match(native, /Name\("AppleMaps"\)/);
+  assert.doesNotMatch(native, /public class AppleMapsModule: Module/);
 });

@@ -239,8 +239,67 @@ railway data, verified street-level walking geometry or provider coverage.**
   permission changes; verify no imaginary route crosses an obstacle.
 - Galaxy purchase/restore/trial/expiry and Play purchase/restore must be
   tested with actual store accounts and correctly restricted signing keys.
-- The connected Mac currently has Xcode installed but Apple's Xcode license
-  has **not been accepted**. `swift-frontend -parse` passed; full iOS native
-  compile and simulator/device signing tests are **blocked until the owner
-  reviews and accepts the Xcode license**. Do not represent the Swift parse
-  check as an iOS app build.
+- The connected Mac's Xcode license was accepted on 2026-10-17. Xcode 27,
+  CocoaPods and the native workspace are available; a first iOS Simulator
+  compile is being verified separately. A simulator/debug build does not
+  replace App Store distribution signing, APNs production token delivery or
+  real-device AlarmKit/Live Activity testing.
+
+### iOS App Store bundle ID release guard
+
+A production **iOS** EAS build now rejects a different `IOS_BUNDLE_ID` from
+`jp.lastride.app`. This prevents accidentally packaging App Store updates
+with a Personal Team or testing identifier and invalidating the app group,
+App Links, push, RevenueCat product mapping or published App Store identity.
+Preview builds keep the ability to use `IOS_BUNDLE_ID` for isolated testing.
+
+Xcode 27.0 and CocoaPods 1.17.0 were verified after the owner accepted the
+license on 2026-10-17. All 132 pods installed successfully and the generated
+Xcode workspace includes the main app and the widget extension. The first
+full simulator compile uncovered the Expo Maps Swift name collision described
+below; after the native module rename and fresh `pod install`, the second
+Xcode `Debug` build for the iPhone 17 Pro Simulator **succeeded**. The `.app`
+installed into the iOS 26.5 simulator and launched LastRide successfully;
+Metro bundled 2,943 JS modules and displayed the bilingual onboarding UI.
+
+**Simulator limitation:** the app emitted `ERR_NOTIFICATIONS_KEYCHAIN_ACCESS`
+while reading an Expo Notifications persisted registration. This simulator
+binary was compiled with `CODE_SIGNING_ALLOWED=NO`, so it does not carry a
+usable push/keychain provisioning context. Production APNs receipt and
+registration remain unverified until a correctly signed TestFlight/dev-device
+build is tested. The simulator launch was configured with a deliberately
+nonexistent `https://api.invalid.example` backend, so real Japanese transit
+routes, purchases, groups and remote push were not exercised.
+
+### Xcode 27 native integration issue found and addressed
+
+After license acceptance, `pod install` completed (132 pods) and the first
+Xcode Simulator build **found a real compiler error**: expo-maps supplies its
+Swift `ExpoMaps.AppleMapsModule` while LastRide's custom native module used
+the same `AppleMapsModule` Swift class name. Expo's generated
+`ExpoModulesProvider.swift` imports both frameworks and Swift cannot select
+the unqualified class. The LastRide class is now uniquely named
+`LastRideAppleMapsModule` in both `modules/apple-maps/ios/` and its
+`expo-module.config.json`. Crucially, `Name("AppleMaps")` (the JS-facing name)
+remains unchanged, and Expo's own SDK module uses `Name("ExpoAppleMaps")`.
+CocoaPods regenerated a provider that lists each **distinct** Swift class,
+without patching any generated native files. A regression test prevents the
+accidental return of the class collision. This issue is independent of Google
+Maps pricing, Google SDK key provisioning or transit coverage.
+
+Production App Store builds now also refuse `IOS_BUNDLE_ID` overrides from
+`jp.lastride.app`; personal-team/preview builds can still override it.
+
+### iOS Simulator smoke evidence and reproduction
+
+- Command: `xcodebuild -workspace ios/LastRide.xcworkspace -scheme LastRide
+  -configuration Debug -sdk iphonesimulator -destination
+  'platform=iOS Simulator,id=<simulator device ID>'
+  -derivedDataPath <build dir> CODE_SIGNING_ALLOWED=NO -jobs 5 build`
+- `xcrun simctl install <device ID> <build dir>/Build/Products/Debug-iphonesimulator/LastRide.app`
+- Run Metro from `artifacts/last-ride` with a non-production API URL then
+  `xcrun simctl launch <device ID> jp.lastride.app`; verify bilingual onboarding
+  appears. This launch is **not** TestFlight signing, APNs validation, or a
+  functional journey-to-station test.
+- The generated `LastRide.app` contains `ExpoWidgetsTarget.appex`; verify
+  App Group and notification entitlements again on a **signed** build.

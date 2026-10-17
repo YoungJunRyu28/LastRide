@@ -50,7 +50,7 @@ struct SnapshotRequest: Record {
  * map data to be shown with an Apple map and not cached long-term, so callers
  * request this only for what is on screen and keep nothing past the night.
  */
-public class AppleMapsModule: Module {
+public class LastRideAppleMapsModule: Module {
   public func definition() -> ModuleDefinition {
     Name("AppleMaps")
 
