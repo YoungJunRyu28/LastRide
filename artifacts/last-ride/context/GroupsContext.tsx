@@ -29,8 +29,8 @@ import {
   type GroupMembership,
 } from "@/lib/groupMemberships";
 import { clearSharing, markSharing, stopSharing } from "@/lib/groupSharing";
-import { prepareGroupCreation, readPendingGroupCreation, finishGroupCreation } from "@/lib/pendingGroupCreation";
-import { prepareGroupJoin, readPendingGroupJoin, finishGroupJoin } from "@/lib/pendingGroupJoin";
+import { prepareGroupCreation, readPendingGroupCreation, finishGroupCreation, creationDefinitelyRejected } from "@/lib/pendingGroupCreation";
+import { prepareGroupJoin, readPendingGroupJoin, finishGroupJoin, joinDefinitelyRejected } from "@/lib/pendingGroupJoin";
 import { GroupRefreshGuard } from "@/lib/groupRefreshGuard";
 import { onGroupUpdated, startGroupUpdates } from "@/lib/groupUpdates";
 import { expoPushToken } from "@/lib/pushToken";
@@ -287,13 +287,19 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
   const resumePendingCreation = useCallback(async () => {
     const pending = await readPendingGroupCreation();
     if (!pending) return null;
-    const session = await createGroup(
-      { name: pending.name, displayName: pending.displayName, language: pending.language },
-      { headers: {
-        "X-RevenueCat-App-User-Id": await appUserId(),
-        "X-Group-Create-Key": pending.creationKey,
-      } },
-    );
+    let session: Awaited<ReturnType<typeof createGroup>>;
+    try {
+      session = await createGroup(
+        { name: pending.name, displayName: pending.displayName, language: pending.language },
+        { headers: {
+          "X-RevenueCat-App-User-Id": await appUserId(),
+          "X-Group-Create-Key": pending.creationKey,
+        } },
+      );
+    } catch (error) {
+      if (creationDefinitelyRejected(errorStatus(error))) await finishGroupCreation(pending.creationKey);
+      throw error;
+    }
     await remember(session.memberToken, session.group, pending.displayName);
     await finishGroupCreation(pending.creationKey);
     return session.group;
@@ -302,13 +308,19 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
   const create = useCallback(
     async (name: string, displayName: string) => {
       const pending = await prepareGroupCreation(name, displayName, language ?? "ja");
-      const session = await createGroup(
-        { name: pending.name, displayName: pending.displayName, language: pending.language },
-        { headers: {
-          "X-RevenueCat-App-User-Id": await appUserId(),
-          "X-Group-Create-Key": pending.creationKey,
-        } },
-      );
+      let session: Awaited<ReturnType<typeof createGroup>>;
+      try {
+        session = await createGroup(
+          { name: pending.name, displayName: pending.displayName, language: pending.language },
+          { headers: {
+            "X-RevenueCat-App-User-Id": await appUserId(),
+            "X-Group-Create-Key": pending.creationKey,
+          } },
+        );
+      } catch (error) {
+        if (creationDefinitelyRejected(errorStatus(error))) await finishGroupCreation(pending.creationKey);
+        throw error;
+      }
       await remember(session.memberToken, session.group, pending.displayName);
       await finishGroupCreation(pending.creationKey);
       return session.group;
@@ -332,10 +344,16 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
     const pending = await readPendingGroupJoin();
     if (!pending) return null;
     const knownMemberTokens = (await readMemberships()).map((item) => item.memberToken).slice(0, 50);
-    const session = await joinGroup({
-      ...(pending.inviteToken ? { inviteToken: pending.inviteToken } : { joinCode: pending.joinCode }),
-      displayName: pending.displayName, language: pending.language, knownMemberTokens,
-    }, { headers: { "X-Group-Join-Key": pending.joinKey } });
+    let session: Awaited<ReturnType<typeof joinGroup>>;
+    try {
+      session = await joinGroup({
+        ...(pending.inviteToken ? { inviteToken: pending.inviteToken } : { joinCode: pending.joinCode }),
+        displayName: pending.displayName, language: pending.language, knownMemberTokens,
+      }, { headers: { "X-Group-Join-Key": pending.joinKey } });
+    } catch (error) {
+      if (joinDefinitelyRejected(errorStatus(error))) await finishGroupJoin(pending.joinKey);
+      throw error;
+    }
     await remember(session.memberToken, session.group, pending.displayName);
     await finishGroupJoin(pending.joinKey);
     return session.group;
@@ -345,9 +363,15 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
     async (input: { inviteToken?: string; joinCode?: string; displayName: string }) => {
       const pending = await prepareGroupJoin({ ...input, language: language ?? "ja" });
       const knownMemberTokens = (await readMemberships()).map((item) => item.memberToken).slice(0, 50);
-      const session = await joinGroup({
-        ...input, language: pending.language, knownMemberTokens,
-      }, { headers: { "X-Group-Join-Key": pending.joinKey } });
+      let session: Awaited<ReturnType<typeof joinGroup>>;
+      try {
+        session = await joinGroup({
+          ...input, language: pending.language, knownMemberTokens,
+        }, { headers: { "X-Group-Join-Key": pending.joinKey } });
+      } catch (error) {
+        if (joinDefinitelyRejected(errorStatus(error))) await finishGroupJoin(pending.joinKey);
+        throw error;
+      }
       const existing = membershipsRef.current.find((item) => item.groupId === session.group.id);
       if (existing && existing.memberToken !== session.memberToken) {
         // A valid existing membership takes precedence; don't overwrite a

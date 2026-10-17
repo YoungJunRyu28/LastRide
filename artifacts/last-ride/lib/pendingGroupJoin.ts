@@ -65,3 +65,9 @@ export async function finishGroupJoin(joinKey: string): Promise<void> {
     if (pending?.joinKey === joinKey) await AsyncStorage.removeItem(STORAGE_KEY);
   });
 }
+
+/** 400/409 mean no new membership was created by this attempt. A valid saved
+ * join capability always gets 200 even when the old invite was rotated. */
+export function joinDefinitelyRejected(status: number | undefined): boolean {
+  return status === 400 || status === 409;
+}

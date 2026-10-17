@@ -70,3 +70,9 @@ export async function finishGroupCreation(creationKey: string): Promise<void> {
     if (pending?.creationKey === creationKey) await AsyncStorage.removeItem(PENDING_KEY);
   });
 }
+
+/** 400/402 mean the server definitively refused the new creation. A recovered
+ * existing host always responds with 200, including after premium expiry. */
+export function creationDefinitelyRejected(status: number | undefined): boolean {
+  return status === 400 || status === 402;
+}

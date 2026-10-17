@@ -14,7 +14,7 @@ vi.mock("@react-native-async-storage/async-storage", () => ({ default: {
   }),
   removeItem: vi.fn(async (key: string) => { store.delete(key); }),
 } }));
-import { prepareGroupJoin, readPendingGroupJoin, finishGroupJoin } from "@/lib/pendingGroupJoin";
+import { prepareGroupJoin, readPendingGroupJoin, finishGroupJoin, joinDefinitelyRejected } from "@/lib/pendingGroupJoin";
 
 beforeEach(async () => {
   const existing = await readPendingGroupJoin();
@@ -25,6 +25,10 @@ beforeEach(async () => {
 const entry = { joinCode: "ABCD1234", displayName: "Alice", language: "ja" as const };
 
 describe("pending anonymous group join recovery", () => {
+  test("invalid or full invites can be retried with corrected input", () => {
+    expect([400, 409].map(joinDefinitelyRejected)).toEqual([true, true]);
+    expect([undefined, 0, 500, 503, 401].map(joinDefinitelyRejected)).toEqual([false, false, false, false, false]);
+  });
   test("generates 32 secure random bytes and stores a replayable capability before request", async () => {
     const pending = await prepareGroupJoin(entry);
     expect(pending.joinKey).toMatch(/^[a-f0-9]{64}$/);
