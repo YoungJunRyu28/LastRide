@@ -82,10 +82,10 @@ describe("tracking: the live timeline", () => {
 });
 
 describe("not tracking", () => {
-  test("live just after the check, then tonight's train time leads", () => {
+  test("no countdown at all: tonight's train time leads, even just after a check", () => {
     const entries = widgetTimeline(night(last, jst(23, 0)), "自宅", "ja", jst(23, 0), { tracking: false });
-    expect(at(entries, jst(23, 20)).kind).toBe("live");
-    expect(at(entries, jst(23, 31))).toMatchObject({
+    expect(entries.some((entry) => entry.props.kind === "live")).toBe(false);
+    expect(at(entries, jst(23, 0))).toMatchObject({
       kind: "plan",
       trainHeading: "終電 · 渋谷",
       trainTime: "23:45",

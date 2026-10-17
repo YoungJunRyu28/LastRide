@@ -214,7 +214,11 @@ export async function startBackgroundTracking(): Promise<boolean> {
       // not resume until a big move: you'd leave without the plan following you.
       // Updates still only come on movement, so standing still costs little.
       pausesUpdatesAutomatically: false,
-      showsBackgroundLocationIndicator: true,
+      // No blue location pill: on Dynamic Island iPhones it takes the island's
+      // place and hides the Live Activity while the app is closed. Allowed with
+      // "Always" location (which background tracking needs); the Live Activity
+      // and iOS's status-bar arrow still show that location is in use.
+      showsBackgroundLocationIndicator: false,
       foregroundService: {
         notificationTitle: 'LastRide is watching the clock',
         notificationBody: 'Tracking your nearest station for tonight.',
