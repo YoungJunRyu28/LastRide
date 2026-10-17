@@ -15,9 +15,9 @@ import {
   type GroupDetail,
   type GroupMemberSummary,
 } from '@workspace/api-client-react';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import React, { useState } from 'react';
-import { Alert, Modal, Platform, Pressable, ScrollView, Share, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { Alert, Modal, Platform, Pressable, RefreshControl, ScrollView, Share, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomNav } from '@/components/BottomNav';
 import { Card, IconButton, PrimaryButton, SecondaryButton, TextButton } from '@/components/ui';
@@ -65,7 +65,18 @@ export default function GroupScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { language, plan, nowMs, demoActive } = useLastRide();
   const clockMs = useSecondClock(nowMs, demoActive);
-  const { groups, apply, forget, memberOptions } = useGroups();
+  const { groups, apply, forget, refreshGroup, memberOptions } = useGroups();
+  const [refreshing, setRefreshing] = useState(false);
+  // Silent background pushes are best effort. Always refresh when opening the
+  // detail view, and let a person pull to refresh a long-lived active screen.
+  useFocusEffect(React.useCallback(() => {
+    if (id) void refreshGroup(id);
+  }, [id, refreshGroup]));
+  const pullRefresh = React.useCallback(async () => {
+    if (!id) return;
+    setRefreshing(true);
+    try { await refreshGroup(id); } finally { setRefreshing(false); }
+  }, [id, refreshGroup]);
   const { isPremium } = usePremium();
   const ja = language !== 'en';
   const [sheet, setSheet] = useState<Sheet>(null);
@@ -340,7 +351,9 @@ export default function GroupScreen() {
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
-      <ScrollView contentContainerStyle={[styles.content, { paddingTop: insets.top + (Platform.OS === 'web' ? 24 : 8) }]}>
+      <ScrollView
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void pullRefresh()} tintColor={colors.primary} />}
+        contentContainerStyle={[styles.content, { paddingTop: insets.top + (Platform.OS === 'web' ? 24 : 8) }]}>
         <View style={styles.topbar}>
           <IconButton icon="chevron-left" label={ja ? '戻る' : 'Back'} onPress={back} />
           <View style={styles.topActions}>

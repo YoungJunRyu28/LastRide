@@ -44,7 +44,7 @@ import {
 import { nightWindow, serviceDateFor } from "../src/lib/groupNight";
 import { clearEntitlementCache } from "../src/lib/revenueCat";
 import { dispatchGroupLeaveAlerts } from "../src/lib/groupNotifications";
-import { claimGroupDeliveryBatch, settleGroupDelivery } from "../src/lib/groupAlertOutbox";
+import { claimGroupDeliveryBatch, nextGroupOutboxRetryAt, settleGroupDelivery } from "../src/lib/groupAlertOutbox";
 import app from "../src/app";
 
 /**
@@ -673,6 +673,7 @@ describe("tonight", () => {
     const failed = leased[1];
     await settleGroupDelivery(succeeded, { ticketId: "ticket-1" }, dueAt);
     await settleGroupDelivery(failed, { error: "HTTP 503" }, dueAt);
+    expect(await nextGroupOutboxRetryAt(dueAt)).toEqual(new Date(dueAt.getTime() + 30_000));
     const retryAt = new Date(dueAt.getTime() + 31_000);
     const retryBatch = await claimGroupDeliveryBatch(retryAt);
     expect(retryBatch.map((delivery) => delivery.id)).toEqual([failed.id]);
@@ -682,6 +683,36 @@ describe("tonight", () => {
     // The source's private leave-by time and push tickets never survive 08:00 JST.
     expect(await purgeEndedGroupNights(tonightWindow().endsAt)).toBe(1);
     expect(await getDb().select().from(groupAlertDeliveriesTable)).toEqual([]);
+  });
+
+  it("stale queued alerts cannot be delivered after the sender changes their leave time", async () => {
+    const { groupId, host, members } = await groupWithMembers(["Bea", "Cai"]);
+    for (const [member, label] of [[host, "host"], [members[0], "bea"], [members[1], "cai"]] as const)
+      await setPush(groupId, member.token, label);
+    await startGroupTonightRecord(groupId, host.token);
+    const leaveBy = new Date(tonightWindow().endsAt.getTime() - 2 * 60 * 60_000);
+    await setGroupTonightParticipationRecord(groupId, members[0].token, leaveBy);
+    const firstDueAt = new Date(leaveBy.getTime() + 60_000);
+    await claimDueGroupLeaveAlerts(firstDueAt);
+    expect(await getDb().select().from(groupAlertDeliveriesTable)).toHaveLength(2);
+    await setGroupTonightParticipationRecord(groupId, members[0].token, new Date(leaveBy.getTime() + 20 * 60_000));
+    expect(await claimGroupDeliveryBatch(firstDueAt)).toEqual([]);
+    expect(await nextGroupOutboxRetryAt(firstDueAt)).toBeNull();
+  });
+
+  it("recipient opt-out after enqueuing prevents the queued notification from being sent", async () => {
+    const { groupId, host, members } = await groupWithMembers(["Bea", "Cai"]);
+    for (const [member, label] of [[host, "host"], [members[0], "bea"], [members[1], "cai"]] as const)
+      await setPush(groupId, member.token, label);
+    await startGroupTonightRecord(groupId, host.token);
+    const leaveBy = new Date(tonightWindow().endsAt.getTime() - 2 * 60 * 60_000);
+    await setGroupTonightParticipationRecord(groupId, members[0].token, leaveBy);
+    const dueAt = new Date(leaveBy.getTime() + 60_000);
+    await claimDueGroupLeaveAlerts(dueAt);
+    expect(await getDb().select().from(groupAlertDeliveriesTable)).toHaveLength(2);
+    await updateGroupMembershipRecord(groupId, members[1].token, { leaveTimeAlerts: false });
+    const delivery = await claimGroupDeliveryBatch(dueAt);
+    expect(delivery.map((d) => d.recipientMemberId)).toEqual([host.id]);
   });
 
   it("does not send stale leave-time alerts", async () => {

@@ -19,7 +19,7 @@ This records the 58 findings from the static source audit. **Fixed** means the c
 | LR-013 | Container cleanup missing inactive group purge | **Fixed** | Exercise real timed DB cleanup in CI |
 | LR-014 | Host inactivity can delete active member groups | **Pending** | Transfer/grace period/explicit notices |
 | LR-015 | Push registration only at create/join | **Fixed in source** | Real APNs/FCM token rotation/permission test |
-| LR-016 | Group visible screen can remain stale after silent push lost | **Pending** | Pull-to-refresh/reconnect/short polling when visible |
+| LR-016 | Group visible screen can remain stale after silent push lost | **Partial** | Focus refresh + manual pull-to-refresh added; continuously visible screens still require push or manual action |
 | LR-017 | No-home-device group push tap blocked | **Fixed** | Navigation regression tests |
 | LR-018 | Group invite join limit 20/min per IP hits shared Wi-Fi | **Pending** | Token aware rate limit and realistic load test |
 | LR-019 | Proxy hop setup can attribute wrong IP | **Pending** | Trusted ingress config and spoof tests |

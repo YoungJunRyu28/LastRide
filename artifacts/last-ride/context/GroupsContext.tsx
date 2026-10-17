@@ -45,6 +45,8 @@ type GroupsValue = {
   loading: boolean;
   available: boolean;
   refresh: () => Promise<void>;
+  /** Refresh only this group when its detail screen is focused. */
+  refreshGroup: (groupId: string) => Promise<void>;
   /** Request options carrying this device's member token for `groupId`. */
   memberOptions: (groupId: string) => RequestInit;
   /** Stores a server answer for a group (after any action that returns GroupDetail). */
@@ -367,8 +369,8 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
   );
 
   const value = useMemo(
-    () => ({ groups, loading, available, refresh, memberOptions, apply, forget, leaveAll, create, join, tonightGroup, tonightOpenGroup, sharingTonight, stopSharingTonight }),
-    [groups, loading, available, refresh, memberOptions, apply, forget, leaveAll, create, join, tonightGroup, tonightOpenGroup, sharingTonight, stopSharingTonight],
+    () => ({ groups, loading, available, refresh, refreshGroup, memberOptions, apply, forget, leaveAll, create, join, tonightGroup, tonightOpenGroup, sharingTonight, stopSharingTonight }),
+    [groups, loading, available, refresh, refreshGroup, memberOptions, apply, forget, leaveAll, create, join, tonightGroup, tonightOpenGroup, sharingTonight, stopSharingTonight],
   );
   return <GroupsContext.Provider value={value}>{children}</GroupsContext.Provider>;
 }
