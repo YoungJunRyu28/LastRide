@@ -66,6 +66,9 @@
       var key = form.getAttribute("data-sitekey");
       if (!key || key === "TURNSTILE_SITE_KEY") return;
       form.hidden = false;
+      // Opened from a link to the form (e.g. the terms): the form was hidden at load, so scroll now.
+      if (location.hash === "#contact-form")
+        requestAnimationFrame(function () { setTimeout(function () { form.scrollIntoView({ block: "start" }); }, 50); });
       form.querySelector(".cf-turnstile").setAttribute("data-sitekey", key);
       var script = document.createElement("script");
       script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js";

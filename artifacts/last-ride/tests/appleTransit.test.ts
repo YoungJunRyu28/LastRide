@@ -85,6 +85,14 @@ describe("arrival at the station place", () => {
   });
 });
 
+describe("whole minutes", () => {
+  it("rounds Apple's departure and arrival seconds down, so reminders and countdowns match the times shown", async () => {
+    // Apple answers 23:45:30 → 00:37:40; the app shows 23:45 and 00:37.
+    const found = await searchLastTrain(simulatedMapKit([{ dep: jst(23, 45) + 30_000, arr: jst(24, 37) + 40_000 }], null), jst(22));
+    expect(found).toEqual({ departsAt: jst(23, 45), arrivesAt: jst(24, 37) });
+  });
+});
+
 describe("searchFirstTrain", () => {
   it("skips the walk Apple offers before a faster first train", async () => {
     // First train 04:50→04:56; walking takes 22 minutes, so before ~04:35 Apple suggests walking.

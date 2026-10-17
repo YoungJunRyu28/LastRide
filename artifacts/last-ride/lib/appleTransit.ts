@@ -125,8 +125,23 @@ export function stationNames(station: { name?: string; nameJa?: string }): strin
   return [station.nameJa, station.name].filter((name): name is string => !!name?.trim());
 }
 
+/** Down to the whole minute. */
+function floorMinute(ms: number): number {
+  return Math.floor(ms / MINUTE_MS) * MINUTE_MS;
+}
+
+/**
+ * Apple's times carry seconds (00:10:30), the app shows minutes (00:10): kept
+ * as is, the leave time read 23:56 but was 23:56:30, and every reminder and
+ * countdown ran 30 seconds behind what was on screen. Whole minutes, rounded
+ * down, so any difference is early, never late (timetable times already are).
+ */
 function times(eta: Eta): Omit<TrainTime, 'source'> {
-  return { departsAt: eta.departureMs, arrivesAt: eta.arrivalMs, ...(eta.arrivesAtStation ? { arrivesAtStation: true } : {}) };
+  return {
+    departsAt: floorMinute(eta.departureMs),
+    arrivesAt: floorMinute(eta.arrivalMs),
+    ...(eta.arrivesAtStation ? { arrivesAtStation: true } : {}),
+  };
 }
 
 function etaQuery(from: StationOption, to: StationOption): EtaQuery | null {
