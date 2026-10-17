@@ -392,6 +392,10 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     realAt: number;
   } | null>(null);
   const [realNow, setRealNow] = useState(Date.now);
+  // False until launch has checked whether tracking was on (and resumed it). Until
+  // then "not tracking" isn't known, so nothing may end the Live Activity: iOS
+  // also starts the app invisibly for background location updates.
+  const [trackingRestored, setTrackingRestored] = useState(false);
   const [trackingMode, setTrackingMode] = useState<
     "background" | "foreground" | null
   >(null);
@@ -582,7 +586,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       : plan.station.name
     : "";
 
-  const { isPremium } = usePremium();
+  const { isPremium, known: premiumKnown } = usePremium();
   // Notifications and alarms are free: what is chosen is what is delivered.
   const delivered = useMemo(
     () => ({ notifications: reminderIntervals, alarms: alarmIntervals, sound: alarmSound }),
@@ -648,12 +652,15 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
   // changes and when the night moves on (leave-by passes, the last train goes).
   const liveStatus = plan && !demoActive ? rideStatus(plan, nowMs) : null;
   useEffect(() => {
-    if (!trackingMode || !plan || demoActive || !isPremium) {
+    if (!trackingRestored) return;
+    if (!trackingMode || !plan || demoActive || (premiumKnown && !isPremium)) {
       void endLiveActivity();
       return;
     }
+    // Premium not known yet (just opened, or RevenueCat unreachable): the saved
+    // flag decides, and a running activity is never ended for it.
     const sync = () =>
-      void syncLiveActivity(plan, language ?? "en", Date.now(), true, widgetTheme).catch(
+      void syncLiveActivity(plan, language ?? "en", Date.now(), premiumKnown ? true : undefined, widgetTheme).catch(
         () => undefined,
       );
     sync();
@@ -662,7 +669,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       if (state === "active") sync();
     });
     return () => subscription.remove();
-  }, [trackingMode, plan, language, liveStatus, demoActive, isPremium, widgetTheme]);
+  }, [trackingRestored, trackingMode, plan, language, liveStatus, demoActive, isPremium, premiumKnown, widgetTheme]);
 
   // First train from the chosen station, for the "if missed" screen. Keyed on the
   // station and night rather than the plan, so re-plans that keep them don't refetch.
@@ -1506,9 +1513,12 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
   // pick it back up on launch so reminders and live updates carry on.
   useEffect(() => {
     if (!isHydrated) return;
-    void isTrackingFlagOn().then((on) => {
-      if (on) void startTracking({ resume: true });
-    });
+    void isTrackingFlagOn()
+      .then(async (on) => {
+        if (on) await startTracking({ resume: true });
+      })
+      .catch(() => undefined)
+      .finally(() => setTrackingRestored(true));
     // Only on launch: later starts and stops come from the user.
   }, [isHydrated]);
 

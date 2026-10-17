@@ -54,8 +54,15 @@ export async function syncLiveActivity(
 ): Promise<void> {
   if (!liveActivityEnabled && !countdownNotificationAvailable) return;
   const content = liveActivityContent(plan, language, nowMs, theme ?? (await readWidgetTheme()));
-  if (!content || !(premium ?? (await readPremiumCache()))) {
+  if (!content) {
     await endLiveActivity();
+    return;
+  }
+  // Only end for "not Premium" when that's known for sure (the open app). The
+  // background task only has a saved flag; a running activity keeps updating,
+  // and a closed app can't start one anyway.
+  if (!(premium ?? (await readPremiumCache()))) {
+    if (premium === false) await endLiveActivity();
     return;
   }
   if (countdownNotificationAvailable) {

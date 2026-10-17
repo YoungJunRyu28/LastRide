@@ -49,6 +49,8 @@ type PremiumValue = {
   isPremium: boolean;
   /** False until the first entitlement check finishes. */
   ready: boolean;
+  /** Premium was actually determined (RevenueCat answered, test mode, or the TestFlight switch); false after a failed check. */
+  known: boolean;
   live: boolean;
   plans: PlanChoice[];
   purchase: (plan: PlanChoice) => Promise<PurchaseResult>;
@@ -95,12 +97,19 @@ export function PremiumProvider({ children }: { children: React.ReactNode }) {
       .catch(() => undefined);
   }, []);
   const [ready, setReady] = useState(false);
+  // Premium has actually been determined (RevenueCat answered, or test mode read it).
+  // A failed or unfinished check must never be saved as "not Premium": the
+  // background task would then end a running Live Activity.
+  const [known, setKnown] = useState(false);
   const [plans, setPlans] = useState<PlanChoice[]>(premiumLive ? [] : TEST_PLANS);
 
   useEffect(() => {
     if (!premiumLive || !apiKey) {
       void AsyncStorage.getItem(TEST_PREMIUM_KEY)
-        .then((value) => setIsPremium(value === 'true'))
+        .then((value) => {
+          setIsPremium(value === 'true');
+          setKnown(true);
+        })
         .catch(() => undefined)
         .finally(() => setReady(true));
       return;
@@ -108,7 +117,9 @@ export function PremiumProvider({ children }: { children: React.ReactNode }) {
     let active = true;
     Purchases.configure({ apiKey });
     const listener = (info: CustomerInfo) => {
-      if (active) setIsPremium(hasEntitlement(info));
+      if (!active) return;
+      setIsPremium(hasEntitlement(info));
+      setKnown(true);
     };
     Purchases.addCustomerInfoUpdateListener(listener);
     void Purchases.getCustomerInfo()
@@ -131,9 +142,11 @@ export function PremiumProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  // The TestFlight switch decides on its own once loaded; otherwise only a real answer.
+  const determined = override !== null || known;
   useEffect(() => {
-    if (ready) void writePremiumCache(isPremium);
-  }, [isPremium, ready]);
+    if (determined) void writePremiumCache(isPremium);
+  }, [isPremium, determined]);
 
   const setTestPremium = useCallback((enabled: boolean | null) => {
     if (premiumLive) {
@@ -191,8 +204,8 @@ export function PremiumProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ isPremium, ready, live: premiumLive, plans, purchase, restore, setTestPremium, testOverride: override !== null, appUserId }),
-    [isPremium, ready, plans, purchase, restore, setTestPremium, override, appUserId],
+    () => ({ isPremium, ready, known: determined, live: premiumLive, plans, purchase, restore, setTestPremium, testOverride: override !== null, appUserId }),
+    [isPremium, ready, determined, plans, purchase, restore, setTestPremium, override, appUserId],
   );
   return <PremiumContext.Provider value={value}>{children}</PremiumContext.Provider>;
 }
