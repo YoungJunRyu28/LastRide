@@ -257,7 +257,10 @@ function autoPick(options: StationChoice[]): StationChoice {
 /** Builds the plan from evaluated stations, honouring a pinned station if it can still get the user home. */
 function assemble(options: StationChoice[], pinned: StationOption | null, coordinates: Coordinates, computedAt: number): NightPlan {
   const sorted = [...options].sort((first, second) => first.walkingMinutes - second.walkingMinutes);
-  const auto = autoPick(sorted);
+  // A station whose last train has already left is never the automatic pick while
+  // another still has one (e.g. after missing it, a farther line runs later).
+  const running = sorted.filter((option) => option.lastTrain.departsAt > computedAt);
+  const auto = autoPick(running.length > 0 ? running : sorted);
   const pinnedChoice = pinned ? sorted.find((option) => sameStation(option.station, pinned)) : undefined;
   const chosen = pinnedChoice ?? auto;
   const { station, walkingMinutes, distanceMeters, lastTrain, leaveByMs, recommendedLeaveByMs, safetyMarginMinutes, disruptionLines, destination, walkHomeMinutes, arriveHomeMs } = chosen;

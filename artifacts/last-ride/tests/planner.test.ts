@@ -334,6 +334,19 @@ describe('choosing between stations', () => {
     expect(plan.station.nameJa).toBe('渋谷');
   });
 
+  test('after the nearest station\'s last train has left, one still running wins, even a little later', () => {
+    // 23:57: 渋谷's last train (23:52) is gone; 恵比寿's (00:01) is not, with only 9 minutes' "gain".
+    const gone = choice({ station: shibuya, walkingMinutes: 5, lastTrain: train(LAST_TRAIN), leaveByMs: LEAVE_BY });
+    const running = choice({
+      station: ebisu,
+      walkingMinutes: 12,
+      lastTrain: train(LAST_TRAIN + 9 * MINUTE_MS),
+      leaveByMs: LEAVE_BY + 9 * MINUTE_MS,
+    });
+    const plan = repick(planFrom([gone, running], { computedAt: jst(2026, 9, 23, 23, 57) }), null);
+    expect(plan.station.nameJa).toBe('恵比寿');
+  });
+
   test('ten minutes is enough', () => {
     const close = choice({
       station: shibuya,

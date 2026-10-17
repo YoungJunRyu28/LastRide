@@ -1484,6 +1484,20 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     return () => clearInterval(timer);
   }, [trackingMode, getNow]);
 
+  // Without tracking (before it starts, after the user stops it, or after the last
+  // train when it has switched off), the app on screen stays up to date too: re-check
+  // every 5 minutes while open, as tracking does. After the last train this can find
+  // a nearby station with a later train.
+  useEffect(() => {
+    if (trackingMode !== null || Platform.OS === "web") return;
+    const timer = setInterval(() => {
+      const current = planRef.current;
+      if (AppState.currentState !== "active" || !current) return;
+      if (getNow() - current.computedAt >= AUTO_REPLAN_AFTER_MS) void requestLocationRef.current();
+    }, MINUTE_MS);
+    return () => clearInterval(timer);
+  }, [trackingMode, getNow]);
+
   // Permissions change in iPhone Settings while the app is in the background.
   // Re-check them on launch and whenever the app comes back: show when
   // notifications are off, and pick location back up by itself once it's allowed.

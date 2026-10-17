@@ -722,7 +722,8 @@ export default function RideScreen() {
 
         {/* Tonight on one line, then what the app is doing: tracking (with 停止) or when it last checked (with 更新) */}
         {plan && !departed && !onBoard && <TimelineRail plan={plan} nowMs={clockMs} ja={ja} />}
-        {plan && freshness && !onBoard && (!departed || trackingMode !== null) && (
+        {/* Also after the last train: moving may reach a station with a later one, so 更新 stays. */}
+        {plan && freshness && !onBoard && (
           <View style={styles.statusLine}>
             <Pressable
               testID="plan-freshness"
