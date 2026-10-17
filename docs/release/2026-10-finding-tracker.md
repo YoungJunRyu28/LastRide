@@ -57,7 +57,7 @@ This records the 58 findings from the static source audit. **Fixed** means the c
 | LR-051 | Native/OTA version compatibility and rollback | **Pending** | EAS staged rollback drill |
 | LR-052 | Group delivery metrics/ledger absent | **Partial** | Durable ledger implemented; add aggregate alerts/metrics/dashboard and SLO |
 | LR-053 | Old mobile binary vs new backend version skew | **Pending** | Compatibility fixtures and minimum versions |
-| LR-054 | Lost response creates duplicate group/membership | **Partial** | Group-create now idempotent and recoverable; group-join lost responses and other operations still need idempotency |
+| LR-054 | Lost response creates duplicate group/membership | **Partial, pending CI** | Both group-create and group-join now use persistent 256-bit client operation/member keys; verify signed-device crash recovery and remaining mutations |
 | LR-055 | No two-device group/notification CI E2E | **Pending** | Real TestFlight/Play testing matrix |
 | LR-056 | Android premium home widget absent | **Pending** | Jetpack Compose native widget or feature disclosure |
 | LR-057 | Large accessibility groups, Unicode, offline stress | **Pending** | Device matrix and accessibility QA |

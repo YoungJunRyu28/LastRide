@@ -25,6 +25,7 @@ import {
   getGroupDetailRecord,
   groupMemberIdForToken,
   joinGroupRecord,
+  recoverJoinedGroupRecord,
   leaveGroupRecord,
   leaveGroupTonightRecord,
   removeGroupMemberRecord,
@@ -176,7 +177,12 @@ router.post("/groups/join", joinLimiter, async (req, res) => {
     res.status(400).json({ error: "An invite token or join code is required" });
     return;
   }
-  const result = await joinGroupRecord(body.data);
+  const joinKey = req.header("x-group-join-key");
+  if (joinKey !== undefined && !/^[a-f0-9]{64}$/i.test(joinKey)) {
+    res.status(400).json({ error: "Invalid group join key" });
+    return;
+  }
+  const result = await joinGroupRecord(body.data, joinKey);
   if (result.kind === "invalid") {
     res.status(400).json({ error: "Invite is invalid or has been replaced" });
     return;

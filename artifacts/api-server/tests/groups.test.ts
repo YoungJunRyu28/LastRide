@@ -31,6 +31,7 @@ import {
   nextGroupLeaveAlertAt,
   GROUP_MEMBER_LIMIT,
   joinGroupRecord,
+  recoverJoinedGroupRecord,
   leaveGroupRecord,
   leaveGroupTonightRecord,
   purgeEndedGroupNights,
@@ -154,6 +155,38 @@ describe("group creation and joining", () => {
     expect(new Set(results.map((result) => result.kind !== "invalid" ? result.group.id : "invalid")).size).toBe(1);
     expect(await getDb().select().from(groupsTable)).toHaveLength(1);
     expect(await getDb().select().from(groupMembersTable)).toHaveLength(1);
+  });
+
+  it("anonymous member creation is idempotent and recovers across invite rotation", async () => {
+    const created = await createGroupRecord({ name: "Friends", displayName: "Host" });
+    if (created.kind !== "created" || !created.group.invite) throw new Error("missing invite");
+    const input = { inviteToken: created.group.invite.inviteToken, displayName: "Alice" };
+    const key = "b2".repeat(32);
+    const first = await joinGroupRecord(input, key);
+    expect(first.kind).toBe("joined");
+    if (first.kind !== "joined") return;
+    expect(first.memberToken).toBe(key);
+    const replay = await joinGroupRecord(input, key);
+    expect(replay.kind).toBe("already");
+    if (replay.kind !== "already") return;
+    expect(replay.group.id).toBe(first.group.id);
+    expect(replay.memberToken).toBe(first.memberToken);
+    await rotateGroupInviteRecord(created.group.id, created.memberToken);
+    const rotated = await joinGroupRecord(input, key);
+    expect(rotated.kind).toBe("already");
+    expect(await recoverJoinedGroupRecord("c3".repeat(32))).toBeNull();
+    expect(await getDb().select().from(groupMembersTable)).toHaveLength(2);
+  });
+
+  it("concurrent duplicate member joins with the same key persist only once", async () => {
+    const created = await createGroupRecord({ name: "Friends", displayName: "Host" });
+    if (created.kind !== "created" || !created.group.invite) throw new Error("missing invite");
+    const input = { joinCode: created.group.invite.joinCode, displayName: "Alice" };
+    const key = "d4".repeat(32);
+    const results = await Promise.all(Array.from({ length: 8 }, () => joinGroupRecord(input, key)));
+    expect(results.filter((result) => result.kind === "joined")).toHaveLength(1);
+    expect(new Set(results.map((result) => result.kind === "invalid" || result.kind === "full" ? "invalid" : result.memberToken)).size).toBe(1);
+    expect(await getDb().select().from(groupMembersTable)).toHaveLength(2);
   });
 
   it("joins by short join code, case- and dash-insensitively", async () => {
@@ -925,6 +958,25 @@ describe("groups HTTP routes", () => {
       body: createBody,
       headers: { "X-RevenueCat-App-User-Id": "paid-user", "X-Group-Create-Key": "b5".repeat(32) },
     })).status).toBe(402);
+  });
+
+  it("HTTP join key retries recover the same member, including after invite rotation", async () => {
+    const created = await createGroupRecord({ name: "Friends", displayName: "Host" });
+    if (created.kind !== "created" || !created.group.invite) throw new Error("setup");
+    const key = "b4".repeat(32);
+    const body = { joinCode: created.group.invite.joinCode, displayName: "Alice" };
+    const first = await call("POST", "/groups/join", { body, headers: { "X-Group-Join-Key": key } });
+    expect(first.status).toBe(201);
+    const firstSession = (await first.json()) as { memberToken: string; group: { id: string } };
+    expect(firstSession.memberToken).toBe(key);
+    await rotateGroupInviteRecord(created.group.id, created.memberToken);
+    const recovered = await call("POST", "/groups/join", { body, headers: { "X-Group-Join-Key": key } });
+    expect(recovered.status).toBe(200);
+    const restored = (await recovered.json()) as { memberToken: string; group: { id: string } };
+    expect(restored.memberToken).toBe(key);
+    expect(restored.group.id).toBe(firstSession.group.id);
+    expect((await call("POST", "/groups/join", { body, headers: { "X-Group-Join-Key": "bad" } })).status).toBe(400);
+    expect(await getDb().select().from(groupMembersTable)).toHaveLength(2);
   });
 
   it("reset as host over HTTP disbands the group", async () => {

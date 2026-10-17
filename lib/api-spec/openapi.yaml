@@ -542,6 +542,8 @@ paths:
       operationId: joinGroup
       tags: [groups]
       summary: Join a group with an invite token or join code
+      parameters:
+        - $ref: "#/components/parameters/GroupJoinKey"
       requestBody:
         required: true
         content:
@@ -549,7 +551,7 @@ paths:
             schema: { $ref: "#/components/schemas/JoinGroupRequest" }
       responses:
         "200":
-          description: Already a member (one of knownMemberTokens); nothing changed
+          description: Already a member (knownMemberTokens or saved X-Group-Join-Key); no new member created
           content:
             application/json:
               schema: { $ref: "#/components/schemas/GroupSession" }
@@ -781,6 +783,12 @@ components:
       in: header
       required: true
       schema: { type: string, minLength: 32, maxLength: 256 }
+    GroupJoinKey:
+      name: X-Group-Join-Key
+      in: header
+      required: false
+      description: 256-bit hex capability generated before the first join request; also becomes this device's member credential
+      schema: { type: string, pattern: "^[a-fA-F0-9]{64}$", minLength: 64, maxLength: 64 }
     GroupCreateKey:
       name: X-Group-Create-Key
       in: header

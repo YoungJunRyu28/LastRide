@@ -30,6 +30,7 @@ import {
 } from "@/lib/groupMemberships";
 import { clearSharing, markSharing, stopSharing } from "@/lib/groupSharing";
 import { prepareGroupCreation, readPendingGroupCreation, finishGroupCreation } from "@/lib/pendingGroupCreation";
+import { prepareGroupJoin, readPendingGroupJoin, finishGroupJoin } from "@/lib/pendingGroupJoin";
 import { GroupRefreshGuard } from "@/lib/groupRefreshGuard";
 import { onGroupUpdated, startGroupUpdates } from "@/lib/groupUpdates";
 import { expoPushToken } from "@/lib/pushToken";
@@ -128,6 +129,7 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
     // An in-flight POST may already have created a host whose response never
     // arrived. Prevent reset from hiding its only recovery credential.
     if (await readPendingGroupCreation()) throw new Error("PENDING_GROUP_CREATION");
+    if (await readPendingGroupJoin()) throw new Error("PENDING_GROUP_JOIN");
     const list = await readMemberships();
     await Promise.all(
       list.map(async (membership) => {
@@ -325,26 +327,52 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
     });
   }, [isHydrated, available, resumePendingCreation]);
 
+  /** Recover a join committed just before the app lost the response. */
+  const resumePendingJoin = useCallback(async () => {
+    const pending = await readPendingGroupJoin();
+    if (!pending) return null;
+    const knownMemberTokens = (await readMemberships()).map((item) => item.memberToken).slice(0, 50);
+    const session = await joinGroup({
+      ...(pending.inviteToken ? { inviteToken: pending.inviteToken } : { joinCode: pending.joinCode }),
+      displayName: pending.displayName, language: pending.language, knownMemberTokens,
+    }, { headers: { "X-Group-Join-Key": pending.joinKey } });
+    await remember(session.memberToken, session.group, pending.displayName);
+    await finishGroupJoin(pending.joinKey);
+    return session.group;
+  }, [remember]);
+
   const join = useCallback(
     async (input: { inviteToken?: string; joinCode?: string; displayName: string }) => {
-      // The tokens this phone holds: the server returns the existing membership
-      // instead of adding the same person twice (e.g. the host opening their own link).
-      const knownMemberTokens = membershipsRef.current.map((item) => item.memberToken).slice(0, 50);
-      const session = await joinGroup({ ...input, language: language ?? "ja", knownMemberTokens });
+      const pending = await prepareGroupJoin({ ...input, language: language ?? "ja" });
+      const knownMemberTokens = (await readMemberships()).map((item) => item.memberToken).slice(0, 50);
+      const session = await joinGroup({
+        ...input, language: pending.language, knownMemberTokens,
+      }, { headers: { "X-Group-Join-Key": pending.joinKey } });
       const existing = membershipsRef.current.find((item) => item.groupId === session.group.id);
-      if (session.alreadyMember || existing) {
-        // An older server added a second member anyway: remove it again at once.
-        if (!session.alreadyMember && existing)
+      if (existing && existing.memberToken !== session.memberToken) {
+        // A valid existing membership takes precedence; don't overwrite a
+        // host capability with a just-issued normal member credential.
+        if (!session.alreadyMember)
           void leaveGroup(session.group.id, { headers: { "X-Member-Token": session.memberToken } }).catch(() => undefined);
-        // Never replace the membership this phone already has (a host would lose hosting).
-        apply(session.group);
-        return { group: session.group, alreadyMember: true };
+        await finishGroupJoin(pending.joinKey);
+        await refreshGroup(session.group.id);
+        return { group: details[session.group.id] ?? session.group, alreadyMember: true };
       }
       await remember(session.memberToken, session.group, input.displayName);
-      return { group: session.group, alreadyMember: false };
+      await finishGroupJoin(pending.joinKey);
+      return { group: session.group, alreadyMember: Boolean(session.alreadyMember || existing) };
     },
-    [language, remember, apply],
+    [language, remember, refreshGroup, details],
   );
+
+  const pendingJoinRecoveryRunning = useRef(false);
+  useEffect(() => {
+    if (!isHydrated || !available || pendingJoinRecoveryRunning.current) return;
+    pendingJoinRecoveryRunning.current = true;
+    void resumePendingJoin().catch(() => undefined).finally(() => {
+      pendingJoinRecoveryRunning.current = false;
+    });
+  }, [isHydrated, available, resumePendingJoin]);
 
   // Keep tonight's leave-by current in every group you've opted into tonight.
   const leaveBy = plan ? new Date(recommendedLeaveTime(plan)).toISOString() : null;

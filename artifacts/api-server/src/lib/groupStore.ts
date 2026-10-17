@@ -383,6 +383,24 @@ export async function createGroupRecord(input: {
   }
 }
 
+/** A lost join response can be recovered with the same secret even if the
+ * original invite has since rotated. The key IS the member capability. */
+export async function recoverJoinedGroupRecord(joinToken: string) {
+  const hash = hashCapability(joinToken);
+  return getDb().transaction(async (tx) => {
+    const [member] = await tx.select({
+      id: groupMembersTable.id,
+      groupId: groupMembersTable.groupId,
+    }).from(groupMembersTable).where(eq(groupMembersTable.memberTokenHash, hash)).limit(1);
+    if (!member) return null;
+    return {
+      kind: "already" as const,
+      memberToken: joinToken,
+      group: await loadDetail(tx, member.groupId, member.id),
+    };
+  });
+}
+
 export async function joinGroupRecord(input: {
   inviteToken?: string;
   joinCode?: string;
@@ -390,9 +408,13 @@ export async function joinGroupRecord(input: {
   language?: GroupLanguage;
   /** Member tokens the device already holds: joining a group it's already in returns that membership. */
   knownMemberTokens?: string[];
-}) {
+}, joinToken?: string) {
   const displayName = cleanName(input.displayName);
   if (!displayName) return { kind: "invalid" as const };
+  if (joinToken) {
+    const recovered = await recoverJoinedGroupRecord(joinToken);
+    if (recovered) return recovered;
+  }
   const condition = input.inviteToken
     ? eq(groupsTable.inviteTokenHash, hashCapability(input.inviteToken))
     : input.joinCode
@@ -416,14 +438,14 @@ export async function joinGroupRecord(input: {
       .where(eq(groupMembersTable.groupId, group.id));
     // Already in this group on this device (e.g. the host opening their own invite):
     // the existing membership, never a second member for the same person.
-    for (const token of input.knownMemberTokens ?? []) {
+    for (const token of [...(joinToken ? [joinToken] : []), ...(input.knownMemberTokens ?? [])]) {
       const existing = members.find((member) => member.memberTokenHash === hashCapability(token));
       if (existing)
         return { kind: "already" as const, memberToken: token, group: await loadDetail(tx, group.id, existing.id) };
     }
     if (members.length >= GROUP_MEMBER_LIMIT) return { kind: "full" as const };
 
-    const memberToken = createCapabilityToken();
+    const memberToken = joinToken ?? createCapabilityToken();
     const [member] = await tx
       .insert(groupMembersTable)
       .values({

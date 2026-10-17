@@ -36,6 +36,7 @@ export * from './getWalkRouteParams';
 export * from './groupCreateKeyParameter';
 export * from './groupDetail';
 export * from './groupInvite';
+export * from './groupJoinKeyParameter';
 export * from './groupLanguage';
 export * from './groupMe';
 export * from './groupMemberSummary';

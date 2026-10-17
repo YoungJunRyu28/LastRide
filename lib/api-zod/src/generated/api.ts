@@ -741,6 +741,17 @@ export const CreateGroupResponse = zod.object({
 /**
  * @summary Join a group with an invite token or join code
  */
+export const joinGroupHeaderXGroupJoinKeyMin = 64;
+export const joinGroupHeaderXGroupJoinKeyMax = 64;
+
+
+export const joinGroupHeaderXGroupJoinKeyRegExp = new RegExp('^[a-fA-F0-9]{64}$');
+
+
+export const JoinGroupHeader = zod.object({
+  "X-Group-Join-Key": zod.string().min(joinGroupHeaderXGroupJoinKeyMin).max(joinGroupHeaderXGroupJoinKeyMax).regex(joinGroupHeaderXGroupJoinKeyRegExp).optional().describe('256-bit hex capability generated before the first join request; also becomes this device\'s member credential')
+})
+
 export const joinGroupBodyInviteTokenMin = 32;
 export const joinGroupBodyInviteTokenMax = 256;
 
