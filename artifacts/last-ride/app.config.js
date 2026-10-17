@@ -149,13 +149,16 @@ module.exports = ({ config }) => {
   // Don't put this key in EXPO_PUBLIC_* or the JS bundle. Android-restricted
   // SDK keys are present in the native manifest by design; restrict them by
   // BOTH package name and Play/signing SHA-1 in Google Cloud Console.
-  const androidMapsKey = (process.env.EXPO_ANDROID_GOOGLE_MAPS_API_KEY || "").trim();
+  const androidMapsKeyEnvName = androidStore === "galaxy"
+    ? "EXPO_ANDROID_GALAXY_GOOGLE_MAPS_API_KEY"
+    : "EXPO_ANDROID_GOOGLE_MAPS_API_KEY";
+  const androidMapsKey = (process.env[androidMapsKeyEnvName] || "").trim();
   if (androidMapsKey && !/^AIza[0-9A-Za-z_-]{35}$/.test(androidMapsKey)) {
-    throw new Error('EXPO_ANDROID_GOOGLE_MAPS_API_KEY is not a valid Google Maps Android SDK key');
+    throw new Error(`${androidMapsKeyEnvName} is not a valid Google Maps Android SDK key`);
   }
   if (STORE_RELEASE_PROFILES.includes(profile) &&
       process.env.EAS_BUILD_PLATFORM !== "ios" && !androidMapsKey) {
-    throw new Error('Production builds require EXPO_ANDROID_GOOGLE_MAPS_API_KEY');
+    throw new Error(`Production builds require ${androidMapsKeyEnvName}`);
   }
 
   const android = {
@@ -192,6 +195,10 @@ module.exports = ({ config }) => {
         }
       : {}),
   };
+
+  if (profile === "galaxy" && android.package === config.android?.package) {
+    throw new Error("Galaxy releases must use a different package ID from Google Play");
+  }
 
   // The EAS project ID lives in app.json (set by `eas init`); EAS_PROJECT_ID
   // can override it, e.g. for a separate project.

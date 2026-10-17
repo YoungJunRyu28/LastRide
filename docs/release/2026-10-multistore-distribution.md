@@ -50,7 +50,8 @@ Do not release either store binary or migrate production as part of this work.
    (this is a *public SDK key*, not the Samsung service-account secret).
    Confirm `EXPO_PUBLIC_REVENUECAT_ANDROID_KEY` remains the Play public SDK key.
 6. Configure Android Google Maps SDK keys **per package and signing cert SHA-1**.
-   The Galaxy package may need an additional restricted key. Validate the
+   The Galaxy build explicitly uses `EXPO_ANDROID_GALAXY_GOOGLE_MAPS_API_KEY`,
+   separate from Play's `EXPO_ANDROID_GOOGLE_MAPS_API_KEY`. Validate the
    actual rendered maps on a Samsung device; a debug build is not proof.
 7. Create separate signing credentials for the Galaxy APK and **back them up**
    securely. Never commit signing keys to GitHub. For the same-package strategy
@@ -102,7 +103,8 @@ eas build --platform ios --profile production
 EAS production variables must include HTTPS `EXPO_PUBLIC_API_URL`,
 `EXPO_PUBLIC_APP_JOIN_BASE_URL`, `ENABLE_REMOTE_PUSH=true`,
 `ENABLE_UNIVERSAL_LINKS=true`, `EXPO_ANDROID_GOOGLE_MAPS_API_KEY`,
-and each store's RevenueCat public key. Validate Galaxy IAP with a **physical
+and each store's RevenueCat public key. Use
+`EXPO_ANDROID_GALAXY_GOOGLE_MAPS_API_KEY` on the Galaxy build. Validate Galaxy IAP with a **physical
 Galaxy handset** logged in to a Samsung account, including purchase, trial,
 cancel, restore, and server entitlement verification.
 

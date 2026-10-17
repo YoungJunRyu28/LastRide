@@ -11,7 +11,7 @@ const vars = [
   'EAS_BUILD_PROFILE', 'EAS_BUILD_PLATFORM', 'EXPO_PUBLIC_ANDROID_STORE',
   'EXPO_PUBLIC_GALAXY_BILLING_MODE', 'EXPO_PUBLIC_REVENUECAT_GALAXY_KEY',
   'EXPO_PUBLIC_API_URL', 'EXPO_PUBLIC_APP_JOIN_BASE_URL',
-  'EXPO_ANDROID_GOOGLE_MAPS_API_KEY', 'ENABLE_REMOTE_PUSH',
+  'EXPO_ANDROID_GOOGLE_MAPS_API_KEY', 'EXPO_ANDROID_GALAXY_GOOGLE_MAPS_API_KEY', 'ENABLE_REMOTE_PUSH',
   'ENABLE_UNIVERSAL_LINKS', 'ANDROID_PACKAGE_ID',
 ];
 function configured(values) {
@@ -44,7 +44,8 @@ test('Google Play release keeps its current package and ordinary Play billing', 
 test('Galaxy Store release uses a distinct package and verified release capabilities', () => {
   const app = configured({ ...release, EAS_BUILD_PROFILE: 'galaxy',
     EXPO_PUBLIC_ANDROID_STORE: 'galaxy',
-    EXPO_PUBLIC_REVENUECAT_GALAXY_KEY: 'galx_test_public_key' });
+    EXPO_PUBLIC_REVENUECAT_GALAXY_KEY: 'galx_test_public_key',
+    EXPO_ANDROID_GALAXY_GOOGLE_MAPS_API_KEY: key });
   assert.equal(app.android.package, 'jp.lastride.app.galaxy');
   assert.equal(app.extra.androidDistributionStore, 'galaxy');
   assert.ok(app.android.config.googleMaps.apiKey);
@@ -54,7 +55,7 @@ test('Galaxy Store release refuses missing billing key and maps SDK key', () => 
     EXPO_PUBLIC_ANDROID_STORE: 'galaxy' };
   assert.throws(() => configured(params), /REVENUECAT_GALAXY_KEY/);
   assert.throws(() => configured({ ...params, EXPO_PUBLIC_REVENUECAT_GALAXY_KEY: 'galx_public',
-    EXPO_ANDROID_GOOGLE_MAPS_API_KEY: ''}), /GOOGLE_MAPS_API_KEY/);
+    EXPO_ANDROID_GALAXY_GOOGLE_MAPS_API_KEY: ''}), /EXPO_ANDROID_GALAXY_GOOGLE_MAPS_API_KEY/);
 });
 test('Store releases reject development billing and swapped distribution', () => {
   assert.throws(() => configured({ ...release, EAS_BUILD_PROFILE: 'production',
@@ -69,4 +70,11 @@ test('Galaxy store never builds for iOS', () => {
   assert.throws(() => configured({ ...release, EAS_BUILD_PROFILE: 'galaxy',
     EAS_BUILD_PLATFORM: 'ios', EXPO_PUBLIC_ANDROID_STORE: 'galaxy',
     EXPO_PUBLIC_REVENUECAT_GALAXY_KEY: 'galx_public'}), /only supports Android/);
+});
+
+test('Galaxy refuses reuse of Google Play package identity', () => {
+  assert.throws(() => configured({ ...release, EAS_BUILD_PROFILE: 'galaxy',
+    EXPO_PUBLIC_ANDROID_STORE: 'galaxy', EXPO_PUBLIC_REVENUECAT_GALAXY_KEY: 'galx_public',
+    EXPO_ANDROID_GALAXY_GOOGLE_MAPS_API_KEY: key,
+    ANDROID_PACKAGE_ID: 'jp.lastride.app' }), /different package ID/);
 });
