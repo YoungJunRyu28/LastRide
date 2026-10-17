@@ -692,6 +692,7 @@ describe("tonight", () => {
     await startGroupTonightRecord(groupId, host.token);
     const leaveBy = new Date(tonightWindow().endsAt.getTime() - 2 * 60 * 60_000);
     await setGroupTonightParticipationRecord(groupId, members[0].token, leaveBy);
+    await setGroupTonightParticipationRecord(groupId, members[1].token, null);
     const firstDueAt = new Date(leaveBy.getTime() + 60_000);
     await claimDueGroupLeaveAlerts(firstDueAt);
     expect(await getDb().select().from(groupAlertDeliveriesTable)).toHaveLength(2);
@@ -707,6 +708,7 @@ describe("tonight", () => {
     await startGroupTonightRecord(groupId, host.token);
     const leaveBy = new Date(tonightWindow().endsAt.getTime() - 2 * 60 * 60_000);
     await setGroupTonightParticipationRecord(groupId, members[0].token, leaveBy);
+    await setGroupTonightParticipationRecord(groupId, members[1].token, null);
     const dueAt = new Date(leaveBy.getTime() + 60_000);
     await claimDueGroupLeaveAlerts(dueAt);
     expect(await getDb().select().from(groupAlertDeliveriesTable)).toHaveLength(2);
