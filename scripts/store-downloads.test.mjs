@@ -68,3 +68,34 @@ test('Play links reject extra tracking and invite query parameters', () => {
   });
   assert.equal(links.length, 0);
 });
+
+test('unpublished Uptodown and AppGallery listings remain invisible', () => {
+  const { links } = render({uptodown: '', appGallery: ''}, 'Android');
+  assert.equal(links.length, 0);
+});
+
+test('published Uptodown and Huawei app pages are accepted only as exact listing URLs', () => {
+  const { links } = render({
+    uptodown: 'https://lastride.en.uptodown.com/android',
+    appGallery: 'https://appgallery.huawei.com/app/C123456789',
+  }, 'Android');
+  assert.deepEqual(links.map(link => link.textContent), ['Android · Uptodown', 'Huawei · AppGallery']);
+  assert.ok(links.every(link => !link.href.includes('token') && !link.href.includes('invite')));
+});
+
+test('rejects Uptodown/Huawei redirects, lookalike hosts, tracking and invite tokens', () => {
+  for (const url of [
+    'http://lastride.en.uptodown.com/android',
+    'https://lastride.en.uptodown.com.evil.test/android',
+    'https://anotherapp.en.uptodown.com/android',
+    'https://lastride.en.uptodown.com/android/another',
+    'https://lastride.en.uptodown.com/android?token=secret',
+    'https://appgallery.huawei.com.evil.test/app/C123456',
+    'https://appgallery.huawei.com/app/C123456?invite=secret',
+    'https://appgallery.huawei.com/redirect/C123456',
+  ]) {
+    const key = url.includes('uptodown') ? 'uptodown' : 'appGallery';
+    const { links } = render({[key]: url});
+    assert.equal(links.length, 0, `Unexpected unverified link ${url}`);
+  }
+});

@@ -114,6 +114,36 @@ notifications, ownership recovery, push token rotation), app links and installs,
 offline/timezone/transit checks, background location disclosures and consent,
 accessibility, database migration-before-code rehearsal, telemetry/rollback.
 
+## Phase 2 — safe multi-store links and OTA segregation
+
+- **Critical OTA fix:** EAS Galaxy release channel is now `galaxy`, not `production`. The
+  original shared project remains, but Galaxy native billing JS updates cannot be
+  accidentally delivered through Google Play's production update channel. Do
+  not change this back without a full cross-store update-compatibility review.
+- The same bilingual smart-download component understands Uptodown and Huawei
+  AppGallery **only after an actual public LastRide listing is entered** in
+  `site/store-listings.js`. Uptodown accepts an exact LastRide subdomain listing
+  `https://lastride.en.uptodown.com/android` and Huawei accepts an `app/C...`
+  listing, both under strict HTTPS/host/path validation. These illustrate the
+  accepted URL formats, **not confirmed current LastRide listings**. Blank
+  strings remain shipped so neither store is promoted prematurely. No invite
+  token or unrelated query string is forwarded.
+- **Uptodown requires a directly uploaded APK**, not an AAB or a Google Play
+  details URL. Before enabling its link, create an explicitly supported billing
+  strategy, sign the exact release APK, and validate updates and purchases.
+  Do not reuse Galaxy IAP or Play-only IAP under a different distribution by
+  changing only the store URL. Uptodown is currently **distribution research /
+  website-ready, not binary-ready**.
+- **AppGallery is not binary-ready.** Devices without Google Mobile Services
+  may not display the Google Maps SDK correctly; Huawei Maps, native geocoding,
+  push transport, purchases and notification lifecycle need a separate audited
+  variant and real devices. A store link alone does not make it compatible.
+- **GetApps, OPPO, vivo and HONOR** remain candidate integrations; do not
+  invent app detail URLs or add hidden billing assumptions. Xiaomi's own
+  GetApps developer guidance says Google Play IAP apps need GetApps IAP
+  integration/verification. The release priority remains Play + iOS, then
+  Samsung, then vetted Uptodown/Huawei/Xiaomi/other regionally useful stores.
+
 ## Later markets and distributors
 
 - **Uptodown / direct APK**: only use a deliberately compatible and correctly
@@ -135,3 +165,13 @@ accessibility, database migration-before-code rehearsal, telemetry/rollback.
    migrations and production rollback practice.
 4. Apple/Google/Samsung declarations, publisher identity, tax and payout setup,
    confirmed store metadata/branding ownership.
+
+## Fail-closed billing keys for production
+
+The Play release now requires a `goog_...` RevenueCat **public SDK key**, the iOS
+App Store release requires `appl_...`, and Galaxy requires `galx_...`. The key
+must match the correct RevenueCat app for that store/package. An empty key,
+Test Store key or `sk_...` server secret fails release configuration; otherwise
+the app could silently enable the development premium switch and fail live
+purchases. Validation checks key class, **not actual server-side entitlement**.
+Keep RevenueCat server secrets solely in the API backend secret store.

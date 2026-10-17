@@ -48,6 +48,7 @@ describe("app.config.js", () => {
         ENABLE_UNIVERSAL_LINKS: "true",
         EXPO_PUBLIC_APP_JOIN_BASE_URL: "https://lastride.jp",
         EXPO_ANDROID_GOOGLE_MAPS_API_KEY: `AIza${"a".repeat(35)}`,
+        EXPO_PUBLIC_REVENUECAT_ANDROID_KEY: "goog_valid_public_key",
       }),
     ).not.toThrow();
   });
@@ -59,6 +60,7 @@ describe("app.config.js", () => {
       ENABLE_REMOTE_PUSH: "true",
       ENABLE_UNIVERSAL_LINKS: "true",
       EXPO_PUBLIC_APP_JOIN_BASE_URL: "https://lastride.jp",
+      EXPO_PUBLIC_REVENUECAT_ANDROID_KEY: "goog_valid_public_key",
     };
     expect(() => resolveWith({ ...env, EXPO_ANDROID_GOOGLE_MAPS_API_KEY: undefined }))
       .toThrow("EXPO_ANDROID_GOOGLE_MAPS_API_KEY");
@@ -80,6 +82,7 @@ describe("app.config.js", () => {
       ENABLE_UNIVERSAL_LINKS: "true",
       EXPO_PUBLIC_APP_JOIN_BASE_URL: "https://lastride.jp",
       EXPO_ANDROID_GOOGLE_MAPS_API_KEY: undefined,
+      EXPO_PUBLIC_REVENUECAT_IOS_KEY: "appl_valid_public_key",
     });
     expect(configured.extra.androidGoogleMapsEnabled).toBe(false);
   });

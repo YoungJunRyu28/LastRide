@@ -7,19 +7,36 @@
     appStore: "apps.apple.com",
     googlePlay: "play.google.com",
     galaxyStore: "galaxystore.samsung.com",
+    uptodown: "uptodown.com",
+    appGallery: "appgallery.huawei.com",
   };
   var names = {
     appStore: { ja: "iPhone · App Store", en: "iPhone · App Store" },
     googlePlay: { ja: "Android · Google Play", en: "Android · Google Play" },
     galaxyStore: { ja: "Samsung · Galaxy Store", en: "Samsung · Galaxy Store" },
+    uptodown: { ja: "Android · Uptodown", en: "Android · Uptodown" },
+    appGallery: { ja: "Huawei · AppGallery", en: "Huawei · AppGallery" },
   };
   function safeUrl(kind, value) {
     if (typeof value !== "string" || !value.trim()) return null;
     try {
       var url = new URL(value);
       // No invite credentials or arbitrary parameters should leave our site.
-      if (url.protocol !== "https:" || url.hostname !== hosts[kind] ||
-          url.username || url.password || url.hash) return null;
+      if (url.protocol !== "https:" || url.username || url.password || url.hash ||
+          url.port || url.searchParams.has("invite") || url.searchParams.has("token")) return null;
+      if (kind === "uptodown") {
+        // Uptodown app pages are per-app subdomains, not generic redirects.
+        // Only an explicitly verified LastRide listing is accepted.
+        if (!/^(lastride|last-ride)(-[a-z0-9]+)?\.en\.uptodown\.com$/i.test(url.hostname) ||
+            url.pathname !== "/android" || url.search) return null;
+        return url.href;
+      }
+      if (kind === "appGallery") {
+        if (url.hostname !== hosts.appGallery ||
+            !/^\/app\/C[0-9]+$/.test(url.pathname) || url.search) return null;
+        return url.href;
+      }
+      if (url.hostname !== hosts[kind]) return null;
       if (kind === "googlePlay") {
         // Google Play's canonical listing needs an id query parameter.
         // Normalize to exactly that one parameter (never an invite token).
@@ -38,10 +55,10 @@
   var android = /android/i.test(userAgent);
   var ios = /iphone|ipad|ipod/i.test(userAgent);
   var order = android
-    ? ["googlePlay", "galaxyStore", "appStore"]
+    ? ["googlePlay", "galaxyStore", "uptodown", "appGallery", "appStore"]
     : ios
-      ? ["appStore", "googlePlay", "galaxyStore"]
-      : ["appStore", "googlePlay", "galaxyStore"];
+      ? ["appStore", "googlePlay", "galaxyStore", "uptodown", "appGallery"]
+      : ["appStore", "googlePlay", "galaxyStore", "uptodown", "appGallery"];
   document.querySelectorAll("[data-store-links]").forEach(function (container) {
     var lang = container.getAttribute("data-lang") === "en" ? "en" : "ja";
     order.forEach(function (store) {

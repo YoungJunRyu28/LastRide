@@ -27,8 +27,8 @@ module.exports = ({ config }) => {
   if (profile === "galaxy" && process.env.EAS_BUILD_PLATFORM === "ios") {
     throw new Error("Galaxy Store distribution only supports Android");
   }
-  if (profile === "galaxy" && !process.env.EXPO_PUBLIC_REVENUECAT_GALAXY_KEY?.trim()) {
-    throw new Error("Galaxy releases require EXPO_PUBLIC_REVENUECAT_GALAXY_KEY");
+  if (profile === "galaxy" && !/^galx_[A-Za-z0-9_\-]{3,}$/.test(process.env.EXPO_PUBLIC_REVENUECAT_GALAXY_KEY?.trim() || "")) {
+    throw new Error("Galaxy releases require a Galaxy-specific EXPO_PUBLIC_REVENUECAT_GALAXY_KEY (galx_...)");
   }
   if (STORE_RELEASE_PROFILES.includes(profile) &&
       process.env.EXPO_PUBLIC_GALAXY_BILLING_MODE === "TEST") {
@@ -159,6 +159,18 @@ module.exports = ({ config }) => {
   if (STORE_RELEASE_PROFILES.includes(profile) &&
       process.env.EAS_BUILD_PLATFORM !== "ios" && !androidMapsKey) {
     throw new Error(`Production builds require ${androidMapsKeyEnvName}`);
+  }
+
+  // A signed store release must not silently fall back to local test-premium
+  // mode or send purchase receipts to a public SDK key for another store.
+  // Never put RevenueCat sk_... secrets in any EXPO_PUBLIC_* variable.
+  if (profile === "production" && process.env.EAS_BUILD_PLATFORM === "ios" &&
+      !/^appl_[A-Za-z0-9_\-]{3,}$/.test(process.env.EXPO_PUBLIC_REVENUECAT_IOS_KEY?.trim() || "")) {
+    throw new Error("Production iOS requires EXPO_PUBLIC_REVENUECAT_IOS_KEY (appl_...)");
+  }
+  if (profile === "production" && process.env.EAS_BUILD_PLATFORM !== "ios" &&
+      !/^goog_[A-Za-z0-9_\-]{3,}$/.test(process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_KEY?.trim() || "")) {
+    throw new Error("Google Play production requires EXPO_PUBLIC_REVENUECAT_ANDROID_KEY (goog_...)");
   }
 
   const android = {

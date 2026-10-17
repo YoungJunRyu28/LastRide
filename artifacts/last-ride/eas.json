@@ -21,7 +21,7 @@
     "galaxy": {
       "autoIncrement": true,
       "distribution": "store",
-      "channel": "production",
+      "channel": "galaxy",
       "environment": "production",
       "env": {
         "EXPO_PUBLIC_ANDROID_STORE": "galaxy"
