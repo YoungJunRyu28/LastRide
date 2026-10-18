@@ -39,6 +39,17 @@ export default function NewGroupScreen() {
       router.replace({ pathname: '/group/[id]', params: { id: group.id } });
     } catch (error) {
       if (errorStatus(error) === 402) router.replace('/paywall');
+      else if (errorStatus(error) === 403) {
+        Alert.alert(
+          ja ? 'アプリの更新が必要です' : 'Update required',
+          ja ? 'グループの安全な作成には、LastRideの最新版が必要です。アプリを更新してもう一度お試しください。' : 'Creating paid groups securely requires the latest LastRide app. Update the app and try again.',
+        );
+      } else if (errorStatus(error) === 401) {
+        Alert.alert(
+          ja ? '購入情報を確認できません' : 'Couldn’t verify your purchase identity',
+          ja ? '購入情報の認証に失敗しました。再度お試しください。解決しない場合はサポートにお問い合わせください。' : 'We couldn’t verify the identity linked to your purchase. Please try again or contact support.',
+        );
+      }
       else if (error instanceof Error && error.message === 'PENDING_GROUP_CREATION') {
         Alert.alert(
           ja ? '作成中のグループがあります' : 'A group creation is pending',

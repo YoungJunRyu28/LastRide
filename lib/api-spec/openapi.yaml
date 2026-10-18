@@ -536,8 +536,9 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/GroupSession" }
         "400": { description: Invalid body }
-        "401": { description: Production premium device identity proof required or invalid }
+        "401": { description: Invalid production premium device proof }
         "402": { description: Premium entitlement required }
+        "403": { description: LastRide client upgrade required; proof-of-possession protocol unsupported }
         "503": { description: Groups or entitlement checks unavailable }
   /groups/join:
     post:

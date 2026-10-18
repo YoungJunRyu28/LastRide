@@ -96,6 +96,43 @@ ID could impersonate them and create paid groups.
    portability solution. For future account-based access, use verified
    Sign in with Apple / other sign-in plus account-bound purchase identities.
 
+## Production old-client rollout safety gate (2026-10-18)
+
+**No insecure legacy-ID whitelist or fallback:** the production API refuses
+caller-supplied RevenueCat IDs without proof. A client without
+`X-Premium-Device-Secret` gets HTTP **403** with stable code
+`PREMIUM_CLIENT_UPGRADE_REQUIRED`; a caller with an invalid proof gets HTTP
+**401** with `INVALID_PREMIUM_DEVICE_PROOF`. Existing group join/member tokens
+are unchanged. A client that understands the 403 error code explains that an app update is
+required rather than showing a generic payment error. App versions that
+predate the protocol cannot magically gain this UX until updated, so
+upgrade notifications, minimum supported versions and store rollout monitoring
+must be handled separately.
+
+The deployment script invokes `node scripts/check-premium-rollout.mjs` before
+reading the AWS secret, touching the production database or calling SAM.
+Production requires ALL of these *manual release attestations* in addition to
+existing `--confirm`, merged `origin/main`, clean git tree, licensed fresh
+transit snapshot, validated secrets, staging tests and canary alarms:
+
+```bash
+# Do NOT set these values until their requirements have actually been verified:
+export LASTRIDE_PREMIUM_SANDBOX_QA_APPROVED=yes
+export LASTRIDE_LEGACY_CLIENT_COMPATIBILITY_APPROVED=yes
+# After every merge/review of an updated production main, approve THAT sha:
+export LASTRIDE_PREMIUM_ROLLOUT_APPROVED_SHA="$(git rev-parse HEAD)"
+./infra/deploy.sh production "$LASTRIDE_SECRET_ID" --confirm
+```
+
+The SHA pin becomes invalid if subsequent changes produce a new commit.
+`staging` requires no production approval and remains usable for testing.
+These environment variables **are attestations, not automated evidence**:
+they must be backed by a documented RevenueCat receipt migration matrix,
+verified real sandbox purchases, old-version adoption and a rollback/launch
+plan approved by the responsible release owner. Do not supply them simply to
+bypass the gate. `scripts/check-premium-rollout.test.mjs` runs in CI and checks
+that omitted/incorrect approvals, stale SHAs and dirty worktrees are rejected.
+
 ## Verification
 
 - `artifacts/api-server/tests/premiumDeviceIdentity.test.ts` covers copied

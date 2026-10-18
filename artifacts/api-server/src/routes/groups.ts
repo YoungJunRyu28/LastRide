@@ -130,12 +130,27 @@ router.post("/groups", createLimiter, async (req, res) => {
   // anonymous App User ID and request its entitlement. A production creator
   // must prove possession of the 256-bit device capability from which its
   // RevenueCat ID was derived. Check before any create-key recovery too.
-  if (premiumDeviceProofRequired() && !verifiedPremiumDeviceIdentity(
-    header.data["X-RevenueCat-App-User-Id"],
-    req.header("x-premium-device-secret"),
-  )) {
-    res.status(401).json({ error: "Verified premium device identity required" });
-    return;
+  if (premiumDeviceProofRequired()) {
+    const deviceSecret = req.header("x-premium-device-secret");
+    // Previously installed clients have no proof header. Never silently
+    // accept their caller-supplied RevenueCat ID; explain the required app
+    // update with an explicit, machine-readable status instead.
+    if (!deviceSecret) {
+      res.status(403).json({
+        code: "PREMIUM_CLIENT_UPGRADE_REQUIRED",
+        error: "Update LastRide to create paid groups",
+      });
+      return;
+    }
+    if (!verifiedPremiumDeviceIdentity(
+      header.data["X-RevenueCat-App-User-Id"], deviceSecret,
+    )) {
+      res.status(401).json({
+        code: "INVALID_PREMIUM_DEVICE_PROOF",
+        error: "Verified premium device identity required",
+      });
+      return;
+    }
   }
 
   const creationKey = req.header("x-group-create-key");

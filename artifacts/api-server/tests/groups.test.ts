@@ -947,7 +947,8 @@ describe("groups HTTP routes", () => {
       const copy = await call("POST", "/groups", {
         body: createBody, headers: { "X-RevenueCat-App-User-Id": victimId },
       });
-      expect(copy.status).toBe(401);
+      expect(copy.status).toBe(403);
+      expect(copy.body).toMatchObject({ code: 'PREMIUM_CLIENT_UPGRADE_REQUIRED' });
       const wrongSecret = await call("POST", "/groups", {
         body: createBody, headers: {
           "X-RevenueCat-App-User-Id": victimId,
@@ -955,6 +956,7 @@ describe("groups HTTP routes", () => {
         },
       });
       expect(wrongSecret.status).toBe(401);
+      expect(wrongSecret.body).toMatchObject({ code: 'INVALID_PREMIUM_DEVICE_PROOF' });
       expect(await getDb().select().from(groupsTable)).toHaveLength(0);
       const authorized = await call("POST", "/groups", {
         body: createBody, headers: {
@@ -985,7 +987,7 @@ describe("groups HTTP routes", () => {
         "X-Premium-Device-Secret": secret, "X-Group-Create-Key": key };
       expect((await call("POST", "/groups", { body: createBody, headers })).status).toBe(201);
       const { ["X-Premium-Device-Secret"]: _omitted, ...stolen } = headers;
-      expect((await call("POST", "/groups", { body: createBody, headers: stolen })).status).toBe(401);
+      expect((await call("POST", "/groups", { body: createBody, headers: stolen })).status).toBe(403);
       expect((await call("POST", "/groups", { body: createBody, headers })).status).toBe(200);
       expect(await getDb().select().from(groupsTable)).toHaveLength(1);
     } finally {

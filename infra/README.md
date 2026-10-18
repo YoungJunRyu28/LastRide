@@ -203,3 +203,21 @@ Do not deploy production unless all of these are true:
 The repository defaults are deliberately conservative. The API calls no paid
 provider (ODPT data and on-server estimates; iOS uses Apple MapKit), so there
 are no provider quotas to size; the public rate limits still apply.
+
+### Production RevenueCat migration safety gate (October 2026)
+
+The new iOS/Android client proves ownership of its device-derived RevenueCat
+customer ID before creating paid groups. Older installed builds cannot do so.
+Production intentionally returns HTTP 403 with an upgrade-required code for legacy
+host-creation requests; no insecure customer-ID fallback exists.
+
+Before running `./infra/deploy.sh production ... --confirm`, complete the
+RevenueCat sandbox alias/restore matrix and installed-client compatibility
+review in `docs/release/2026-10-premium-identity-hardening.md`. Then explicitly
+set `LASTRIDE_PREMIUM_SANDBOX_QA_APPROVED=yes`,
+`LASTRIDE_LEGACY_CLIENT_COMPATIBILITY_APPROVED=yes`, and
+`LASTRIDE_PREMIUM_ROLLOUT_APPROVED_SHA` to the **exact reviewed main HEAD**.
+The script verifies these before accessing AWS secrets/database. A staging
+deploy does not require the production approval. Approval flags assert a
+human-reviewed condition: they do not make RevenueCat migration automatically
+safe and must never be populated just to force a deployment.

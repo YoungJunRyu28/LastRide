@@ -52,7 +52,7 @@ This records the 58 findings from the static source audit. **Fixed** means the c
 | LR-046 | Midnight/GPS/transfer journey edge cases | **Pending** | Scenario corpus with real data |
 | LR-047 | Coordinates/invites in API parse exception message | **Partial** | URL query scrubbed in message and URL; audit remaining fields |
 | LR-048 | CI missing real credential/live deploy verification | **Partial** | Build flag gates added; real signed/device preflight missing |
-| LR-049 | RevenueCat anonymous cross-platform IDs | **Partial** | 256-bit SecureStore proof enforced for paid group creation; upgrade now attempts verified RevenueCat anonymous logIn and persists crash-recovery receipts, prompting Restore if premium drops. Real store migration/alias QA, old-client compatibility, account recovery and cross-platform portability still block release |
+| LR-049 | RevenueCat anonymous cross-platform IDs | **Partial** | 256-bit SecureStore proof enforced for paid group creation; upgrade now attempts verified RevenueCat anonymous logIn and persists crash-recovery receipts, prompting Restore if premium drops. Real store migration/alias QA, app-version adoption/account recovery and cross-platform portability still block release; production deploy now SHA-gated on QA/compatibility approvals |
 | LR-050 | Hosting after Premium expiry | **Policy decision** | Choose lifecycle entitlement policy |
 | LR-051 | Native/OTA version compatibility and rollback | **Pending** | EAS staged rollback drill |
 | LR-052 | Group delivery metrics/ledger absent | **Partial** | Durable ledger implemented; add aggregate alerts/metrics/dashboard and SLO |

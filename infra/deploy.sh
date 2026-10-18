@@ -83,6 +83,12 @@ if [[ "$STAGE" == "production" ]]; then
   echo "Deploying production from origin/main at $HEAD_SHA."
 fi
 
+# RevenueCat anonymous-ID migration is irreversible for some purchaser alias
+# graphs and older installed clients cannot supply proof of purchase. Require
+# independently reviewed, SHA-pinned sandbox QA and old-client rollout plan.
+# Fail BEFORE reading AWS secrets, touching the live database or Lambda.
+node scripts/check-premium-rollout.mjs "$STAGE"
+
 # Train times are served from the ODPT timetable snapshot bundled into the
 # Lambda package (git-ignored provider data). Check it before anything mutates;
 # the build below fails too (REQUIRE_TRANSIT_SNAPSHOT=1) if it is unusable.
