@@ -23,6 +23,7 @@ import {
   type JourneyAt,
 } from "./transit/snapshot";
 import { distanceMeters, normalizeStationName } from "./transit/transfers";
+import { assertRuntimeTransitFresh, maxTransitSnapshotAgeDays } from "./transitFreshness";
 
 export type StationRef = { latitude: number; longitude: number; name: string };
 
@@ -210,6 +211,14 @@ async function loadEngine(): Promise<TimetableEngine> {
       `Timetable snapshot at ${found} could not be read: ${(err as Error).message}`,
     );
   }
+  // Unlike deployment preflight, this also runs on every request below: an
+  // API that remains up for weeks must stop serving an expired timetable.
+  try {
+    assertRuntimeTransitFresh(raw.generatedAt, Date.now(),
+      maxTransitSnapshotAgeDays(process.env.TRANSIT_SNAPSHOT_MAX_AGE_DAYS));
+  } catch (error) {
+    throw new TimetableUnavailableError((error as Error).message);
+  }
   const snapshot = filterLicensedOperators(raw);
   logger.info(
     {
@@ -239,7 +248,17 @@ export function timetableEngine(): Promise<TimetableEngine> {
       ? err
       : new TimetableUnavailableError((err as Error).message);
   });
-  return enginePromise;
+  return enginePromise.then((engine) => {
+    // Snapshot was loaded once, but its age changes over the process lifetime.
+    // Never answer a time-sensitive train question with expired cached data.
+    try {
+      assertRuntimeTransitFresh(engine.snapshot.generatedAt, Date.now(),
+        maxTransitSnapshotAgeDays(process.env.TRANSIT_SNAPSHOT_MAX_AGE_DAYS));
+    } catch (error) {
+      throw new TimetableUnavailableError((error as Error).message);
+    }
+    return engine;
+  });
 }
 
 /** Forget the loaded snapshot (tests switch TRANSIT_SNAPSHOT_PATH). */
