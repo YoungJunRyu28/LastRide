@@ -948,7 +948,7 @@ describe("groups HTTP routes", () => {
         body: createBody, headers: { "X-RevenueCat-App-User-Id": victimId },
       });
       expect(copy.status).toBe(403);
-      expect(copy.body).toMatchObject({ code: 'PREMIUM_CLIENT_UPGRADE_REQUIRED' });
+      expect(await copy.json()).toMatchObject({ code: 'PREMIUM_CLIENT_UPGRADE_REQUIRED' });
       const wrongSecret = await call("POST", "/groups", {
         body: createBody, headers: {
           "X-RevenueCat-App-User-Id": victimId,
@@ -956,7 +956,7 @@ describe("groups HTTP routes", () => {
         },
       });
       expect(wrongSecret.status).toBe(401);
-      expect(wrongSecret.body).toMatchObject({ code: 'INVALID_PREMIUM_DEVICE_PROOF' });
+      expect(await wrongSecret.json()).toMatchObject({ code: 'INVALID_PREMIUM_DEVICE_PROOF' });
       expect(await getDb().select().from(groupsTable)).toHaveLength(0);
       const authorized = await call("POST", "/groups", {
         body: createBody, headers: {
