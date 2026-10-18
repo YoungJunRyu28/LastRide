@@ -14,7 +14,8 @@ import { Platform } from 'react-native';
 import Purchases, { type CustomerInfo, type PurchasesPackage } from 'react-native-purchases';
 import { GALAXY_BILLING_MODE } from 'react-native-purchases-store-galaxy';
 import { writePremiumCache } from '@/lib/premiumCache';
-import { getOrCreatePremiumDeviceIdentity } from '@/lib/premiumDeviceIdentity';
+import { getOrCreatePremiumDeviceIdentity, readPremiumMigrationStatus, writePremiumMigrationStatus } from '@/lib/premiumDeviceIdentity';
+import { migrateRevenueCatIdentity } from '@/lib/revenueCatMigration';
 import { isTestFlightBuild } from '@/modules/last-ride-alarm/src';
 
 export const PREMIUM_ENTITLEMENT = 'premium';
@@ -40,23 +41,80 @@ const apiKey =
 /** True when real purchases go through RevenueCat. */
 export const premiumLive = !!apiKey;
 
-// Never configure an anonymous SDK user in a release build. Purchases and
-// group hosting must use the SAME OS-secured identity, even after app restart.
-let purchasesSetup: Promise<void> | null = null;
-function ensurePurchasesConfigured(): Promise<void> {
+// A previous LastRide version let RevenueCat generate anonymous customer IDs.
+// On first upgrade we must log in FROM that cached anonymous identity so
+// RevenueCat can alias its existing purchases before using our bound ID.
+// Don't overwrite it by passing appUserID to configure on the first launch.
+let purchasesSetup: Promise<{ restoreRequired: boolean }> | null = null;
+let sdkConfigured = false;
+
+/** A verified store entitlement remains valid even if persisting the local
+ * migration receipt fails. Never report a successful purchase as failed
+ * because of an unrelated Keychain status write. */
+async function markMigrationVerified(): Promise<void> {
+  try {
+    await writePremiumMigrationStatus('complete');
+    purchasesSetup = Promise.resolve({ restoreRequired: false });
+  } catch {
+    // The next app launch will retry after a real customer-info check.
+    purchasesSetup = Promise.resolve({ restoreRequired: false });
+  }
+}
+
+function configurePurchases(appUserID?: string): void {
+  if (sdkConfigured || !apiKey) return;
+  if (galaxyDistribution) {
+    Purchases.configure({
+      apiKey, ...(appUserID ? { appUserID } : {}), store: 'GALAXY',
+      galaxyBillingMode: process.env.EXPO_PUBLIC_GALAXY_BILLING_MODE === 'TEST'
+        ? GALAXY_BILLING_MODE.TEST : GALAXY_BILLING_MODE.PRODUCTION,
+    });
+  } else {
+    Purchases.configure({ apiKey, ...(appUserID ? { appUserID } : {}) });
+  }
+  sdkConfigured = true;
+}
+
+function ensurePurchasesConfigured(): Promise<{ restoreRequired: boolean }> {
   if (!premiumLive || !apiKey) return Promise.reject(new Error('RevenueCat is not configured'));
   if (!purchasesSetup) {
-    purchasesSetup = getOrCreatePremiumDeviceIdentity().then(({ appUserId }) => {
-      if (galaxyDistribution) {
-        Purchases.configure({
-          apiKey: apiKey!, appUserID: appUserId, store: 'GALAXY',
-          galaxyBillingMode: process.env.EXPO_PUBLIC_GALAXY_BILLING_MODE === 'TEST'
-            ? GALAXY_BILLING_MODE.TEST : GALAXY_BILLING_MODE.PRODUCTION,
-        });
-      } else {
-        Purchases.configure({ apiKey: apiKey!, appUserID: appUserId });
+    purchasesSetup = (async () => {
+      const { appUserId } = await getOrCreatePremiumDeviceIdentity();
+      const status = await readPremiumMigrationStatus();
+      if (status === 'complete' || status === 'restore-required') {
+        configurePurchases(appUserId);
+        if (await Purchases.getAppUserID() !== appUserId) {
+          throw new Error('RevenueCat identity differs from Keychain identity.');
+        }
+        if (status === 'restore-required') {
+          // If the process died after a successful store restore but before
+          // Keychain receipt persistence, re-check the bound customer on
+          // launch instead of prompting indefinitely.
+          try {
+            if (hasEntitlement(await Purchases.getCustomerInfo())) {
+              await markMigrationVerified();
+              return { restoreRequired: false };
+            }
+          } catch {
+            // Network failure != no existing purchase; preserve the warning.
+          }
+        }
+        return { restoreRequired: status === 'restore-required' };
       }
-    }).catch(error => { purchasesSetup = null; throw error; });
+
+      // Existing anonymous RevenueCat SDK state is still available until a
+      // reconfigure with a custom ID. A failed logIn remains retryable.
+      configurePurchases();
+      return migrateRevenueCatIdentity({
+        targetId: appUserId,
+        readStatus: readPremiumMigrationStatus,
+        writeStatus: writePremiumMigrationStatus,
+        getCurrentId: () => Purchases.getAppUserID(),
+        getCustomerInfo: () => Purchases.getCustomerInfo(),
+        logIn: async (id) => (await Purchases.logIn(id)).customerInfo,
+        hasPremium: hasEntitlement,
+      });
+    })().catch(error => { purchasesSetup = null; throw error; });
   }
   return purchasesSetup;
 }
@@ -93,6 +151,8 @@ type PremiumValue = {
   appUserId: () => Promise<string>;
   /** Headers proving ownership of the exact RevenueCat user being checked. */
   groupCreationHeaders: () => Promise<Record<string, string>>;
+  /** Existing anonymous subscription was not confirmed after identity migration. */
+  migrationNeedsRestore: boolean;
 };
 
 const PremiumContext = createContext<PremiumValue | null>(null);
@@ -125,6 +185,7 @@ export function PremiumProvider({ children }: { children: React.ReactNode }) {
       .catch(() => undefined);
   }, []);
   const [ready, setReady] = useState(false);
+  const [migrationNeedsRestore, setMigrationNeedsRestore] = useState(false);
   const [plans, setPlans] = useState<PlanChoice[]>(premiumLive ? [] : TEST_PLANS);
 
   useEffect(() => {
@@ -140,8 +201,9 @@ export function PremiumProvider({ children }: { children: React.ReactNode }) {
       if (active) setIsPremium(hasEntitlement(info));
     };
     let registered = false;
-    void ensurePurchasesConfigured().then(async () => {
+    void ensurePurchasesConfigured().then(async ({ restoreRequired }) => {
       if (!active) return;
+      setMigrationNeedsRestore(restoreRequired);
       Purchases.addCustomerInfoUpdateListener(listener);
       registered = true;
       // Product-catalogue outages must not revoke a verified purchase. Fetch
@@ -197,6 +259,10 @@ export function PremiumProvider({ children }: { children: React.ReactNode }) {
         const { customerInfo } = await Purchases.purchasePackage(plan.pkg);
         const entitled = hasEntitlement(customerInfo);
         setIsPremium(entitled);
+        if (entitled) {
+          await markMigrationVerified();
+          setMigrationNeedsRestore(false);
+        }
         return entitled ? 'purchased' : 'failed';
       } catch (error) {
         return (error as { userCancelled?: boolean | null }).userCancelled ? 'cancelled' : 'failed';
@@ -211,9 +277,15 @@ export function PremiumProvider({ children }: { children: React.ReactNode }) {
       await ensurePurchasesConfigured();
       const entitled = hasEntitlement(await Purchases.restorePurchases());
       setIsPremium(entitled);
+      if (entitled) {
+        await markMigrationVerified();
+        setMigrationNeedsRestore(false);
+      }
       return entitled;
     } catch {
-      return false;
+      // "Store unavailable" is not "no purchase exists". The paywall must
+      // keep the duplicate-purchase safety gate closed after a network error.
+      throw new Error('Could not verify restored purchases with the store.');
     }
   }, [isPremium]);
 
@@ -238,8 +310,8 @@ export function PremiumProvider({ children }: { children: React.ReactNode }) {
   }, [appUserId]);
 
   const value = useMemo(
-    () => ({ isPremium, ready, live: premiumLive, plans, purchase, restore, setTestPremium, testOverride: override !== null, appUserId, groupCreationHeaders }),
-    [isPremium, ready, plans, purchase, restore, setTestPremium, override, appUserId, groupCreationHeaders],
+    () => ({ isPremium, ready, live: premiumLive, plans, purchase, restore, setTestPremium, testOverride: override !== null, appUserId, groupCreationHeaders, migrationNeedsRestore }),
+    [isPremium, ready, plans, purchase, restore, setTestPremium, override, appUserId, groupCreationHeaders, migrationNeedsRestore],
   );
   return <PremiumContext.Provider value={value}>{children}</PremiumContext.Provider>;
 }

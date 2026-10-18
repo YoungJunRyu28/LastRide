@@ -42,9 +42,10 @@ export function PremiumOffer({
   secondary?: React.ReactNode;
 }) {
   const colors = useColors();
-  const { plans, purchase, restore, live } = usePremium();
+  const { plans, purchase, restore, live, migrationNeedsRestore } = usePremium();
   const [selectedId, setSelectedId] = useState<PlanChoice['id']>('annual');
   const [busy, setBusy] = useState(false);
+  const [restoreAttempted, setRestoreAttempted] = useState(false);
   const selected = plans.find((plan) => plan.id === selectedId) ?? plans[0] ?? null;
 
   useEffect(() => {
@@ -67,10 +68,21 @@ export function PremiumOffer({
 
   const restorePurchases = async () => {
     setBusy(true);
-    const entitled = await restore();
-    setBusy(false);
-    if (entitled) onDone();
-    else Alert.alert(ja ? '復元できる購入がありません' : 'Nothing to restore', ja ? `この${store}での購入は見つかりませんでした。` : `No purchase was found for this ${store}.`);
+    try {
+      const entitled = await restore();
+      // Only an actual completed store lookup proves "no purchase found".
+      // A network or Keychain failure must NOT unlock a second charge.
+      setRestoreAttempted(true);
+      if (entitled) onDone();
+      else Alert.alert(ja ? '復元できる購入がありません' : 'Nothing to restore', ja ? `この${store}での購入は見つかりませんでした。` : `No purchase was found for this ${store}.`);
+    } catch {
+      Alert.alert(
+        ja ? '購入を確認できませんでした' : 'Couldn’t verify purchases',
+        ja ? 'ネットワークを確認してから、もう一度復元してください。' : 'Check your connection and try Restore purchases again.',
+      );
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -88,6 +100,16 @@ export function PremiumOffer({
           </View>
         ))}
       </View>
+
+      {migrationNeedsRestore && (
+        <View accessibilityRole="alert" testID="premium-migration-restore-warning" style={[styles.migrationNotice, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          <Text style={[styles.migrationText, { color: colors.foreground }]}>
+            {ja
+              ? '以前の購入を新しいアプリIDで確認できませんでした。二重課金を避けるため、新しく購入する前に「購入を復元」をお試しください。'
+              : 'We couldn’t confirm your previous purchase under your updated app identity. To avoid a duplicate charge, try Restore purchases before buying again.'}
+          </Text>
+        </View>
+      )}
 
       <View style={styles.plans} accessibilityRole="radiogroup">
         {plans.map((plan) => {
@@ -129,7 +151,7 @@ export function PremiumOffer({
           label={trialLabel ? (ja ? `${trialLabel}で試す` : `Try ${trialLabel}`) : ja ? 'プレミアムにする' : 'Get Premium'}
           onPress={() => void buy()}
           loading={busy}
-          disabled={!selected}
+          disabled={!selected || (migrationNeedsRestore && !restoreAttempted)}
           testID="start-premium"
         />
         {secondary}
@@ -175,6 +197,8 @@ const styles = StyleSheet.create({
   planNote: { fontSize: 12, fontWeight: '700' },
   actions: { gap: 8 },
   testMode: { fontSize: 11, fontWeight: '700', textAlign: 'center' },
+  migrationNotice: { borderWidth: 1, borderRadius: 12, padding: 13 },
+  migrationText: { fontSize: 13, lineHeight: 19 },
   legal: { fontSize: 11, lineHeight: 16, textAlign: 'center' },
   links: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center' },
 });

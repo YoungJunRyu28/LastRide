@@ -1,17 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { storage, entropy } = vi.hoisted(() => ({
-  storage: { secret: null as string | null, available: true, failWrite: false },
+  storage: { secret: null as string | null, migration: null as string | null, available: true, failWrite: false },
   entropy: vi.fn(async (length: number) => Uint8Array.from({ length }, (_, index) => index)),
 }));
 vi.mock('react-native', () => ({ Platform: { OS: 'ios' } }));
 vi.mock('expo-secure-store', () => ({
   AFTER_FIRST_UNLOCK: 'AFTER_FIRST_UNLOCK',
   isAvailableAsync: vi.fn(async () => storage.available),
-  getItemAsync: vi.fn(async () => storage.secret),
-  setItemAsync: vi.fn(async (_key: string, value: string) => {
+  getItemAsync: vi.fn(async (key: string) => key === 'lastride-premium-revenuecat-migration-v1' ? storage.migration : storage.secret),
+  setItemAsync: vi.fn(async (key: string, value: string) => {
     if (storage.failWrite) throw new Error('Keychain write failed');
-    storage.secret = value;
+    if (key === 'lastride-premium-revenuecat-migration-v1') storage.migration = value;
+    else storage.secret = value;
   }),
 }));
 vi.mock('expo-crypto', async () => {
@@ -27,6 +28,7 @@ vi.mock('expo-crypto', async () => {
 beforeEach(() => {
   vi.resetModules();
   storage.secret = null;
+  storage.migration = null;
   storage.available = true;
   storage.failWrite = false;
   entropy.mockClear();
@@ -63,6 +65,30 @@ describe('RevenueCat OS-secured device identity', () => {
     await expect(getOrCreatePremiumDeviceIdentity()).rejects.toThrow('Saved premium identity is invalid');
     expect(storage.secret).toBe('short-or-corrupt');
     expect(entropy).not.toHaveBeenCalled();
+  });
+  it('stores migration receipts alongside the device identity and survives a React restart', async () => {
+    const first = await import('@/lib/premiumDeviceIdentity');
+    expect(await first.readPremiumMigrationStatus()).toBeNull();
+    await first.writePremiumMigrationStatus('pending-entitled');
+    vi.resetModules();
+    const restarted = await import('@/lib/premiumDeviceIdentity');
+    expect(await restarted.readPremiumMigrationStatus()).toBe('pending-entitled');
+    await restarted.writePremiumMigrationStatus('restore-required');
+    expect(await restarted.readPremiumMigrationStatus()).toBe('restore-required');
+    await restarted.writePremiumMigrationStatus('complete');
+    expect(await restarted.readPremiumMigrationStatus()).toBe('complete');
+  });
+  it('refuses corrupted migration receipts rather than silently discarding active purchases', async () => {
+    storage.migration = 'invalid-or-partial';
+    const identity = await import('@/lib/premiumDeviceIdentity');
+    await expect(identity.readPremiumMigrationStatus()).rejects.toThrow('Corrupted purchase-migration');
+    expect(storage.migration).toBe('invalid-or-partial');
+  });
+  it('does not pretend migration completed when a Keychain receipt write fails', async () => {
+    storage.failWrite = true;
+    const identity = await import('@/lib/premiumDeviceIdentity');
+    await expect(identity.writePremiumMigrationStatus('complete')).rejects.toThrow('Keychain write failed');
+    expect(storage.migration).toBeNull();
   });
   it('never returns an unpersisted identity if Keychain write fails', async () => {
     storage.failWrite = true;

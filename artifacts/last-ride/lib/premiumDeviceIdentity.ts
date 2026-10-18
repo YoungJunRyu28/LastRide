@@ -11,8 +11,10 @@
 import { CryptoDigestAlgorithm, digestStringAsync, getRandomBytesAsync } from 'expo-crypto';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
+import type { MigrationStatus } from '@/lib/revenueCatMigration';
 
 const KEY = 'lastride-premium-device-secret-v1';
+const MIGRATION_KEY = 'lastride-premium-revenuecat-migration-v1';
 const HEX = /^[0-9a-f]{64}$/;
 const KEYCHAIN_OPTIONS: SecureStore.SecureStoreOptions = {
   keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK,
@@ -49,4 +51,24 @@ export function getOrCreatePremiumDeviceIdentity(): Promise<PremiumDeviceIdentit
     pending = resolveIdentity().catch(error => { pending = null; throw error; });
   }
   return pending;
+}
+
+/** Migration receipts live next to the identity secret in native secure storage.
+ * Never mark an interrupted purchase migration complete based solely on
+ * successful SDK configuration. */
+export async function readPremiumMigrationStatus(): Promise<MigrationStatus | null> {
+  if (Platform.OS === 'web' || !(await SecureStore.isAvailableAsync())) {
+    throw new Error('Secure storage is required for purchase migration.');
+  }
+  const status = await SecureStore.getItemAsync(MIGRATION_KEY, KEYCHAIN_OPTIONS);
+  if (status === null) return null;
+  if (status === 'complete' || status === 'pending-entitled' || status === 'restore-required') return status;
+  throw new Error('Corrupted purchase-migration state; do not silently replace it.');
+}
+
+export async function writePremiumMigrationStatus(status: MigrationStatus): Promise<void> {
+  if (Platform.OS === 'web' || !(await SecureStore.isAvailableAsync())) {
+    throw new Error('Secure storage is required for purchase migration.');
+  }
+  await SecureStore.setItemAsync(MIGRATION_KEY, status, KEYCHAIN_OPTIONS);
 }
