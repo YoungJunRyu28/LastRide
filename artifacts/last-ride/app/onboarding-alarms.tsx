@@ -3,14 +3,16 @@ import { Card, Chip, PrimaryButton, Row, TextButton } from '@/components/ui';
 import { REMINDER_CHOICES, useLastRide } from '@/context/LastRideContext';
 import { useColors } from '@/hooks/useColors';
 import { alarmKitAvailable, iosMajorVersion, requestAlarmAuthorization } from '@/lib/notifications';
-import { reminderLabel } from '@/lib/settings';
+import { reminderLabel, STORAGE_KEYS } from '@/lib/settings';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 /**
  * Setup: alarms that ring like the Clock app, even in silent mode (iOS 26+).
- * Off unless chosen; switching them on starts with one at the leave time.
+ * On the first time this step is shown, with one at the leave time, so people
+ * try them; 「アラームは使わない」 turns them off (and they stay off after Back).
  * Older iOS: the same choices, plus a note that updating unlocks real alarms
  * (until then alarm times arrive as notifications with the chosen sound).
  */
@@ -21,12 +23,22 @@ export default function OnboardingAlarmsScreen() {
   const [asking, setAsking] = useState(false);
   const next = () => router.replace('/onboarding-margin');
 
+  useEffect(() => {
+    if (!alarmKitAvailable) return;
+    void AsyncStorage.getItem(STORAGE_KEYS.alarmsOffered).then((offered) => {
+      if (offered) return;
+      void AsyncStorage.setItem(STORAGE_KEYS.alarmsOffered, 'true');
+      if (!alarmsEnabled) setAlarmsEnabled(true);
+    }).catch(() => undefined);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const proceed = async () => {
     if (alarmsEnabled && alarmKitAvailable) {
-      // iOS asks once; if it's refused, alarm times arrive as notifications instead.
+      // iOS asks once. Refused: alarms go back off, so the leave time is an ordinary notification again.
       setAsking(true);
-      await requestAlarmAuthorization().catch(() => 'denied');
+      const status = await requestAlarmAuthorization().catch(() => 'denied');
       setAsking(false);
+      if (status !== 'authorized') setAlarmsEnabled(false);
     }
     next();
   };

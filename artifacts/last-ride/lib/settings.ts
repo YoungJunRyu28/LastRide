@@ -32,6 +32,8 @@ export const STORAGE_KEYS = {
   alarmSound: 'lastride-alarm-sound',
   reminderVibrate: 'lastride-reminder-vibrate',
   throughFocus: 'lastride-through-focus',
+  /** Setup's alarm step has been shown (alarms start on there only the first time). */
+  alarmsOffered: 'lastride-alarms-offered',
   pinnedStation: 'lastride-pinned-station',
   missedCheckIn: 'lastride-missed-check-in',
   homeAddress: 'lastride-home-address',
