@@ -303,3 +303,46 @@ Production App Store builds now also refuse `IOS_BUNDLE_ID` overrides from
   functional journey-to-station test.
 - The generated `LastRide.app` contains `ExpoWidgetsTarget.appex`; verify
   App Group and notification entitlements again on a **signed** build.
+
+## Phase 5 — signed iOS artifact verification (2026-10-17)
+
+The repository now contains `scripts/verify-ios-distribution.mjs` and
+`scripts/verify-ios-distribution.test.mjs`. This is a **read-only release
+qualification gate**, not a tool for signing, uploading, changing certificates,
+requesting Apple entitlements, or submitting to TestFlight.
+
+### Run on macOS after creating the properly signed IPA
+
+Use the **actual Apple Developer Team ID** from the App Store Connect / Xcode
+production team. Do not guess or put private signing keys in this command.
+
+```sh
+IOS_APPLE_TEAM_ID=YOUR10CHARTEAM node scripts/verify-ios-distribution.mjs --ipa /path/to/LastRide.ipa
+# Or inspect the real distribution-signed Xcode archive / embedded app:
+IOS_APPLE_TEAM_ID=YOUR10CHARTEAM node scripts/verify-ios-distribution.mjs --archive /path/to/LastRide.xcarchive
+```
+
+The tool uses macOS `codesign` to **verify actual embedded main-app and widget
+signatures**, and `plutil` to inspect their signed entitlements and Info.plists.
+It rejects wrong Team ID, `jp.lastride.app` bundle mismatches, debug signing
+(`get-task-allow`), non-production APNs, missing Time Sensitive permission,
+missing `applinks:lastride.jp`, a missing/mis-signed ExpoWidgetsTarget extension,
+widget/app App Group mismatch, invalid build/version, and missing Live Activity
+metadata. A simulator Debug build with `CODE_SIGNING_ALLOWED=NO` must fail.
+
+Production iOS EAS config now also requires `ENABLE_LIVE_ACTIVITY=true`,
+sets `ios.infoPlist.NSSupportsLiveActivities=true`, and keeps the existing
+`expo-widgets` plugin enabled for the release. Preview/internal builds remain
+opt-in, and Android/Galaxy profiles are not forced to add an iOS widget.
+
+**Not yet verified:** There is no real production-signed IPA in this workstream,
+so the signed verifier itself cannot truthfully report a pass against a release
+binary. The Node unit tests exercise success/failure metadata fixtures but
+cannot prove native certificate trust or real-device behavior. After signing,
+run this exact inspector, then test real APNs delivery on a locked device,
+Universal Links, widgets, Live Activity, AlarmKit and purchases in TestFlight.
+
+**Limitations:** Correct local code signatures and embedded entitlements do not
+prove Apple's store acceptance, association-file HTTPS hosting, actual APNs
+credentials or timely push delivery. The iPhone feature/entitlement set requires
+an Apple Developer distribution team; free Personal Team signing is insufficient.
