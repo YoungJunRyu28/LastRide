@@ -60,9 +60,9 @@ test('Play and Apple releases fail closed without a correct store-specific Reven
   assert.throws(() => configured({ ...release, EAS_BUILD_PROFILE: 'production',
     EXPO_PUBLIC_REVENUECAT_ANDROID_KEY: 'sk_revenuecat_server_secret' }), /REVENUECAT_ANDROID_KEY/);
   assert.throws(() => configured({ ...release, EAS_BUILD_PROFILE: 'production',
-    EAS_BUILD_PLATFORM: 'ios', EXPO_PUBLIC_REVENUECAT_IOS_KEY: '' }), /REVENUECAT_IOS_KEY/);
+    EAS_BUILD_PLATFORM: 'ios', ENABLE_LIVE_ACTIVITY: 'true', EXPO_PUBLIC_REVENUECAT_IOS_KEY: '' }), /REVENUECAT_IOS_KEY/);
   assert.throws(() => configured({ ...release, EAS_BUILD_PROFILE: 'production',
-    EAS_BUILD_PLATFORM: 'ios', EXPO_PUBLIC_REVENUECAT_IOS_KEY: 'goog_wrong' }), /REVENUECAT_IOS_KEY/);
+    EAS_BUILD_PLATFORM: 'ios', ENABLE_LIVE_ACTIVITY: 'true', EXPO_PUBLIC_REVENUECAT_IOS_KEY: 'goog_wrong' }), /REVENUECAT_IOS_KEY/);
   const ios = configured({ ...release, EAS_BUILD_PROFILE: 'production',
     EAS_BUILD_PLATFORM: 'ios', ENABLE_LIVE_ACTIVITY: 'true', EXPO_PUBLIC_REVENUECAT_IOS_KEY: 'appl_example_public_key' });
   assert.equal(ios.ios.bundleIdentifier, 'jp.lastride.app');
