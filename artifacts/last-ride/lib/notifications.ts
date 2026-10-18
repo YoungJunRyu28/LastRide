@@ -14,7 +14,7 @@ const webTimers: ReturnType<typeof setTimeout>[] = [];
 // use these keys to replace, not accumulate, locally scheduled notifications.
 const OWNED_IDS_KEY = 'lastride-owned-notification-ids';
 const SIGNATURE_KEY = 'lastride-reminder-signature';
-const SCHEDULER_VERSION = 8;
+const SCHEDULER_VERSION = 9;
 
 export { alarmKitAvailable };
 export { iosMajorVersion } from '../modules/last-ride-alarm/src';
@@ -218,6 +218,25 @@ async function cancelOwned() {
   await Notifications.cancelAllScheduledNotificationsAsync().catch(() => undefined);
 }
 
+/**
+ * A fixed identifier for a timed reminder: the same time and words give the same
+ * id, so a re-plan leaves an unchanged reminder queued as it is (never removed
+ * and re-added just before it fires).
+ */
+function reminderId(...parts: unknown[]): string {
+  const text = JSON.stringify(parts);
+  let hash = 5381;
+  for (let index = 0; index < text.length; index++) hash = ((hash * 33) ^ text.charCodeAt(index)) >>> 0;
+  return `lastride-reminder-${hash.toString(36)}-${text.length}`;
+}
+
+/** Identifiers of the local notifications iOS has queued (not yet delivered). */
+async function queuedIds(): Promise<Set<string>> {
+  if (Platform.OS === 'web') return new Set();
+  const requests = await Notifications.getAllScheduledNotificationsAsync().catch(() => []);
+  return new Set(requests.map((request) => request.identifier));
+}
+
 export function cancelAllReminders(): Promise<void> {
   return enqueue(cancelOwned);
 }
@@ -396,7 +415,22 @@ export function scheduleReminders(
       decided && [decided.catchUp, decided.stationChanged, decided.timeShifted, decided.followUp, decided.ledger.sent, decided.ledger.stationKey],
     ]);
     if (Platform.OS !== 'web' && (await AsyncStorage.getItem(SIGNATURE_KEY).catch(() => null)) === signature) return;
-    await cancelOwned();
+    // Only what changed is replaced: reminders still the same stay queued untouched
+    // (see reminderId); the rest are removed once the new set is in. AlarmKit
+    // alarms are always set again (they ring on the second regardless).
+    if (Platform.OS === 'web') await cancelOwned();
+    else {
+      await AsyncStorage.removeItem(SIGNATURE_KEY).catch(() => undefined);
+      configure();
+      await alarmKit.cancelAll().catch((error) => console.warn('[LastRide] Could not cancel alarms', error));
+    }
+    const queued = await queuedIds();
+    const kept = new Set<string>();
+    /** Queues a timed reminder unless the identical one is already queued. */
+    const queue = async (id: string, show: () => Promise<void>) => {
+      kept.add(id);
+      if (!queued.has(id)) await show();
+    };
     const language = text.language;
     if (decided && delivery) {
       // Told once: where you leave from now, or that the leave time moved after a reminder.
@@ -443,11 +477,18 @@ export function scheduleReminders(
       if (plan.boardedCheck) {
         if (!text.held) continue;
         const { title, body } = reminderText(text, plan);
-        await present(title, body, plan.fireAt, '/ride', vibrate, null, false, false, {
-          category: BOARDED_CATEGORY,
-          data: { boardedCheck: plan.fireAt },
-          identifier: boardedNotificationId(plan.fireAt),
-        });
+        // A fixed id per train (the follow-up replaces it): queued again only when its words change.
+        const id = boardedNotificationId(plan.fireAt);
+        const words = reminderId(title, body, vibrate);
+        kept.add(id);
+        if (!queued.has(id) || (await AsyncStorage.getItem(`${id}-words`).catch(() => null)) !== words) {
+          await present(title, body, plan.fireAt, '/ride', vibrate, null, false, false, {
+            category: BOARDED_CATEGORY,
+            data: { boardedCheck: plan.fireAt },
+            identifier: id,
+          });
+          await AsyncStorage.setItem(`${id}-words`, words).catch(() => undefined);
+        }
         continue;
       }
       const { title, body } = reminderText(text, plan);
@@ -459,7 +500,8 @@ export function scheduleReminders(
           await alarmKit.schedule(newAlarmId(), plan.fireAt, title, 'default', stopLabel(language));
           // The alarm rings; a silent notification keeps the details (station, times)
           // in Notification Center once it's stopped, and opens the app when tapped.
-          await present(title, body, plan.fireAt, target, false, null, false, true);
+          const id = reminderId('companion', plan.fireAt, title, body, target);
+          await queue(id, () => present(title, body, plan.fireAt, target, false, null, false, true, { identifier: id }));
           continue;
         } catch (error) {
           console.warn('[LastRide] AlarmKit failed; falling back to a notification', error);
@@ -469,7 +511,13 @@ export function scheduleReminders(
       const tone = plan.alarm ? soundFile(sound === 'default' ? 'urgent' : sound) : null;
       // Every leave reminder is Time Sensitive (即時通知): Focus or a summary mustn't hold 15分前 back.
       const urgent = plan.alarm === true || !plan.missedCheckIn;
-      await present(title, body, plan.fireAt, target, vibrate, tone, urgent);
+      const id = reminderId(plan.fireAt, title, body, target, vibrate, tone, urgent);
+      await queue(id, () => present(title, body, plan.fireAt, target, vibrate, tone, urgent, false, { identifier: id }));
+    }
+    if (Platform.OS !== 'web') {
+      // Everything queued that isn't in the new set: changed or no longer wanted.
+      await Promise.all([...queued].filter((id) => !kept.has(id)).map((id) => Notifications.cancelScheduledNotificationAsync(id).catch(() => undefined)));
+      await writeOwnedIds([...kept]);
     }
     await AsyncStorage.setItem(SIGNATURE_KEY, signature).catch(() => undefined);
   });

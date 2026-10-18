@@ -2,14 +2,22 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => {
   const store = new Map<string, string>();
+  /** What iOS has queued, by identifier (as getAllScheduledNotificationsAsync reports it). */
+  const queued = new Map<string, unknown>();
+  let next = 0;
   return {
     store,
+    queued,
     alarmStatus: vi.fn(async () => 'authorized'),
     alarmSchedule: vi.fn(async (_id: string, _fireAt: number, _title: string, _sound: string, _stop: string) => {}),
     alarmCancel: vi.fn(async () => {}),
-    notificationSchedule: vi.fn(async () => 'notification-id'),
-    notificationCancel: vi.fn(async () => {}),
-    notificationCancelAll: vi.fn(async () => {}),
+    notificationSchedule: vi.fn(async (request: { identifier?: string; trigger: unknown }) => {
+      const id = request.identifier ?? `notification-${next++}`;
+      if (request.trigger !== null) queued.set(id, request);
+      return id;
+    }),
+    notificationCancel: vi.fn(async (id: string) => { queued.delete(id); }),
+    notificationCancelAll: vi.fn(async () => { queued.clear(); }),
   };
 });
 
@@ -28,6 +36,7 @@ vi.mock('expo-notifications', () => ({
   scheduleNotificationAsync: mocks.notificationSchedule,
   cancelScheduledNotificationAsync: mocks.notificationCancel,
   cancelAllScheduledNotificationsAsync: mocks.notificationCancelAll,
+  getAllScheduledNotificationsAsync: vi.fn(async () => [...mocks.queued.keys()].map((identifier) => ({ identifier, content: {}, trigger: null }))),
   SchedulableTriggerInputTypes: { DATE: 'date', CALENDAR: 'calendar' },
 }));
 vi.mock('../modules/last-ride-alarm/src', () => ({
@@ -139,7 +148,8 @@ describe('reminder delivery', () => {
     expect(mocks.notificationCancel).toHaveBeenCalled();
     // Everything still scheduled goes too, not just the tracked ids (the background
     // task keeps its own list, so a silent alarm companion could otherwise survive).
-    expect(mocks.notificationCancelAll).toHaveBeenCalledTimes(2);
+    expect(mocks.notificationCancelAll).toHaveBeenCalledOnce();
+    expect(mocks.queued.size).toBe(0);
   });
 
   it('does not schedule stale alarms from a delayed background callback', async () => {
@@ -222,6 +232,32 @@ describe('reminder delivery', () => {
       await scheduleReminders(at(start + 3_600_000), text, undefined, info(start + 3_600_000));
       const later = (mocks.notificationSchedule.mock.calls as unknown as Array<[{ content: { title: string } }]>).map(([request]) => request.content.title);
       expect(later).toContain('LastRide — 出る時刻が変わりました');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a re-plan leaves unchanged reminders queued as they are: only what changed is replaced', async () => {
+    mocks.store.delete(STORAGE_KEYS.reminderLedger);
+    const start = Date.now();
+    const info = (stationKey: string) => ({
+      night: '20261016', choiceKey: '0', stationKey, leaveAtMs: start + 3_600_000, trainDepartsAtMs: start + 4_200_000,
+      trainLabel: '終電', trainDeparts: '00:10',
+    });
+    const plans = [{ minutesBefore: 15, fireAt: start + 2_700_000 }, { minutesBefore: 0, fireAt: start + 3_600_000 }];
+    try {
+      vi.useFakeTimers({ now: start });
+      await scheduleReminders(plans, text, undefined, info('新宿'));
+      const first = [...mocks.queued.keys()];
+      expect(first).toHaveLength(2);
+      mocks.notificationSchedule.mockClear();
+      // Something else changes (the 0-minute reminder's words, via the station name): 15分前 isn't touched.
+      vi.setSystemTime(start + 60_000);
+      await scheduleReminders([plans[0], { minutesBefore: 0, fireAt: start + 3_660_000 }], text, undefined, info('新宿'));
+      expect(mocks.notificationSchedule).toHaveBeenCalledOnce();
+      expect(mocks.queued.has(first[0])).toBe(true);
+      expect(mocks.queued.has(first[1])).toBe(false);
+      expect(mocks.queued.size).toBe(2);
     } finally {
       vi.useRealTimers();
     }
