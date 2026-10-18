@@ -14,7 +14,7 @@ export default function ReminderSettingsScreen() {
   const {
     language, trackingMode,
     reminderIntervals, toggleReminderInterval, alarmsEnabled, setAlarmsEnabled, alarmIntervals, toggleAlarmInterval,
-    reminderVibrate, setReminderVibrate, notificationsAllowed,
+    reminderVibrate, setReminderVibrate, throughFocus, setThroughFocus, notificationsAllowed,
     missedCheckIn, setMissedCheckIn,
   } = useLastRide();
   const [alarmStatus, setAlarmStatus] = useAlarmStatus(alarmsEnabled);
@@ -171,6 +171,18 @@ export default function ReminderSettingsScreen() {
       )}
 
       <Section label={ja ? 'その他' : 'MORE'}>
+        {Platform.OS === 'ios' && (
+          <>
+            <Row
+              testID="toggle-through-focus"
+              title={ja ? '集中モード中も通知' : 'Through Focus'}
+              subtitle={ja ? 'おやすみモードなどの集中モード中も、出発のお知らせを届けます（即時通知）' : 'Leave reminders still come through Sleep and other Focus modes (Time Sensitive)'}
+              switchValue={throughFocus}
+              onSwitch={setThroughFocus}
+            />
+            <Divider />
+          </>
+        )}
         <Row
           testID="toggle-missed-check-in"
           title={ja ? '終電後の案内' : 'After the last train'}

@@ -31,6 +31,7 @@ export const STORAGE_KEYS = {
   alarmTimes: 'lastride-alarm-times',
   alarmSound: 'lastride-alarm-sound',
   reminderVibrate: 'lastride-reminder-vibrate',
+  throughFocus: 'lastride-through-focus',
   pinnedStation: 'lastride-pinned-station',
   missedCheckIn: 'lastride-missed-check-in',
   homeAddress: 'lastride-home-address',
@@ -89,6 +90,8 @@ export type Settings = {
   alarmIntervals: number[];
   alarmSound: ReminderSound;
   reminderVibrate: boolean;
+  /** Leave reminders as Time Sensitive (即時通知): they come through Focus modes and the summary. */
+  throughFocus: boolean;
   /** Station the user chose over the automatic pick; valid for one night only. */
   pinnedStation: StationOption | null;
   /** Send the "missed the last train?" check-in after the last train has gone. */
@@ -115,6 +118,7 @@ export const DEFAULT_SETTINGS: Settings = {
   alarmIntervals: [],
   alarmSound: 'default',
   reminderVibrate: true,
+  throughFocus: true,
   pinnedStation: null,
   missedCheckIn: true,
   homeAddress: null,
@@ -258,7 +262,7 @@ export async function writePinnedStation(station: StationOption | null): Promise
 }
 
 export async function readSettings(): Promise<Settings> {
-  const [language, homeStation, leaveMargin, reminders, alarmsEnabled, alarmTimes, alarmSound, reminderVibrate, pinnedStation, missedCheckIn, homeAddress, destinationsRaw, activeDestinationIdRaw, nightLocationMode, tonightRaw] = await Promise.all([
+  const [language, homeStation, leaveMargin, reminders, alarmsEnabled, alarmTimes, alarmSound, reminderVibrate, throughFocus, pinnedStation, missedCheckIn, homeAddress, destinationsRaw, activeDestinationIdRaw, nightLocationMode, tonightRaw] = await Promise.all([
     AsyncStorage.getItem(STORAGE_KEYS.language),
     AsyncStorage.getItem(STORAGE_KEYS.homeStation),
     AsyncStorage.getItem(STORAGE_KEYS.leaveMargin),
@@ -267,6 +271,7 @@ export async function readSettings(): Promise<Settings> {
     AsyncStorage.getItem(STORAGE_KEYS.alarmTimes),
     AsyncStorage.getItem(STORAGE_KEYS.alarmSound),
     AsyncStorage.getItem(STORAGE_KEYS.reminderVibrate),
+    AsyncStorage.getItem(STORAGE_KEYS.throughFocus),
     AsyncStorage.getItem(STORAGE_KEYS.pinnedStation),
     AsyncStorage.getItem(STORAGE_KEYS.missedCheckIn),
     AsyncStorage.getItem(STORAGE_KEYS.homeAddress),
@@ -337,6 +342,8 @@ export async function readSettings(): Promise<Settings> {
     ...parseReminderTimes(reminders, alarmsEnabled, alarmTimes),
     alarmSound: REMINDER_SOUNDS.includes(alarmSound as ReminderSound) ? (alarmSound as ReminderSound) : 'default',
     reminderVibrate: reminderVibrate !== 'false',
+    // Absent means never changed: on by default.
+    throughFocus: throughFocus !== 'false',
     pinnedStation: pinned,
     // Absent means never changed, and the check-in is on by default.
     missedCheckIn: missedCheckIn !== 'false',

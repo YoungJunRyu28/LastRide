@@ -104,28 +104,40 @@ describe('reminder delivery', () => {
     expect(companion).toMatchObject({ sound: false, interruptionLevel: 'passive' });
   });
 
-  it('schedules iOS reminders at a clock time (Japan time, to the second), not "in N seconds"', async () => {
-    // 23:26:00 JST: a time-interval trigger arrives ~20 s late with the phone asleep; a calendar one doesn't.
+  it('schedules iOS reminders at a clock time (Japan time, to the second), 10 s early for the screen-off delay', async () => {
+    // Due 23:26:00 JST: iOS delivers ~9 s late with the screen off, so it's set for 23:25:50.
     const fireAt = Date.UTC(2099, 9, 18, 14, 26, 0);
     vi.useFakeTimers({ now: fireAt - 30 * 60_000 });
     try {
       await scheduleReminders([{ minutesBefore: 10, fireAt }], text);
       const [{ trigger }] = mocks.notificationSchedule.mock.calls[0] as unknown as [{ trigger: Record<string, unknown> }];
-      expect(trigger).toEqual({ type: 'calendar', timezone: 'Asia/Tokyo', year: 2099, month: 10, day: 18, hour: 23, minute: 26, second: 0, repeats: false });
+      expect(trigger).toEqual({ type: 'calendar', timezone: 'Asia/Tokyo', year: 2099, month: 10, day: 18, hour: 23, minute: 25, second: 50, repeats: false });
     } finally {
       vi.useRealTimers();
     }
   });
 
-  it('makes every leave reminder Time Sensitive (即時通知), but not the missed-train check-in', async () => {
+  it('集中モード中も通知 (on by default): every leave reminder is Time Sensitive, not the missed-train check-in', async () => {
     const now = Date.now();
     await scheduleReminders([
+      { minutesBefore: 30, fireAt: now + 60000 },
       { minutesBefore: 15, fireAt: now + 120000 },
       { minutesBefore: 0, fireAt: now + 180000 },
       { minutesBefore: 0, fireAt: now + 240000, missedCheckIn: true },
     ], text, { sound: 'default', vibrate: true });
     const levels = (mocks.notificationSchedule.mock.calls as unknown as [{ content: Record<string, unknown> }][]).map(([request]) => request.content.interruptionLevel);
-    expect(levels).toEqual(['timeSensitive', 'timeSensitive', 'active']);
+    expect(levels).toEqual(['timeSensitive', 'timeSensitive', 'timeSensitive', 'active']);
+  });
+
+  it('集中モード中も通知 off: ordinary notifications, except an alarm standing in as one', async () => {
+    mocks.alarmStatus.mockResolvedValue('denied');
+    const now = Date.now();
+    await scheduleReminders([
+      { minutesBefore: 15, fireAt: now + 120000 },
+      { minutesBefore: 0, fireAt: now + 180000, alarm: true },
+    ], text, { sound: 'default', vibrate: true, throughFocus: false });
+    const levels = (mocks.notificationSchedule.mock.calls as unknown as [{ content: Record<string, unknown> }][]).map(([request]) => request.content.interruptionLevel);
+    expect(levels).toEqual(['active', 'timeSensitive']);
   });
 
   it('falls back to a notification with the chosen tone when alarms are not allowed', async () => {

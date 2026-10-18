@@ -219,6 +219,16 @@ async function cancelOwned() {
   await Promise.all([...queued].filter((id) => !isTestNotification(id)).map((id) => Notifications.cancelScheduledNotificationAsync(id).catch(() => undefined)));
 }
 
+/**
+ * iOS delivers scheduled notifications late while the screen is off (measured:
+ * ~9 s, ~17 s with an Apple Watch paired; on time with the screen on, app open or
+ * closed; AlarmKit alarms always on time). Leave reminders that are notifications
+ * go this much early: about on time in a pocket without a watch, ~7 s late with
+ * one, at most this early with the screen on. The words say the clock time to
+ * leave, so early never misleads.
+ */
+export const SCREEN_OFF_DELAY_MS = 10_000;
+
 /** TestFlight test notifications (sendTestNotifications): never cancelled with the reminders. */
 const TEST_ID_PREFIX = 'lastride-test-';
 function isTestNotification(id: string): boolean {
@@ -259,7 +269,7 @@ export function notifyLockFallback(
   const text = language === 'ja'
     ? { title: 'LastRide — 出発駅を自動に戻しました', body: `固定した${locked.nameJa}駅からは帰れなくなったため、${plan.station.nameJa}駅（${time}発）にしています。` }
     : { title: 'LastRide — back to automatic', body: `${locked.name} can’t get you home any more, so you’re now leaving from ${plan.station.name} (${time} train).` };
-  return enqueue(() => present(text.title, text.body, null, '/ride', true, null, true));
+  return enqueue(async () => present(text.title, text.body, null, '/ride', true, null, (await AsyncStorage.getItem(STORAGE_KEYS.throughFocus).catch(() => null)) !== 'false'));
 }
 
 function stationNotice(text: ReminderText, info: DeliveryInfo) {
@@ -403,7 +413,7 @@ async function readLedger(): Promise<ReminderLedger | null> {
 export function scheduleReminders(
   plans: ReminderPlan[],
   text: ReminderText,
-  { sound, vibrate }: Pick<ReminderDelivery, 'sound' | 'vibrate'> = { sound: 'default', vibrate: true },
+  { sound, vibrate, throughFocus = true }: Pick<ReminderDelivery, 'sound' | 'vibrate'> & { throughFocus?: boolean } = { sound: 'default', vibrate: true },
   delivery?: DeliveryInfo,
 ): Promise<void> {
   return enqueue(async () => {
@@ -418,7 +428,7 @@ export function scheduleReminders(
     // Permission can change in iOS Settings without the plans changing; a schedule
     // made of stand-in notifications must be replaced once alarms are allowed.
     const signature = JSON.stringify([
-      SCHEDULER_VERSION, upcoming, text, sound, vibrate, alarmAuthorization,
+      SCHEDULER_VERSION, upcoming, text, sound, vibrate, throughFocus, alarmAuthorization,
       decided && [decided.catchUp, decided.stationChanged, decided.timeShifted, decided.followUp, decided.ledger.sent, decided.ledger.stationKey],
     ]);
     if (Platform.OS !== 'web' && (await AsyncStorage.getItem(SIGNATURE_KEY).catch(() => null)) === signature) return;
@@ -455,7 +465,7 @@ export function scheduleReminders(
           language,
         );
         await registerBoardedCategory(language);
-        await present(notice.title, notice.body, null, '/ride', vibrate, null, true, false, {
+        await present(notice.title, notice.body, null, '/ride', vibrate, null, throughFocus, false, {
           category: BOARDED_CATEGORY,
           data: { boardedCheck: delivery.followUpFor },
           identifier: boardedNotificationId(delivery.followUpFor),
@@ -463,17 +473,17 @@ export function scheduleReminders(
       }
       if (decided.stationChanged) {
         const notice = stationNotice(text, delivery);
-        await present(notice.title, notice.body, null, '/ride', vibrate, null, true);
+        await present(notice.title, notice.body, null, '/ride', vibrate, null, throughFocus);
       } else if (decided.timeShifted) {
         const notice = timeNotice(text, delivery);
-        await present(notice.title, notice.body, null, '/ride', vibrate, null, true);
+        await present(notice.title, notice.body, null, '/ride', vibrate, null, throughFocus);
       }
       if (decided.catchUp) {
         const minutesLeft = Math.round((delivery.leaveAtMs - now) / 60_000);
         const late = { ...decided.catchUp, minutesBefore: decided.catchUp.minutesBefore > 0 && minutesLeft > 0 ? minutesLeft : 0 };
         const { title, body } = reminderText(text, late);
         const tone = late.alarm ? soundFile(sound === 'default' ? 'urgent' : sound) : null;
-        await present(title, body, null, '/ride', vibrate, tone, true);
+        await present(title, body, null, '/ride', vibrate, tone, late.alarm === true || throughFocus);
       }
       await AsyncStorage.setItem(STORAGE_KEYS.reminderLedger, JSON.stringify(decided.ledger)).catch(() => undefined);
     }
@@ -516,10 +526,13 @@ export function scheduleReminders(
       }
       // An alarm's stand-in never uses the plain notification sound (or it'd be just another reminder).
       const tone = plan.alarm ? soundFile(sound === 'default' ? 'urgent' : sound) : null;
-      // Every leave reminder is Time Sensitive (即時通知): Focus or a summary mustn't hold 15分前 back.
-      const urgent = plan.alarm === true || !plan.missedCheckIn;
-      const id = reminderId(plan.fireAt, title, body, target, vibrate, tone, urgent);
-      await queue(id, () => present(title, body, plan.fireAt, target, vibrate, tone, urgent, false, { identifier: id }));
+      // 集中モード中も通知 (on by default): every leave reminder is Time Sensitive (即時通知),
+      // through Focus and the summary. An alarm standing in as a notification always is.
+      const urgent = plan.alarm === true || (!plan.missedCheckIn && throughFocus);
+      // Leave reminders go a little early on iOS (SCREEN_OFF_DELAY_MS); the missed-train check-in doesn't.
+      const fireAt = Platform.OS === 'ios' && !plan.missedCheckIn ? plan.fireAt - SCREEN_OFF_DELAY_MS : plan.fireAt;
+      const id = reminderId(fireAt, title, body, target, vibrate, tone, urgent);
+      await queue(id, () => present(title, body, fireAt, target, vibrate, tone, urgent, false, { identifier: id }));
     }
     if (Platform.OS !== 'web') {
       // Everything queued that isn't in the new set: changed or no longer wanted.

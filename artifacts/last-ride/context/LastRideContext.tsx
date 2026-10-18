@@ -229,6 +229,9 @@ type RideContextValue = {
   alarmSound: ReminderSound;
   /** Android: vibrate with reminders. */
   reminderVibrate: boolean;
+  /** 集中モード中も通知: leave reminders as Time Sensitive (on by default). */
+  throughFocus: boolean;
+  setThroughFocus: (on: boolean) => void;
   /** On starts with the leave time; off moves alarm times back to notifications. */
   setAlarmsEnabled: (enabled: boolean) => void;
   toggleAlarmInterval: (minutes: number) => void;
@@ -369,6 +372,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
   const [alarmIntervals, setAlarmIntervals] = useState<number[]>(DEFAULT_SETTINGS.alarmIntervals);
   const [alarmSound, setAlarmSoundState] = useState<ReminderSound>(DEFAULT_SETTINGS.alarmSound);
   const [reminderVibrate, setReminderVibrateState] = useState(DEFAULT_SETTINGS.reminderVibrate);
+  const [throughFocus, setThroughFocusState] = useState(DEFAULT_SETTINGS.throughFocus);
   const [widgetTheme, setWidgetThemeState] = useState<WidgetThemeId>(DEFAULT_SETTINGS.widgetTheme);
   const [missedCheckIn, setMissedCheckInState] = useState(
     DEFAULT_SETTINGS.missedCheckIn,
@@ -457,6 +461,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
         setAlarmIntervals(saved.alarmIntervals);
         setAlarmSoundState(saved.alarmSound);
         setReminderVibrateState(saved.reminderVibrate);
+        setThroughFocusState(saved.throughFocus);
         setWidgetThemeState(saved.widgetTheme);
         setPinnedStationState(saved.pinnedStation);
         setMissedCheckInState(saved.missedCheckIn);
@@ -630,7 +635,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
         station: stationLabel,
         held: heldTrain(plan, language === "ja"),
         language: language ?? "en",
-      }, { sound: delivered.sound, vibrate: reminderVibrate }, {
+      }, { sound: delivered.sound, vibrate: reminderVibrate, throughFocus }, {
         night: serviceDate((plan.nightLastTrain ?? plan.lastTrain).departsAt),
         choiceKey: String(trainChoice),
         stationKey: plan.station.nameJa,
@@ -652,6 +657,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     stationLabel,
     delivered,
     reminderVibrate,
+    throughFocus,
     missedCheckIn,
     language,
     demoActive,
@@ -1053,6 +1059,12 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     void AsyncStorage.setItem(STORAGE_KEYS.reminderVibrate, String(vibrate));
   }, []);
 
+  const setThroughFocus = useCallback((on: boolean) => {
+    setThroughFocusState(on);
+    void AsyncStorage.setItem(STORAGE_KEYS.throughFocus, String(on));
+    void Haptics.selectionAsync();
+  }, []);
+
   const setWidgetTheme = useCallback((theme: WidgetThemeId) => {
     setWidgetThemeState(theme);
     void writeWidgetTheme(theme);
@@ -1147,7 +1159,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
           station: stationLabel,
           held: heldTrain(plan, language === "ja"),
           language: language ?? "en",
-        }, { sound: delivered.sound, vibrate: reminderVibrate });
+        }, { sound: delivered.sound, vibrate: reminderVibrate, throughFocus });
       })();
     },
     [
@@ -1156,6 +1168,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       language,
       delivered,
       reminderVibrate,
+      throughFocus,
       missedCheckIn,
       stationLabel,
     ],
@@ -1642,6 +1655,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     setAlarmIntervals(DEFAULT_SETTINGS.alarmIntervals);
     setAlarmSoundState(DEFAULT_SETTINGS.alarmSound);
     setReminderVibrateState(DEFAULT_SETTINGS.reminderVibrate);
+    setThroughFocusState(DEFAULT_SETTINGS.throughFocus);
     setWidgetThemeState(DEFAULT_SETTINGS.widgetTheme);
     setBoarded(null);
     setAnsweredDeparture(null);
@@ -1741,6 +1755,8 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       alarmIntervals,
       alarmSound,
       reminderVibrate,
+      throughFocus,
+      setThroughFocus,
       setAlarmsEnabled,
       toggleAlarmInterval,
       setAlarmSound,
@@ -1816,6 +1832,8 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       alarmIntervals,
       alarmSound,
       reminderVibrate,
+      throughFocus,
+      setThroughFocus,
       setAlarmsEnabled,
       toggleAlarmInterval,
       setAlarmSound,

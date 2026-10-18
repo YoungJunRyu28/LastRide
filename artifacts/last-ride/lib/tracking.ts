@@ -116,7 +116,7 @@ async function recomputeFromLocation(coordinates: Coordinates): Promise<void> {
     station: language === 'ja' ? plan.station.nameJa : plan.station.name,
     language,
     held: heldTrain(plan, language === 'ja'),
-  }, { sound: settings.alarmSound, vibrate: settings.reminderVibrate }, {
+  }, { sound: settings.alarmSound, vibrate: settings.reminderVibrate, throughFocus: settings.throughFocus }, {
     night: serviceDate((plan.nightLastTrain ?? plan.lastTrain).departsAt),
     choiceKey: String(settings.trainChoice),
     stationKey: plan.station.nameJa,
