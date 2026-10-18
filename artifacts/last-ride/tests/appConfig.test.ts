@@ -77,6 +77,7 @@ describe("app.config.js", () => {
     const configured = resolveWith({
       EAS_BUILD_PROFILE: "production",
       EAS_BUILD_PLATFORM: "ios",
+      ENABLE_LIVE_ACTIVITY: "true",
       EXPO_PUBLIC_API_URL: "https://api.invalid.example",
       ENABLE_REMOTE_PUSH: "true",
       ENABLE_UNIVERSAL_LINKS: "true",
@@ -85,6 +86,7 @@ describe("app.config.js", () => {
       EXPO_PUBLIC_REVENUECAT_IOS_KEY: "appl_valid_public_key",
     });
     expect(configured.extra.androidGoogleMapsEnabled).toBe(false);
+    expect(configured.ios.infoPlist.NSSupportsLiveActivities).toBe(true);
   });
 
   it("keeps native Android Maps disabled with no key in preview builds", () => {
