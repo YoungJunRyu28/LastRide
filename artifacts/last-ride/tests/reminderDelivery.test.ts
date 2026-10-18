@@ -28,7 +28,7 @@ vi.mock('expo-notifications', () => ({
   scheduleNotificationAsync: mocks.notificationSchedule,
   cancelScheduledNotificationAsync: mocks.notificationCancel,
   cancelAllScheduledNotificationsAsync: mocks.notificationCancelAll,
-  SchedulableTriggerInputTypes: { DATE: 'date' },
+  SchedulableTriggerInputTypes: { DATE: 'date', CALENDAR: 'calendar' },
 }));
 vi.mock('../modules/last-ride-alarm/src', () => ({
   alarmKitAvailable: true,
@@ -93,6 +93,19 @@ describe('reminder delivery', () => {
     const [reminder, companion] = (mocks.notificationSchedule.mock.calls as unknown as [{ content: Record<string, unknown> }][]).map(([request]) => request.content);
     expect(reminder).toMatchObject({ sound: true, interruptionLevel: 'active' });
     expect(companion).toMatchObject({ sound: false, interruptionLevel: 'passive' });
+  });
+
+  it('schedules iOS reminders at a clock time (Japan time, to the second), not "in N seconds"', async () => {
+    // 23:26:00 JST: a time-interval trigger arrives ~20 s late with the phone asleep; a calendar one doesn't.
+    const fireAt = Date.UTC(2099, 9, 18, 14, 26, 0);
+    vi.useFakeTimers({ now: fireAt - 30 * 60_000 });
+    try {
+      await scheduleReminders([{ minutesBefore: 10, fireAt }], text);
+      const [{ trigger }] = mocks.notificationSchedule.mock.calls[0] as unknown as [{ trigger: Record<string, unknown> }];
+      expect(trigger).toEqual({ type: 'calendar', timezone: 'Asia/Tokyo', year: 2099, month: 10, day: 18, hour: 23, minute: 26, second: 0, repeats: false });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('makes the leave-now reminder Time Sensitive, but not the earlier ones', async () => {
@@ -162,5 +175,27 @@ describe('reminder delivery', () => {
       vi.useRealTimers();
     }
   });
-});
 
+  it('the station notice names the train, departure and leave time of one plan, and says why the slot moved', async () => {
+    mocks.store.delete(STORAGE_KEYS.reminderLedger);
+    const start = Date.now();
+    const info = (stationKey: string, trainLabel: string, trainDeparts: string, movedFrom?: string) => ({
+      night: '20261016', choiceKey: '2', stationKey, leaveAtMs: start + 600_000, trainDepartsAtMs: start + 1_200_000,
+      trainLabel, trainDeparts, movedFrom,
+    });
+    try {
+      vi.useFakeTimers({ now: start });
+      await scheduleReminders([{ minutesBefore: 0, fireAt: start + 60_000 }], text, undefined, info('新宿', '2本前', '23:20'));
+      vi.setSystemTime(start + 120_000);
+      // 今すぐ出発 went out; the station changes, and 2本前 there can't be made in time.
+      await scheduleReminders([{ minutesBefore: 0, fireAt: start + 600_000 }], { ...text, station: '新宿三丁目', leaveBy: '23:22' }, undefined,
+        info('新宿三丁目', '1本前', '23:31', '2本前'));
+      const notice = (mocks.notificationSchedule.mock.calls as unknown as Array<[{ content: { title: string; body: string } }]>)
+        .map(([request]) => request.content)
+        .find((content) => content.title === 'LastRide — 出発駅が変わりました');
+      expect(notice?.body).toBe('新宿三丁目から1本前（23:31発）。23:22に出る。2本前は出る時刻を過ぎていたため、1本前にしています。');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

@@ -8,7 +8,7 @@
  *
  * Several of the rules here are product decisions that currently live only in
  * comments — the 3-minute station buffer, the 30-minute warning, the
- * 10-minute gain needed to justify a farther station, the 01:30/04:00/05:00
+ * 10-minute gain (plus the extra walk) needed to justify a farther station, the 01:30/04:00/05:00
  * backstops. Pinning them down is the point: they should not be able to change
  * by accident.
  */
@@ -21,6 +21,7 @@ import {
   nightEndsAt,
   firstTrainSearchFrom,
   freshPlanNightOf,
+  locationProfile,
   nextNightOf,
   repick,
   rideStatus,
@@ -347,20 +348,28 @@ describe('choosing between stations', () => {
     expect(plan.station.nameJa).toBe('恵比寿');
   });
 
-  test('ten minutes is enough', () => {
+  test('ten minutes plus each extra minute of walking is enough', () => {
     const close = choice({
       station: shibuya,
       walkingMinutes: 5,
       leaveByMs: LEAVE_BY,
     });
-    const fartherRealGain = choice({
-      station: ebisu,
-      walkingMinutes: 12,
-      leaveByMs: LEAVE_BY + 10 * MINUTE_MS,
-    });
+    // 7 minutes more walking: 17 minutes later is needed.
+    const farther = (gain: number) => choice({ station: ebisu, walkingMinutes: 12, leaveByMs: LEAVE_BY + gain * MINUTE_MS });
 
-    const plan = repick(planFrom([close, fartherRealGain]), null);
-    expect(plan.station.nameJa).toBe('恵比寿');
+    expect(repick(planFrom([close, farther(16)]), null).station.nameJa).toBe('渋谷');
+    expect(repick(planFrom([close, farther(17)]), null).station.nameJa).toBe('恵比寿');
+  });
+
+  test('never a walk over 20 minutes while a closer station gets the user home', () => {
+    const shinjuku = station('Shinjuku', '新宿', 35.69, 139.7);
+    const close = choice({ station: shibuya, walkingMinutes: 5, leaveByMs: LEAVE_BY });
+    const far = choice({ station: shinjuku, walkingMinutes: 32, leaveByMs: LEAVE_BY + 60 * MINUTE_MS });
+    expect(repick(planFrom([close, far]), null).station.nameJa).toBe('渋谷');
+    // Unless nothing closer runs any more.
+    const gone = choice({ station: shibuya, walkingMinutes: 5, lastTrain: train(LAST_TRAIN), leaveByMs: LEAVE_BY });
+    const running = choice({ station: shinjuku, walkingMinutes: 32, lastTrain: train(LAST_TRAIN + 60 * MINUTE_MS), leaveByMs: LEAVE_BY + 60 * MINUTE_MS });
+    expect(repick(planFrom([gone, running], { computedAt: jst(2026, 9, 23, 23, 57) }), null).station.nameJa).toBe('新宿');
   });
 
   test('a current disruption can make a slightly earlier clean station the automatic pick', () => {
@@ -445,5 +454,20 @@ describe('adaptive station search', () => {
     ];
     // A near deadline alone doesn't widen: it would double provider calls on most plans.
     expect(shouldExpandStationSearch(urgent)).toBe(false);
+  });
+});
+
+describe('how closely to follow the user while the app is closed', () => {
+  // Recommended leave time 23:37.
+  const plan = choice({ leaveByMs: LEAVE_BY });
+
+  test('roughly while leaving is more than an hour away, to save battery', () => {
+    expect(locationProfile(plan, jst(2026, 9, 23, 22, 30))).toBe('light');
+  });
+
+  test('in the usual detail for the last hour, and without a plan', () => {
+    expect(locationProfile(plan, jst(2026, 9, 23, 22, 37))).toBe('normal');
+    expect(locationProfile(plan, jst(2026, 9, 23, 23, 40))).toBe('normal');
+    expect(locationProfile(null, jst(2026, 9, 23, 20, 0))).toBe('normal');
   });
 });

@@ -167,15 +167,37 @@ async function present(
     },
     trigger: delayMs < 1000
       ? null
-      : {
-          type: Notifications.SchedulableTriggerInputTypes.DATE,
-          date: new Date(Date.now() + delayMs),
-          channelId: vibrate ? 'leave-reminders' : 'leave-reminders-no-vibrate',
-        },
+      : Platform.OS === 'ios'
+        ? clockTrigger(Date.now() + delayMs)
+        : {
+            type: Notifications.SchedulableTriggerInputTypes.DATE,
+            date: new Date(Date.now() + delayMs),
+            channelId: vibrate ? 'leave-reminders' : 'leave-reminders-no-vibrate',
+          },
   });
   const ids = await readOwnedIds();
   ids.push(id);
   await writeOwnedIds(ids);
+}
+
+/**
+ * iOS: fire at a clock time (a calendar trigger), like AlarmKit's alarms. Expo's
+ * DATE trigger becomes "in N seconds" (a time-interval trigger), which iOS
+ * delivers on power-saving timers: about 20 s late with the phone asleep.
+ */
+function clockTrigger(atMs: number): Notifications.CalendarTriggerInput {
+  const japan = new Date(atMs + 9 * 60 * 60 * 1000);
+  return {
+    type: Notifications.SchedulableTriggerInputTypes.CALENDAR,
+    timezone: 'Asia/Tokyo',
+    year: japan.getUTCFullYear(),
+    month: japan.getUTCMonth() + 1,
+    day: japan.getUTCDate(),
+    hour: japan.getUTCHours(),
+    minute: japan.getUTCMinutes(),
+    second: japan.getUTCSeconds(),
+    repeats: false,
+  };
 }
 
 async function cancelOwned() {
@@ -219,14 +241,14 @@ function stationNotice(text: ReminderText, info: DeliveryInfo) {
       title: 'LastRide — 出発駅が変わりました',
       body:
         `${text.station}から${info.trainLabel}（${info.trainDeparts}発）。${text.leaveBy}に出る。` +
-        (info.switchedToClosest ? `駅が変わったため、出る時刻がいちばん近い${info.trainLabel}にしています。` : ''),
+        (info.movedFrom ? `${info.movedFrom}は出る時刻を過ぎていたため、${info.trainLabel}にしています。` : ''),
     };
   }
   return {
     title: 'LastRide — your station changed',
     body:
       `Now from ${text.station}: ${info.trainLabel}, ${info.trainDeparts}. Leave at ${text.leaveBy}.` +
-      (info.switchedToClosest ? ` Switched to the ${info.trainLabel} train, the closest leave time.` : ''),
+      (info.movedFrom ? ` Too late for the ${info.movedFrom.toLowerCase()} train from there, so it’s the ${info.trainLabel.toLowerCase()}.` : ''),
   };
 }
 
@@ -291,8 +313,8 @@ export type DeliveryInfo = DeliveryContext & {
   trainLabel: string;
   /** Its departure, e.g. "23:33". */
   trainDeparts: string;
-  /** The station changed and the app picked the train with the closest leave time. */
-  switchedToClosest?: boolean;
+  /** The station changed and the chosen slot's leave time there had passed: that slot's label ("2本前"). */
+  movedFrom?: string;
   /** With `followUpFor`: the departed train's label (「1本前」), for 「…に乗れなかったなら」. */
   followUpLabel?: string;
 };

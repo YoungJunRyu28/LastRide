@@ -130,8 +130,10 @@ export async function findNearbyStations(
   coordinates: Coordinates,
   walkingSpeed: WalkingSpeed,
   limit = 3,
+  /** Walks already known from (about) this spot, by Japanese name: not asked again. */
+  knownWalks?: Map<string, WalkingRoute>,
 ): Promise<NearbyStation[]> {
-  const apple = await appleNearbyStations(coordinates, walkingSpeed, limit).catch(() => null);
+  const apple = await appleNearbyStations(coordinates, walkingSpeed, limit, knownWalks).catch(() => null);
   if (apple && apple.length > 0) return apple;
   if (apiBaseUrl) {
     try {

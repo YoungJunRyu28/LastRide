@@ -51,9 +51,11 @@ export async function syncLiveActivity(
   premium?: boolean,
   /** The widgets' colour theme; read from settings when omitted. */
   theme?: WidgetThemeId,
+  /** Tracking only while the app is open (says so under the check time). */
+  whileOpenOnly = false,
 ): Promise<void> {
   if (!liveActivityEnabled && !countdownNotificationAvailable) return;
-  const content = liveActivityContent(plan, language, nowMs, theme ?? (await readWidgetTheme()));
+  const content = liveActivityContent(plan, language, nowMs, theme ?? (await readWidgetTheme()), whileOpenOnly);
   if (!content) {
     await endLiveActivity();
     return;

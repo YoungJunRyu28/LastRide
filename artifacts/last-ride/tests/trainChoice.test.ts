@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { buildReminderPlans, lastTrainLeftAt, missedCheckInAt, rideStatus, type NightPlan } from '@/lib/planner';
 import { recommendedLeaveTime } from '@/lib/reliability';
-import { applyTrainChoice, effectiveTrainChoice, trainOptions } from '@/lib/trainChoice';
+import { applyTrainChoice, effectiveTrainChoice, slotAtNewStation, trainOptions } from '@/lib/trainChoice';
 import type { TrainTime } from '@/lib/timetable';
 import { MINUTE_MS } from '@/lib/time';
 
@@ -49,6 +49,25 @@ describe('the train options', () => {
     expect(trainOptions(plan(train(jst(23, 45), jst(24, 37), [])), 4, jst(23, 0))).toHaveLength(1);
     // Not looked up yet (Apple): also just the last train for now.
     expect(trainOptions(plan(train(jst(23, 45), jst(24, 37))), 4, jst(23, 0))).toHaveLength(1);
+  });
+});
+
+describe('after the station changes', () => {
+  // At the new station: 2本前 leave by 23:22, 1本前 by 23:31, the last train by 23:40.
+  test('keeps the same slot while its leave time there is ahead', () => {
+    expect(slotAtNewStation(trainOptions(plan(), 4, jst(23, 0)), 2)).toBe(2);
+    expect(slotAtNewStation(trainOptions(plan(), 4, jst(23, 0)), 1)).toBe(1);
+  });
+
+  test('moves to the next later train only once that leave time has passed', () => {
+    expect(slotAtNewStation(trainOptions(plan(), 4, jst(23, 25)), 2)).toBe(1);
+    expect(slotAtNewStation(trainOptions(plan(), 4, jst(23, 35)), 2)).toBe(0);
+    // Never earlier than the slot chosen, even when an earlier train still fits.
+    expect(slotAtNewStation(trainOptions(plan(), 4, jst(23, 0)), 0)).toBe(0);
+  });
+
+  test('a station without that many trains uses the latest it has', () => {
+    expect(slotAtNewStation(trainOptions(plan(train(jst(23, 45), jst(24, 37), [])), 4, jst(23, 0)), 2)).toBe(0);
   });
 });
 

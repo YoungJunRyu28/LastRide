@@ -162,4 +162,16 @@ describe('tonight’s reminder record', () => {
     expect(chosen.catchUp).toBeNull();
     expect(chosen.schedule.map(reminderKind)).toEqual(['m5', 'm0']);
   });
+
+  test('small moves that add up still get one notice: compared with what the user was told', () => {
+    const first = planDelivery(null, context(), reminders(31), at(0));
+    // 30分前 (23:01) goes out with 23:31; then the leave time drifts 3 minutes, twice.
+    const drift1 = planDelivery(first.ledger, context({ leaveAtMs: at(34) }), reminders(34), at(2));
+    expect(drift1.timeShifted).toBe(false);
+    const drift2 = planDelivery(drift1.ledger, context({ leaveAtMs: at(37) }), reminders(37), at(3));
+    expect(drift2.timeShifted).toBe(true);
+    // Told now: another small move doesn't repeat it.
+    const drift3 = planDelivery(drift2.ledger, context({ leaveAtMs: at(39) }), reminders(39), at(4));
+    expect(drift3.timeShifted).toBe(false);
+  });
 });

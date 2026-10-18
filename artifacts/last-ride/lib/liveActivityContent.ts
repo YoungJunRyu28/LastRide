@@ -26,6 +26,8 @@ export type LiveActivityContent = {
   from: string;
   /** "帰り時 · 1本前" */
   choice: string;
+  /** When the plan was last checked: "22:41 確認", or "22:41 確認 · 開くと更新" when it only updates with the app open. */
+  checked: string;
   stops: WidgetStop[];
   bars: WidgetBar[];
   colors: WidgetPalette;
@@ -35,10 +37,12 @@ type Language = "ja" | "en";
 
 /** Null once the last train has gone: the activity should end. */
 export function liveActivityContent(
-  plan: PhasePlan & Pick<NightPlan, "station">,
+  plan: PhasePlan & Pick<NightPlan, "station" | "computedAt">,
   language: Language,
   nowMs: number,
   theme?: WidgetThemeId,
+  /** Tracking only while the app is open: the times are from the last visit. */
+  whileOpenOnly = false,
 ): LiveActivityContent | null {
   const phase = phaseAt(plan, nowMs);
   if (!phase) return null;
@@ -72,6 +76,9 @@ export function liveActivityContent(
     tone: phase.kind,
     from: ja ? `${station}駅から` : `From ${station}`,
     choice: ja ? `帰り時 · ${trainName}` : `LastRide · ${phase.plan.trainChoice ? trainName.toLowerCase() : "last train"}`,
+    checked: ja
+      ? `${formatJstTime(plan.computedAt)} 確認${whileOpenOnly ? " · 開くと更新" : ""}`
+      : `Checked ${formatJstTime(plan.computedAt)}${whileOpenOnly ? " · open to update" : ""}`,
     stops: stops.map((stop, index) => ({ time: formatJstTime(stop.at), ...stopLabel(stop, states[index], ja), state: states[index] })),
     bars: stops.map((stop, index) => ({
       state: nowMs >= stop.at ? "full" : nowMs >= starts[index] ? "live" : "empty",
@@ -89,6 +96,7 @@ export function contentSignature(content: LiveActivityContent): string {
     content.countdownTo,
     content.from,
     content.subtitle,
+    content.checked,
     content.stops.map((stop) => [stop.short, stop.state]),
     content.bars.map((bar) => bar.state),
     content.colors.background,

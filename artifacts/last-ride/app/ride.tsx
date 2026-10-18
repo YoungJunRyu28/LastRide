@@ -635,8 +635,8 @@ export default function RideScreen() {
             {trainChoiceOverride && leaveAt !== null ? (
               <Text style={[styles.note, styles.switchNote, { color: colors.mutedForeground }]}>
                 {ja
-                  ? `駅が${station}駅に変わったため、出る時刻がいちばん近い${trainChoiceLabel(effectiveTrainChoice, true)}（${formatJstTime(leaveAt)}に出る）にしています`
-                  : `Your station changed to ${station}, so this is the ${trainChoiceLabel(effectiveTrainChoice, false).toLowerCase()} train, the closest leave time (${formatJstTime(leaveAt)})`}
+                  ? `駅が${station}駅に変わり、${trainChoiceLabel(trainChoice, true)}の出る時刻を過ぎていたため、${trainChoiceLabel(effectiveTrainChoice, true)}（${formatJstTime(leaveAt)}に出る）にしています`
+                  : `Your station changed to ${station} and it was too late for the ${trainChoiceLabel(trainChoice, false).toLowerCase()} train there, so this is the ${trainChoiceLabel(effectiveTrainChoice, false).toLowerCase()} (leave at ${formatJstTime(leaveAt)})`}
               </Text>
             ) : trainChoice > effectiveTrainChoice && !boardingQuestion && (
               <Text style={[styles.note, styles.switchNote, { color: colors.mutedForeground }]}>

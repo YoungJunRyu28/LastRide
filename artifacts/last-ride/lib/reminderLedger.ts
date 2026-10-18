@@ -33,6 +33,12 @@ export type ReminderLedger = {
   stationKey: string;
   /** The leave time the reminders were last scheduled for. */
   leaveAtMs: number;
+  /**
+   * The leave time the user was last told (by a reminder that went out, or a
+   * notice). The "time changed" notice compares with this, so small moves that
+   * add up (3 + 3 minutes) still get one.
+   */
+  toldLeaveAtMs?: number;
   /** Departure of the train they were for (older records may lack it). */
   trainDepartsAtMs?: number;
   /** Reminder kinds scheduled, with when they fire. */
@@ -95,9 +101,13 @@ export function planDelivery(
 ): DeliveryPlan {
   const known = previous && previous.night === context.night ? previous : null;
   const sent = new Set(known?.sent ?? []);
-  // Anything scheduled for a time that has passed went out.
+  let toldLeaveAtMs = known?.toldLeaveAtMs ?? known?.leaveAtMs;
+  // Anything scheduled for a time that has passed went out (a reminder tells the
+  // leave time it was scheduled with).
   for (const [kind, fireAt] of Object.entries(known?.scheduled ?? {})) {
-    if (fireAt <= nowMs) sent.add(kind);
+    if (fireAt > nowMs) continue;
+    sent.add(kind);
+    if (kind.startsWith('m')) toldLeaveAtMs = known!.leaveAtMs;
   }
   // The user chose another train: it gets its own full set.
   const userSwitched = !!known && known.choiceKey !== context.choiceKey;
@@ -117,7 +127,12 @@ export function planDelivery(
   const stationChanged = stationMoved && !context.userStationChange;
   const remindedAlready = [...sent].some((kind) => kind.startsWith('m'));
   const timeShifted =
-    !!known && !trainSwitched && !stationChanged && remindedAlready && Math.abs(context.leaveAtMs - known.leaveAtMs) >= SHIFT_NOTICE_MS;
+    !!known &&
+    !trainSwitched &&
+    !stationMoved &&
+    remindedAlready &&
+    toldLeaveAtMs !== undefined &&
+    Math.abs(context.leaveAtMs - toldLeaveAtMs) >= SHIFT_NOTICE_MS;
   // Told about the change (or chose it): reminders still ahead at the new times can go out again.
   if (stationMoved || timeShifted)
     for (const plan of plans) if (plan.fireAt > nowMs + 1000 && reminderKind(plan).startsWith('m')) sent.delete(reminderKind(plan));
@@ -140,6 +155,8 @@ export function planDelivery(
     }
   }
   for (const plan of due) sent.add(reminderKind(plan));
+  // Whatever goes out now (a notice, a follow-up, a catch-up) tells the new leave time.
+  if (timeShifted || stationChanged || followUp || catchUp || stationMoved) toldLeaveAtMs = context.leaveAtMs;
 
   return {
     ledger: {
@@ -148,6 +165,7 @@ export function planDelivery(
       stationKey: context.stationKey,
       leaveAtMs: context.leaveAtMs,
       trainDepartsAtMs: context.trainDepartsAtMs,
+      ...(toldLeaveAtMs !== undefined ? { toldLeaveAtMs } : {}),
       scheduled: Object.fromEntries(schedule.map((plan) => [reminderKind(plan), plan.fireAt])),
       sent: [...sent],
     },

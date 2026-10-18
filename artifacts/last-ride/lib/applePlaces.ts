@@ -106,14 +106,14 @@ export async function appleWalkingRoute(
   };
 }
 
-export async function appleNearbyStations(coordinates: Coordinates, walkingSpeed: WalkingSpeed, limit: number): Promise<NearbyStation[] | null> {
+export async function appleNearbyStations(coordinates: Coordinates, walkingSpeed: WalkingSpeed, limit: number, knownWalks?: Map<string, WalkingRoute>): Promise<NearbyStation[] | null> {
   if (!AppleMaps) return null;
   const places = await AppleMaps.nearbyStations(coordinates, NEARBY_RADIUS_METERS);
   const stations = distinctStations(coordinates, places, limit);
   return Promise.all(
     stations.map(async (candidate) => ({
       ...candidate,
-      walk: (await appleWalkingRoute(coordinates, candidate.station, walkingSpeed).catch(() => null)) ?? undefined,
+      walk: knownWalks?.get(candidate.station.nameJa) ?? (await appleWalkingRoute(coordinates, candidate.station, walkingSpeed).catch(() => null)) ?? undefined,
     })),
   );
 }

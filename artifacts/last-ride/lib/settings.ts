@@ -375,7 +375,7 @@ export async function readTrainChoice(nowMs = Date.now()): Promise<number> {
 
 /**
  * After an automatic station change: the train used at that station instead of
- * the chosen slot (the one with the closest leave time). Tonight only; cleared
+ * the chosen slot (a later one when its leave time there had passed). Tonight only; cleared
  * when the user picks a train themselves.
  */
 export type TrainChoiceOverride = { station: string; fromStation: string; choice: number; until: number };

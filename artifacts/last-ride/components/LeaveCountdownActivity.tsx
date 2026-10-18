@@ -101,6 +101,8 @@ const LeaveCountdown = (props: LeaveCountdownProps, _environment: LiveActivityEn
           <VStack alignment="trailing" spacing={2}>
             <Text modifiers={[font({ weight: "bold", size: 13 }), foregroundStyle(c.text), lineLimit(1), minimumScaleFactor(0.7)]}>{props.from}</Text>
             <Text modifiers={[font({ size: 11 }), foregroundStyle(c.muted), lineLimit(1)]}>{props.choice}</Text>
+            {/* How fresh the times are; with app-only tracking, that they need the app. */}
+            <Text modifiers={[font({ size: 11 }), foregroundStyle(c.muted), lineLimit(1), minimumScaleFactor(0.8)]}>{props.checked}</Text>
           </VStack>
         </HStack>
         {rail(c)}

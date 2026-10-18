@@ -7,7 +7,7 @@ import type { NightPlan } from "@/lib/planner";
 import { applyTrainChoice, trainOptions } from "@/lib/trainChoice";
 import type { TrainTime } from "@/lib/timetable";
 import { MINUTE_MS } from "@/lib/time";
-import { widgetMessage, widgetTimeline } from "@/lib/widgetContent";
+import { widgetMessage, widgetSignature, widgetTimeline } from "@/lib/widgetContent";
 import { widgetPalette } from "@/lib/widgetThemes";
 
 function jst(hours: number, minutes = 0) {
@@ -116,5 +116,19 @@ describe("messages", () => {
     expect(widgetMessage("en", "morning", "paper").colors).toEqual(widgetPalette("paper"));
     expect(widgetPalette("paper").dark).toBe(false);
     expect(widgetPalette().background).toBe("#0a1322");
+  });
+});
+
+describe("widget reloads", () => {
+  test("a re-plan that changes nothing on screen doesn't reload the widget", () => {
+    const first = widgetTimeline(night(), "自宅", "ja", jst(23, 0), { tracking: true });
+    const again = widgetTimeline(night(), "自宅", "ja", jst(23, 3), { tracking: true });
+    expect(widgetSignature(again, jst(23, 3))).toBe(widgetSignature(first, jst(23, 0)));
+  });
+
+  test("a new leave time does", () => {
+    const first = widgetTimeline(night(), "自宅", "ja", jst(23, 0), { tracking: true });
+    const moved = widgetTimeline({ ...night(), recommendedLeaveByMs: jst(23, 30) }, "自宅", "ja", jst(23, 3), { tracking: true });
+    expect(widgetSignature(moved, jst(23, 3))).not.toBe(widgetSignature(first, jst(23, 0)));
   });
 });

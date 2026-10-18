@@ -25,12 +25,13 @@ import {
   scheduleReminders,
 } from "@/lib/notifications";
 import { clampLeaveMargin, recommendedLeaveTime, type LeaveMargin } from "@/lib/reliability";
-import { applyTrainChoice, choiceAt, closestChoice, effectiveTrainChoice, trainChoiceLabel, trainOptions, type TrainChoice } from "@/lib/trainChoice";
+import { applyTrainChoice, choiceAt, effectiveTrainChoice, slotAtNewStation, trainChoiceLabel, trainOptions, type TrainChoice } from "@/lib/trainChoice";
 import {
   buildReminderPlans,
   nightEndsAt,
   firstTrainSearchFrom,
   freshPlanNightOf,
+  locationProfile,
   planNight,
   replanMargin,
   repick,
@@ -105,6 +106,7 @@ import {
   markTrackingStarted,
   readTrackingSnapshot,
   readTrackingStartedAt,
+  applyLocationProfile,
   startBackgroundTracking,
   stopBackgroundTracking,
 } from "@/lib/tracking";
@@ -267,7 +269,7 @@ type RideContextValue = {
   /** The last train and up to two before it from tonight's station. */
   /** `catchable`: not departed yet; `late`: its leave time has passed (only made by hurrying). */
   trainChoices: Array<{ choice: TrainChoice; departsAt: number; leaveAt: number; catchable: boolean; late: boolean }>;
-  /** Set when the station changed and the train with the closest leave time is used instead of the chosen slot. */
+  /** Set when the station changed and the chosen slot's leave time there had passed, so a later train is used. */
   trainChoiceOverride: TrainChoiceOverride | null;
   /** Lock tonight's plan to a station (any station; works without a location too). */
   chooseDepartureStation: (station: StationOption) => Promise<void>;
@@ -491,7 +493,26 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
   // 終電 / 1本前 / 2本前 (lib/trainChoice): the plan heads for the chosen train
   // while it can still be made, then falls back to a later one. Recomputed only
   // when the train actually used changes, so effects keyed on the plan stay quiet.
-  const preferredChoice = basePlan ? choiceAt(trainChoice, choiceOverride, basePlan.station.nameJa) : trainChoice;
+  // The station changed automatically while 1本前 / 2本前 is chosen: the same slot
+  // there, unless its leave time has passed (then the next later one). Decided in
+  // the same render as the new plan, so nothing (reminders, the station notice)
+  // ever sees the new station with the old choice. undefined = no new decision.
+  const lastPlanRef = useRef<NightPlan | null>(null);
+  const newOverride = useMemo((): TrainChoiceOverride | null | undefined => {
+    const previous = lastPlanRef.current;
+    if (!basePlan || !previous || trainChoice === 0) return undefined;
+    if (sameStation(previous.station, basePlan.station)) return undefined;
+    if (choiceOverride?.station === basePlan.station.nameJa) return undefined;
+    const slot = choiceAt(trainChoice, choiceOverride, previous.station.nameJa);
+    const choice = slotAtNewStation(trainOptions(basePlan, leaveMargin, getNow()), slot);
+    return choice === trainChoice
+      ? null
+      : { station: basePlan.station.nameJa, fromStation: previous.station.nameJa, choice, until: trainChoiceUntil(basePlan.lastTrain.departsAt) };
+  }, [basePlan]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Once saved, the stored override takes over again (so picking a train yourself clears it).
+  const [savedFor, setSavedFor] = useState<NightPlan | null>(null);
+  const activeOverride = newOverride !== undefined && savedFor !== basePlan ? newOverride : choiceOverride;
+  const preferredChoice = basePlan ? choiceAt(trainChoice, activeOverride, basePlan.station.nameJa) : trainChoice;
   const effectiveChoice: TrainChoice = basePlan
     ? effectiveTrainChoice(trainOptions(basePlan, leaveMargin, nowMs), preferredChoice)
     : 0;
@@ -508,29 +529,13 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
   const trackingModeRef = useRef(trackingMode);
   trackingModeRef.current = trackingMode;
 
-  // The station changed automatically while 1本前 / 2本前 is chosen: use the
-  // train there whose leave time is closest to the one planned (not the same
-  // slot), and say so. Declared before the effect that remembers the plan, so
-  // it compares with the plan from before the change.
-  const lastPlanRef = useRef<NightPlan | null>(null);
+  // Saves a decision made below (newOverride) once the render that used it is committed.
   useEffect(() => {
-    const previous = lastPlanRef.current;
-    if (!basePlan || !previous || trainChoice === 0) return;
-    if (sameStation(previous.station, basePlan.station)) return;
-    if (choiceOverride?.station === basePlan.station.nameJa) return;
-    const choice = closestChoice(trainOptions(basePlan, leaveMargin, getNow()), recommendedLeaveTime(previous));
-    const next =
-      choice === trainChoice
-        ? null
-        : {
-            station: basePlan.station.nameJa,
-            fromStation: previous.station.nameJa,
-            choice,
-            until: trainChoiceUntil(basePlan.lastTrain.departsAt),
-          };
-    setChoiceOverride(next);
-    void writeTrainChoiceOverride(next);
-  }, [basePlan]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (newOverride === undefined) return;
+    setChoiceOverride(newOverride);
+    setSavedFor(basePlan);
+    void writeTrainChoiceOverride(newOverride);
+  }, [newOverride]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     lastPlanRef.current = plan;
   }, [plan]);
@@ -635,7 +640,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
         trainDepartsAtMs: plan.lastTrain.departsAt,
         trainLabel: trainChoiceLabel(effectiveChoice, language === "ja"),
         trainDeparts: formatJstTime(plan.lastTrain.departsAt),
-        switchedToClosest: choiceOverride?.station === plan.station.nameJa,
+        movedFrom: activeOverride?.station === plan.station.nameJa ? trainChoiceLabel(trainChoice, language === "ja") : undefined,
         // Only once re-planned from here after the departure, so the times are real.
         ...(boardingQuestion && plan.computedAt >= boardingQuestion.departsAt
           ? { followUpFor: boardingQuestion.departsAt, followUpLabel: trainChoiceLabel(boardingQuestion.choice, language === "ja") }
@@ -657,7 +662,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     alarmPermissionRevision,
     trainChoice,
     effectiveChoice,
-    choiceOverride,
+    activeOverride,
   ]);
 
   // The lock-screen countdown follows night-out tracking. Re-synced when the plan
@@ -672,7 +677,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     // Premium not known yet (just opened, or RevenueCat unreachable): the saved
     // flag decides, and a running activity is never ended for it.
     const sync = () =>
-      void syncLiveActivity(plan, language ?? "en", Date.now(), premiumKnown ? true : undefined, widgetTheme).catch(
+      void syncLiveActivity(plan, language ?? "en", Date.now(), premiumKnown ? true : undefined, widgetTheme, trackingMode === "foreground").catch(
         () => undefined,
       );
     sync();
@@ -1102,10 +1107,10 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     setNightLocationMode("background");
     if (!(await requestBackgroundLocation())) return false;
     if (trackingMode !== "foreground") return true;
-    const started = await startBackgroundTracking();
+    const started = await startBackgroundTracking(locationProfile(effectivePlanRef.current, getNow()));
     if (started) setTrackingMode("background");
     return started;
-  }, [setNightLocationMode, requestBackgroundLocation, trackingMode]);
+  }, [setNightLocationMode, requestBackgroundLocation, trackingMode, getNow]);
 
   const setDemoNow = useCallback(
     (virtualMs: number | null) => {
@@ -1193,6 +1198,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
         pinned: dropPin ? null : pinnedStation,
         nightOf,
         homeAddress: settingsRef.current.homeAddress,
+        previous: current,
       });
     },
     [getNow],
@@ -1397,7 +1403,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       foregroundWatch.current = watch;
       // Background updates keep it fresh while the app is closed (dev/production builds).
       const backgroundActive = locationMode === 'background'
-        ? await startBackgroundTracking()
+        ? await startBackgroundTracking(locationProfile(effectivePlanRef.current, getNow()))
         : false;
       if (op !== trackingOp.current) {
         if (backgroundActive) await stopBackgroundTracking(); // compensate a stale start
@@ -1498,6 +1504,15 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     return () => clearInterval(timer);
   }, [trackingMode, getNow]);
 
+  // Closed-app updates: rough while leaving is over an hour away, the usual
+  // detail after that (lib/tracking.ts). Checked with each new plan, and every
+  // minute while open, so a phone lying still still switches at the hour mark.
+  const profileMinute = trackingMode === "background" ? Math.floor(nowMs / 60_000) : 0;
+  useEffect(() => {
+    if (trackingMode !== "background") return;
+    void applyLocationProfile(locationProfile(plan, getNow()));
+  }, [trackingMode, plan, profileMinute, getNow]);
+
   // Permissions change in iPhone Settings while the app is in the background.
   // Re-check them on launch and whenever the app comes back: show when
   // notifications are off, and pick location back up by itself once it's allowed.
@@ -1531,10 +1546,10 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     return () => subscription.remove();
   }, []);
 
-  // Without tracking, the position is only as fresh as the last plan. When the app
-  // comes back after a while, get a new fix so the options page shows what's nearby now.
+  // Coming back to the app after a while: re-plan at once from where the user is,
+  // tracking or not. (With tracking, standing still sends no location updates, so
+  // the plan can be old; waiting for the 5-minute timer felt broken.)
   useEffect(() => {
-    if (trackingMode !== null) return;
     const subscription = AppState.addEventListener("change", (state) => {
       const current = planRef.current;
       if (
@@ -1741,7 +1756,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       trainChoice,
       effectiveTrainChoice: effectiveChoice,
       trainChoices,
-      trainChoiceOverride: basePlan && choiceOverride?.station === basePlan.station.nameJa ? choiceOverride : null,
+      trainChoiceOverride: basePlan && activeOverride?.station === basePlan.station.nameJa ? activeOverride : null,
       chooseDepartureStation,
       lockFallback,
       boarded,
@@ -1815,7 +1830,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       trainChoice,
       effectiveChoice,
       trainChoices,
-      choiceOverride,
+      activeOverride,
       basePlan,
       chooseDepartureStation,
       lockFallback,

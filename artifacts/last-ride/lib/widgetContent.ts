@@ -336,3 +336,19 @@ export function boardedTimeline(
     { date: new Date(Math.max(nowMs, morning)), props: widgetMessage(language, "morning", theme, destinationLabel) },
   ];
 }
+
+/**
+ * What the widget would show, for skipping reloads that change nothing. iOS
+ * allows a background app only so many widget reloads a day (fewer in Low
+ * Power Mode): spending one on every re-plan left none for real changes. The
+ * time a timeline is made ("now": entries already started, and `shownAt`, the
+ * timer's start) isn't part of what's shown, so it's left out.
+ */
+export function widgetSignature(entries: Array<{ date: Date; props: LeaveWidgetProps }>, nowMs: number): string {
+  return JSON.stringify(
+    entries.map(({ date, props }) => {
+      const { shownAt: _shownAt, ...shown } = props;
+      return [date.getTime() <= nowMs ? 0 : date.getTime(), shown];
+    }),
+  );
+}
