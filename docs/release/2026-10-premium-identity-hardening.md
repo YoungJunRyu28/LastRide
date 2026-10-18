@@ -35,6 +35,10 @@ ID could impersonate them and create paid groups.
 - The backend requires this proof when deployed to production (including
   Lambda environments with no `NODE_ENV`). Explicit test/development and
   `LASTRIDE_STAGE=staging` retain legacy test behavior.
+- The RevenueCat entitlement helper **also fails closed without
+  `REVENUECAT_SECRET_KEY`** in production, including when AWS Lambda omits
+  `NODE_ENV`; it must not mistake a production runtime for local development.
+  The only uncredentialed exceptions are explicit test/development or staging.
 
 ## Mandatory rollout order and compatibilities
 

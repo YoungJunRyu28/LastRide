@@ -132,6 +132,18 @@ describe("checkPremiumEntitlement", () => {
     expect(await checkPremiumEntitlement("anyone", NOW)).toBe("unavailable");
   });
 
+  it("fails closed if production Lambda omits NODE_ENV and RevenueCat secret", async () => {
+    delete process.env.REVENUECAT_SECRET_KEY;
+    delete process.env.LASTRIDE_STAGE;
+    delete process.env.NODE_ENV;
+    expect(await checkPremiumEntitlement("attacker-generated-id", NOW)).toBe("unavailable");
+    process.env.LASTRIDE_STAGE = "production";
+    expect(await checkPremiumEntitlement("attacker-generated-id", NOW)).toBe("unavailable");
+    process.env.NODE_ENV = "test";
+    // An explicitly production stage outranks a test-like NODE_ENV.
+    expect(await checkPremiumEntitlement("attacker-generated-id", NOW)).toBe("unavailable");
+  });
+
   it("treats the \"test\" key as premium on the staging stack only", async () => {
     process.env.REVENUECAT_SECRET_KEY = "test";
     process.env.NODE_ENV = "production";
