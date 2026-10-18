@@ -44,6 +44,11 @@ module.exports = ({ config }) => {
   // home/lock-screen widgets ship in a widget extension that needs an App
   // Group — also rejected by free signing.
   const enableLiveActivity = process.env.ENABLE_LIVE_ACTIVITY === "true";
+  // The published iPhone experience includes the leave-time widget and Live Activity.
+  // Do not silently ship a store binary with its native extension disabled.
+  if (profile === "production" && process.env.EAS_BUILD_PLATFORM === "ios" && !enableLiveActivity) {
+    throw new Error("Production iOS requires ENABLE_LIVE_ACTIVITY=true");
+  }
 
   // The app refuses to show sample train times in release builds, so a release
   // without a reachable HTTPS API would be useless; fail the build instead.
@@ -131,6 +136,10 @@ module.exports = ({ config }) => {
 
   const ios = {
     ...config.ios,
+    infoPlist: {
+      ...config.ios?.infoPlist,
+      ...(enableLiveActivity ? { NSSupportsLiveActivities: true } : {}),
+    },
     bundleIdentifier:
       process.env.IOS_BUNDLE_ID || config.ios.bundleIdentifier,
     // Signing team survives `expo prebuild --clean` (e.g. a Personal Team ID).
