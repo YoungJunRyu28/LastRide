@@ -13,7 +13,7 @@ const vars = [
   'EXPO_PUBLIC_REVENUECAT_ANDROID_KEY', 'EXPO_PUBLIC_REVENUECAT_IOS_KEY',
   'EXPO_PUBLIC_API_URL', 'EXPO_PUBLIC_APP_JOIN_BASE_URL',
   'EXPO_ANDROID_GOOGLE_MAPS_API_KEY', 'EXPO_ANDROID_GALAXY_GOOGLE_MAPS_API_KEY', 'ENABLE_REMOTE_PUSH',
-  'ENABLE_UNIVERSAL_LINKS', 'ANDROID_PACKAGE_ID', 'IOS_BUNDLE_ID',
+  'ENABLE_UNIVERSAL_LINKS', 'ENABLE_LIVE_ACTIVITY', 'ANDROID_PACKAGE_ID', 'IOS_BUNDLE_ID',
 ];
 function configured(values) {
   const original = Object.fromEntries(vars.map(name => [name, process.env[name]]));
@@ -64,13 +64,13 @@ test('Play and Apple releases fail closed without a correct store-specific Reven
   assert.throws(() => configured({ ...release, EAS_BUILD_PROFILE: 'production',
     EAS_BUILD_PLATFORM: 'ios', EXPO_PUBLIC_REVENUECAT_IOS_KEY: 'goog_wrong' }), /REVENUECAT_IOS_KEY/);
   const ios = configured({ ...release, EAS_BUILD_PROFILE: 'production',
-    EAS_BUILD_PLATFORM: 'ios', EXPO_PUBLIC_REVENUECAT_IOS_KEY: 'appl_example_public_key' });
+    EAS_BUILD_PLATFORM: 'ios', ENABLE_LIVE_ACTIVITY: 'true', EXPO_PUBLIC_REVENUECAT_IOS_KEY: 'appl_example_public_key' });
   assert.equal(ios.ios.bundleIdentifier, 'jp.lastride.app');
 });
 
 test('App Store production refuses bundle ID overrides but Personal Team development remains flexible', () => {
   const releaseIOS = { ...release, EAS_BUILD_PROFILE: 'production',
-    EAS_BUILD_PLATFORM: 'ios', EXPO_PUBLIC_REVENUECAT_IOS_KEY: 'appl_realistic_public' };
+    EAS_BUILD_PLATFORM: 'ios', ENABLE_LIVE_ACTIVITY: 'true', EXPO_PUBLIC_REVENUECAT_IOS_KEY: 'appl_realistic_public' };
   assert.throws(() => configured({ ...releaseIOS, IOS_BUNDLE_ID: 'jp.lastride.app.personal' }),
     /Production iOS requires bundle ID jp.lastride.app/);
   const canonical = configured({ ...releaseIOS, IOS_BUNDLE_ID: 'jp.lastride.app' });
@@ -79,6 +79,15 @@ test('App Store production refuses bundle ID overrides but Personal Team develop
     EXPO_PUBLIC_API_URL: 'https://api.example.invalid',
     IOS_BUNDLE_ID: 'jp.lastride.app.personal' });
   assert.equal(preview.ios.bundleIdentifier, 'jp.lastride.app.personal');
+});
+
+test('App Store release must include Live Activity and bundled widget, not just notifications', () => {
+  const opts = { ...release, EAS_BUILD_PROFILE: 'production', EAS_BUILD_PLATFORM: 'ios',
+    EXPO_PUBLIC_REVENUECAT_IOS_KEY: 'appl_realistic_public' };
+  assert.throws(() => configured({ ...opts, ENABLE_LIVE_ACTIVITY: '' }), /ENABLE_LIVE_ACTIVITY/);
+  const enabled = configured({ ...opts, ENABLE_LIVE_ACTIVITY: 'true' });
+  assert.equal(enabled.ios.infoPlist.NSSupportsLiveActivities, true);
+  assert.ok(enabled.plugins.some(plugin => Array.isArray(plugin) && plugin[0] === 'expo-widgets'));
 });
 
 test('Galaxy Store release uses a distinct package and verified release capabilities', () => {
