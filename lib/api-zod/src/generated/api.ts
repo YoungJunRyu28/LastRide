@@ -673,6 +673,11 @@ export const LeaveEnterpriseEventResponse = zod.void()
  */
 export const createGroupHeaderXRevenueCatAppUserIdMax = 200;
 
+export const createGroupHeaderXPremiumDeviceSecretMin = 64;
+export const createGroupHeaderXPremiumDeviceSecretMax = 64;
+
+
+export const createGroupHeaderXPremiumDeviceSecretRegExp = new RegExp('^[a-f0-9]{64}$');
 export const createGroupHeaderXGroupCreateKeyMin = 64;
 export const createGroupHeaderXGroupCreateKeyMax = 64;
 
@@ -681,7 +686,8 @@ export const createGroupHeaderXGroupCreateKeyRegExp = new RegExp('^[a-fA-F0-9]{6
 
 
 export const CreateGroupHeader = zod.object({
-  "X-RevenueCat-App-User-Id": zod.string().min(1).max(createGroupHeaderXRevenueCatAppUserIdMax),
+  "X-RevenueCat-App-User-Id": zod.string().min(1).max(createGroupHeaderXRevenueCatAppUserIdMax).describe('SHA-256-derived paid device user ID; not sufficient proof of ownership by itself'),
+  "X-Premium-Device-Secret": zod.string().min(createGroupHeaderXPremiumDeviceSecretMin).max(createGroupHeaderXPremiumDeviceSecretMax).regex(createGroupHeaderXPremiumDeviceSecretRegExp).optional().describe('Mandatory in production. Device-held 256-bit lowercase hexadecimal capability; the server verifies that its SHA-256 derivation matches X-RevenueCat-App-User-Id. Never log this header.'),
   "X-Group-Create-Key": zod.string().min(createGroupHeaderXGroupCreateKeyMin).max(createGroupHeaderXGroupCreateKeyMax).regex(createGroupHeaderXGroupCreateKeyRegExp).optional().describe('Device-generated 256-bit hexadecimal creation capability, retained across failed POST retries')
 })
 

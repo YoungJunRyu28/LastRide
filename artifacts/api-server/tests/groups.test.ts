@@ -45,6 +45,7 @@ import {
 } from "../src/lib/groupStore";
 import { nightWindow, serviceDateFor } from "../src/lib/groupNight";
 import { clearEntitlementCache } from "../src/lib/revenueCat";
+import { revenueCatUserIdForDeviceSecret } from "../src/lib/premiumDeviceIdentity";
 import { dispatchGroupLeaveAlerts } from "../src/lib/groupNotifications";
 import { claimGroupDeliveryBatch, nextGroupOutboxRetryAt, settleGroupDelivery } from "../src/lib/groupAlertOutbox";
 import { withLeaveScheduleLock } from "../src/lib/leaveAlertSchedule";
@@ -933,6 +934,66 @@ describe("groups HTTP routes", () => {
     expect(session.memberToken.length).toBeGreaterThanOrEqual(32);
     expect(session.group.me.role).toBe("host");
     expect(session.group.invite.joinCode).toHaveLength(8);
+  });
+
+  it("production rejects copied RevenueCat IDs even if the victim has active premium", async () => {
+    const oldNode = process.env.NODE_ENV;
+    const oldStage = process.env.LASTRIDE_STAGE;
+    process.env.NODE_ENV = "production";
+    process.env.LASTRIDE_STAGE = "production";
+    try {
+      const secret = "f7".repeat(32);
+      const victimId = revenueCatUserIdForDeviceSecret(secret)!;
+      const copy = await call("POST", "/groups", {
+        body: createBody, headers: { "X-RevenueCat-App-User-Id": victimId },
+      });
+      expect(copy.status).toBe(401);
+      const wrongSecret = await call("POST", "/groups", {
+        body: createBody, headers: {
+          "X-RevenueCat-App-User-Id": victimId,
+          "X-Premium-Device-Secret": "99".repeat(32),
+        },
+      });
+      expect(wrongSecret.status).toBe(401);
+      expect(await getDb().select().from(groupsTable)).toHaveLength(0);
+      const authorized = await call("POST", "/groups", {
+        body: createBody, headers: {
+          "X-RevenueCat-App-User-Id": victimId,
+          "X-Premium-Device-Secret": secret,
+        },
+      });
+      expect(authorized.status).toBe(201);
+      expect(await getDb().select().from(groupsTable)).toHaveLength(1);
+    } finally {
+      if (oldNode === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = oldNode;
+      if (oldStage === undefined) delete process.env.LASTRIDE_STAGE;
+      else process.env.LASTRIDE_STAGE = oldStage;
+    }
+  });
+
+  it("production requires device proof even when replaying a successful host creation key", async () => {
+    const oldNode = process.env.NODE_ENV;
+    const oldStage = process.env.LASTRIDE_STAGE;
+    process.env.NODE_ENV = "production";
+    process.env.LASTRIDE_STAGE = "production";
+    try {
+      const secret = "ac".repeat(32);
+      const id = revenueCatUserIdForDeviceSecret(secret)!;
+      const key = "d7".repeat(32);
+      const headers = { "X-RevenueCat-App-User-Id": id,
+        "X-Premium-Device-Secret": secret, "X-Group-Create-Key": key };
+      expect((await call("POST", "/groups", { body: createBody, headers })).status).toBe(201);
+      const { ["X-Premium-Device-Secret"]: _omitted, ...stolen } = headers;
+      expect((await call("POST", "/groups", { body: createBody, headers: stolen })).status).toBe(401);
+      expect((await call("POST", "/groups", { body: createBody, headers })).status).toBe(200);
+      expect(await getDb().select().from(groupsTable)).toHaveLength(1);
+    } finally {
+      if (oldNode === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = oldNode;
+      if (oldStage === undefined) delete process.env.LASTRIDE_STAGE;
+      else process.env.LASTRIDE_STAGE = oldStage;
+    }
   });
 
   it("HTTP retry recovers a paid host even if premium expires after the first accepted request", async () => {

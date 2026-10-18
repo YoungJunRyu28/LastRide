@@ -71,8 +71,8 @@ export async function finishGroupCreation(creationKey: string): Promise<void> {
   });
 }
 
-/** 400/402 mean the server definitively refused the new creation. A recovered
+/** 400/401/402 mean the server definitively refused the new creation. A recovered
  * existing host always responds with 200, including after premium expiry. */
 export function creationDefinitelyRejected(status: number | undefined): boolean {
-  return status === 400 || status === 402;
+  return status === 400 || status === 401 || status === 402;
 }

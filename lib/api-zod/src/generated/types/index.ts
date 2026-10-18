@@ -58,6 +58,7 @@ export * from './partwayStation';
 export * from './partwayTrainTaxi';
 export * from './place';
 export * from './placeKind';
+export * from './premiumDeviceSecretParameter';
 export * from './revenueCatAppUserIdParameter';
 export * from './searchAddressesParams';
 export * from './searchStationsParams';

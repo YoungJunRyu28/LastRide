@@ -82,7 +82,7 @@ function errorStatus(error: unknown): number | undefined {
 
 export function GroupsProvider({ children }: { children: React.ReactNode }) {
   const { plan, language, isHydrated } = useLastRide();
-  const { appUserId } = usePremium();
+  const { groupCreationHeaders } = usePremium();
   const [memberships, setMemberships] = useState<GroupMembership[]>([]);
   const [details, setDetails] = useState<Record<string, GroupDetail>>({});
   const [loading, setLoading] = useState(true);
@@ -292,7 +292,7 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
       session = await createGroup(
         { name: pending.name, displayName: pending.displayName, language: pending.language },
         { headers: {
-          "X-RevenueCat-App-User-Id": await appUserId(),
+          ...await groupCreationHeaders(),
           "X-Group-Create-Key": pending.creationKey,
         } },
       );
@@ -303,7 +303,7 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
     await remember(session.memberToken, session.group, pending.displayName);
     await finishGroupCreation(pending.creationKey);
     return session.group;
-  }, [appUserId, remember]);
+  }, [groupCreationHeaders, remember]);
 
   const create = useCallback(
     async (name: string, displayName: string) => {
@@ -313,7 +313,7 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
         session = await createGroup(
           { name: pending.name, displayName: pending.displayName, language: pending.language },
           { headers: {
-            "X-RevenueCat-App-User-Id": await appUserId(),
+            ...await groupCreationHeaders(),
             "X-Group-Create-Key": pending.creationKey,
           } },
         );
@@ -325,7 +325,7 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
       await finishGroupCreation(pending.creationKey);
       return session.group;
     },
-    [appUserId, language, remember],
+    [groupCreationHeaders, language, remember],
   );
 
   // Restore a creation interrupted between the server's DB commit and the

@@ -517,6 +517,7 @@ paths:
       summary: Create a persistent group (requires the premium entitlement)
       parameters:
         - $ref: "#/components/parameters/RevenueCatAppUserId"
+        - $ref: "#/components/parameters/PremiumDeviceSecret"
         - $ref: "#/components/parameters/GroupCreateKey"
       requestBody:
         required: true
@@ -535,6 +536,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/GroupSession" }
         "400": { description: Invalid body }
+        "401": { description: Production premium device identity proof required or invalid }
         "402": { description: Premium entitlement required }
         "503": { description: Groups or entitlement checks unavailable }
   /groups/join:
@@ -799,7 +801,14 @@ components:
       name: X-RevenueCat-App-User-Id
       in: header
       required: true
+      description: SHA-256-derived paid device user ID; not sufficient proof of ownership by itself
       schema: { type: string, minLength: 1, maxLength: 200 }
+    PremiumDeviceSecret:
+      name: X-Premium-Device-Secret
+      in: header
+      required: false
+      description: Mandatory in production. Device-held 256-bit lowercase hexadecimal capability; the server verifies that its SHA-256 derivation matches X-RevenueCat-App-User-Id. Never log this header.
+      schema: { type: string, minLength: 64, maxLength: 64, pattern: "^[a-f0-9]{64}$" }
     EventId:
       name: eventId
       in: path

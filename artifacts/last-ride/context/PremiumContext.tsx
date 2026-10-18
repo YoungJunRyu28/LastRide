@@ -14,6 +14,7 @@ import { Platform } from 'react-native';
 import Purchases, { type CustomerInfo, type PurchasesPackage } from 'react-native-purchases';
 import { GALAXY_BILLING_MODE } from 'react-native-purchases-store-galaxy';
 import { writePremiumCache } from '@/lib/premiumCache';
+import { getOrCreatePremiumDeviceIdentity } from '@/lib/premiumDeviceIdentity';
 import { isTestFlightBuild } from '@/modules/last-ride-alarm/src';
 
 export const PREMIUM_ENTITLEMENT = 'premium';
@@ -38,6 +39,27 @@ const apiKey =
 
 /** True when real purchases go through RevenueCat. */
 export const premiumLive = !!apiKey;
+
+// Never configure an anonymous SDK user in a release build. Purchases and
+// group hosting must use the SAME OS-secured identity, even after app restart.
+let purchasesSetup: Promise<void> | null = null;
+function ensurePurchasesConfigured(): Promise<void> {
+  if (!premiumLive || !apiKey) return Promise.reject(new Error('RevenueCat is not configured'));
+  if (!purchasesSetup) {
+    purchasesSetup = getOrCreatePremiumDeviceIdentity().then(({ appUserId }) => {
+      if (galaxyDistribution) {
+        Purchases.configure({
+          apiKey: apiKey!, appUserID: appUserId, store: 'GALAXY',
+          galaxyBillingMode: process.env.EXPO_PUBLIC_GALAXY_BILLING_MODE === 'TEST'
+            ? GALAXY_BILLING_MODE.TEST : GALAXY_BILLING_MODE.PRODUCTION,
+        });
+      } else {
+        Purchases.configure({ apiKey: apiKey!, appUserID: appUserId });
+      }
+    }).catch(error => { purchasesSetup = null; throw error; });
+  }
+  return purchasesSetup;
+}
 
 export type PlanChoice = {
   id: 'monthly' | 'annual';
@@ -69,6 +91,8 @@ type PremiumValue = {
   testOverride: boolean;
   /** RevenueCat's (anonymous) user id; the server checks the entitlement with it. */
   appUserId: () => Promise<string>;
+  /** Headers proving ownership of the exact RevenueCat user being checked. */
+  groupCreationHeaders: () => Promise<Record<string, string>>;
 };
 
 const PremiumContext = createContext<PremiumValue | null>(null);
@@ -112,40 +136,33 @@ export function PremiumProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     let active = true;
-    if (galaxyDistribution) {
-      // A real Galaxy Store app / Samsung IAP catalogue is required; a Google
-      // Play RevenueCat API key must never be used with Galaxy billing.
-      Purchases.configure({
-        apiKey,
-        store: 'GALAXY',
-        galaxyBillingMode: process.env.EXPO_PUBLIC_GALAXY_BILLING_MODE === 'TEST'
-          ? GALAXY_BILLING_MODE.TEST
-          : GALAXY_BILLING_MODE.PRODUCTION,
-      });
-    } else {
-      Purchases.configure({ apiKey });
-    }
     const listener = (info: CustomerInfo) => {
       if (active) setIsPremium(hasEntitlement(info));
     };
-    Purchases.addCustomerInfoUpdateListener(listener);
-    void Purchases.getCustomerInfo()
-      .then(listener)
-      .catch(() => undefined)
-      .finally(() => active && setReady(true));
-    void Purchases.getOfferings()
-      .then((offerings) => {
+    let registered = false;
+    void ensurePurchasesConfigured().then(async () => {
+      if (!active) return;
+      Purchases.addCustomerInfoUpdateListener(listener);
+      registered = true;
+      // Product-catalogue outages must not revoke a verified purchase. Fetch
+      // offerings independently; only customer info determines entitlement.
+      void Purchases.getOfferings().then((offerings) => {
         const current = offerings.current;
         if (!active || !current) return;
         const choices: PlanChoice[] = [];
         if (current.annual) choices.push({ id: 'annual', price: current.annual.product.priceString, trialDays: trialDays(current.annual), pkg: current.annual });
         if (current.monthly) choices.push({ id: 'monthly', price: current.monthly.product.priceString, trialDays: trialDays(current.monthly), pkg: current.monthly });
         setPlans(choices);
-      })
-      .catch(() => undefined);
+      }).catch(() => undefined);
+      await Purchases.getCustomerInfo().then(listener);
+    }).catch(() => {
+      // A failure to access secure storage must NOT silently configure an
+      // unbound RevenueCat customer or show a paid entitlement as active.
+      if (active) setIsPremium(false);
+    }).finally(() => { if (active) setReady(true); });
     return () => {
       active = false;
-      Purchases.removeCustomerInfoUpdateListener(listener);
+      if (registered) Purchases.removeCustomerInfoUpdateListener(listener);
     };
   }, []);
 
@@ -176,6 +193,7 @@ export function PremiumProvider({ children }: { children: React.ReactNode }) {
         return 'purchased';
       }
       try {
+        await ensurePurchasesConfigured();
         const { customerInfo } = await Purchases.purchasePackage(plan.pkg);
         const entitled = hasEntitlement(customerInfo);
         setIsPremium(entitled);
@@ -190,6 +208,7 @@ export function PremiumProvider({ children }: { children: React.ReactNode }) {
   const restore = useCallback(async () => {
     if (!premiumLive) return isPremium;
     try {
+      await ensurePurchasesConfigured();
       const entitled = hasEntitlement(await Purchases.restorePurchases());
       setIsPremium(entitled);
       return entitled;
@@ -199,7 +218,7 @@ export function PremiumProvider({ children }: { children: React.ReactNode }) {
   }, [isPremium]);
 
   const appUserId = useCallback(async () => {
-    if (premiumLive) return Purchases.getAppUserID();
+    if (premiumLive) return (await getOrCreatePremiumDeviceIdentity()).appUserId;
     // Test mode: a stable local id; the server accepts any id without a RevenueCat key outside production.
     const existing = await AsyncStorage.getItem(TEST_USER_KEY).catch(() => null);
     if (existing) return existing;
@@ -208,9 +227,19 @@ export function PremiumProvider({ children }: { children: React.ReactNode }) {
     return id;
   }, []);
 
+  const groupCreationHeaders = useCallback(async (): Promise<Record<string, string>> => {
+    if (!premiumLive) return { 'X-RevenueCat-App-User-Id': await appUserId() };
+    await ensurePurchasesConfigured();
+    const identity = await getOrCreatePremiumDeviceIdentity();
+    return {
+      'X-RevenueCat-App-User-Id': identity.appUserId,
+      'X-Premium-Device-Secret': identity.secret,
+    };
+  }, [appUserId]);
+
   const value = useMemo(
-    () => ({ isPremium, ready, live: premiumLive, plans, purchase, restore, setTestPremium, testOverride: override !== null, appUserId }),
-    [isPremium, ready, plans, purchase, restore, setTestPremium, override, appUserId],
+    () => ({ isPremium, ready, live: premiumLive, plans, purchase, restore, setTestPremium, testOverride: override !== null, appUserId, groupCreationHeaders }),
+    [isPremium, ready, plans, purchase, restore, setTestPremium, override, appUserId, groupCreationHeaders],
   );
   return <PremiumContext.Provider value={value}>{children}</PremiumContext.Provider>;
 }

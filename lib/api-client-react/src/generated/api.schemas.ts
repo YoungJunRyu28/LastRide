@@ -485,7 +485,15 @@ export type GroupJoinKeyParameter = string;
  */
 export type GroupCreateKeyParameter = string;
 
+/**
+ * SHA-256-derived paid device user ID; not sufficient proof of ownership by itself
+ */
 export type RevenueCatAppUserIdParameter = string;
+
+/**
+ * Mandatory in production. Device-held 256-bit lowercase hexadecimal capability; the server verifies that its SHA-256 derivation matches X-RevenueCat-App-User-Id. Never log this header.
+ */
+export type PremiumDeviceSecretParameter = string;
 
 export type ParticipantTokenParameter = string;
 

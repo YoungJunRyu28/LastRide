@@ -16,6 +16,7 @@ import {
 import { rateLimitMiddleware, requestAddress } from "../lib/rateLimit";
 import { hashCapability } from "../lib/enterpriseTokens";
 import { checkPremiumEntitlement } from "../lib/revenueCat";
+import { premiumDeviceProofRequired, verifiedPremiumDeviceIdentity } from "../lib/premiumDeviceIdentity";
 import { notifyGroupUpdated, sendGroupPush } from "../lib/groupNotifications";
 import {
   createGroupRecord,
@@ -122,6 +123,18 @@ router.post("/groups", createLimiter, async (req, res) => {
   const body = CreateGroupBody.safeParse(req.body);
   if (!body.success) {
     res.status(400).json({ error: "Invalid group", issues: body.error.issues });
+    return;
+  }
+
+  // A RevenueCat customer ID is NOT authentication. Anyone can copy an
+  // anonymous App User ID and request its entitlement. A production creator
+  // must prove possession of the 256-bit device capability from which its
+  // RevenueCat ID was derived. Check before any create-key recovery too.
+  if (premiumDeviceProofRequired() && !verifiedPremiumDeviceIdentity(
+    header.data["X-RevenueCat-App-User-Id"],
+    req.header("x-premium-device-secret"),
+  )) {
+    res.status(401).json({ error: "Verified premium device identity required" });
     return;
   }
 
