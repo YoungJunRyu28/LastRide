@@ -157,7 +157,7 @@ describe('tonight’s reminder record', () => {
   test('choosing the station yourself: no notice, no catch-up, reminders still ahead come again', () => {
     const first = planDelivery(null, context(), reminders(31), at(0));
     // 23:20: the user picks 神泉 (leave 23:33); 15分前 (23:18) is now past.
-    const chosen = planDelivery(first.ledger, context({ stationKey: '神泉', leaveAtMs: at(33), userStationChange: true }), reminders(33), at(20));
+    const chosen = planDelivery(first.ledger, context({ stationKey: '神泉', leaveAtMs: at(33), userChange: true }), reminders(33), at(20));
     expect(chosen.stationChanged).toBe(false);
     expect(chosen.catchUp).toBeNull();
     expect(chosen.schedule.map(reminderKind)).toEqual(['m5', 'm0']);
@@ -173,5 +173,52 @@ describe('tonight’s reminder record', () => {
     // Told now: another small move doesn't repeat it.
     const drift3 = planDelivery(drift2.ledger, context({ leaveAtMs: at(39) }), reminders(39), at(4));
     expect(drift3.timeShifted).toBe(false);
+  });
+
+  test('switching to the last train after 2本前’s leave time: the next re-plan brings no 「出る時刻が変わりました」', () => {
+    // 2本前 (leave 23:10): 30分前 and 15分前 went out with 23:10.
+    const first = planDelivery(null, context({ choiceKey: '2', leaveAtMs: at(10), trainDepartsAtMs: at(27) }), reminders(10), at(-30));
+    // 23:12: the user picks 終電 (leave 23:40); its 30分前 (23:10) is already past and isn't sent.
+    const switched = planDelivery(first.ledger, context({ choiceKey: '0', leaveAtMs: at(40), trainDepartsAtMs: at(50) }), reminders(40), at(12));
+    expect(switched.timeShifted).toBe(false);
+    // Seconds later the phone goes to sleep and the plan is re-made: same times, nothing to tell.
+    const replanned = planDelivery(switched.ledger, context({ choiceKey: '0', leaveAtMs: at(40), trainDepartsAtMs: at(50) }), reminders(40), at(12) + 10_000);
+    expect(replanned.timeShifted).toBe(false);
+    expect(replanned.catchUp).toBeNull();
+  });
+
+  test('after moving on to the next train, a later re-plan doesn’t compare with the departed train’s time', () => {
+    const first = planDelivery(null, context({ leaveAtMs: at(21), trainDepartsAtMs: at(36) }), reminders(21), at(-20));
+    const next = planDelivery(first.ledger, context({ leaveAtMs: at(40), trainDepartsAtMs: at(45) }), reminders(40), at(37));
+    const again = planDelivery(next.ledger, context({ leaveAtMs: at(40), trainDepartsAtMs: at(45) }), reminders(40), at(38));
+    expect(again.timeShifted).toBe(false);
+  });
+
+  test('changing the destination (or 余裕) yourself: no 「出る時刻が変わりました」, no catch-up, and none on the next re-plan', () => {
+    const first = planDelivery(null, context(), reminders(31), at(0));
+    // 30分前 went out with 23:31. 23:05: a new destination for tonight, same station, leave 23:45.
+    const changed = planDelivery(first.ledger, context({ leaveAtMs: at(45), userChange: true }), reminders(45), at(5));
+    expect(changed.timeShifted).toBe(false);
+    expect(changed.catchUp).toBeNull();
+    // 30分前 (now 23:15) is ahead again, at the new time.
+    expect(changed.schedule.map(reminderKind)).toEqual(['m30', 'm15', 'm5', 'm0']);
+    const later = planDelivery(changed.ledger, context({ leaveAtMs: at(45) }), reminders(45), at(6));
+    expect(later.timeShifted).toBe(false);
+  });
+
+  test('adding a reminder time that has already passed doesn’t send it at once', () => {
+    const first = planDelivery(null, context(), reminders(31).slice(2), at(20));
+    const added = planDelivery(first.ledger, context({ userChange: true }), reminders(31), at(21));
+    expect(added.catchUp).toBeNull();
+    expect(added.schedule.map(reminderKind)).toEqual(['m5', 'm0']);
+  });
+
+  test('a station change already told by 「出発駅を自動に戻しました」 gets no second notice', () => {
+    const first = planDelivery(null, context(), reminders(31), at(0));
+    const fallback = planDelivery(first.ledger, context({ stationKey: '恵比寿', leaveAtMs: at(33), stationTold: true }), reminders(33), at(5));
+    expect(fallback.stationChanged).toBe(false);
+    expect(fallback.timeShifted).toBe(false);
+    // Reminders still ahead come at the new times.
+    expect(fallback.schedule.map(reminderKind)).toEqual(['m15', 'm5', 'm0']);
   });
 });

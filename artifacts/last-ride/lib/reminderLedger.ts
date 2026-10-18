@@ -15,6 +15,9 @@
  * - a station change, or a leave time moving 5+ minutes after a reminder already
  *   went out, gets one notice instead of silent new times, and then every
  *   reminder still ahead can go out again at its new time;
+ * - a change the user made (station, destination, 余裕, reminder times, starting
+ *   tracking) gets no notice and no catch-up: they're looking at the new times;
+ *   reminders still ahead go out at those times;
  * - the train being headed for departed and the plan moved on to the next one
  *   (2本前 → 1本前 → 終電): that train gets its own reminders, only those still
  *   ahead (no catch-up, no "time changed" notice); while 乗れましたか？ is
@@ -60,11 +63,13 @@ export type DeliveryContext = {
    */
   followUpFor?: number;
   /**
-   * The user chose the station themselves (駅を選ぶ, この駅に固定, another
-   * station, 自動に戻す): a station change then gets no notice and no catch-up,
-   * since they're looking at it in the app.
+   * The user just changed something that moves the plan (駅を選ぶ, この駅に固定,
+   * 自動に戻す, the destination, 余裕, reminder times, starting tracking): no
+   * notice and no catch-up, since they're looking at the new times in the app.
    */
-  userStationChange?: boolean;
+  userChange?: boolean;
+  /** The station change was already told another way (「出発駅を自動に戻しました」): no second notice. */
+  stationTold?: boolean;
 };
 
 export type DeliveryPlan = {
@@ -123,18 +128,21 @@ export function planDelivery(
   if (trainSwitched) for (const kind of [...sent]) if (kind.startsWith('m')) sent.delete(kind);
 
   const stationMoved = !!known && known.stationKey !== context.stationKey;
-  // Told only when the app moved the station by itself.
-  const stationChanged = stationMoved && !context.userStationChange;
+  const userChange = !!context.userChange;
+  // Told only when the app moved the station by itself, and not already told.
+  const stationChanged = stationMoved && !userChange && !context.stationTold;
   const remindedAlready = [...sent].some((kind) => kind.startsWith('m'));
   const timeShifted =
     !!known &&
     !trainSwitched &&
     !stationMoved &&
+    !userChange &&
     remindedAlready &&
     toldLeaveAtMs !== undefined &&
     Math.abs(context.leaveAtMs - toldLeaveAtMs) >= SHIFT_NOTICE_MS;
   // Told about the change (or chose it): reminders still ahead at the new times can go out again.
-  if (stationMoved || timeShifted)
+  const userMoved = userChange && !!known && known.leaveAtMs !== context.leaveAtMs;
+  if (stationMoved || timeShifted || userMoved)
     for (const plan of plans) if (plan.fireAt > nowMs + 1000 && reminderKind(plan).startsWith('m')) sent.delete(reminderKind(plan));
   const followUpKind = context.followUpFor === undefined ? null : `f${context.followUpFor}`;
   const followUp = followUpKind !== null && !sent.has(followUpKind);
@@ -147,8 +155,7 @@ export function planDelivery(
   // Pushed into the past by a re-plan (or tracking started late): only the latest
   // one, never after the train has gone, and never the missed-train check-in.
   let catchUp: ReminderPlan | null = null;
-  const userStation = stationMoved && !!context.userStationChange;
-  if (nowMs < context.trainDepartsAtMs && !trainSwitched && !userSwitched && !userStation) {
+  if (nowMs < context.trainDepartsAtMs && !trainSwitched && !userSwitched && !userChange) {
     for (const plan of due) {
       if (plan.missedCheckIn || plan.boardedCheck) continue;
       if (!catchUp || plan.fireAt > catchUp.fireAt) catchUp = plan;
@@ -156,7 +163,10 @@ export function planDelivery(
   }
   for (const plan of due) sent.add(reminderKind(plan));
   // Whatever goes out now (a notice, a follow-up, a catch-up) tells the new leave time.
-  if (timeShifted || stationChanged || followUp || catchUp || stationMoved) toldLeaveAtMs = context.leaveAtMs;
+  // So does a train or station the user picked (they're looking at its time in the
+  // app), and moving on to the next train: none of these may later read as a
+  // "time changed" against the old train's leave time.
+  if (timeShifted || stationChanged || followUp || catchUp || stationMoved || userSwitched || trainSwitched || userChange) toldLeaveAtMs = context.leaveAtMs;
 
   return {
     ledger: {

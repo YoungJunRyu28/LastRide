@@ -43,7 +43,7 @@ vi.mock('../modules/last-ride-alarm/src', () => ({
 }));
 
 import { readSettings, STORAGE_KEYS } from '@/lib/settings';
-import { cancelAllReminders, scheduleReminders } from '@/lib/notifications';
+import { cancelAllReminders, markReminderChange, scheduleReminders } from '@/lib/notifications';
 
 const text = { leaveBy: '23:10', station: '新宿', language: 'ja' as const };
 
@@ -91,7 +91,7 @@ describe('reminder delivery', () => {
     // The 5-minute notification, plus a silent companion for the alarm that keeps its details.
     expect(mocks.notificationSchedule).toHaveBeenCalledTimes(2);
     const [reminder, companion] = (mocks.notificationSchedule.mock.calls as unknown as [{ content: Record<string, unknown> }][]).map(([request]) => request.content);
-    expect(reminder).toMatchObject({ sound: true, interruptionLevel: 'active' });
+    expect(reminder).toMatchObject({ sound: true, interruptionLevel: 'timeSensitive' });
     expect(companion).toMatchObject({ sound: false, interruptionLevel: 'passive' });
   });
 
@@ -108,14 +108,15 @@ describe('reminder delivery', () => {
     }
   });
 
-  it('makes the leave-now reminder Time Sensitive, but not the earlier ones', async () => {
+  it('makes every leave reminder Time Sensitive (即時通知), but not the missed-train check-in', async () => {
     const now = Date.now();
     await scheduleReminders([
       { minutesBefore: 15, fireAt: now + 120000 },
       { minutesBefore: 0, fireAt: now + 180000 },
+      { minutesBefore: 0, fireAt: now + 240000, missedCheckIn: true },
     ], text, { sound: 'default', vibrate: true });
     const levels = (mocks.notificationSchedule.mock.calls as unknown as [{ content: Record<string, unknown> }][]).map(([request]) => request.content.interruptionLevel);
-    expect(levels).toEqual(['active', 'timeSensitive']);
+    expect(levels).toEqual(['timeSensitive', 'timeSensitive', 'active']);
   });
 
   it('falls back to a notification with the chosen tone when alarms are not allowed', async () => {
@@ -194,6 +195,33 @@ describe('reminder delivery', () => {
         .map(([request]) => request.content)
         .find((content) => content.title === 'LastRide — 出発駅が変わりました');
       expect(notice?.body).toBe('新宿三丁目から1本前（23:31発）。23:22に出る。2本前は出る時刻を過ぎていたため、1本前にしています。');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a change the user just made is seen by every re-plan (the background task too): no 「出る時刻が変わりました」', async () => {
+    mocks.store.delete(STORAGE_KEYS.reminderLedger);
+    const start = Date.now();
+    const info = (leaveAtMs: number) => ({
+      night: '20261016', choiceKey: '0', stationKey: '新宿', leaveAtMs, trainDepartsAtMs: start + 7_200_000,
+      trainLabel: '終電', trainDeparts: '00:10',
+    });
+    const at = (leave: number) => [{ minutesBefore: 30, fireAt: leave - 1_800_000 }, { minutesBefore: 0, fireAt: leave }];
+    try {
+      vi.useFakeTimers({ now: start });
+      await scheduleReminders(at(start + 1_810_000), text, undefined, info(start + 1_810_000));
+      vi.setSystemTime(start + 60_000); // 30分前 has gone out
+      markReminderChange('user', start + 60_000); // another destination for tonight
+      vi.setSystemTime(start + 70_000);
+      await scheduleReminders(at(start + 3_000_000), text, undefined, info(start + 3_000_000));
+      const titles = (mocks.notificationSchedule.mock.calls as unknown as Array<[{ content: { title: string } }]>).map(([request]) => request.content.title);
+      expect(titles).not.toContain('LastRide — 出る時刻が変わりました');
+      // Long after the change, once 30分前 has gone out at the new time, a real move is told again.
+      vi.setSystemTime(start + 1_300_000);
+      await scheduleReminders(at(start + 3_600_000), text, undefined, info(start + 3_600_000));
+      const later = (mocks.notificationSchedule.mock.calls as unknown as Array<[{ content: { title: string } }]>).map(([request]) => request.content.title);
+      expect(later).toContain('LastRide — 出る時刻が変わりました');
     } finally {
       vi.useRealTimers();
     }

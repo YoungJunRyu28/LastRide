@@ -4,10 +4,10 @@ import { useLastRide } from '@/context/LastRideContext';
 import { usePremium } from '@/context/PremiumContext';
 import { useColors } from '@/hooks/useColors';
 import { SUPPORT_URL, TERMS_URL, TOKUSHOHO_URL, siteLink } from '@/lib/links';
-import { alarmKitAvailable } from '@/lib/notifications';
+import { alarmKitAvailable, scheduledNotificationLines, sendTestNotifications } from '@/lib/notifications';
+import { formatJstTime, MINUTE_MS } from '@/lib/time';
 import { isTestFlightBuild } from '@/modules/last-ride-alarm/src';
 import { recommendedLeaveTime } from '@/lib/reliability';
-import { MINUTE_MS } from '@/lib/time';
 import { WIDGET_THEMES } from '@/lib/widgetThemes';
 import { Feather } from '@expo/vector-icons';
 import Constants from 'expo-constants';
@@ -41,6 +41,8 @@ export default function SettingsScreen() {
   const testTools = __DEV__ || isTestFlightBuild;
   const [alarmStatus] = useAlarmStatus(alarmsEnabled);
   const ja = language === 'ja';
+  const [testSetFor, setTestSetFor] = React.useState<number | null>(null);
+  const [queued, setQueued] = React.useState<string[] | null>(null);
 
   const remindersNeedAttention =
     notificationsAllowed === false || (alarmsEnabled && alarmKitAvailable && alarmStatus === 'denied');
@@ -188,6 +190,25 @@ export default function SettingsScreen() {
             testID="running-version"
             title={ja ? '動作中のバージョン' : 'Running version'}
             subtitle={runningVersion(ja)}
+          />
+          <Divider />
+          {/* Are notifications late, and which kind? Both are set for the same second. */}
+          <Row
+            testID="test-notifications"
+            title={ja ? '1分後にテスト通知（通常＋即時通知）' : 'Test notifications in a minute (normal + Time Sensitive)'}
+            subtitle={
+              testSetFor
+                ? ja ? `${formatJstTime(testSetFor)}:00 に2件。画面を消して、届く時刻を比べてください。` : `Two at ${formatJstTime(testSetFor)}:00. Lock the phone and compare when each arrives.`
+                : ja ? 'トラッキングを止めてから試してください（再計算で消えるため）' : 'Stop tracking first (a re-plan cancels them)'
+            }
+            onPress={() => void sendTestNotifications(ja ? 'ja' : 'en').then(setTestSetFor)}
+          />
+          <Divider />
+          <Row
+            testID="queued-notifications"
+            title={ja ? '予約中の通知を見る' : 'Show queued notifications'}
+            subtitle={queued === null ? (ja ? 'iOSに予約されている時刻と種類' : 'What iOS has queued: time and kind') : queued.length === 0 ? (ja ? 'なし' : 'None') : queued.join('\n')}
+            onPress={() => void scheduledNotificationLines().then(setQueued)}
           />
           <Divider />
           {premiumLive && isTestFlightBuild && (

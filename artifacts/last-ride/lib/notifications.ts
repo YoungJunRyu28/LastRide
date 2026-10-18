@@ -228,6 +228,7 @@ export function notifyLockFallback(
   plan: { station: { name: string; nameJa: string }; lastTrain: { departsAt: number } },
   language: 'ja' | 'en',
 ): Promise<void> {
+  markReminderChange('stationTold');
   const time = new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(plan.lastTrain.departsAt));
   const text = language === 'ja'
     ? { title: 'LastRide — 出発駅を自動に戻しました', body: `固定した${locked.nameJa}駅からは帰れなくなったため、${plan.station.nameJa}駅（${time}発）にしています。` }
@@ -329,6 +330,34 @@ async function registerBoardedCategory(language: 'ja' | 'en') {
   ]).catch(() => undefined);
 }
 
+/**
+ * A change the user made (userChange), or a station change already told by
+ * 「出発駅を自動に戻しました」 (stationTold). Stored so the background task sees
+ * it too: the phone may sleep before the app's own re-plan has finished.
+ */
+type ChangeMark = { kind: 'user' | 'stationTold'; at: number };
+const CHANGE_MARK_KEY = 'lastride-reminder-change-mark';
+/** Long enough for the re-plan a change starts (new lookups) to arrive. */
+const CHANGE_MARK_MS = 90_000;
+let lastMark: ChangeMark | null = null;
+
+export function markReminderChange(kind: ChangeMark['kind'], nowMs = Date.now()): void {
+  lastMark = { kind, at: nowMs };
+  void AsyncStorage.setItem(CHANGE_MARK_KEY, JSON.stringify(lastMark)).catch(() => undefined);
+}
+
+async function recentMark(nowMs: number): Promise<ChangeMark['kind'] | null> {
+  let mark = lastMark;
+  try {
+    const raw = await AsyncStorage.getItem(CHANGE_MARK_KEY);
+    const stored = raw ? (JSON.parse(raw) as ChangeMark) : null;
+    if (stored && typeof stored.at === 'number' && (!mark || stored.at > mark.at)) mark = stored;
+  } catch {
+    // No mark.
+  }
+  return mark && nowMs - mark.at >= 0 && nowMs - mark.at < CHANGE_MARK_MS ? mark.kind : null;
+}
+
 async function readLedger(): Promise<ReminderLedger | null> {
   try {
     const raw = await AsyncStorage.getItem(STORAGE_KEYS.reminderLedger);
@@ -353,7 +382,10 @@ export function scheduleReminders(
 ): Promise<void> {
   return enqueue(async () => {
     const now = Date.now();
-    const decided = delivery ? planDelivery(await readLedger(), delivery, plans, now) : null;
+    const mark = delivery ? await recentMark(now) : null;
+    const decided = delivery
+      ? planDelivery(await readLedger(), { ...delivery, userChange: delivery.userChange || mark === 'user', stationTold: mark === 'stationTold' }, plans, now)
+      : null;
     const upcoming = decided ? decided.schedule : plans;
     const wantsAlarm = upcoming.some((plan) => plan.alarm);
     const alarmAuthorization = wantsAlarm && alarmKitAvailable ? await alarmKit.status().catch(() => 'denied') : 'unsupported';
@@ -435,8 +467,8 @@ export function scheduleReminders(
       }
       // An alarm's stand-in never uses the plain notification sound (or it'd be just another reminder).
       const tone = plan.alarm ? soundFile(sound === 'default' ? 'urgent' : sound) : null;
-      // Time Sensitive (breaks through Focus) only where being late means missing the train.
-      const urgent = plan.alarm === true || (plan.minutesBefore === 0 && !plan.missedCheckIn);
+      // Every leave reminder is Time Sensitive (即時通知): Focus or a summary mustn't hold 15分前 back.
+      const urgent = plan.alarm === true || !plan.missedCheckIn;
       await present(title, body, plan.fireAt, target, vibrate, tone, urgent);
     }
     await AsyncStorage.setItem(SIGNATURE_KEY, signature).catch(() => undefined);
@@ -456,6 +488,35 @@ export async function sendTestAlarm(language: 'ja' | 'en'): Promise<boolean> {
   await alarmKit.schedule(newAlarmId(), Date.now() + TEST_ALARM_DELAY_MS,
     language === 'ja' ? 'LastRide — アラームのテスト' : 'LastRide — alarm test', 'default', stopLabel(language));
   return true;
+}
+
+/**
+ * TestFlight check: a normal and a Time Sensitive (即時通知) notification for the
+ * same clock second, at least a minute ahead (a whole minute). Lock the phone and
+ * compare when each arrives. A re-plan while tracking cancels them: test with it off.
+ * Returns the time they're set for.
+ */
+export async function sendTestNotifications(language: 'ja' | 'en'): Promise<number> {
+  const at = Math.ceil((Date.now() + 70_000) / 60_000) * 60_000;
+  const time = new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }).format(new Date(at));
+  const ja = language === 'ja';
+  await present(ja ? `テスト（通常） ${time}` : `Test (normal) ${time}`, ja ? `${time}に届く予定` : `Due at ${time}`, at);
+  await present(ja ? `テスト（即時通知） ${time}` : `Test (Time Sensitive) ${time}`, ja ? `${time}に届く予定` : `Due at ${time}`, at, '/ride', true, null, true);
+  return at;
+}
+
+/** TestFlight check: what iOS has queued, one line each: time to the second, trigger kind, level, title. */
+export async function scheduledNotificationLines(): Promise<string[]> {
+  const requests = await Notifications.getAllScheduledNotificationsAsync().catch(() => []);
+  return requests.map((request) => {
+    const trigger = request.trigger as unknown as Record<string, unknown> | null;
+    const kind = String(trigger?.type ?? 'now');
+    const parts = (trigger?.dateComponents ?? trigger) as Record<string, unknown> | undefined;
+    const pad = (value: unknown) => String(value ?? '--').padStart(2, '0');
+    const when = parts && parts.hour !== undefined ? `${pad(parts.hour)}:${pad(parts.minute)}:${pad(parts.second)}` : trigger?.seconds !== undefined ? `+${trigger.seconds}s` : '—';
+    const level = (request.content as unknown as { interruptionLevel?: string }).interruptionLevel ?? '';
+    return `${when} · ${kind}${level ? ` · ${level}` : ''} · ${request.content.title ?? ''}`;
+  });
 }
 
 /** Plays a bundled tone right away (even in silent mode, at media volume). Not for 'default': apps can't play Apple's alarm sound. */

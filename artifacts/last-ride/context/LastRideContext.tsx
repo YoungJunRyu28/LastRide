@@ -21,6 +21,7 @@ import {
   cancelAllReminders,
   ensureNotificationPermission,
   notificationPermissionStatus,
+  markReminderChange,
   notifyLockFallback,
   scheduleReminders,
 } from "@/lib/notifications";
@@ -118,7 +119,6 @@ export { searchAddresses, searchStations } from "@/lib/placeSearch";
 export type LocationErrorCode = LocationError["code"];
 
 /** A station change this soon after the user chose a station counts as theirs (no notice, no catch-up). */
-const MANUAL_STATION_WINDOW_MS = 60_000;
 
 /** Without night tracking, opening (or returning to) the app re-plans a plan this old. */
 const AUTO_REPLAN_AFTER_MS = 5 * MINUTE_MS;
@@ -443,8 +443,6 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     homeAddress,
   };
   const replanInFlight = useRef(false);
-  /** When the user last chose a station themselves (lib/reminderLedger userStationChange). */
-  const manualStationAt = useRef<number | null>(null);
   const planRef = useRef(basePlan);
   planRef.current = basePlan;
 
@@ -645,8 +643,6 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
         ...(boardingQuestion && plan.computedAt >= boardingQuestion.departsAt
           ? { followUpFor: boardingQuestion.departsAt, followUpLabel: trainChoiceLabel(boardingQuestion.choice, language === "ja") }
           : {}),
-        // A station the user just chose: no 「出発駅が変わりました」 and no catch-up.
-        userStationChange: manualStationAt.current !== null && Date.now() - manualStationAt.current < MANUAL_STATION_WINDOW_MS,
       });
     })();
   }, [
@@ -803,6 +799,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
 
   const setLeaveMargin = useCallback((minutes: LeaveMargin) => {
     const margin = clampLeaveMargin(minutes);
+    markReminderChange("user");
     setLeaveMarginState(margin);
     void AsyncStorage.setItem(STORAGE_KEYS.leaveMargin, String(margin));
     // Only the recommended leave times move: no new lookups.
@@ -812,6 +809,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
 
   const setTrainChoice = useCallback((choice: number) => {
     const next = choice === 1 || choice === 2 ? choice : 0;
+    markReminderChange("user");
     setTrainChoiceState(next);
     // Picking a train yourself replaces any automatic pick after a station change.
     setChoiceOverride(null);
@@ -833,7 +831,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
   }, []);
 
   const setPinnedStation = useCallback((station: StationOption | null) => {
-    manualStationAt.current = Date.now();
+    markReminderChange("user");
     setLockFallback(null);
     setPinnedStationState(station);
     void writePinnedStation(station);
@@ -850,6 +848,8 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       setPinnedStationState(null);
       void writePinnedStation(null);
       setLockFallback(pinnedStation);
+      // Told here (on screen or as a notification): no 「出発駅が変わりました」 as well.
+      markReminderChange("stationTold");
       // Seen on screen when the app is open; otherwise as a notification.
       if (trackingMode !== null && AppState.currentState !== "active") {
         void notifyLockFallback(pinnedStation, basePlan, language ?? "en");
@@ -863,6 +863,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
         next.find((destination) => destination.id === requestedActiveId) ??
         next[0] ??
         null;
+      markReminderChange("user");
       setDestinations(next);
       setActiveDestinationId(active?.id ?? null);
       setTonightDestinationState(null);
@@ -942,6 +943,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
         return;
       }
       const station = await stationForStorage(picked);
+      markReminderChange("user");
       setHomeStationOption(station);
       void rememberTonight([station], []);
       void AsyncStorage.setItem(
@@ -962,6 +964,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
         destinations.find((destination) => destination.id === activeDestinationId) ??
         destinations[0] ??
         null;
+      markReminderChange("user");
       setTonightDestinationState(station);
       void writeTonightDestination(station);
       setHomeStationOption(station ?? active?.station ?? null);
@@ -981,6 +984,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     const next = adding
       ? [...reminderIntervals, minutes].sort((a, b) => b - a)
       : reminderIntervals.filter((entry) => entry !== minutes);
+    markReminderChange("user");
     setReminderIntervals(next);
     void AsyncStorage.setItem(STORAGE_KEYS.reminders, JSON.stringify(next));
     if (adding && alarmIntervals.includes(minutes)) {
@@ -996,6 +1000,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     const next = adding
       ? [...alarmIntervals, minutes].sort((a, b) => b - a)
       : alarmIntervals.filter((entry) => entry !== minutes);
+    markReminderChange("user");
     setAlarmIntervals(next);
     void AsyncStorage.setItem(STORAGE_KEYS.alarmTimes, JSON.stringify(next));
     if (adding && reminderIntervals.includes(minutes)) {
@@ -1008,6 +1013,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
 
   const setAlarmsEnabled = useCallback((enabled: boolean) => {
     if (enabled === alarmsEnabled) return;
+    markReminderChange("user");
     let notifications: number[];
     let alarms: number[];
     if (enabled) {
@@ -1061,6 +1067,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
         saveDestination({ ...current, address });
         return;
       }
+      markReminderChange("user");
       setHomeAddressState(address);
       void writeHomeAddress(address);
       clearPlan(); // arrival stations are chosen around the address, so re-plan
@@ -1239,7 +1246,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
    */
   const chooseDepartureStation = useCallback(
     async (station: StationOption) => {
-      manualStationAt.current = Date.now();
+      markReminderChange("user");
       setLockFallback(null);
       setPinnedStationState(station);
       void writePinnedStation(station);
@@ -1334,6 +1341,8 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
         ? { mode: 'background' as const, asked: false }
         : await chooseNightTrackingLocation(language, nightLocationMode);
       if (op !== trackingOp.current || !choice) return;
+      // Starting tracking: the times are on screen, so no catch-up or notice for them.
+      if (!resume) markReminderChange("user");
       const locationMode = choice.mode;
       if (choice.asked) setNightLocationMode(locationMode);
       const startedAt =
