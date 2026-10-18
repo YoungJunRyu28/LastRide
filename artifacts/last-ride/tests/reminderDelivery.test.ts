@@ -52,7 +52,7 @@ vi.mock('../modules/last-ride-alarm/src', () => ({
 }));
 
 import { readSettings, STORAGE_KEYS } from '@/lib/settings';
-import { cancelAllReminders, markReminderChange, scheduleReminders } from '@/lib/notifications';
+import { cancelAllReminders, markReminderChange, scheduleReminders, sendTestNotifications } from '@/lib/notifications';
 
 const text = { leaveBy: '23:10', station: '新宿', language: 'ja' as const };
 
@@ -148,7 +148,6 @@ describe('reminder delivery', () => {
     expect(mocks.notificationCancel).toHaveBeenCalled();
     // Everything still scheduled goes too, not just the tracked ids (the background
     // task keeps its own list, so a silent alarm companion could otherwise survive).
-    expect(mocks.notificationCancelAll).toHaveBeenCalledOnce();
     expect(mocks.queued.size).toBe(0);
   });
 
@@ -261,5 +260,13 @@ describe('reminder delivery', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('TestFlight test notifications survive cancelling and re-planning the reminders', async () => {
+    await sendTestNotifications('ja');
+    expect(mocks.queued.size).toBe(2);
+    await cancelAllReminders();
+    await scheduleReminders([{ minutesBefore: 15, fireAt: Date.now() + 600_000 }], text);
+    expect([...mocks.queued.keys()].filter((id) => id.startsWith('lastride-test-'))).toHaveLength(2);
   });
 });

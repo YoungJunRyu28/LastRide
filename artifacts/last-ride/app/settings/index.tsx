@@ -199,7 +199,7 @@ export default function SettingsScreen() {
             subtitle={
               testSetFor
                 ? ja ? `${formatJstTime(testSetFor)}:00 に2件。画面を消して、届く時刻を比べてください。` : `Two at ${formatJstTime(testSetFor)}:00. Lock the phone and compare when each arrives.`
-                : ja ? 'トラッキングを止めてから試してください（再計算で消えるため）' : 'Stop tracking first (a re-plan cancels them)'
+                : ja ? '同じ秒に2件。画面を消して、届く時刻を比べます' : 'Two for the same second. Lock the phone and compare'
             }
             onPress={() => void sendTestNotifications(ja ? 'ja' : 'en').then(setTestSetFor)}
           />

@@ -210,12 +210,19 @@ async function cancelOwned() {
   // Cancel native alarms even when the JS runtime died before persisting the
   // schedule. AlarmKit only exposes alarms belonging to our app.
   await alarmKit.cancelAll().catch((error) => console.warn('[LastRide] Could not cancel alarms', error));
-  await Promise.all(ids.map((id) => Notifications.cancelScheduledNotificationAsync(id).catch(() => undefined)));
+  await Promise.all(ids.filter((id) => !isTestNotification(id)).map((id) => Notifications.cancelScheduledNotificationAsync(id).catch(() => undefined)));
   // And everything else still scheduled: the app and its background task keep
   // the owned list separately, so it can miss one (an alarm's silent companion
-  // that then still arrives). Every local notification is a reminder from here;
-  // ones already delivered aren't affected.
-  await Notifications.cancelAllScheduledNotificationsAsync().catch(() => undefined);
+  // that then still arrives). Every local notification is a reminder from here,
+  // except a TestFlight test notification; ones already delivered aren't affected.
+  const queued = await queuedIds();
+  await Promise.all([...queued].filter((id) => !isTestNotification(id)).map((id) => Notifications.cancelScheduledNotificationAsync(id).catch(() => undefined)));
+}
+
+/** TestFlight test notifications (sendTestNotifications): never cancelled with the reminders. */
+const TEST_ID_PREFIX = 'lastride-test-';
+function isTestNotification(id: string): boolean {
+  return id.startsWith(TEST_ID_PREFIX);
 }
 
 /**
@@ -516,7 +523,7 @@ export function scheduleReminders(
     }
     if (Platform.OS !== 'web') {
       // Everything queued that isn't in the new set: changed or no longer wanted.
-      await Promise.all([...queued].filter((id) => !kept.has(id)).map((id) => Notifications.cancelScheduledNotificationAsync(id).catch(() => undefined)));
+      await Promise.all([...queued].filter((id) => !kept.has(id) && !isTestNotification(id)).map((id) => Notifications.cancelScheduledNotificationAsync(id).catch(() => undefined)));
       await writeOwnedIds([...kept]);
     }
     await AsyncStorage.setItem(SIGNATURE_KEY, signature).catch(() => undefined);
@@ -541,15 +548,15 @@ export async function sendTestAlarm(language: 'ja' | 'en'): Promise<boolean> {
 /**
  * TestFlight check: a normal and a Time Sensitive (即時通知) notification for the
  * same clock second, at least a minute ahead (a whole minute). Lock the phone and
- * compare when each arrives. A re-plan while tracking cancels them: test with it off.
+ * compare when each arrives. Re-plans and reminder changes leave them queued.
  * Returns the time they're set for.
  */
 export async function sendTestNotifications(language: 'ja' | 'en'): Promise<number> {
   const at = Math.ceil((Date.now() + 70_000) / 60_000) * 60_000;
   const time = new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }).format(new Date(at));
   const ja = language === 'ja';
-  await present(ja ? `テスト（通常） ${time}` : `Test (normal) ${time}`, ja ? `${time}に届く予定` : `Due at ${time}`, at);
-  await present(ja ? `テスト（即時通知） ${time}` : `Test (Time Sensitive) ${time}`, ja ? `${time}に届く予定` : `Due at ${time}`, at, '/ride', true, null, true);
+  await present(ja ? `テスト（通常） ${time}` : `Test (normal) ${time}`, ja ? `${time}に届く予定` : `Due at ${time}`, at, '/ride', true, null, false, false, { identifier: `${TEST_ID_PREFIX}normal-${at}` });
+  await present(ja ? `テスト（即時通知） ${time}` : `Test (Time Sensitive) ${time}`, ja ? `${time}に届く予定` : `Due at ${time}`, at, '/ride', true, null, true, false, { identifier: `${TEST_ID_PREFIX}urgent-${at}` });
   return at;
 }
 
