@@ -8,7 +8,6 @@ import {
   createGroup,
   getGroup,
   joinGroup,
-  joinGroupTonight,
   leaveGroup,
   leaveGroupTonight,
   resetGroupMembership,
@@ -28,7 +27,7 @@ import {
   writeDisplayName,
   type GroupMembership,
 } from "@/lib/groupMemberships";
-import { clearSharing, markSharing, stopSharing } from "@/lib/groupSharing";
+import { clearSharing, flushPendingSharedLeaveBy, markSharing, stopSharing, syncSharedLeaveByForGroup } from "@/lib/groupSharing";
 import { prepareGroupCreation, readPendingGroupCreation, finishGroupCreation, creationDefinitelyRejected } from "@/lib/pendingGroupCreation";
 import { prepareGroupJoin, readPendingGroupJoin, finishGroupJoin, joinDefinitelyRejected } from "@/lib/pendingGroupJoin";
 import { GroupRefreshGuard } from "@/lib/groupRefreshGuard";
@@ -93,6 +92,9 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
   // One registration per group, language and OS push token per app session.
   // Re-check each time the app becomes active (permission or token can change).
   const deviceRegistrations = useRef<Record<string, string>>({});
+  // Guard only duplicate sends during the SAME membership lifetime. Opt-out,
+  // group reset and re-join clear it so the next night can publish again.
+  const sent = useRef<Record<string, string | null>>({});
 
   const memberOptions = useCallback(
     (groupId: string): RequestInit => {
@@ -116,6 +118,7 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
   const forget = useCallback(async (groupId: string) => {
     refreshGuard.current.changed(groupId);
     delete deviceRegistrations.current[groupId];
+    delete sent.current[groupId];
     await removeMembership(groupId);
     await stopSharing(groupId);
     setMemberships((current) => current.filter((item) => item.groupId !== groupId));
@@ -156,6 +159,7 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
     setMemberships([]);
     setDetails({});
     deviceRegistrations.current = {};
+    sent.current = {};
   }, []);
 
   const refresh = useCallback(async () => {
@@ -217,6 +221,21 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
     };
   }, [refresh, refreshGroup]);
 
+  // iOS can suspend a motionless background task indefinitely. Retry ONLY
+  // durable pending leave-time changes whenever the app becomes active, and
+  // occasionally while open (including after Wi-Fi connectivity returns).
+  // Empty outbox: no HTTP requests. Unmount always clears the timer.
+  useEffect(() => {
+    if (!isHydrated || !available) return;
+    const retry = () => { if (AppState.currentState === 'active') void flushPendingSharedLeaveBy().catch(() => undefined); };
+    retry();
+    const listener = AppState.addEventListener('change', (state) => {
+      if (state === 'active') retry();
+    });
+    const timer = setInterval(retry, 30_000);
+    return () => { clearInterval(timer); listener.remove(); };
+  }, [isHydrated, available]);
+
   // Remember which groups this phone shares with tonight (and the time they
   // have), so background tracking can keep them current (lib/groupSharing).
   useEffect(() => {
@@ -270,6 +289,7 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
   const remember = useCallback(
     async (memberToken: string, detail: GroupDetail, displayName: string) => {
       const membership = { groupId: detail.id, memberToken, name: detail.name };
+      delete sent.current[detail.id];
       await saveMembership(membership);
       await writeDisplayName(displayName);
       setMemberships((current) => [...current.filter((item) => item.groupId !== detail.id), membership]);
@@ -400,7 +420,6 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
 
   // Keep tonight's leave-by current in every group you've opted into tonight.
   const leaveBy = plan ? new Date(recommendedLeaveTime(plan)).toISOString() : null;
-  const sent = useRef<Record<string, string | null>>({});
   useEffect(() => {
     if (!isHydrated || !available) return;
     for (const detail of Object.values(details)) {
@@ -409,13 +428,22 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
       const serverValue = mine.leaveBy ? new Date(mine.leaveBy).toISOString() : null;
       if (serverValue === leaveBy || sent.current[detail.id] === leaveBy) continue;
       sent.current[detail.id] = leaveBy;
-      void joinGroupTonight(detail.id, { leaveBy }, memberOptions(detail.id))
-        .then(apply)
-        .catch(() => {
-          sent.current[detail.id] = null;
-        });
+      void (async () => {
+        // Ensure the group has a saved opt-in before queuing. The foreground
+        // and headless background paths share one durable, serialized outbox.
+        await markSharing(detail.id, serverValue);
+        // Sending null to clear an old leave time is also durable. In
+        // particular, don't mark the group as opted out just because the
+        // rider has no current departure plan.
+        const updated = await syncSharedLeaveByForGroup(
+          detail.id, leaveBy === null ? null : Date.parse(leaveBy),
+        );
+        if (updated) apply(updated);
+      })().catch(() => {
+        sent.current[detail.id] = null;
+      });
     }
-  }, [details, leaveBy, isHydrated, available, memberOptions, apply]);
+  }, [details, leaveBy, isHydrated, available, apply]);
 
   const groups = useMemo(
     () => memberships.map((membership) => ({ membership, detail: details[membership.groupId] ?? null })),
@@ -446,7 +474,11 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
     await Promise.all(
       sharingTonight.map(async (detail) => {
         const result = await leaveGroupTonight(detail.id, memberOptions(detail.id)).catch(() => null);
-        if (result) apply(result);
+        if (result) {
+          await stopSharing(detail.id); // do not replay an offline update after opting out
+          delete sent.current[detail.id];
+          apply(result);
+        }
       }),
     );
   }, [sharingTonight, memberOptions, apply]);

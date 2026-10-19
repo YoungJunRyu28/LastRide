@@ -194,3 +194,53 @@ force-stop/restart the app, change permission in Settings, test a background
 reminder, confirm both native and companion behavior, and check restoration
 when the system removes an alarm. Older iOS versions must fall back to Time
 Sensitive notifications and cannot promise AlarmKit-level guarantees.
+
+## Durable group leave-time delivery (2026-10-19)
+
+**Risk LR-038:** `syncSharedLeaveBy` previously sent changes only from a
+location-update callback, and failed requests were discarded. When offline,
+iOS can suspend a stationary device indefinitely; a later network recovery
+alone would not trigger another location callback. Friends could keep an
+outdated last-train departure time despite the member still opting in.
+
+Now `groupSharing.ts` stores the last server-acknowledged leave times under
+`lastride-group-sharing` and independently stores the most recent **desired**
+leave time per group in `lastride-group-leave-outbox-v1`. It commits this
+record **before** sending HTTP; a network failure, killed app or API 503
+leaves the pending value for another attempt. Success updates the local
+acknowledged value and deletes its pending entry. Both foreground
+`GroupsContext` changes and headless GPS callbacks use the same serialized
+request path; foreground sends return the server's updated group for UI.
+`null` (clearing a departure time while remaining opted into the group) is
+queued and retried exactly like a concrete departure time.
+
+The app replays pending changes on return to foreground and every 30 seconds
+**while active**. Overlapping timers coalesce, and when the queue is empty no
+HTTP request or membership lookup occurs. The first network/transient server
+failure stops that replay pass to avoid many expensive sequential timeouts
+on unreliable mobile connections. Every request has a 12-second abort timeout.
+A 404 (removed membership) or 409 (ended night) clears the corresponding
+opt-in and pending request. A user leaving a group, opting out tonight or
+resetting the app also removes pending updates; an in-flight acknowledgment
+cannot recreate an opt-in they removed. Outbox entries older than **8 hours**
+or dated unexpectedly far into the future are discarded instead of sending
+a past night's leave time. No location, route, station, or destination is
+included in the outbox or sent to the group API.
+
+**Verification:** Group API mocks cover offline retry after app resumption,
+latest-value replacement, never reviving opt-outs, older-night expiry,
+reset, terminal vs transient errors, membership-token absence, failed local
+writes, overlapping retries, in-flight opt-outs, multi-group outage limits,
+foreground single-group responses and queued `null` clears. Real signed iOS
+and Android multi-device QA is still required, including Wi-Fi→cellular
+handoff, background suspension, force-quit, loss of location permission,
+server/group closure and group-join/leave during in-flight HTTP.
+
+**Limitation:** iOS may not wake a force-quit app on connectivity recovery.
+Pending delivery happens only on a later allowed foreground/background
+execution; this improves eventual consistency but cannot promise immediate
+remote group updates or rescue a missed last train without the OS running
+LastRide. Multiple independent JS runtimes and devices cannot guarantee
+strict global request ordering without a server-side version/sequence
+protocol. Further server-side conflict resolution and physical-device chaos
+QA remain release work.

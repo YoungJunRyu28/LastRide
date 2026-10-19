@@ -41,7 +41,7 @@ This records the 58 findings from the static source audit. **Fixed** means the c
 | LR-035 | Straight-line walking ignores geography/barriers | **Partial** | iOS and Android no longer draw an invented straight-line walking route; missing real street routing and ground-truth ETAs still block release |
 | LR-036 | iOS vs Android latest train results disagree | **Pending P0** | Provider parity corpus |
 | LR-037 | Changes under 60 sec not re-sent | **Decision pending** | Product spec + threshold tests |
-| LR-038 | Offline background leave change may never retry | **Pending** | Durable reconnection queue |
+| LR-038 | Offline background leave change may never retry | **Partial** | Durable per-group leave-time outbox + serialized foreground/background delivery, foreground and 30s active-app replay, opt-out and expired-night cleanup tested; physical devices and OS suspension/network transitions remain unverified |
 | LR-039 | OS clears reminder but cached signature remains | **Partial** | Native pending local-notification IDs and AlarmKit scheduled UUIDs now reconciled with persisted future receipts, including silent companion mismatch and lost receipts; native iOS physical-device delivery/Focus recovery still pending |
 | LR-040 | Android selected notification tone fallback | **Pending** | Channel/tone parity |
 | LR-041 | Doze and Focus delivery OS limits | **Platform limit** | Document realistic guarantees and E2E |
