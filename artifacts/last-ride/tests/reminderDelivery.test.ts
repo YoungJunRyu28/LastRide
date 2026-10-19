@@ -2,17 +2,24 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => {
   const store = new Map<string, string>();
-  const pending = new Map<string, { identifier: string }>();
+  const pending = new Map<string, { identifier: string; content?: { sound?: unknown; interruptionLevel?: unknown; data?: Record<string, unknown> } }>();
+  const nativeAlarms = new Set<string>();
+  const nativeAlarmQueryFails = { value: false };
+  const nativeAlarmReceiptFails = { value: false };
   let serial = 0;
   return {
     store,
     pending,
+    nativeAlarms,
+    nativeAlarmQueryFails,
+    nativeAlarmReceiptFails,
     alarmStatus: vi.fn(async () => 'authorized'),
-    alarmSchedule: vi.fn(async (_id: string, _fireAt: number, _title: string, _sound: string, _stop: string) => {}),
-    alarmCancel: vi.fn(async () => {}),
-    notificationSchedule: vi.fn(async (request: { identifier?: string; trigger: unknown }) => {
+    alarmSchedule: vi.fn(async (id: string, _fireAt: number, _title: string, _sound: string, _stop: string) => { nativeAlarms.add(id); }),
+    alarmCancel: vi.fn(async () => { nativeAlarms.clear(); }),
+    alarmScheduledIds: vi.fn(async () => nativeAlarmQueryFails.value ? null : [...nativeAlarms]),
+    notificationSchedule: vi.fn(async (request: { identifier?: string; trigger: unknown; content: { sound?: unknown; interruptionLevel?: unknown; data?: Record<string, unknown> } }) => {
       const id = request.identifier ?? `generated-${++serial}`;
-      if (request.trigger !== null) pending.set(id, { identifier: id });
+      if (request.trigger !== null) pending.set(id, { identifier: id, content: request.content });
       return id;
     }),
     notificationCancel: vi.fn(async (id: string) => { pending.delete(id); }),
@@ -23,7 +30,12 @@ const mocks = vi.hoisted(() => {
 vi.mock('@react-native-async-storage/async-storage', () => ({
   default: {
     getItem: vi.fn(async (key: string) => mocks.store.get(key) ?? null),
-    setItem: vi.fn(async (key: string, value: string) => { mocks.store.set(key, value); }),
+    setItem: vi.fn(async (key: string, value: string) => {
+      if (key === 'lastride-scheduled-alarmkit-v1' && mocks.nativeAlarmReceiptFails.value) {
+        throw new Error('Simulated native alarm receipt write failed');
+      }
+      mocks.store.set(key, value);
+    }),
     removeItem: vi.fn(async (key: string) => { mocks.store.delete(key); }),
     multiRemove: vi.fn(async (keys: string[]) => { keys.forEach((key) => mocks.store.delete(key)); }),
   },
@@ -44,6 +56,7 @@ vi.mock('../modules/last-ride-alarm/src', () => ({
     request: vi.fn(async () => 'authorized'),
     schedule: mocks.alarmSchedule,
     cancelAll: mocks.alarmCancel,
+    scheduledIds: mocks.alarmScheduledIds,
     preview: vi.fn(async () => {}),
   },
   iosMajorVersion: 26,
@@ -59,6 +72,9 @@ describe('reminder delivery', () => {
     await cancelAllReminders();
     mocks.store.clear();
     mocks.pending.clear();
+    mocks.nativeAlarms.clear();
+    mocks.nativeAlarmQueryFails.value = false;
+    mocks.nativeAlarmReceiptFails.value = false;
     vi.clearAllMocks();
     mocks.alarmStatus.mockResolvedValue('authorized');
   });
@@ -146,6 +162,66 @@ describe('reminder delivery', () => {
     await scheduleReminders(plans, text);
     expect(mocks.notificationSchedule).toHaveBeenCalledTimes(4);
     expect(mocks.pending.size).toBe(2);
+  });
+
+  it('rebuilds an iOS AlarmKit alarm if the native OS loses it but its silent companion survives', async () => {
+    const plans = [{ minutesBefore: 0, fireAt: Date.now() + 240_000, alarm: true as const }];
+    await scheduleReminders(plans, text);
+    expect(mocks.alarmSchedule).toHaveBeenCalledTimes(1);
+    expect(mocks.pending.size).toBe(1);
+    expect(mocks.nativeAlarms.size).toBe(1);
+    await scheduleReminders(plans, text);
+    expect(mocks.alarmSchedule).toHaveBeenCalledTimes(1); // healthy native alarm: no churn
+    mocks.nativeAlarms.clear(); // iOS has removed the actual alarm, not its companion
+    expect(mocks.pending.size).toBe(1);
+    await scheduleReminders(plans, text);
+    expect(mocks.alarmSchedule).toHaveBeenCalledTimes(2);
+    expect(mocks.nativeAlarms.size).toBe(1);
+    expect(mocks.pending.size).toBe(1);
+  });
+
+  it('rebuilds AlarmKit alarms after the persisted native receipt vanishes', async () => {
+    const plans = [{ minutesBefore: 0, fireAt: Date.now() + 240_000, alarm: true as const }];
+    await scheduleReminders(plans, text);
+    mocks.store.delete('lastride-scheduled-alarmkit-v1');
+    await scheduleReminders(plans, text);
+    expect(mocks.alarmSchedule).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not pretend native AlarmKit is healthy when its scheduled-ID query fails', async () => {
+    const plans = [{ minutesBefore: 0, fireAt: Date.now() + 240_000, alarm: true as const }];
+    await scheduleReminders(plans, text);
+    mocks.nativeAlarmQueryFails.value = true;
+    await scheduleReminders(plans, text);
+    expect(mocks.alarmSchedule).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not schedule duplicate audible reminders when storing a successful native alarm receipt fails', async () => {
+    mocks.nativeAlarmReceiptFails.value = true;
+    const plans = [{ minutesBefore: 0, fireAt: Date.now() + 240_000, alarm: true as const }];
+    await scheduleReminders(plans, text);
+    expect(mocks.alarmSchedule).toHaveBeenCalledTimes(1);
+    expect(mocks.notificationSchedule).toHaveBeenCalledTimes(1);
+    const [scheduled] = mocks.notificationSchedule.mock.calls;
+    expect(scheduled?.[0].content).toMatchObject({
+      sound: false, interruptionLevel: 'passive',
+      data: { lastrideAlarmCompanion: true },
+    });
+    // Failure to persist a native receipt MUST NOT mark the plan reconciled.
+    expect(mocks.store.has('lastride-reminder-signature')).toBe(false);
+    mocks.nativeAlarmReceiptFails.value = false;
+    await scheduleReminders(plans, text);
+    expect(mocks.alarmSchedule).toHaveBeenCalledTimes(2);
+    expect(mocks.nativeAlarms.size).toBe(1);
+  });
+
+  it('does not require AlarmKit reconciliation when a denied alarm uses an audible notification fallback', async () => {
+    mocks.alarmStatus.mockResolvedValue('denied');
+    const plans = [{ minutesBefore: 0, fireAt: Date.now() + 240_000, alarm: true as const }];
+    await scheduleReminders(plans, text);
+    await scheduleReminders(plans, text);
+    expect(mocks.alarmSchedule).not.toHaveBeenCalled();
+    expect(mocks.notificationSchedule).toHaveBeenCalledTimes(1);
   });
 
   it('cancels orphan OS alarms even when a killed headless task missed the storage receipt', async () => {

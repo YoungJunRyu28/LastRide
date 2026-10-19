@@ -153,3 +153,44 @@ The SAM deploy script now validates the compressed snapshot **before secrets/dat
 ### Native build evidence (no production credential)
 
 A clean Expo Android prebuild generated the native manifest `com.google.android.geo.API_KEY` metadata with a **syntactically valid dummy key**. `./gradlew :app:assembleDebug` compiled successfully on the connected macOS workstation with **JDK 21** and the Expo Maps module included. JDK 25 initially failed in CMake configuration of pre-existing React Native worklets/Expo updates, so use JDK 21 for reproducible native builds. The APK is **debug-signed, contains a dummy key, and was not installed on a physical device**; Google Maps tile loading needs actual Google Cloud billing, restricted key and SHA-1 signing certificate. Metro exports for iOS/Android/web also succeeded. No Play Store or TestFlight deployment was performed.
+
+## iOS AlarmKit reconciliation (2026-10-19)
+
+Previously a cached reminder signature and an ordinary scheduled notification
+were considered enough to skip an unchanged plan. On iOS 26+, LastRide schedules
+an actual AlarmKit alarm **and** a *silent, passive* companion notification.
+If iOS removed the AlarmKit alarm but left that companion, the app could falsely
+report an intact schedule and never restore the audible alarm. This is a
+critical correctness issue for a last-train reminder.
+
+The iOS `LastRideAlarm` Expo native module now exposes
+`scheduledAlarmIds()` through `AlarmManager.shared.alarms`. The JS wrapper
+returns `null` if the bridge/OS query fails; **unknown is not healthy**.
+When each AlarmKit UUID is successfully scheduled, the app persists its UUID
+and fire time in `lastride-scheduled-alarmkit-v1`, separate from the local
+notification ledger. An AlarmKit companion receives a specific
+`lastrideAlarmCompanion` marker in the notification's data payload so the app
+can distinguish it from an audible fallback without relying on unsupported
+native response properties. On an unchanged plan, the OS notifications, the
+native alarm receipt count, and the native AlarmKit identifiers must all agree.
+If they don't, LastRide cancels its own native alarms and recreates the plan.
+
+Scheduler version **10** invalidates signatures written by older releases
+that could not verify native alarms. A native AlarmKit schedule that succeeded
+but whose receipt write failed still gets its *quiet companion*, not an
+additional audible notification; the scheduler deliberately withholds the
+cache signature so a future replan checks again. Cancellation removes both
+ledgers and attempts to clear the native AlarmKit alarms.
+
+New regression tests simulate (1) a real alarm disappearing while the silent
+companion remains, (2) a missing persisted alarm receipt, (3) a failed native
+scheduled-ID query, (4) an unauthorized alarm falling back to a regular
+notification, and (5) receipt persistence failing after the native alarm was
+successfully created. Unit tests cannot guarantee delivery under Focus,
+Low Power Mode, app termination or background scheduling restrictions.
+
+**Release gate:** Run this on a signed iOS 26+ iPhone with AlarmKit permission,
+force-stop/restart the app, change permission in Settings, test a background
+reminder, confirm both native and companion behavior, and check restoration
+when the system removes an alarm. Older iOS versions must fall back to Time
+Sensitive notifications and cannot promise AlarmKit-level guarantees.

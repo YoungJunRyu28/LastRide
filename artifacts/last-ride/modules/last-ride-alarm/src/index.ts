@@ -7,6 +7,7 @@ type NativeAlarmModule = {
   authorizationStatus(): Promise<AlarmAuthorization>;
   requestAuthorization(): Promise<AlarmAuthorization>;
   scheduleAlarm(id: string, fireAtMs: number, title: string, sound: string, stopLabel: string): Promise<void>;
+  scheduledAlarmIds?(): Promise<string[]>;
   cancelAll(): Promise<void>;
   previewSound(fileName: string): Promise<void>;
   liveActivitiesEnabled?(): Promise<boolean>;
@@ -24,6 +25,11 @@ export const alarmKit = {
   request: (): Promise<AlarmAuthorization> => (alarmKitAvailable && native ? native.requestAuthorization() : Promise.resolve('unsupported')),
   schedule: (id: string, fireAtMs: number, title: string, sound: string, stopLabel: string): Promise<void> =>
     alarmKitAvailable && native ? native.scheduleAlarm(id, fireAtMs, title, sound, stopLabel) : Promise.reject(new Error('AlarmKit unavailable')),
+  /** null means the bridge cannot check. Do not treat it as verified. */
+  scheduledIds: (): Promise<string[] | null> =>
+    alarmKitAvailable && native?.scheduledAlarmIds
+      ? native.scheduledAlarmIds().catch(() => null)
+      : Promise.resolve(null),
   cancelAll: (): Promise<void> => (alarmKitAvailable && native ? native.cancelAll() : Promise.resolve()),
   preview: (fileName: string): Promise<void> => native?.previewSound(fileName) ?? Promise.resolve(),
 };

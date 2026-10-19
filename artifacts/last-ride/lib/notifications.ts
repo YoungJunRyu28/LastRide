@@ -15,8 +15,11 @@ const webTimers: ReturnType<typeof setTimeout>[] = [];
 // use these keys to replace, not accumulate, locally scheduled notifications.
 const OWNED_IDS_KEY = 'lastride-owned-notification-ids';
 const SCHEDULED_ENTRIES_KEY = 'lastride-scheduled-local-notifications-v1';
+const SCHEDULED_ALARMS_KEY = 'lastride-scheduled-alarmkit-v1';
 const SIGNATURE_KEY = 'lastride-reminder-signature';
-const SCHEDULER_VERSION = 9;
+// v10 intentionally invalidates pre-AlarmKit-ledger signatures on upgrade:
+// those builds had silent companions but no native alarm receipt to verify.
+const SCHEDULER_VERSION = 10;
 
 export { alarmKitAvailable };
 export { iosMajorVersion } from '../modules/last-ride-alarm/src';
@@ -49,6 +52,26 @@ async function writeScheduledEntries(entries: ScheduledLocalNotification[]): Pro
   await AsyncStorage.setItem(SCHEDULED_ENTRIES_KEY, JSON.stringify(entries)).catch(() => undefined);
 }
 
+/** Written after AlarmKit confirms a specific alarm; never trust companion
+ * notifications as proof the native AlarmKit alarm still exists. */
+type NativeAlarmReceipt = { id: string; fireAt: number };
+async function readNativeAlarms(): Promise<NativeAlarmReceipt[]> {
+  try {
+    const raw = await AsyncStorage.getItem(SCHEDULED_ALARMS_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((value): value is NativeAlarmReceipt =>
+      !!value && typeof value.id === 'string' && value.id.length > 0 &&
+      typeof value.fireAt === 'number' && Number.isFinite(value.fireAt));
+  } catch { return []; }
+}
+async function appendNativeAlarm(alarm: NativeAlarmReceipt): Promise<void> {
+  const current = await readNativeAlarms();
+  // A failed persistence is NOT confirmation that the native alarm is safe;
+  // next replan will rebuild after querying the OS.
+  await AsyncStorage.setItem(SCHEDULED_ALARMS_KEY, JSON.stringify([...current, alarm]));
+}
+
 /** Only consult the OS if the exact plan signature already matches. Reading
  * native state on every replan would waste battery in background tracking. */
 async function nativeSchedulePresent(plans: ReminderPlan[], hasHeld: boolean): Promise<boolean> {
@@ -59,8 +82,23 @@ async function nativeSchedulePresent(plans: ReminderPlan[], hasHeld: boolean): P
     const [persisted, scheduled] = await Promise.all([
       readScheduledEntries(), Notifications.getAllScheduledNotificationsAsync(),
     ]);
-    return isNativeReminderScheduleIntact(expected, persisted,
+    const notificationIntact = isNativeReminderScheduleIntact(expected, persisted,
       new Set(scheduled.map((entry) => entry.identifier)), now);
+    if (!notificationIntact) return false;
+    // Silent, passive notifications are companions for a real AlarmKit alarm.
+    // If the native receipt is missing after a crash/storage failure, never
+    // mistake such a companion for a verified alarm.
+    const persistedIds = new Set(persisted.map((entry) => entry.id));
+    const companions = scheduled.filter((entry) =>
+      persistedIds.has(entry.identifier) &&
+      entry.content.data?.lastrideAlarmCompanion === true).length;
+    const savedAlarms = (await readNativeAlarms()).filter((entry) => entry.fireAt > now + 1000);
+    if (savedAlarms.length !== companions) return false;
+    if (savedAlarms.length === 0) return true; // A notification-only fallback.
+    // Native bridge failure is unknown, NOT confirmation. Reconcile on the
+    // next schedule call even if the ordinary companion notification survived.
+    const nativeIds = await alarmKit.scheduledIds();
+    return nativeIds !== null && savedAlarms.every((entry) => nativeIds.includes(entry.id));
   } catch {
     // An OS query failing is not proof its schedule was lost. Avoid silently
     // duplicating alerts; a later foreground plan can reconcile again.
@@ -190,7 +228,7 @@ async function present(
       title, body,
       sound: silent ? false : (Platform.OS === 'ios' && sound) || true,
       interruptionLevel: silent ? 'passive' : urgent ? 'timeSensitive' : 'active',
-      data: { target, ...extra.data },
+      data: { target, ...extra.data, ...(silent ? { lastrideAlarmCompanion: true } : {}) },
       ...(extra.category ? { categoryIdentifier: extra.category } : {}),
     },
     trigger: delayMs < 1000
@@ -227,6 +265,7 @@ async function cancelOwned() {
     .catch(() => [] as string[]);
   await writeOwnedIds([]);
   await writeScheduledEntries([]);
+  await AsyncStorage.removeItem(SCHEDULED_ALARMS_KEY).catch(() => undefined);
   // Cancel native alarms even when the JS runtime died before persisting the
   // schedule. AlarmKit only exposes alarms belonging to our app.
   await alarmKit.cancelAll().catch((error) => console.warn('[LastRide] Could not cancel alarms', error));
@@ -382,6 +421,9 @@ export function scheduleReminders(
     if (Platform.OS !== 'web' && (await AsyncStorage.getItem(SIGNATURE_KEY).catch(() => null)) === signature &&
         await nativeSchedulePresent(upcoming, !!text.held)) return;
     await cancelOwned();
+    // An alarm receipt may fail to persist despite a successful native
+    // schedule. Never claim an intact signature for that uncertain state.
+    let alarmReceiptsIntact = true;
     const language = text.language;
     if (decided && delivery) {
       // Told once: where you leave from now, or that the leave time moved after a reminder.
@@ -439,7 +481,16 @@ export function scheduleReminders(
       const target = plan.missedCheckIn ? '/alternatives' : '/ride';
       if (plan.alarm && alarmAuthorization === 'authorized' && plan.fireAt > Date.now() + 1000) {
         try {
-          await alarmKit.schedule(newAlarmId(), plan.fireAt, title, sound, stopLabel(language));
+          const alarmId = newAlarmId();
+          await alarmKit.schedule(alarmId, plan.fireAt, title, sound, stopLabel(language));
+          // A failed AsyncStorage receipt doesn't mean AlarmKit failed. Keep
+          // the already-scheduled native alarm and its quiet companion; avoid
+          // scheduling an extra audible notification for the same event.
+          try {
+            await appendNativeAlarm({ id: alarmId, fireAt: plan.fireAt });
+          } catch {
+            alarmReceiptsIntact = false;
+          }
           // The alarm rings; a silent notification keeps the details (station, times)
           // in Notification Center once it's stopped, and opens the app when tapped.
           await present(title, body, plan.fireAt, target, false, null, false, true);
@@ -454,7 +505,9 @@ export function scheduleReminders(
       const urgent = plan.alarm === true || (plan.minutesBefore === 0 && !plan.missedCheckIn);
       await present(title, body, plan.fireAt, target, vibrate, tone, urgent);
     }
-    await AsyncStorage.setItem(SIGNATURE_KEY, signature).catch(() => undefined);
+    if (alarmReceiptsIntact) {
+      await AsyncStorage.setItem(SIGNATURE_KEY, signature).catch(() => undefined);
+    }
   });
 }
 
