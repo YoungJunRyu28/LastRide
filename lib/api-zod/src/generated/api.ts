@@ -703,6 +703,10 @@ export const CreateGroupBody = zod.object({
   "language": zod.enum(['ja', 'en']).optional().describe('Language used for this member\'s push notifications')
 })
 
+export const createGroupResponseGroupTonightParticipantsItemLeaveRevisionMin = 0;
+
+
+
 export const CreateGroupResponse = zod.object({
   "memberToken": zod.string().describe('Per-group capability. Store it on the device only; it is never shown again.'),
   "group": zod.object({
@@ -736,7 +740,8 @@ export const CreateGroupResponse = zod.object({
   "participants": zod.array(zod.object({
   "memberId": zod.string(),
   "displayName": zod.string(),
-  "leaveBy": zod.coerce.date().nullable()
+  "leaveBy": zod.coerce.date().nullable(),
+  "leaveRevision": zod.int().min(createGroupResponseGroupTonightParticipantsItemLeaveRevisionMin).describe('Server-owned CAS revision for this member tonight')
 }).describe('Privacy-minimal. No location, route, station, or destination data.')).describe('Sorted by leaveBy (unknown last)')
 })
 }),
@@ -781,6 +786,10 @@ export const JoinGroupBody = zod.object({
   "knownMemberTokens": zod.array(zod.string().min(joinGroupBodyKnownMemberTokensItemMin).max(joinGroupBodyKnownMemberTokensItemMax)).max(joinGroupBodyKnownMemberTokensMax).optional().describe('Member tokens this device already holds (for any group). If one is a member of the group being joined, no new member is added: that membership is returned (200, alreadyMember), so a device can\'t join its own group twice.')
 })
 
+export const joinGroupResponseGroupTonightParticipantsItemLeaveRevisionMin = 0;
+
+
+
 export const JoinGroupResponse = zod.object({
   "memberToken": zod.string().describe('Per-group capability. Store it on the device only; it is never shown again.'),
   "group": zod.object({
@@ -814,7 +823,8 @@ export const JoinGroupResponse = zod.object({
   "participants": zod.array(zod.object({
   "memberId": zod.string(),
   "displayName": zod.string(),
-  "leaveBy": zod.coerce.date().nullable()
+  "leaveBy": zod.coerce.date().nullable(),
+  "leaveRevision": zod.int().min(joinGroupResponseGroupTonightParticipantsItemLeaveRevisionMin).describe('Server-owned CAS revision for this member tonight')
 }).describe('Privacy-minimal. No location, route, station, or destination data.')).describe('Sorted by leaveBy (unknown last)')
 })
 }),
@@ -837,6 +847,10 @@ export const getGroupHeaderXMemberTokenMax = 256;
 export const GetGroupHeader = zod.object({
   "X-Member-Token": zod.string().min(getGroupHeaderXMemberTokenMin).max(getGroupHeaderXMemberTokenMax)
 })
+
+export const getGroupResponseTonightParticipantsItemLeaveRevisionMin = 0;
+
+
 
 export const GetGroupResponse = zod.object({
   "id": zod.string(),
@@ -869,7 +883,8 @@ export const GetGroupResponse = zod.object({
   "participants": zod.array(zod.object({
   "memberId": zod.string(),
   "displayName": zod.string(),
-  "leaveBy": zod.coerce.date().nullable()
+  "leaveBy": zod.coerce.date().nullable(),
+  "leaveRevision": zod.int().min(getGroupResponseTonightParticipantsItemLeaveRevisionMin).describe('Server-owned CAS revision for this member tonight')
 }).describe('Privacy-minimal. No location, route, station, or destination data.')).describe('Sorted by leaveBy (unknown last)')
 })
 })
@@ -898,6 +913,10 @@ export const updateGroupBodyNameMax = 80;
 export const UpdateGroupBody = zod.object({
   "name": zod.string().min(1).max(updateGroupBodyNameMax)
 })
+
+export const updateGroupResponseTonightParticipantsItemLeaveRevisionMin = 0;
+
+
 
 export const UpdateGroupResponse = zod.object({
   "id": zod.string(),
@@ -930,7 +949,8 @@ export const UpdateGroupResponse = zod.object({
   "participants": zod.array(zod.object({
   "memberId": zod.string(),
   "displayName": zod.string(),
-  "leaveBy": zod.coerce.date().nullable()
+  "leaveBy": zod.coerce.date().nullable(),
+  "leaveRevision": zod.int().min(updateGroupResponseTonightParticipantsItemLeaveRevisionMin).describe('Server-owned CAS revision for this member tonight')
 }).describe('Privacy-minimal. No location, route, station, or destination data.')).describe('Sorted by leaveBy (unknown last)')
 })
 })
@@ -995,6 +1015,10 @@ export const RemoveGroupMemberHeader = zod.object({
   "X-Member-Token": zod.string().min(removeGroupMemberHeaderXMemberTokenMin).max(removeGroupMemberHeaderXMemberTokenMax)
 })
 
+export const removeGroupMemberResponseTonightParticipantsItemLeaveRevisionMin = 0;
+
+
+
 export const RemoveGroupMemberResponse = zod.object({
   "id": zod.string(),
   "name": zod.string(),
@@ -1026,7 +1050,8 @@ export const RemoveGroupMemberResponse = zod.object({
   "participants": zod.array(zod.object({
   "memberId": zod.string(),
   "displayName": zod.string(),
-  "leaveBy": zod.coerce.date().nullable()
+  "leaveBy": zod.coerce.date().nullable(),
+  "leaveRevision": zod.int().min(removeGroupMemberResponseTonightParticipantsItemLeaveRevisionMin).describe('Server-owned CAS revision for this member tonight')
 }).describe('Privacy-minimal. No location, route, station, or destination data.')).describe('Sorted by leaveBy (unknown last)')
 })
 })
@@ -1063,6 +1088,10 @@ export const UpdateMyGroupMembershipBody = zod.object({
   "leaveTimeAlerts": zod.boolean().optional().describe('Pushes when another participant\'s leave time comes (default true)')
 }).describe('Omitted fields are unchanged. expoPushToken null unregisters push.')
 
+export const updateMyGroupMembershipResponseTonightParticipantsItemLeaveRevisionMin = 0;
+
+
+
 export const UpdateMyGroupMembershipResponse = zod.object({
   "id": zod.string(),
   "name": zod.string(),
@@ -1094,7 +1123,8 @@ export const UpdateMyGroupMembershipResponse = zod.object({
   "participants": zod.array(zod.object({
   "memberId": zod.string(),
   "displayName": zod.string(),
-  "leaveBy": zod.coerce.date().nullable()
+  "leaveBy": zod.coerce.date().nullable(),
+  "leaveRevision": zod.int().min(updateMyGroupMembershipResponseTonightParticipantsItemLeaveRevisionMin).describe('Server-owned CAS revision for this member tonight')
 }).describe('Privacy-minimal. No location, route, station, or destination data.')).describe('Sorted by leaveBy (unknown last)')
 })
 })
@@ -1154,6 +1184,10 @@ export const StartGroupTonightHeader = zod.object({
   "X-Member-Token": zod.string().min(startGroupTonightHeaderXMemberTokenMin).max(startGroupTonightHeaderXMemberTokenMax)
 })
 
+export const startGroupTonightResponseTonightParticipantsItemLeaveRevisionMin = 0;
+
+
+
 export const StartGroupTonightResponse = zod.object({
   "id": zod.string(),
   "name": zod.string(),
@@ -1185,7 +1219,8 @@ export const StartGroupTonightResponse = zod.object({
   "participants": zod.array(zod.object({
   "memberId": zod.string(),
   "displayName": zod.string(),
-  "leaveBy": zod.coerce.date().nullable()
+  "leaveBy": zod.coerce.date().nullable(),
+  "leaveRevision": zod.int().min(startGroupTonightResponseTonightParticipantsItemLeaveRevisionMin).describe('Server-owned CAS revision for this member tonight')
 }).describe('Privacy-minimal. No location, route, station, or destination data.')).describe('Sorted by leaveBy (unknown last)')
 })
 })
@@ -1206,6 +1241,10 @@ export const endGroupTonightHeaderXMemberTokenMax = 256;
 export const EndGroupTonightHeader = zod.object({
   "X-Member-Token": zod.string().min(endGroupTonightHeaderXMemberTokenMin).max(endGroupTonightHeaderXMemberTokenMax)
 })
+
+export const endGroupTonightResponseTonightParticipantsItemLeaveRevisionMin = 0;
+
+
 
 export const EndGroupTonightResponse = zod.object({
   "id": zod.string(),
@@ -1238,7 +1277,8 @@ export const EndGroupTonightResponse = zod.object({
   "participants": zod.array(zod.object({
   "memberId": zod.string(),
   "displayName": zod.string(),
-  "leaveBy": zod.coerce.date().nullable()
+  "leaveBy": zod.coerce.date().nullable(),
+  "leaveRevision": zod.int().min(endGroupTonightResponseTonightParticipantsItemLeaveRevisionMin).describe('Server-owned CAS revision for this member tonight')
 }).describe('Privacy-minimal. No location, route, station, or destination data.')).describe('Sorted by leaveBy (unknown last)')
 })
 })
@@ -1254,15 +1294,23 @@ export const JoinGroupTonightParams = zod.object({
 export const joinGroupTonightHeaderXMemberTokenMin = 32;
 export const joinGroupTonightHeaderXMemberTokenMax = 256;
 
+export const joinGroupTonightHeaderXLeaveExpectedRevisionMin = 0;
+export const joinGroupTonightHeaderXLeaveExpectedRevisionMax = 2147483646;
+
 
 
 export const JoinGroupTonightHeader = zod.object({
-  "X-Member-Token": zod.string().min(joinGroupTonightHeaderXMemberTokenMin).max(joinGroupTonightHeaderXMemberTokenMax)
+  "X-Member-Token": zod.string().min(joinGroupTonightHeaderXMemberTokenMin).max(joinGroupTonightHeaderXMemberTokenMax),
+  "X-Leave-Expected-Revision": zod.int().min(joinGroupTonightHeaderXLeaveExpectedRevisionMin).max(joinGroupTonightHeaderXLeaveExpectedRevisionMax).optional().describe('Current participant leaveRevision (or 0 if not yet participating). If omitted, only unversioned legacy rows may be updated. An out-of-order version is rejected with 412 STALE_LEAVE_REVISION.')
 })
 
 export const JoinGroupTonightBody = zod.object({
   "leaveBy": zod.coerce.date().nullish()
 }).describe('Only a leave-by timestamp is ever synced; never location, station, route or destination.')
+
+export const joinGroupTonightResponseTonightParticipantsItemLeaveRevisionMin = 0;
+
+
 
 export const JoinGroupTonightResponse = zod.object({
   "id": zod.string(),
@@ -1295,7 +1343,8 @@ export const JoinGroupTonightResponse = zod.object({
   "participants": zod.array(zod.object({
   "memberId": zod.string(),
   "displayName": zod.string(),
-  "leaveBy": zod.coerce.date().nullable()
+  "leaveBy": zod.coerce.date().nullable(),
+  "leaveRevision": zod.int().min(joinGroupTonightResponseTonightParticipantsItemLeaveRevisionMin).describe('Server-owned CAS revision for this member tonight')
 }).describe('Privacy-minimal. No location, route, station, or destination data.')).describe('Sorted by leaveBy (unknown last)')
 })
 })
@@ -1316,6 +1365,10 @@ export const leaveGroupTonightHeaderXMemberTokenMax = 256;
 export const LeaveGroupTonightHeader = zod.object({
   "X-Member-Token": zod.string().min(leaveGroupTonightHeaderXMemberTokenMin).max(leaveGroupTonightHeaderXMemberTokenMax)
 })
+
+export const leaveGroupTonightResponseTonightParticipantsItemLeaveRevisionMin = 0;
+
+
 
 export const LeaveGroupTonightResponse = zod.object({
   "id": zod.string(),
@@ -1348,7 +1401,8 @@ export const LeaveGroupTonightResponse = zod.object({
   "participants": zod.array(zod.object({
   "memberId": zod.string(),
   "displayName": zod.string(),
-  "leaveBy": zod.coerce.date().nullable()
+  "leaveBy": zod.coerce.date().nullable(),
+  "leaveRevision": zod.int().min(leaveGroupTonightResponseTonightParticipantsItemLeaveRevisionMin).describe('Server-owned CAS revision for this member tonight')
 }).describe('Privacy-minimal. No location, route, station, or destination data.')).describe('Sorted by leaveBy (unknown last)')
 })
 })

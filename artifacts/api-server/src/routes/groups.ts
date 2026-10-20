@@ -406,12 +406,27 @@ router.put("/groups/:groupId/tonight/me", memberLimiter, async (req, res) => {
     res.status(400).json({ error: "Invalid leave-by time" });
     return;
   }
+  const revisionHeader = req.header("x-leave-expected-revision");
+  let expectedRevision: number | undefined;
+  if (revisionHeader !== undefined) {
+    if (!/^(0|[1-9]\d{0,9})$/.test(revisionHeader) || Number(revisionHeader) > 2147483646) {
+      res.status(400).json({ error: "Invalid leave-by revision" });
+      return;
+    }
+    expectedRevision = Number(revisionHeader);
+  }
   const result = await setGroupTonightParticipationRecord(
     auth.groupId,
     auth.token,
     body.data.leaveBy,
+    new Date(),
+    expectedRevision,
   );
   if (result.kind === "not-found") return notFound(res);
+  if (result.kind === "stale") {
+    res.status(412).json({ code: "STALE_LEAVE_REVISION", error: "Leave-by update was superseded; refresh the group" });
+    return;
+  }
   if (result.kind === "inactive") {
     res.status(409).json({ error: "The group is not active tonight" });
     return;

@@ -132,6 +132,11 @@ export interface GroupTonightParticipant {
   displayName: string;
   /** @nullable */
   leaveBy: string | null;
+  /**
+     * Server-owned CAS revision for this member tonight
+     * @minimum 0
+     */
+  leaveRevision: number;
 }
 
 export interface GroupTonight {
@@ -484,6 +489,11 @@ export type GroupJoinKeyParameter = string;
  * Device-generated 256-bit hexadecimal creation capability, retained across failed POST retries
  */
 export type GroupCreateKeyParameter = string;
+
+/**
+ * Current participant leaveRevision (or 0 if not yet participating). If omitted, only unversioned legacy rows may be updated. An out-of-order version is rejected with 412 STALE_LEAVE_REVISION.
+ */
+export type LeaveExpectedRevisionParameter = number;
 
 /**
  * SHA-256-derived paid device user ID; not sufficient proof of ownership by itself

@@ -243,7 +243,7 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
       const mine =
         detail.tonight.active &&
         detail.tonight.participants.find((participant) => participant.memberId === detail.me.memberId);
-      if (mine) void markSharing(detail.id, mine.leaveBy ? new Date(mine.leaveBy).toISOString() : null).catch(() => undefined);
+      if (mine) void markSharing(detail.id, mine.leaveBy ? new Date(mine.leaveBy).toISOString() : null, mine.leaveRevision).catch(() => undefined);
       else void stopSharing(detail.id).catch(() => undefined);
     }
   }, [details]);
@@ -431,7 +431,7 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
       void (async () => {
         // Ensure the group has a saved opt-in before queuing. The foreground
         // and headless background paths share one durable, serialized outbox.
-        await markSharing(detail.id, serverValue);
+        await markSharing(detail.id, serverValue, mine.leaveRevision);
         // Sending null to clear an old leave time is also durable. In
         // particular, don't mark the group as opted out just because the
         // rider has no current departure plan.

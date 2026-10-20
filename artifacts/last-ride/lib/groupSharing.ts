@@ -7,18 +7,20 @@
  * awaiting delivery. No location, route, station or destination is uploaded.
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { joinGroupTonight } from '@workspace/api-client-react';
+import { getGroup, joinGroupTonight } from '@workspace/api-client-react';
 import { readMemberships } from '@/lib/groupMemberships';
 
 const SHARING_KEY = 'lastride-group-sharing';
 const OUTBOX_KEY = 'lastride-group-leave-outbox-v1';
+const REVISIONS_KEY = 'lastride-group-leave-revisions-v1';
 /** Never send yesterday's leave time merely because the user opens the app. */
 export const SHARE_OUTBOX_MAX_AGE_MS = 8 * 60 * 60_000;
 /** Smaller changes than this aren't worth a request and database wake-up. */
 export const LEAVE_BY_RESEND_MS = 60_000;
 
 type Sharing = Record<string, string | null>;
-type Pending = Record<string, { leaveBy: string | null; queuedAt: number }>;
+type Pending = Record<string, { leaveBy: string | null; queuedAt: number; expectedRevision?: number }>;
+type Revisions = Record<string, number>;
 type GroupDelivery = Awaited<ReturnType<typeof joinGroupTonight>>;
 
 // AsyncStorage has no atomic read/modify/write; serialize on this JS runtime.
@@ -59,7 +61,10 @@ async function readOutbox(strict = false): Promise<Pending> {
     for (const [id, value] of Object.entries(parsed)) {
       const entry = value as Partial<Pending[string]> | null;
       if (!id || !entry || (entry.leaveBy !== null && (typeof entry.leaveBy !== 'string' || !Number.isFinite(Date.parse(entry.leaveBy)))) ||
-        !Number.isFinite(entry.queuedAt) || entry.queuedAt! <= 0) throw new Error('Invalid pending group leave time');
+        !Number.isFinite(entry.queuedAt) || entry.queuedAt! <= 0 ||
+        (entry.expectedRevision !== undefined &&
+          (!Number.isSafeInteger(entry.expectedRevision) || entry.expectedRevision < 0 || entry.expectedRevision > 2147483646)))
+        throw new Error('Invalid pending group leave time');
     }
     return parsed as Pending;
   } catch (error) {
@@ -67,6 +72,25 @@ async function readOutbox(strict = false): Promise<Pending> {
     return {};
   }
 }
+async function readRevisions(strict = false): Promise<Revisions> {
+  try {
+    const raw = await AsyncStorage.getItem(REVISIONS_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : {};
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('Invalid group revisions');
+    for (const [groupId, revision] of Object.entries(parsed)) {
+      if (!groupId || !Number.isSafeInteger(revision) || (revision as number) < 0 || (revision as number) > 2147483646)
+        throw new Error('Invalid saved leave revision');
+    }
+    return parsed as Revisions;
+  } catch (error) {
+    if (strict) throw error;
+    return {};
+  }
+}
+async function writeRevisions(revisions: Revisions): Promise<void> {
+  await AsyncStorage.setItem(REVISIONS_KEY, JSON.stringify(revisions));
+}
+
 async function write(sharing: Sharing) {
   await AsyncStorage.setItem(SHARING_KEY, JSON.stringify(sharing));
 }
@@ -75,9 +99,19 @@ async function writeOutbox(pending: Pending) {
 }
 
 /** The last leave-by value CONFIRMED by the group server. */
-export async function markSharing(groupId: string, leaveBy: string | null): Promise<void> {
+export async function markSharing(groupId: string, leaveBy: string | null, revision?: number): Promise<void> {
   await serializeMutation(async () => {
     const sharing = await read(true);
+    if (revision !== undefined) {
+      if (!Number.isSafeInteger(revision) || revision < 0 || revision > 2147483646)
+        throw new Error('Invalid server leave revision');
+      const revisions = await readRevisions(true);
+      // A stale GET/push response must never downgrade a known server version.
+      if (revision < (revisions[groupId] ?? 0)) return;
+      if (revision !== revisions[groupId]) {
+        await writeRevisions({ ...revisions, [groupId]: revision });
+      }
+    }
     if (groupId in sharing && sharing[groupId] === leaveBy) return;
     await write({ ...sharing, [groupId]: leaveBy });
   });
@@ -88,6 +122,11 @@ export async function stopSharing(groupId: string): Promise<void> {
   await serializeMutation(async () => {
     const sharing = await read(true);
     const pending = await readOutbox(true);
+    const revisions = await readRevisions(true);
+    if (groupId in revisions) {
+      const { [groupId]: _removed, ...remaining } = revisions;
+      await writeRevisions(remaining);
+    }
     if (groupId in sharing) {
       const { [groupId]: _removed, ...remaining } = sharing;
       await write(remaining);
@@ -104,6 +143,7 @@ export async function clearSharing(): Promise<void> {
   await serializeMutation(async () => {
     await AsyncStorage.removeItem(SHARING_KEY);
     await AsyncStorage.removeItem(OUTBOX_KEY);
+    await AsyncStorage.removeItem(REVISIONS_KEY);
   });
 }
 
@@ -122,6 +162,7 @@ async function recordDesiredLeaveBy(leaveBy: string | null, now: number, onlyGro
   await serializeMutation(async () => {
     const sharing = await read(true);
     const pending = await readOutbox(true);
+    const revisions = await readRevisions(true);
     let changed = false;
     for (const [groupId, acknowledged] of Object.entries(sharing)) {
       if (onlyGroup !== undefined && groupId !== onlyGroup) continue;
@@ -130,7 +171,9 @@ async function recordDesiredLeaveBy(leaveBy: string | null, now: number, onlyGro
         continue;
       }
       if (pending[groupId]?.leaveBy !== leaveBy) {
-        pending[groupId] = { leaveBy, queuedAt: now };
+        // The CAS precondition belongs to the ORIGINAL queued operation.
+        // Do not refresh the revision when an old offline request is replayed.
+        pending[groupId] = { leaveBy, queuedAt: now, expectedRevision: revisions[groupId] ?? 0 };
         changed = true;
       }
     }
@@ -146,10 +189,20 @@ async function pendingEntries(): Promise<Pending> {
 async function acknowledge(groupId: string, desired: Pending[string], succeeded: boolean): Promise<void> {
   await serializeMutation(async () => {
     const pending = await readOutbox(true);
-    if (pending[groupId]?.leaveBy !== desired.leaveBy) return;
+    if (pending[groupId]?.leaveBy !== desired.leaveBy ||
+        (pending[groupId]?.expectedRevision ?? 0) !== (desired.expectedRevision ?? 0)) return;
     const sharing = await read(true);
     // A user might have stopped sharing while HTTP was still in flight.
-    if (succeeded && groupId in sharing) await write({ ...sharing, [groupId]: desired.leaveBy });
+    if (succeeded && groupId in sharing) {
+      const revisions = await readRevisions(true);
+      const confirmed = (desired.expectedRevision ?? 0) + 1;
+      // Never lower a server revision observed by a concurrent fresh group
+      // detail. A successful CAS increments by exactly one on the backend.
+      if (confirmed >= (revisions[groupId] ?? 0)) {
+        await writeRevisions({ ...revisions, [groupId]: confirmed });
+        await write({ ...sharing, [groupId]: desired.leaveBy });
+      }
+    }
     delete pending[groupId];
     await writeOutbox(pending);
   });
@@ -181,7 +234,10 @@ async function deliverPending(now: number): Promise<Map<string, GroupDelivery>> 
       let result: GroupDelivery;
       try {
         result = await joinGroupTonight(groupId, { leaveBy: queued.leaveBy }, {
-          headers: { 'X-Member-Token': token }, signal: controller.signal,
+          headers: {
+            'X-Member-Token': token,
+            'X-Leave-Expected-Revision': String(queued.expectedRevision ?? 0),
+          }, signal: controller.signal,
         });
       } finally {
         clearTimeout(timeout);
@@ -192,7 +248,17 @@ async function deliverPending(now: number): Promise<Map<string, GroupDelivery>> 
       // The group was removed or tonight has ended. Otherwise keep the
       // durable desired value until next foreground/reconnection retry.
       const status = (error as { status?: number } | null)?.status;
-      if (status === 404 || status === 409) await stopSharing(groupId);
+      if (status === 412) {
+        // A newer member update won on the server. This operation is stale,
+        // NOT a reason to opt the rider out. Discard it, then refresh the
+        // server revision before future fresh updates are queued.
+        await acknowledge(groupId, queued, false);
+        try {
+          const latest = await getGroup(groupId, { headers: { 'X-Member-Token': token } });
+          const mine = latest.tonight.participants.find((entry) => entry.memberId === latest.me.memberId);
+          if (mine) await markSharing(groupId, mine.leaveBy, mine.leaveRevision);
+        } catch { /* foreground group refresh can recover later */ }
+      } else if (status === 404 || status === 409) await stopSharing(groupId);
       // During a network outage, stop this pass: don't wait 12 seconds per
       // group or issue a storm of failed requests on every foreground tick.
       if (status === undefined || status === 429 || (status >= 500 && status <= 599)) break;

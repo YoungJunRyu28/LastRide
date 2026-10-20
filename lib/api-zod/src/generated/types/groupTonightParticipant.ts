@@ -14,4 +14,9 @@ export interface GroupTonightParticipant {
   displayName: string;
   /** @nullable */
   leaveBy: Date | null;
+  /**
+     * Server-owned CAS revision for this member tonight
+     * @minimum 0
+     */
+  leaveRevision: number;
 }

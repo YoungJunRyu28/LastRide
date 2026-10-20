@@ -51,6 +51,7 @@ export * from './hostDeviceRegistrationPlatform';
 export * from './joinEnterpriseEventRequest';
 export * from './joinGroupRequest';
 export * from './lastTrainRoute';
+export * from './leaveExpectedRevisionParameter';
 export * from './memberTokenParameter';
 export * from './participantEventSummary';
 export * from './participantTokenParameter';

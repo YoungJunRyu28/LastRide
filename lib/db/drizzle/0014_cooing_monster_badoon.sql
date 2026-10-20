@@ -1,0 +1,1 @@
+ALTER TABLE "group_night_participants" ADD COLUMN "leave_revision" integer DEFAULT 0 NOT NULL;

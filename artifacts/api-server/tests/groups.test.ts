@@ -534,8 +534,8 @@ describe("tonight", () => {
     if (result.kind !== "ok") return;
     // Sorted by leave-by.
     expect(result.group.tonight.participants).toEqual([
-      { memberId: members[1].id, displayName: "Cai", leaveBy: earlier },
-      { memberId: members[0].id, displayName: "Bea", leaveBy: later },
+      { memberId: members[1].id, displayName: "Cai", leaveBy: earlier, leaveRevision: 0 },
+      { memberId: members[0].id, displayName: "Bea", leaveBy: later, leaveRevision: 0 },
     ]);
 
     // undefined keeps the current leave-by.
@@ -1186,6 +1186,86 @@ describe("groups HTTP routes", () => {
       body: { leaveBy: new Date(tonightWindow().endsAt.getTime() + 60_000).toISOString() },
     });
     expect(outside.status).toBe(400);
+  });
+
+  it("server CAS rejects an older leave time even when its HTTP request arrives last", async () => {
+    const { groupId, host, members } = await groupWithMembers(["Bea"]);
+    await call("POST", `/groups/${groupId}/tonight`, { token: host.token });
+    const [bea] = members;
+    const earlier = new Date(tonightWindow().endsAt.getTime() - 100 * 60_000);
+    const latest = new Date(tonightWindow().endsAt.getTime() - 60 * 60_000);
+    const first = await call("PUT", `/groups/${groupId}/tonight/me`, {
+      token: bea.token, headers: { "X-Leave-Expected-Revision": "0" },
+      body: { leaveBy: latest.toISOString() },
+    });
+    expect(first.status).toBe(200);
+    expect((await first.json()).tonight.participants.find((p: {memberId: string}) => p.memberId === bea.id))
+      .toMatchObject({ leaveBy: latest.toISOString(), leaveRevision: 1 });
+    const stale = await call("PUT", `/groups/${groupId}/tonight/me`, {
+      token: bea.token, headers: { "X-Leave-Expected-Revision": "0" },
+      body: { leaveBy: earlier.toISOString() },
+    });
+    expect(stale.status).toBe(412);
+    expect(await stale.json()).toMatchObject({ code: "STALE_LEAVE_REVISION" });
+    const stored = await getGroupDetailRecord(groupId, bea.token);
+    if (!stored) throw Error('missing group');
+    expect(stored.tonight.participants.find(p => p.memberId === bea.id))
+      .toMatchObject({ leaveBy: latest, leaveRevision: 1 });
+  });
+
+  it("legacy clients cannot overwrite a participant once the new CAS protocol has taken over", async () => {
+    const { groupId, host, members } = await groupWithMembers(["Bea"]);
+    await call("POST", `/groups/${groupId}/tonight`, { token: host.token });
+    const [bea] = members;
+    const base = new Date(tonightWindow().endsAt.getTime() - 90 * 60_000).toISOString();
+    const newer = new Date(tonightWindow().endsAt.getTime() - 60 * 60_000).toISOString();
+    expect((await call("PUT", `/groups/${groupId}/tonight/me`, {
+      token: bea.token, body: { leaveBy: base },
+    })).status).toBe(200);
+    const upgrade = await call("PUT", `/groups/${groupId}/tonight/me`, {
+      token: bea.token, headers: { "X-Leave-Expected-Revision": "0" }, body: { leaveBy: newer },
+    });
+    expect(upgrade.status).toBe(200);
+    expect((await call("PUT", `/groups/${groupId}/tonight/me`, {
+      token: bea.token, body: { leaveBy: base },
+    })).status).toBe(412);
+    const current = await getGroupDetailRecord(groupId, bea.token);
+    if (!current) throw Error('missing group');
+    expect(current.tonight.participants.find(p => p.memberId === bea.id))
+      .toMatchObject({ leaveBy: new Date(newer), leaveRevision: 1 });
+  });
+
+  it("concurrent client writes with the same expected revision allow only one commit", async () => {
+    const { groupId, host, members } = await groupWithMembers(["Bea"]);
+    await call("POST", `/groups/${groupId}/tonight`, { token: host.token });
+    const bea = members[0];
+    const times = [65, 70].map(minutes => new Date(tonightWindow().endsAt.getTime() - minutes * 60_000));
+    const replies = await Promise.all(times.map(leaveBy => call("PUT", `/groups/${groupId}/tonight/me`, {
+      token: bea.token,
+      headers: { "X-Leave-Expected-Revision": "0" },
+      body: { leaveBy: leaveBy.toISOString() },
+    })));
+    expect(replies.map(r => r.status).sort()).toEqual([200, 412]);
+    const current = await getGroupDetailRecord(groupId, bea.token);
+    if (!current) throw Error('missing group');
+    const participant = current.tonight.participants.find(p => p.memberId === bea.id);
+    expect(participant?.leaveRevision).toBe(1);
+    expect(times.map(t => t.getTime())).toContain(participant?.leaveBy?.getTime());
+  });
+
+  it("rejects malformed revision headers before any database mutation", async () => {
+    const { groupId, host, members } = await groupWithMembers(["Bea"]);
+    await call("POST", `/groups/${groupId}/tonight`, { token: host.token });
+    for (const bad of ['-1','01','abc','1.1','2147483647']) {
+      const reply = await call("PUT", `/groups/${groupId}/tonight/me`, {
+        token: members[0].token, headers: { "X-Leave-Expected-Revision": bad },
+        body: { leaveBy: null },
+      });
+      expect(reply.status).toBe(400);
+    }
+    const found = await getGroupDetailRecord(groupId, members[0].token);
+    if (!found) throw Error('missing group');
+    expect(found.tonight.participants).toEqual([]);
   });
 
   it("a member's new leave time silently updates the others' apps, not their own", async () => {

@@ -8,7 +8,7 @@
  * changes, night start/end and participation updates are serialized per group.
  */
 import { randomUUID } from "node:crypto";
-import { and, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, min, ne, or } from "drizzle-orm";
+import { and, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, min, ne, or, sql } from "drizzle-orm";
 import {
   getDb,
   groupAlertDeliveriesTable,
@@ -68,6 +68,7 @@ export type GroupDetail = {
       memberId: string;
       displayName: string;
       leaveBy: Date | null;
+      leaveRevision: number;
     }>;
   };
 };
@@ -246,6 +247,7 @@ async function loadDetail(
         memberId: groupNightParticipantsTable.memberId,
         displayName: groupMembersTable.displayName,
         leaveBy: groupNightParticipantsTable.leaveBy,
+        leaveRevision: groupNightParticipantsTable.leaveRevision,
       })
       .from(groupNightParticipantsTable)
       .innerJoin(
@@ -258,6 +260,7 @@ async function loadDetail(
         memberId: row.memberId,
         displayName: row.displayName,
         leaveBy: row.leaveBy,
+        leaveRevision: row.leaveRevision,
       }))
       .sort((a, b) => {
         if (a.leaveBy && b.leaveBy) {
@@ -761,10 +764,12 @@ export async function setGroupTonightParticipationRecord(
   memberToken: string,
   leaveBy: Date | null | undefined,
   now = new Date(),
+  expectedRevision?: number,
 ): Promise<
   | { kind: "not-found" }
   | { kind: "inactive" }
   | { kind: "invalid-leave-by" }
+  | { kind: "stale" }
   | { kind: "ok"; group: GroupDetail }
 > {
   return getDb().transaction(async (tx) => {
@@ -776,24 +781,39 @@ export async function setGroupTonightParticipationRecord(
       return { kind: "invalid-leave-by" as const };
     }
     const updatedAt = new Date();
-    const set: Partial<typeof groupNightParticipantsTable.$inferInsert> = {
+    const participant = groupNightParticipantsTable;
+    if (expectedRevision !== undefined && expectedRevision > 0) {
+      const [existing] = await tx.select({ leaveRevision: participant.leaveRevision })
+        .from(participant)
+        .where(and(eq(participant.nightId, night.id), eq(participant.memberId, auth.member.id)))
+        .limit(1);
+      if (!existing) return { kind: "stale" as const };
+    }
+    // PostgreSQL handles both missing-row INSERT and existing-row UPDATE
+    // atomically: a conflicting stale writer updates ZERO rows. No separate
+    // SELECT then UPDATE race is possible between Lambda instances.
+    const set = {
       updatedAt,
+      ...(leaveBy !== undefined ? { leaveBy } : {}),
+      ...(expectedRevision !== undefined ? { leaveRevision: sql`${participant.leaveRevision} + 1` } : {}),
     };
-    if (leaveBy !== undefined) set.leaveBy = leaveBy;
-    await tx
-      .insert(groupNightParticipantsTable)
+    const updated = await tx
+      .insert(participant)
       .values({
         nightId: night.id,
         memberId: auth.member.id,
         leaveBy: leaveBy ?? null,
+        leaveRevision: expectedRevision === undefined ? 0 : 1,
       })
       .onConflictDoUpdate({
-        target: [
-          groupNightParticipantsTable.nightId,
-          groupNightParticipantsTable.memberId,
-        ],
+        target: [participant.nightId, participant.memberId],
         set,
-      });
+        setWhere: expectedRevision === undefined
+          ? eq(participant.leaveRevision, 0) // block legacy after CAS begins
+          : eq(participant.leaveRevision, expectedRevision),
+      })
+      .returning({ memberId: participant.memberId });
+    if (updated.length === 0) return { kind: "stale" as const };
     return {
       kind: "ok" as const,
       group: await loadDetail(tx, groupId, auth.member.id),

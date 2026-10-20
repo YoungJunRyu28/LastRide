@@ -41,7 +41,7 @@ This records the 58 findings from the static source audit. **Fixed** means the c
 | LR-035 | Straight-line walking ignores geography/barriers | **Partial** | iOS and Android no longer draw an invented straight-line walking route; missing real street routing and ground-truth ETAs still block release |
 | LR-036 | iOS vs Android latest train results disagree | **Pending P0** | Provider parity corpus |
 | LR-037 | Changes under 60 sec not re-sent | **Decision pending** | Product spec + threshold tests |
-| LR-038 | Offline background leave change may never retry | **Partial** | Durable per-group leave-time outbox + serialized foreground/background delivery, foreground and 30s active-app replay, opt-out and expired-night cleanup tested; physical devices and OS suspension/network transitions remain unverified |
+| LR-038 | Offline background leave change may never retry | **Partial** | Durable outbox/replay now pins each queued update to server-owned per-participant CAS revision; stale arrivals rejected, newer server state refreshed. Pending migration + signed-device cross-runtime/offline QA; OS cannot guarantee background wakeup |
 | LR-039 | OS clears reminder but cached signature remains | **Partial** | Native pending local-notification IDs and AlarmKit scheduled UUIDs now reconciled with persisted future receipts, including silent companion mismatch and lost receipts; native iOS physical-device delivery/Focus recovery still pending |
 | LR-040 | Android selected notification tone fallback | **Pending** | Channel/tone parity |
 | LR-041 | Doze and Focus delivery OS limits | **Platform limit** | Document realistic guarantees and E2E |
@@ -56,7 +56,7 @@ This records the 58 findings from the static source audit. **Fixed** means the c
 | LR-050 | Hosting after Premium expiry | **Policy decision** | Choose lifecycle entitlement policy |
 | LR-051 | Native/OTA version compatibility and rollback | **Pending** | EAS staged rollback drill |
 | LR-052 | Group delivery metrics/ledger absent | **Partial** | Durable ledger implemented; add aggregate alerts/metrics/dashboard and SLO |
-| LR-053 | Old mobile binary vs new backend version skew | **Pending** | Compatibility fixtures and minimum versions |
+| LR-053 | Old mobile binary vs new backend version skew | **Partial** | Legacy leave updates remain possible only while participant revision is zero; after the first versioned update, old clients receive 412 and cannot overwrite the newer value. Stage database-first rollout, test old binaries and minimum-version UX before deploy |
 | LR-054 | Lost response creates duplicate group/membership | **Partial, pending CI** | Both group-create and group-join now use persistent 256-bit client operation/member keys; verify signed-device crash recovery and remaining mutations |
 | LR-055 | No two-device group/notification CI E2E | **Pending** | Real TestFlight/Play testing matrix |
 | LR-056 | Android premium home widget absent | **Pending** | Jetpack Compose native widget or feature disclosure |

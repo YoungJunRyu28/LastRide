@@ -3,6 +3,7 @@ import {
   boolean,
   date,
   index,
+  integer,
   pgEnum,
   pgTable,
   primaryKey,
@@ -149,6 +150,10 @@ export const groupNightParticipantsTable = pgTable(
     // persisted for group members, and it is deleted when the night ends.
     // Never add location, station, route, or destination.
     leaveBy: timestamp("leave_by", { withTimezone: true }),
+    // Server-authoritative compare-and-swap version. Version 0 is legacy;
+    // the first versioned writer switches this participant to CAS permanently
+    // for this group night. Old clients cannot overwrite a versioned update.
+    leaveRevision: integer("leave_revision").notNull().default(0),
     // The leave-by value the "time to leave" push was sent for. A later
     // leave-by re-arms the alert; an earlier or equal one does not.
     leaveAlertSentFor: timestamp("leave_alert_sent_for", { withTimezone: true }),

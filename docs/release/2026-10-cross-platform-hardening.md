@@ -244,3 +244,46 @@ LastRide. Multiple independent JS runtimes and devices cannot guarantee
 strict global request ordering without a server-side version/sequence
 protocol. Further server-side conflict resolution and physical-device chaos
 QA remain release work.
+
+## Group leave-time ordering across server workers and iOS/Android runtimes (2026-10-20)
+
+The durable client outbox alone did **not** guarantee correct ordering:
+parallel network requests from two React Native/Expo TaskManager runtimes or
+multiple devices could arrive out of order. An old queued leave time might
+then overwrite a newer one and cause misleading group departure alerts.
+
+**Implemented:** database migration `0014_cooing_monster_badoon.sql`
+adds `group_night_participants.leave_revision INTEGER NOT NULL DEFAULT 0`.
+Version `0` identifies pre-protocol (legacy) participation rows. The API now
+includes each participant's `leaveRevision` in `GroupDetail` and optionally
+accepts `X-Leave-Expected-Revision` on `PUT /groups/:groupId/tonight/me`.
+A new client snapshots the server-observed revision **at the moment its desired
+leave time is queued** and persists that precondition in AsyncStorage. The
+server uses one PostgreSQL `INSERT ... ON CONFLICT DO UPDATE ... WHERE
+leave_revision = expected` statement to atomically accept an unmodified
+version and increment it; conflicting writes update zero rows and receive
+HTTP **412** with `STALE_LEAVE_REVISION`. Client retries never refresh an old
+queued request's precondition to sneak an obsolete time through. A 412 drops
+that old operation and attempts to refresh the latest server participant
+state without opting out; fresh subsequent changes use the new revision.
+This covers `null` leave-time clears as well.
+
+**Compatibility:** older clients that omit the new header may still write an
+untouched revision-0 row. Once any CAS-aware client updates that group member
+for tonight, legacy unversioned PUTs receive 412 instead of overwriting the
+new version. This is intentional fail-closed behavior but may affect older
+clients; it requires release-stage adoption metrics, upgrade guidance and
+rollback planning. Old apps are not capable of recognizing the new machine
+error, and should not be promised a seamless experience. Versioning is
+night-scoped and resets on a newly created night. The schema migration must be
+applied before deploying code that reads/writes `leave_revision`; never deploy
+the new API to an unmigrated database.
+
+**Evidence and limits:** PostgreSQL-backed HTTP tests exercise stale arrival,
+legacy downgrade, competing first writes and malformed revision headers.
+Mobile tests cover pinned offline CAS versions, conflict refresh, next-write
+revision increment and corrupt storage fail-closed behavior. The server is the
+serialization authority for one member's record; this does not decide which
+human/device has the *right* departure plan. Cross-device identity arbitration,
+alert-delivery SLOs and two-device real iPhone/Android chaos testing are still
+release blockers. No production database migration has been performed.

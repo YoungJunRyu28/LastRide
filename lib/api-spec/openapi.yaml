@@ -732,6 +732,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/GroupId"
         - $ref: "#/components/parameters/MemberToken"
+        - $ref: "#/components/parameters/LeaveExpectedRevision"
       requestBody:
         required: true
         content:
@@ -746,6 +747,7 @@ paths:
         "400": { description: Leave-by time is outside tonight's window }
         "404": { description: Group not found or no longer a member }
         "409": { description: The group is not active tonight }
+        "412": { description: "STALE_LEAVE_REVISION: a newer value already won; refresh before any new update" }
     delete:
       operationId: leaveGroupTonight
       tags: [groups]
@@ -798,6 +800,12 @@ components:
       required: false
       description: Device-generated 256-bit hexadecimal creation capability, retained across failed POST retries
       schema: { type: string, pattern: "^[a-fA-F0-9]{64}$", minLength: 64, maxLength: 64 }
+    LeaveExpectedRevision:
+      name: X-Leave-Expected-Revision
+      in: header
+      required: false
+      description: Current participant leaveRevision (or 0 if not yet participating). If omitted, only unversioned legacy rows may be updated. An out-of-order version is rejected with 412 STALE_LEAVE_REVISION.
+      schema: { type: integer, minimum: 0, maximum: 2147483646 }
     RevenueCatAppUserId:
       name: X-RevenueCat-App-User-Id
       in: header
@@ -960,7 +968,8 @@ components:
         memberId: { type: string }
         displayName: { type: string }
         leaveBy: { type: [string, "null"], format: date-time }
-      required: [memberId, displayName, leaveBy]
+        leaveRevision: { type: integer, minimum: 0, description: Server-owned CAS revision for this member tonight }
+      required: [memberId, displayName, leaveBy, leaveRevision]
     GroupTonight:
       type: object
       properties:
