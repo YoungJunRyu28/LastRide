@@ -88,6 +88,9 @@ fi
 # independently reviewed, SHA-pinned sandbox QA and old-client rollout plan.
 # Fail BEFORE reading AWS secrets, touching the live database or Lambda.
 node scripts/check-premium-rollout.mjs "$STAGE"
+# Five-minute all-day fallback can exceed a scale-to-zero DB free tier.
+# The release owner must first review CU-hours and enable billing alerts.
+node scripts/check-alert-recovery-budget.mjs "$STAGE"
 
 # Train times are served from the ODPT timetable snapshot bundled into the
 # Lambda package (git-ignored provider data). Check it before anything mutates;

@@ -291,11 +291,12 @@ Resources:
           Type: ScheduleV2
           Properties:
             OmitName: true
-            # Fallback only: alerts are sent by the one-time leave-alert schedule. This
-            # catches one a missed update left behind (alerts stay valid for 10 minutes),
-            # every 30 minutes, 20:00-01:59 JST, so the database can sleep in between.
-            # (Business departure alerts would need a tighter rate when Business returns.)
-            ScheduleExpression: "cron(*/30 20-23,0-1 * * ? *)"
+            # Safety watchdog: a missed one-time Scheduler write MUST be retried
+            # before group leave alerts expire after 10 minutes. Run every 5
+            # minutes across the whole JST service day, including 04:00-08:00.
+            # Reliability has a compute cost: this may exceed Neon free-tier CU
+            # hours. Capacity/billing alarms are a pre-release requirement.
+            ScheduleExpression: "cron(*/5 * * * ? *)"
             ScheduleExpressionTimezone: Asia/Tokyo
             Input: '{"task":"departureAlerts"}'
             FlexibleTimeWindow:
@@ -310,10 +311,12 @@ Resources:
           Type: ScheduleV2
           Properties:
             OmitName: true
-            # Once a day. It only checks Business push receipts, so it's off unless
-            # Business is enabled (EnableBusiness); group pushes don't need it.
-            ScheduleExpression: "cron(10 8 * * ? *)"
-            State: !If [BusinessEnabled, ENABLED, DISABLED]
+            # Group Expo push receipts MUST run without Business enabled.
+            # Tickets become available ~15 minutes after acceptance. Check
+            # throughout normal last-train hours, before the nightly 08:05 JST
+            # group-night cleanup deletes the per-recipient delivery ledger.
+            ScheduleExpression: "cron(*/15 18-23,0-7 * * ? *)"
+            State: ENABLED
             ScheduleExpressionTimezone: Asia/Tokyo
             Input: '{"task":"pushReceipts"}'
             FlexibleTimeWindow:
@@ -324,6 +327,24 @@ Resources:
             DeadLetterConfig:
               Type: SQS
               QueueLogicalId: PushReceiptsScheduleDlq
+        PushReceiptsFinal:
+          Type: ScheduleV2
+          Properties:
+            OmitName: true
+            # Before 08:05 group-night deletion: catch the final 07:45 receipt
+            # batch. The last ~15 minutes' tickets may still be unavailable;
+            # this requires a separate retention-policy decision to guarantee.
+            ScheduleExpression: "cron(0 8 * * ? *)"
+            ScheduleExpressionTimezone: Asia/Tokyo
+            Input: '{"task":"pushReceipts"}'
+            FlexibleTimeWindow:
+              Mode: "OFF"
+            RetryPolicy:
+              MaximumRetryAttempts: 3
+              MaximumEventAgeInSeconds: 300
+            DeadLetterConfig:
+              Type: SQS
+              QueueLogicalId: PushReceiptsFinalScheduleDlq
 
   ApiErrorsAlarm:
     Type: AWS::CloudWatch::Alarm

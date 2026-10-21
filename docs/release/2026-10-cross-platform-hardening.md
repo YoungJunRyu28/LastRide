@@ -287,3 +287,63 @@ serialization authority for one member's record; this does not decide which
 human/device has the *right* departure plan. Cross-device identity arbitration,
 alert-delivery SLOs and two-device real iPhone/Android chaos testing are still
 release blockers. No production database migration has been performed.
+
+## Alert scheduler disaster recovery and push receipts (2026-10-21)
+
+**P1 schedule-loss defect:** the EventBridge one-time schedule occasionally
+fails to be updated (permissions, AWS outage, throttling, Lambda crash). The
+old recovery `DepartureAlerts` cron ran once per **30 minutes** but the server
+expires a pending group leave-time reminder **10 minutes** after its due time.
+An alert due right after the previous fallback run could therefore *never*
+be delivered. Additionally, the old backup ran only 20:00–01:59 JST, even
+though a group night covers the Japan rail service day through 08:00 JST.
+
+The SAM fallback now runs **every 5 minutes, 24 hours a day** and still uses
+its own SQS dead-letter queue and EventBridge retry policy. The 10-minute
+alert grace leaves a scheduling margin in normal operation (not a hard
+end-to-end delivery SLO, since EventBridge/Lambda/DB/Expo can be delayed).
+Event-driven one-time alert scheduling remains the primary path and still
+serializes updates through a PostgreSQL advisory lock. In the scheduled Lambda,
+`Promise.allSettled` now allows group alert dispatch and Scheduler re-arming
+to proceed even if the independent Business alert dispatcher throws; failures
+are still rethrown after group work to activate Lambda retries and alarms.
+
+**Operational cost gate:** this is a **correctness-over-free-tier-cost** change:
+288 fallback invocations/day and database activity every five minutes can
+keep Neon compute awake continuously, potentially far exceeding the project's
+previous **100 CU-hours/month** free-tier assumption. Before production:
+measure expected CU-hours and AWS costs, set Neon and AWS budget alarms,
+provision a paid tier if necessary, and consider a separately tested
+*low-cost* recovery architecture that provides equal alert guarantees without
+continuous database polls. Production deployment requires
+`LASTRIDE_ALERT_RECOVERY_COST_APPROVED=yes` only **after** an actual cost and
+budget-alert review; staging remains usable without it. The flag is an
+attestation, not a billing-control mechanism. Never loosen this watchdog back to >10 minutes
+without changing the expiry/safety model and validating the resulting UX.
+
+**Receipts:** `PushReceipts` was configured as DISABLED whenever `EnableBusiness`
+was false, even though it processes *consumer group* Expo push receipts too.
+Now group receipts run every 15 minutes during 18:00–07:59 JST even with
+Business disabled, plus a separate 08:00 run before the 08:05 nightly privacy
+purge. Distinct SAM ScheduleV2 events get distinct SQS dead-letter queues.
+The group receipt handler continues if Business receipt processing fails;
+failure status is still returned to trigger EventBridge retry/CloudWatch
+alerts. This reveals unregistered push tokens and other Expo receipt failures
+before future alerts are sent to the same device.
+
+**Known limitation:** group receipt rows cascade away when the night is purged
+at 08:05 JST. Expo receipts may not yet be available for pushes delivered in
+the last ~15 minutes of the night; an 08:00 receipt check does not make them
+retroactively available. Do NOT claim 100% APNs/FCM receipt reconciliation
+without redesigning privacy-preserving short-term delivery receipt retention
+or the nightly deletion window, and securing a retention-policy decision.
+Receipt acceptance/Expo confirmation still does **not** prove iOS Focus,
+APNs, or Android FCM displayed the notification to a user.
+
+**Tests:** `scripts/verify-alert-schedules.test.mjs` checks that fallback
+frequency stays safely inside the grace window, covers all JST hours, and
+receipt checks remain active independently of Business and precede cleanup.
+`artifacts/api-server/tests/scheduledReliability.test.ts` failure-injects
+separate Business and group worker failures and verifies schedule re-arming,
+receipt checks, and error propagation. Native signed-device chaos tests and
+live AWS Scheduler/DLQ alarm drills remain release blockers.

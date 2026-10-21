@@ -32,9 +32,9 @@ This records the 58 findings from the static source audit. **Fixed** means the c
 | LR-026 | iPhone-only copy appears on Android | **Partial** | Reset screen neutralized; full locale audit |
 | LR-027 | Group invite landing page shows only App Store | **Partial** | Platform-aware links implemented; publish only after verified App Store / Play / Galaxy listings are live |
 | LR-028 | Generic group API error messages | **Pending** | Localized actionable error states |
-| LR-029 | Scheduling error suppressed; fallback misses alerts | **Pending P1** | Reliable persisted due job with retry/replay |
+| LR-029 | Scheduling error suppressed; fallback misses alerts | **Partial P1** | Backup EventBridge scan every 5 min instead of 30 (alert grace 10 min); Business worker failure no longer prevents re-arming group Scheduler. Signed device delivery, AWS schedule failure alarms and Neon CU cost validation still pending |
 | LR-030 | Concurrent EventBridge due writers race | **Implemented, pending CI** | Serialize read/modify/write with transaction-scoped PostgreSQL advisory lock and same-client lookups |
-| LR-031 | Group Expo push receipts unreconciled | **Implemented, pending CI** | Group Expo receipts reconciled; verify APNs/FCM delivery and receipt retention |
+| LR-031 | Group Expo push receipts unreconciled | **Partial** | Expo receipts scheduled independently of Business (every 15 min evening/night and at 08:00 JST). 08:05 cascade purge can still preempt late receipts: retention policy + real APNs/FCM evidence pending |
 | LR-032 | Motionless background task not guaranteed by OS | **Pending** | Local alarms and foreground recovery |
 | LR-033 | One destination request failure discards good routes | **Fixed in source** | Provider failure chaos/integration test |
 | LR-034 | Shared-IP route lookups exhaust limiter | **Pending** | Per-client budget and multicaller simulations |

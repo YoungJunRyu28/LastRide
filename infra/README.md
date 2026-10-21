@@ -221,3 +221,29 @@ The script verifies these before accessing AWS secrets/database. A staging
 deploy does not require the production approval. Approval flags assert a
 human-reviewed condition: they do not make RevenueCat migration automatically
 safe and must never be populated just to force a deployment.
+
+## Departure alert recovery and receipt-processing operating costs
+
+`DepartureAlerts` has a **five-minute, all-day EventBridge backup** because
+LastRide's primary one-time group alarm Scheduler is best-effort and late
+consumer group alerts expire after ten minutes. A 30-minute backup can miss
+an entire train departure and must not be restored without equivalent fault
+recovery. The backup invokes the Postgres-backed scheduled Lambda **288 times
+per day** even when there are no groups. This can exceed the historical Neon
+100 CU-hour/month free tier by keeping the DB warm. Before production, check
+actual Neon CU usage, AWS Lambda/EventBridge cost, configure account budget
+alerts, and fund a suitable tier. The deploy script now also requires the
+explicit `LASTRIDE_ALERT_RECOVERY_COST_APPROVED=yes` release-owner attestation
+**before accessing AWS secrets or the production database**. Staging is exempt.
+The attestation does not itself configure a budget or cap cloud spending. The project prioritizes *correctness* over
+assuming a free backend. No live billing/resources were changed here.
+
+`PushReceipts` runs every 15 minutes during Japan evening/night independently
+of `EnableBusiness`, with a final 08:00 JST check before the 08:05 privacy
+purge. Expo group delivery receipts may take ~15 minutes to become available:
+those for the final part of a group night can be lost when the night is
+deleted. Track the unverified fraction and resolve retention/privacy policy
+before claiming complete push delivery observability. Distinct schedules have
+independent SQS DLQs. Test EventBridge Scheduler permissions and all DLQ alarm
+routes on staging, and verify that device-token revocation works against
+real APNs/FCM sandbox receipts.
