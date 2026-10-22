@@ -205,6 +205,16 @@ export type LastTrainRoute = TrainRoute & {
   earlier?: TrainRoute[];
 };
 
+/**
+ * The nearby station lookup does not return a verified pedestrian route.
+ */
+export type StationWalkingSource = typeof StationWalkingSource[keyof typeof StationWalkingSource];
+
+
+export const StationWalkingSource = {
+  estimated: 'estimated',
+} as const;
+
 export interface Station {
   id: string;
   /** Romanized name for display in English */
@@ -214,7 +224,10 @@ export interface Station {
   longitude: number;
   region?: string;
   walkingMeters?: number;
+  /** Approximate walking time based on straight-line distance and a constant multiplier. */
   walkingMinutes?: number;
+  /** The nearby station lookup does not return a verified pedestrian route. */
+  walkingSource?: StationWalkingSource;
 }
 
 export type UsageReportToday = {[key: string]: number};
@@ -260,9 +273,21 @@ export interface Address {
   longitude: number;
 }
 
+/**
+ * This endpoint does not consult a pedestrian routing provider; never treat as verified.
+ */
+export type WalkRouteSource = typeof WalkRouteSource[keyof typeof WalkRouteSource];
+
+
+export const WalkRouteSource = {
+  estimated: 'estimated',
+} as const;
+
 export interface WalkRoute {
   distanceMeters: number;
   minutes: number;
+  /** This endpoint does not consult a pedestrian routing provider; never treat as verified. */
+  source: WalkRouteSource;
 }
 
 export interface TaxiEstimate {

@@ -258,7 +258,8 @@ export const GetNearbyStationsResponseItem = zod.object({
   "longitude": zod.number(),
   "region": zod.string().optional(),
   "walkingMeters": zod.number().optional(),
-  "walkingMinutes": zod.number().optional()
+  "walkingMinutes": zod.number().optional().describe('Approximate walking time based on straight-line distance and a constant multiplier.'),
+  "walkingSource": zod.enum(['estimated']).optional().describe('The nearby station lookup does not return a verified pedestrian route.')
 })
 export const GetNearbyStationsResponse = zod.array(GetNearbyStationsResponseItem)
 
@@ -282,7 +283,8 @@ export const SearchStationsResponseItem = zod.object({
   "longitude": zod.number(),
   "region": zod.string().optional(),
   "walkingMeters": zod.number().optional(),
-  "walkingMinutes": zod.number().optional()
+  "walkingMinutes": zod.number().optional().describe('Approximate walking time based on straight-line distance and a constant multiplier.'),
+  "walkingSource": zod.enum(['estimated']).optional().describe('The nearby station lookup does not return a verified pedestrian route.')
 })
 export const SearchStationsResponse = zod.array(SearchStationsResponseItem)
 
@@ -322,8 +324,8 @@ export const GetTaxiEstimateResponse = zod.object({
 
 
 /**
- * Walking distance and time along the pedestrian network, at the given pace.
- * @summary Walking route
+ * Rough walking estimate (straight-line distance multiplied by 1.3), NOT a verified pedestrian route. May miss rivers, entrances, stairs and detours. Client must identify as estimated and verify with a street-routing provider.
+ * @summary Approximate walking time (not pedestrian routing)
  */
 export const getWalkRouteQueryFromLatMin = -90;
 export const getWalkRouteQueryFromLatMax = 90;
@@ -349,7 +351,8 @@ export const GetWalkRouteQueryParams = zod.object({
 
 export const GetWalkRouteResponse = zod.object({
   "distanceMeters": zod.number(),
-  "minutes": zod.number()
+  "minutes": zod.number(),
+  "source": zod.enum(['estimated']).describe('This endpoint does not consult a pedestrian routing provider; never treat as verified.')
 })
 
 

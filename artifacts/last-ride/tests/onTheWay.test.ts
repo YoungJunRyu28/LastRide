@@ -23,6 +23,7 @@ function night(walkingMinutes = 8, station = shibuya, computedAt = jst(23, 0)): 
   const base = {
     station,
     walkingMinutes,
+    walkingSource: 'routed' as const, // This fixture models a real pedestrian route.
     distanceMeters: 600,
     lastTrain: last,
     leaveByMs,

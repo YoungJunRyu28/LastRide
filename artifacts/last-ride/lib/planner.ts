@@ -5,8 +5,8 @@
  */
 import { getTrainDisruptions } from '@workspace/api-client-react';
 import type { HomeAddress } from '@/lib/settings';
-import { matchingDisruptionLines, recommendedLeaveTime, type LeaveMargin, recommendedSafetyMarginMinutes, riskAdjustedLeaveTime } from '@/lib/reliability';
-import { distanceBetween, findNearbyStations, LocationError, walkingRoute, type Coordinates, type NearbyStation, type StationOption, type WalkingSpeed } from '@/lib/stations';
+import { matchingDisruptionLines, recommendedLeaveTime, type LeaveMargin, recommendedSafetyMarginMinutes, walkingUncertaintyMarginMinutes, riskAdjustedLeaveTime } from '@/lib/reliability';
+import { distanceBetween, findNearbyStations, LocationError, walkingRoute, type Coordinates, type NearbyStation, type StationOption, type WalkingRoute, type WalkingSpeed } from '@/lib/stations';
 import { MINUTE_MS, serviceDayStart } from '@/lib/time';
 import { getLastTrain, trainsBefore, type TrainTime } from '@/lib/timetable';
 import { hasPosition, resolveAddress, resolveStation } from '@/lib/storedPlaces';
@@ -39,6 +39,8 @@ export type StationChoice = {
   station: StationOption;
   walkingMinutes: number;
   distanceMeters: number;
+  /** Optional for older saved plans; unknown walking routes are treated as estimates. */
+  walkingSource?: WalkingRoute['source'];
   lastTrain: TrainTime;
   /** Absolute/latest practical time to start walking, epoch ms. */
   leaveByMs: number;
@@ -260,11 +262,12 @@ function assemble(options: StationChoice[], pinned: StationOption | null, coordi
   const auto = autoPick(sorted);
   const pinnedChoice = pinned ? sorted.find((option) => sameStation(option.station, pinned)) : undefined;
   const chosen = pinnedChoice ?? auto;
-  const { station, walkingMinutes, distanceMeters, lastTrain, leaveByMs, recommendedLeaveByMs, safetyMarginMinutes, disruptionLines, destination, walkHomeMinutes, arriveHomeMs } = chosen;
+  const { station, walkingMinutes, distanceMeters, walkingSource, lastTrain, leaveByMs, recommendedLeaveByMs, safetyMarginMinutes, disruptionLines, destination, walkHomeMinutes, arriveHomeMs } = chosen;
   return {
     station,
     walkingMinutes,
     distanceMeters,
+    walkingSource,
     lastTrain,
     leaveByMs,
     recommendedLeaveByMs,
@@ -281,9 +284,21 @@ function assemble(options: StationChoice[], pinned: StationOption | null, coordi
   };
 }
 
+/** Always reserve extra time when we could not verify a pedestrian route.
+ * A factor-of-1.3 approximation is neither a lower nor upper travel-time bound.
+ * This deliberate cushion complements the user's preferred 余裕; it cannot
+ * guarantee an accessible route and must be labelled as an estimate in UI. */
+export function planSafetyMarginMinutes(
+  choice: Pick<StationChoice, 'walkingMinutes' | 'walkingSource' | 'lastTrain'>,
+  leaveMargin: LeaveMargin,
+): number {
+  return recommendedSafetyMarginMinutes(choice, leaveMargin) +
+    walkingUncertaintyMarginMinutes(choice.walkingMinutes, choice.walkingSource);
+}
+
 /** The same choice with a new 余裕 (no lookups: only the recommended leave time moves). */
 export function withMargin<T extends StationChoice>(choice: T, leaveMargin: LeaveMargin): T {
-  const safetyMarginMinutes = recommendedSafetyMarginMinutes(choice, leaveMargin);
+  const safetyMarginMinutes = planSafetyMarginMinutes(choice, leaveMargin);
   return { ...choice, safetyMarginMinutes, recommendedLeaveByMs: choice.leaveByMs - safetyMarginMinutes * MINUTE_MS };
 }
 
@@ -298,11 +313,12 @@ export function replanMargin(plan: NightPlan, leaveMargin: LeaveMargin): NightPl
 
 /** Switches an existing plan to `pinned` (or back to the automatic pick with null) without new lookups. */
 export function repick(plan: NightPlan, pinned: StationOption | null): NightPlan {
-  const { station, walkingMinutes, distanceMeters, lastTrain, leaveByMs, recommendedLeaveByMs, safetyMarginMinutes, disruptionLines, destination, walkHomeMinutes, arriveHomeMs } = plan;
+  const { station, walkingMinutes, distanceMeters, walkingSource, lastTrain, leaveByMs, recommendedLeaveByMs, safetyMarginMinutes, disruptionLines, destination, walkHomeMinutes, arriveHomeMs } = plan;
   const current: StationChoice = {
     station,
     walkingMinutes,
     distanceMeters,
+    walkingSource,
     lastTrain,
     leaveByMs,
     recommendedLeaveByMs,
@@ -355,9 +371,11 @@ async function evaluateCandidates(
               walkHomeMinutes: destination.walkHomeMinutes,
               arriveHomeMs: lastTrain.arrivesAt === undefined ? undefined : lastTrain.arrivesAt + (destination.walkHomeMinutes ?? 0) * MINUTE_MS,
               leaveByMs,
-              ...walk,
+              walkingMinutes: walk.walkingMinutes,
+              distanceMeters: walk.distanceMeters,
+              walkingSource: walk.source,
             };
-            const safetyMarginMinutes = recommendedSafetyMarginMinutes(base, leaveMargin);
+            const safetyMarginMinutes = planSafetyMarginMinutes(base, leaveMargin);
             return {
               ...base,
               safetyMarginMinutes,

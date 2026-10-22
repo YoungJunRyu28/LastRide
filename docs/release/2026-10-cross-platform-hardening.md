@@ -418,3 +418,63 @@ at the short retention deadline. PostgreSQL integration regression exercises
 malformed HTTP-200 response, persistence beyond group-night deletion and
 successful later receipt reconciliation; unit tests validate terminal state
 and top-level envelope parsing.
+
+## Route confidence in last-train departure planning (2026-10-22)
+
+**P0 risk LR-035:** `GET /walk`, Android/ODPT nearby-station walking minutes,
+and fallback paths used a **straight-line distance × 1.3** as if it were
+street-verified pedestrian routing. These can be dangerously wrong around
+rail yards, rivers, overpasses, closed passages, stair-only accesses and
+complex station entrances. Three minutes of station-entry time alone does not
+bound these errors. Earlier UI did not distinguish a routed MapKit walk from
+the heuristic in its last-train countdown/reminders.
+
+**Fix in PR #41:** Walking data now carries a provenance distinction:
+`source: 'routed'` for a valid MapKit pedestrian-route result (or the
+non-production OSM foot-routing tool), versus `source: 'estimated'` for every
+LastRide server walking response, ODPT-nearby walking time and geometric
+fallback. The OpenAPI `/walk` endpoint explicitly advertises only
+`estimated`, and the nearby-station response includes
+`walkingSource: estimated`; generated clients are updated. Native MapKit
+results with non-finite/negative ETA or distance are not promoted to routed.
+This provenance is carried in planner station choices, alternatives, pinned
+stations and margin updates; unknown older stored plans are deliberately
+treated as **estimated**, not trusted as routed.
+
+**Departure effect:** Besides the user's selected 余裕 margin, an unverified
+walk reserves an **extra** 3–15 minutes (ceil(35% of the approximated walking
+minutes), with a 3-minute floor and 15-minute cap). Existing transfer and
+long-walk margins remain additive. This is a cautious product heuristic,
+**not** an empirically calibrated confidence interval or proof a train can be
+reached. The train departure time and theoretical walk ETA are unchanged;
+only the **recommended** departure / notifications move earlier. Real MapKit
+street routes retain the existing margin behavior. Nightly cached plans
+written before this change are retained offline, but their recommended
+reminder is shifted earlier and their provenance shown as unknown/estimated;
+newly saved versioned plans are not penalized again on reload.
+
+**Clear user disclosure:** On the ride screen, map walking-time label and
+alternative/pinned station rows, unverified walking minutes are annotated
+as a **walk estimate** (徒歩推定 / estimate). A visible bilingual warning says
+the route may require detours or different station entrances and is an
+accessible button opening real **walking directions to that station** in
+Apple Maps / Google Maps. The normal map tap still opens the complete
+public-transit journey home. This avoids inviting the user to confirm the
+walking segment through a transit-only map route.
+
+**Verification:** HTTP fixture checks for `/walk` and `/stations/nearby`
+assert `estimated` provenance; mobile planner tests cover explicit routed vs
+estimated margins, earlier leave-now alarms, zero user margin, capped long
+walks, old saved plans, station pin/repick and margin updates. Offline saved
+plan tests ensure a legacy plan stays available but warns/advances the leave
+recommendation without double-applying buffers on future loads.
+
+**Unresolved P0:** The Android production backend still lacks an actual
+licensed pedestrian routing provider; ±35% padding plus a 15-minute cap is
+not reliable for many geography constraints. No real ground-truth walking
+routes, closed entrances, pedestrian accessibility, operator timetables,
+real disruption coverage or end-to-end measured latest-train catch rate have
+been validated. Do **not** use this change as evidence LastRide can promise
+"you will catch the train" or as approval for public release. A proper
+pedestrian router with route geometry/ETA, field-verified station entrances
+and licensed JR/private railway timetable coverage are still required.

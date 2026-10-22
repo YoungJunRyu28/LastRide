@@ -28,7 +28,9 @@ export type StationOption = {
 
 export type WalkingSpeed = "relaxed" | "normal" | "fast";
 
-export type WalkingRoute = { distanceMeters: number; walkingMinutes: number };
+/** "routed" comes from pedestrian street routing; "estimated" is a
+ * straight-line multiplier with no sidewalk/bridge/entrance verification. */
+export type WalkingRoute = { distanceMeters: number; walkingMinutes: number; source: 'routed' | 'estimated' };
 
 export type NearbyStation = {
   station: StationOption;
@@ -143,7 +145,7 @@ export async function findNearbyStations(
       });
       const distinct = collapseByName(
         stations.map(
-          ({ id: _id, walkingMeters, walkingMinutes, ...station }) => ({
+          ({ id: _id, walkingMeters, walkingMinutes, walkingSource: _walkSource, ...station }) => ({
             station,
             straightMeters: distanceBetween(coordinates, station),
             walk:
@@ -151,6 +153,7 @@ export async function findNearbyStations(
                 ? {
                     distanceMeters: walkingMeters,
                     walkingMinutes: Math.max(1, walkingMinutes),
+                    source: 'estimated' as const, // ODPT server only estimates distance.
                   }
                 : undefined,
           }),
@@ -260,6 +263,7 @@ export async function walkingRoute(
       return {
         distanceMeters: route.distanceMeters,
         walkingMinutes: Math.max(1, route.minutes),
+        source: 'estimated', // The backend endpoint offers no pedestrian network routing.
       };
     } catch {
       // Fall through to the free services below.
@@ -275,6 +279,7 @@ export async function walkingRoute(
           distanceMeters / (BASE_WALKING_METERS_PER_MINUTE * multiplier),
         ),
       ),
+      source: 'estimated',
     };
   }
   try {
@@ -294,6 +299,7 @@ export async function walkingRoute(
             1,
             Math.ceil(first.duration / 60 / multiplier),
           ),
+          source: 'routed', // Only development enables this foot-routing provider.
         };
     }
   } catch {
@@ -307,5 +313,6 @@ export async function walkingRoute(
       1,
       Math.ceil(distanceMeters / (BASE_WALKING_METERS_PER_MINUTE * multiplier)),
     ),
+    source: 'estimated',
   };
 }

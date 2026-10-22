@@ -24,6 +24,7 @@ function night(): NightPlan {
   const base = {
     station: shibuya,
     walkingMinutes: 2,
+    walkingSource: 'routed' as const, // Explicit known path for fixed phase clock cases.
     distanceMeters: 150,
     lastTrain: last,
     leaveByMs,

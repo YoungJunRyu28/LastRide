@@ -76,8 +76,8 @@ export default function DepartureStationScreen() {
                 title={name(option.station)}
                 subtitle={
                   ja
-                    ? `徒歩${option.walkingMinutes}分 · 終電 ${new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(option.lastTrain.departsAt))}`
-                    : `${option.walkingMinutes} min walk · last ${new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(option.lastTrain.departsAt))}`
+                    ? `徒歩${option.walkingMinutes}分${option.walkingSource === 'routed' ? '' : '（推定）'} · 終電 ${new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(option.lastTrain.departsAt))}`
+                    : `${option.walkingMinutes} min walk${option.walkingSource === 'routed' ? '' : ' (estimate)'} · last ${new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(option.lastTrain.departsAt))}`
                 }
                 onPress={() => choose(option.station)}
               />

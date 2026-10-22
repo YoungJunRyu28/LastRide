@@ -17,7 +17,7 @@ export type StationLookup = (query: string) => Promise<StationOption[]>;
 
 const serverLookup: StationLookup = async (query) => {
   const stations = await searchStationsApi({ q: query });
-  return stations.map(({ id: _id, walkingMeters: _meters, walkingMinutes: _minutes, region, ...station }) => ({
+  return stations.map(({ id: _id, walkingMeters: _meters, walkingMinutes: _minutes, walkingSource: _walkSource, region, ...station }) => ({
     ...station,
     regionJa: region,
   }));

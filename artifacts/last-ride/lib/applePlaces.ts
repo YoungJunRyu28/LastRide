@@ -102,10 +102,14 @@ export async function appleWalkingRoute(
     { latitude: from.latitude, longitude: from.longitude },
     { latitude: to.latitude, longitude: to.longitude, stationNames: stationNames(to) },
   );
+  // Malformed native ETA must not be promoted to a street-routed result.
+  if (!Number.isFinite(route.seconds) || route.seconds < 0 ||
+      !Number.isFinite(route.distanceMeters) || route.distanceMeters < 0) return null;
   return {
     distanceMeters: route.distanceMeters,
     // Apple's times assume an ordinary pace.
     walkingMinutes: Math.max(1, Math.round(route.seconds / 60 / SPEED_MULTIPLIER[walkingSpeed])),
+    source: 'routed', // MapKit pedestrian street route, not straight-line approximation.
   };
 }
 

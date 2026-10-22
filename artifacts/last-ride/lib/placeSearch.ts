@@ -39,6 +39,7 @@ export async function searchStations(query: string): Promise<StationOption[]> {
             id: _id,
             walkingMeters: _meters,
             walkingMinutes: _minutes,
+            walkingSource: _walkSource,
             region,
             ...station
           }) => ({ ...station, regionJa: region }),

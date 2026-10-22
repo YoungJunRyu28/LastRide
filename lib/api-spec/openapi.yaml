@@ -259,8 +259,8 @@ paths:
     get:
       operationId: getWalkRoute
       tags: [walk]
-      summary: Walking route
-      description: Walking distance and time along the pedestrian network, at the given pace.
+      summary: Approximate walking time (not pedestrian routing)
+      description: Rough walking estimate (straight-line distance multiplied by 1.3), NOT a verified pedestrian route. May miss rivers, entrances, stairs and detours. Client must identify as estimated and verify with a street-routing provider.
       parameters:
         - $ref: "#/components/parameters/FromLat"
         - $ref: "#/components/parameters/FromLon"
@@ -272,7 +272,7 @@ paths:
           schema: { type: string, enum: [relaxed, normal, fast] }
       responses:
         "200":
-          description: Walking route
+          description: Heuristic walking estimate, no verified street/footpath geometry.
           content:
             application/json:
               schema:
@@ -1065,6 +1065,11 @@ components:
           type: number
         walkingMinutes:
           type: number
+          description: Approximate walking time based on straight-line distance and a constant multiplier.
+        walkingSource:
+          type: string
+          enum: [estimated]
+          description: The nearby station lookup does not return a verified pedestrian route.
       required: [id, name, nameJa, latitude, longitude]
     UsageReport:
       type: object
@@ -1123,7 +1128,11 @@ components:
           type: number
         minutes:
           type: number
-      required: [distanceMeters, minutes]
+        source:
+          type: string
+          enum: [estimated]
+          description: This endpoint does not consult a pedestrian routing provider; never treat as verified.
+      required: [distanceMeters, minutes, source]
     TaxiEstimate:
       type: object
       properties:

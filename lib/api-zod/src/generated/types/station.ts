@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { StationWalkingSource } from './stationWalkingSource';
 
 export interface Station {
   id: string;
@@ -15,5 +16,8 @@ export interface Station {
   longitude: number;
   region?: string;
   walkingMeters?: number;
+  /** Approximate walking time based on straight-line distance and a constant multiplier. */
   walkingMinutes?: number;
+  /** The nearby station lookup does not return a verified pedestrian route. */
+  walkingSource?: StationWalkingSource;
 }

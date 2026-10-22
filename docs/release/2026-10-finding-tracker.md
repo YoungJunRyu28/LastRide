@@ -38,7 +38,7 @@ This records the 58 findings from the static source audit. **Fixed** means the c
 | LR-032 | Motionless background task not guaranteed by OS | **Pending** | Local alarms and foreground recovery |
 | LR-033 | One destination request failure discards good routes | **Fixed in source** | Provider failure chaos/integration test |
 | LR-034 | Shared-IP route lookups exhaust limiter | **Pending** | Per-client budget and multicaller simulations |
-| LR-035 | Straight-line walking ignores geography/barriers | **Partial** | iOS and Android no longer draw an invented straight-line walking route; missing real street routing and ground-truth ETAs still block release |
+| LR-035 | Straight-line walking ignores geography/barriers | **Partial P0** | Server `/walk` and ODPT nearby return explicit `estimated` provenance; iOS MapKit returns `routed` only for valid native ETAs. Plans propagate provenance, recommend leaving 3–15 min earlier for unverified walks, label times as estimates and link to walking directions; saved legacy plans fail conservative. Actual pedestrian routing, barriers, accessible entrances and measured route corpus remain P0 release blockers |
 | LR-036 | iOS vs Android latest train results disagree | **Pending P0** | Provider parity corpus |
 | LR-037 | Changes under 60 sec not re-sent | **Decision pending** | Product spec + threshold tests |
 | LR-038 | Offline background leave change may never retry | **Partial** | Durable outbox/replay now pins each queued update to server-owned per-participant CAS revision; stale arrivals rejected, newer server state refreshed. Pending migration + signed-device cross-runtime/offline QA; OS cannot guarantee background wakeup |
