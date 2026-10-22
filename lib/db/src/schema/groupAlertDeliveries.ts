@@ -4,7 +4,8 @@ import { groupMembersTable, groupNightsTable } from "./groups";
 /**
  * One durable departure-alert delivery per recipient and exact leave-by time.
  * Group nights are erased at 08:00 JST; the CASCADE removes these delivery
- * rows (including any trip-derived timestamp) on the same privacy boundary.
+ * rows (including trip-derived timestamps) on the same privacy boundary.
+ * The separate two-hour receipt-only journal contains no trip information.
  */
 export const groupAlertDeliveriesTable = pgTable(
   "group_alert_deliveries",

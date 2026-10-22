@@ -16,6 +16,7 @@ import {
   apiRateLimitsTable,
   getDb,
   groupAlertDeliveriesTable,
+  groupPushReceiptChecksTable,
   groupMembersTable,
   groupNightParticipantsTable,
   groupNightsTable,
@@ -47,7 +48,10 @@ import { nightWindow, serviceDateFor } from "../src/lib/groupNight";
 import { clearEntitlementCache } from "../src/lib/revenueCat";
 import { revenueCatUserIdForDeviceSecret } from "../src/lib/premiumDeviceIdentity";
 import { dispatchGroupLeaveAlerts } from "../src/lib/groupNotifications";
-import { claimGroupDeliveryBatch, nextGroupOutboxRetryAt, settleGroupDelivery } from "../src/lib/groupAlertOutbox";
+import {
+  claimGroupDeliveryBatch, nextGroupOutboxRetryAt, settleGroupDelivery,
+  reconcileGroupPushReceipts, purgeExpiredGroupPushReceiptChecks, RECEIPT_RETENTION_MS,
+} from "../src/lib/groupAlertOutbox";
 import { withLeaveScheduleLock } from "../src/lib/leaveAlertSchedule";
 import app from "../src/app";
 
@@ -58,6 +62,8 @@ import app from "../src/app";
  * separate files in parallel.
  */
 async function clearGroups() {
+  // The minimal receipt journal intentionally outlives group nights.
+  await getDb().delete(groupPushReceiptChecksTable);
   // Cascades to members, nights and participants.
   await getDb().delete(groupsTable);
 }
@@ -747,6 +753,88 @@ describe("tonight", () => {
     // The source's private leave-by time and push tickets never survive 08:00 JST.
     expect(await purgeEndedGroupNights(tonightWindow().endsAt)).toBe(1);
     expect(await getDb().select().from(groupAlertDeliveriesTable)).toEqual([]);
+  });
+
+  it("checks late Expo receipts after nightly deletion without retaining any journey details", async () => {
+    const { groupId, host, members } = await groupWithMembers(["Bea"]);
+    await setPush(groupId, host.token, "latehost");
+    await startGroupTonightRecord(groupId, host.token);
+    const end = tonightWindow().endsAt;
+    const leaveBy = new Date(end.getTime() - 10 * 60_000);
+    await setGroupTonightParticipationRecord(groupId, members[0].token, leaveBy);
+    const dueAt = new Date(leaveBy.getTime() + 60_000);
+    await claimDueGroupLeaveAlerts(dueAt);
+    const [delivery] = await claimGroupDeliveryBatch(dueAt);
+    expect(delivery).toBeDefined();
+    await settleGroupDelivery(delivery, { ticketId: "late-ticket-1" }, dueAt);
+    const [before] = await getDb().select().from(groupPushReceiptChecksTable);
+    expect(before).toMatchObject({ expoTicketId: "late-ticket-1", deliveryId: delivery.id });
+    expect(before.pushTokenDigest).toBe(createHash("sha256").update(delivery.token).digest("hex"));
+    expect(JSON.stringify(before)).not.toContain(delivery.token);
+    expect(JSON.stringify(before)).not.toContain(groupId);
+    expect(JSON.stringify(before)).not.toContain(leaveBy.toISOString());
+
+    // 08:05 cleanup still deletes every private route/departure/receipt row
+    // under the group night. Only the opaque journal entry survives.
+    expect(await purgeEndedGroupNights(new Date(end.getTime() + 5 * 60_000))).toBe(1);
+    expect(await getDb().select().from(groupNightParticipantsTable)).toEqual([]);
+    expect(await getDb().select().from(groupAlertDeliveriesTable)).toEqual([]);
+    const [retained] = await getDb().select().from(groupPushReceiptChecksTable);
+    expect(retained).toMatchObject({ expoTicketId: "late-ticket-1", deliveryId: null });
+
+    const previousFetch = globalThis.fetch;
+    const seen: string[] = [];
+    globalThis.fetch = vi.fn(async (_url, options) => {
+      seen.push(...(JSON.parse(String(options?.body)).ids as string[]));
+      return new Response(JSON.stringify({data: {"late-ticket-1": {status: "error", details: {error: "DeviceNotRegistered"}}}}),
+        {status:200,headers:{"Content-Type":"application/json"}});
+    });
+    try {
+      const outcome = await reconcileGroupPushReceipts(new Date(end.getTime() + 20 * 60_000));
+      expect(outcome).toEqual({ checked: 1, invalidDevices: 1 });
+    } finally { globalThis.fetch = previousFetch; }
+    expect(seen).toEqual(["late-ticket-1"]);
+    expect(await getDb().select().from(groupPushReceiptChecksTable)).toEqual([]);
+    const [member] = await getDb().select().from(groupMembersTable).where(eq(groupMembersTable.id, host.id));
+    expect(member.expoPushToken).toBeNull();
+  });
+
+  it("preserves rotated device tokens and discards expired receipt metadata", async () => {
+    const { groupId, host, members } = await groupWithMembers(["Bea"]);
+    await setPush(groupId, host.token, "oldtoken");
+    await startGroupTonightRecord(groupId, host.token);
+    const end = tonightWindow().endsAt;
+    const leaveBy = new Date(end.getTime() - 11 * 60_000);
+    await setGroupTonightParticipationRecord(groupId, members[0].token, leaveBy);
+    const dueAt = new Date(leaveBy.getTime() + 60_000);
+    await claimDueGroupLeaveAlerts(dueAt);
+    const [delivery] = await claimGroupDeliveryBatch(dueAt);
+    await settleGroupDelivery(delivery, { ticketId: "old-token-ticket" }, dueAt);
+    await setPush(groupId, host.token, "newtoken");
+    await purgeEndedGroupNights(new Date(end.getTime() + 5 * 60_000));
+
+    const previousFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn(async () => new Response(JSON.stringify({data: {
+      "old-token-ticket": {status:"error", details:{error:"DeviceNotRegistered"}},
+    }}), {status:200}));
+    try {
+      expect(await reconcileGroupPushReceipts(new Date(end.getTime() + 20 * 60_000)))
+        .toEqual({ checked: 1, invalidDevices: 0 });
+    } finally { globalThis.fetch = previousFetch; }
+    const [member] = await getDb().select().from(groupMembersTable).where(eq(groupMembersTable.id, host.id));
+    expect(member.expoPushToken).toContain('newtoken');
+    expect(await getDb().select().from(groupPushReceiptChecksTable)).toEqual([]);
+
+    // A missing Expo response is retained only up to the configured TTL.
+    await getDb().insert(groupPushReceiptChecksTable).values({
+      expoTicketId: "never-returned", pushTokenDigest: "a".repeat(64),
+      sentAt: dueAt, expiresAt: new Date(dueAt.getTime() + RECEIPT_RETENTION_MS),
+    });
+    expect(await purgeExpiredGroupPushReceiptChecks(new Date(dueAt.getTime() + RECEIPT_RETENTION_MS - 1)))
+      .toBe(0);
+    expect(await purgeExpiredGroupPushReceiptChecks(new Date(dueAt.getTime() + RECEIPT_RETENTION_MS)))
+      .toBe(1);
+    expect(await getDb().select().from(groupPushReceiptChecksTable)).toEqual([]);
   });
 
   it("stale queued alerts cannot be delivered after the sender changes their leave time", async () => {

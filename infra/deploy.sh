@@ -91,6 +91,9 @@ node scripts/check-premium-rollout.mjs "$STAGE"
 # Five-minute all-day fallback can exceed a scale-to-zero DB free tier.
 # The release owner must first review CU-hours and enable billing alerts.
 node scripts/check-alert-recovery-budget.mjs "$STAGE"
+# Short-lived receipt-only journal changes the old 08:05 deletion boundary.
+# Never alter production retention without explicit privacy policy approval.
+node scripts/check-receipt-retention.mjs "$STAGE"
 
 # Train times are served from the ODPT timetable snapshot bundled into the
 # Lambda package (git-ignored provider data). Check it before anything mutates;

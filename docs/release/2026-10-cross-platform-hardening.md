@@ -347,3 +347,56 @@ receipt checks remain active independently of Business and precede cleanup.
 separate Business and group worker failures and verifies schedule re-arming,
 receipt checks, and error propagation. Native signed-device chaos tests and
 live AWS Scheduler/DLQ alarm drills remain release blockers.
+
+## Opaque late-night push-receipt reconciliation (2026-10-22)
+
+**Correctness and privacy issue LR-031:** `group_alert_deliveries` uses a foreign
+key with `ON DELETE CASCADE` to its group night. The 08:05 JST cleanup erases
+all private departure times, as intended, but also erased still-unchecked Expo
+push tickets. Expo may not make receipts available until ~15 minutes after
+acceptance, so even the final 08:00 receipt poll could not check the final
+few minutes of a night. A push token that Expo rejected as
+`DeviceNotRegistered` could remain active and produce repeated failures.
+
+**Implementation (migration 0015):** each *accepted* Expo ticket now creates a
+small journal row `group_push_receipt_checks` in the **same transaction** as
+marking the main per-recipient delivery accepted. It stores only an opaque Expo
+receipt ticket ID, a **SHA-256 digest of the push token**, recipient member ID
+and delivery ID (nullable FKs with `ON DELETE SET NULL`), sent time, and a
+fixed **two-hour expiry**. It deliberately does **not** retain a group name,
+invite, user display name, location, station, leave-by time, transit route, or
+raw push token. Note that the member-ID link still temporarily permits
+association to an existing group, so this is *minimized* data, not fully
+anonymous data. At group-night purge the private sender, departure and alert
+records disappear immediately; its receipt-only reference becomes null while
+the minimal pending verification row remains for at most the short expiry
+window, subject to scheduled TTL garbage collection.
+
+The receipt worker runs every **15 minutes all day**, including after 08:05,
+checks pending tickets at least 15 minutes old and *deletes* each receipt row
+atomically after processing it (including successful, invalid, and rotated
+push-token results). Missing Expo receipts are retried only while unexpired.
+Expired rows are deleted before processing on each scheduled run; if AWS
+Scheduler/Lambda goes down, physical removal can lag until the next healthy
+run. A `DeviceNotRegistered` result only clears a member's current token if
+its SHA-256 digest still matches the token from the accepted ticket, and the
+SQL update also checks the unchanged raw token. A rotated/new push token can
+never be revoked by an old receipt. Simultaneous workers cannot both process
+one ticket because they delete it using a transactional row claim.
+
+On migration, only legacy unresolved accepted tickets sent within the last
+two hours are migrated from the old delivery ledger; the source trip record
+still cascades away at night cleanup. No previously expired ticket is copied.
+The journal is intentionally distinct from the private group-night retention
+policy, but **retention-policy owner approval is required before public
+production rollout (`LASTRIDE_GROUP_RECEIPT_RETENTION_APPROVED=yes` after
+review)**. It is a proposed short-lived operational record and
+cannot be justified merely by a passing test suite.
+
+The release tests use a real PostgreSQL test DB to validate that a 07:50 JST
+receipt can be checked after night deletion, with `deliveryId = null`, and
+that an old `DeviceNotRegistered` receipt cannot revoke a rotated token. TTL
+expiry and raw-push-token exclusion are covered. The hosted Expo endpoint is
+stubbed: signed iPhone APNs/Android FCM delivery and Expo live receipt delay
+still require staging verification. This does not prove the user saw the
+alert, and Expo never guarantees handset notification display.

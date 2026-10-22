@@ -247,3 +247,28 @@ before claiming complete push delivery observability. Distinct schedules have
 independent SQS DLQs. Test EventBridge Scheduler permissions and all DLQ alarm
 routes on staging, and verify that device-token revocation works against
 real APNs/FCM sandbox receipts.
+
+### Late-night receipt privacy boundary (October 22, 2026)
+
+A new **receipt-only** table `group_push_receipt_checks` in migration
+`0015_foamy_speedball.sql` is intended to solve loss of Expo receipt checks
+at the 08:05 group-night privacy purge. Accepted tickets are atomically copied
+into the short-lived journal without station, route, leave-by, names or raw
+push tokens. The journal keeps an opaque ticket, SHA-256 push-token digest,
+nullable recipient/member link, sent time and two-hour deadline. After 08:05,
+private group-night records still disappear; the retained operational record
+is minimized, **not completely anonymous**, as a still-present recipient
+member ID can temporarily identify a group.
+
+**Approve this two-hour retention policy before production deployment.**
+The deploy script requires `LASTRIDE_GROUP_RECEIPT_RETENTION_APPROVED=yes` after
+real privacy policy review and before reading AWS credentials or touching the
+production DB. This is an attestation, not automatic compliance. The
+journal expires via receipt-processing checks every 15 minutes all day. A
+service outage can delay physical expiry; monitor failed Scheduler, Lambda
+and SQS DLQ executions, and validate privacy deletion behavior on staging.
+The migration backfills unresolved accepted tickets younger than two hours;
+no stale ticket is revived. Deploy DB migration before application code that
+inserts/checks the journal. Do not claim all Expo/APNs/FCM receipts are
+recovered until physical-device verification and actual receipt timing tests
+have passed.

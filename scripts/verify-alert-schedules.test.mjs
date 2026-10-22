@@ -40,22 +40,19 @@ test('backup group alert scan is within the 10-minute expiration window and cove
     `Fallback ${step} minutes must allow sufficient margin before ${graceMinutes}-minute alert expiry`);
 });
 
-test('Expo group push receipts run without Business enabled and before nightly privacy cleanup', () => {
-  const receipts = scheduleSection('PushReceipts', 'PushReceiptsFinal');
-  const final = scheduleSection('PushReceiptsFinal', 'ApiErrorsAlarm');
+test('Expo group receipts run all day, across nightly privacy cleanup, without Business enabled', () => {
+  const receipts = scheduleSection('PushReceipts', 'ApiErrorsAlarm');
   const cleanup = scheduleSection('Cleanup', 'DepartureAlerts');
   assertTask(receipts, 'pushReceipts');
-  assertTask(final, 'pushReceipts');
   assert.match(receipts, /State: ENABLED/);
   assert.doesNotMatch(receipts, /State: !If \[BusinessEnabled/);
-  assert.deepEqual(cron(receipts), ['*/15', '18-23,0-7', '*', '*', '?', '*']);
-  assert.deepEqual(cron(final), ['0', '8', '*', '*', '?', '*']);
+  assert.deepEqual(cron(receipts), ['*/15', '*', '*', '*', '?', '*']);
   assert.deepEqual(cron(cleanup), ['5', '8', '*', '*', '?', '*']);
 });
 
 test('each scheduled fallback has a unique SQS DLQ and retries enabled', () => {
-  const names = ['Cleanup', 'DepartureAlerts', 'PushReceipts', 'PushReceiptsFinal'];
-  const following = ['DepartureAlerts', 'PushReceipts', 'PushReceiptsFinal', 'ApiErrorsAlarm'];
+  const names = ['Cleanup', 'DepartureAlerts', 'PushReceipts'];
+  const following = ['DepartureAlerts', 'PushReceipts', 'ApiErrorsAlarm'];
   const queues = names.map((name, index) => {
     const section = scheduleSection(name, following[index]);
     const id = section.match(/QueueLogicalId: (\w+ScheduleDlq)/)?.[1];

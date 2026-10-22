@@ -311,11 +311,10 @@ Resources:
           Type: ScheduleV2
           Properties:
             OmitName: true
-            # Group Expo push receipts MUST run without Business enabled.
-            # Tickets become available ~15 minutes after acceptance. Check
-            # throughout normal last-train hours, before the nightly 08:05 JST
-            # group-night cleanup deletes the per-recipient delivery ledger.
-            ScheduleExpression: "cron(*/15 18-23,0-7 * * ? *)"
+            # Group receipt journal outlives nightly PRIVATE data by <=2h,
+            # and must be reconciled + TTL-purged at least every 15 minutes,
+            # including AFTER the 08:05 JST group-night cleanup.
+            ScheduleExpression: "cron(*/15 * * * ? *)"
             State: ENABLED
             ScheduleExpressionTimezone: Asia/Tokyo
             Input: '{"task":"pushReceipts"}'
@@ -327,24 +326,6 @@ Resources:
             DeadLetterConfig:
               Type: SQS
               QueueLogicalId: PushReceiptsScheduleDlq
-        PushReceiptsFinal:
-          Type: ScheduleV2
-          Properties:
-            OmitName: true
-            # Before 08:05 group-night deletion: catch the final 07:45 receipt
-            # batch. The last ~15 minutes' tickets may still be unavailable;
-            # this requires a separate retention-policy decision to guarantee.
-            ScheduleExpression: "cron(0 8 * * ? *)"
-            ScheduleExpressionTimezone: Asia/Tokyo
-            Input: '{"task":"pushReceipts"}'
-            FlexibleTimeWindow:
-              Mode: "OFF"
-            RetryPolicy:
-              MaximumRetryAttempts: 3
-              MaximumEventAgeInSeconds: 300
-            DeadLetterConfig:
-              Type: SQS
-              QueueLogicalId: PushReceiptsFinalScheduleDlq
 
   ApiErrorsAlarm:
     Type: AWS::CloudWatch::Alarm
