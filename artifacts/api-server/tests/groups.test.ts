@@ -837,6 +837,40 @@ describe("tonight", () => {
     expect(await getDb().select().from(groupPushReceiptChecksTable)).toEqual([]);
   });
 
+  it("never consumes an unverified Expo receipt after privacy cleanup, even with HTTP 200", async () => {
+    const { groupId, host, members } = await groupWithMembers(["Bea"]);
+    await setPush(groupId, host.token, "unverifiedhost");
+    await startGroupTonightRecord(groupId, host.token);
+    const end = tonightWindow().endsAt;
+    const leaveBy = new Date(end.getTime() - 10 * 60_000);
+    await setGroupTonightParticipationRecord(groupId, members[0].token, leaveBy);
+    const dueAt = new Date(leaveBy.getTime() + 60_000);
+    await claimDueGroupLeaveAlerts(dueAt);
+    const [delivery] = await claimGroupDeliveryBatch(dueAt);
+    await settleGroupDelivery(delivery, { ticketId: "unknown-status-ticket" }, dueAt);
+    await purgeEndedGroupNights(new Date(end.getTime() + 5 * 60_000));
+    const afterCleanup = new Date(end.getTime() + 20 * 60_000);
+    const previousFetch = globalThis.fetch;
+    const mocked = vi.fn(async () => new Response(JSON.stringify({data: {
+      "unknown-status-ticket": { message: "unknown receipt state" },
+    }}), {status: 200}));
+    globalThis.fetch = mocked;
+    try {
+      expect(await reconcileGroupPushReceipts(afterCleanup)).toEqual({checked: 0, invalidDevices: 0});
+      expect((await getDb().select().from(groupPushReceiptChecksTable))).toHaveLength(1);
+      mocked.mockImplementationOnce(async () => new Response(JSON.stringify({errors:[{code:"UPSTREAM"}]}), {status:200}));
+      await expect(reconcileGroupPushReceipts(afterCleanup)).rejects.toThrow("Invalid Expo group push receipt response");
+      expect((await getDb().select().from(groupPushReceiptChecksTable))).toHaveLength(1);
+      mocked.mockImplementationOnce(async () => new Response(JSON.stringify({data: {
+        "unknown-status-ticket": { status: "ok" },
+      }}), {status:200}));
+      expect(await reconcileGroupPushReceipts(afterCleanup)).toEqual({checked:1,invalidDevices:0});
+      expect(await getDb().select().from(groupPushReceiptChecksTable)).toEqual([]);
+    } finally {
+      globalThis.fetch = previousFetch;
+    }
+  });
+
   it("stale queued alerts cannot be delivered after the sender changes their leave time", async () => {
     const { groupId, host, members } = await groupWithMembers(["Bea", "Cai"]);
     for (const [member, label] of [[host, "host"], [members[0], "bea"], [members[1], "cai"]] as const)

@@ -181,6 +181,24 @@ export function receiptFailure(receipt: GroupPushReceipt): string | null {
   return receipt.status === "error" ? (receipt.details?.error || receipt.message || "UnknownPushError") : null;
 }
 
+/** An Expo HTTP 200 response is not proof of ticket delivery. Unknown status,
+ * truncated or malformed receipts must never consume our last retry ticket. */
+export function isTerminalGroupPushReceipt(receipt: unknown): receipt is GroupPushReceipt {
+  return receipt !== null && typeof receipt === "object" && !Array.isArray(receipt) &&
+    ((receipt as GroupPushReceipt).status === "ok" || (receipt as GroupPushReceipt).status === "error");
+}
+
+/** Expo getReceipts returns a map keyed by ticket ID. A top-level API error
+ * or malformed envelope must be surfaced for Lambda monitoring and retries. */
+export function parseGroupPushReceiptEnvelope(payload: unknown): Record<string, unknown> {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload) ||
+      !("data" in payload) || !(payload.data && typeof payload.data === "object") ||
+      Array.isArray(payload.data)) {
+    throw new Error("Invalid Expo group push receipt response");
+  }
+  return payload.data as Record<string, unknown>;
+}
+
 /** Expire opaque receipt tickets even if Expo stops returning them. */
 export async function purgeExpiredGroupPushReceiptChecks(now = new Date()): Promise<number> {
   const deleted = await getDb().delete(groupPushReceiptChecksTable)
@@ -219,13 +237,16 @@ export async function reconcileGroupPushReceipts(now = new Date()): Promise<{ ch
     signal: AbortSignal.timeout(8_000),
   });
   if (!response.ok) throw new Error(`Group push receipt HTTP ${response.status}`);
-  const payload = (await response.json()) as { data?: Record<string, GroupPushReceipt> };
-  const receipts = payload.data ?? {};
+  const receipts = parseGroupPushReceiptEnvelope(await response.json());
   let checked = 0;
   let invalidDevices = 0;
   for (const receiptItem of pending) {
     const receipt = receipts[receiptItem.expoTicketId];
-    if (!receipt) continue; // Retry until the 2h expiry, not beyond it.
+    if (receipt === undefined) continue; // Expo has not produced this receipt yet.
+    if (!isTerminalGroupPushReceipt(receipt)) {
+      logger.warn({ receiptId: receiptItem.id }, "Expo group push receipt has unknown status; retaining ticket");
+      continue; // Retry instead of irreversibly treating malformed data as OK.
+    }
     const error = receiptFailure(receipt);
     await db.transaction(async (tx) => {
       // CAS deletion prevents concurrent receipt workers from double-counting

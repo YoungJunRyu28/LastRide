@@ -400,3 +400,21 @@ expiry and raw-push-token exclusion are covered. The hosted Expo endpoint is
 stubbed: signed iPhone APNs/Android FCM delivery and Expo live receipt delay
 still require staging verification. This does not prove the user saw the
 alert, and Expo never guarantees handset notification display.
+
+### Review finding: malformed Expo receipt cannot erase the last verification ticket (2026-10-22)
+
+During independent PR #41 review, we found a fail-open case in the new
+post-night receipt processor: any truthy `data[ticketId]` value, including a
+missing `status`, was treated as a successful receipt and its verification
+row was permanently deleted. HTTP 200 is transport success, **not** proof
+that Expo delivered the ticket. The processor now consumes a ticket **only**
+when Expo explicitly reports terminal `status: "ok"` or `status: "error"`.
+Missing/unrecognized per-ticket results remain in the two-hour queue for a
+later check; malformed top-level envelopes or API errors cause an exception
+so the scheduled Lambda reports a failure instead of silently counting it.
+Warnings identify only the internal receipt-row UUID; no token, group or
+journey information is logged. Unresolved verification records still expire
+at the short retention deadline. PostgreSQL integration regression exercises
+malformed HTTP-200 response, persistence beyond group-night deletion and
+successful later receipt reconciliation; unit tests validate terminal state
+and top-level envelope parsing.
