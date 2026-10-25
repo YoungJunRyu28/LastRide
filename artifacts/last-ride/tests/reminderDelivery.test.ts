@@ -281,4 +281,42 @@ describe('reminder delivery', () => {
     await scheduleReminders([{ minutesBefore: 15, fireAt: Date.now() + 600_000 }], text);
     expect([...mocks.queued.keys()].filter((id) => id.startsWith('lastride-test-'))).toHaveLength(2);
   });
+
+  it('出る時間です fired 10 s early counts as sent: a re-plan in those seconds doesn’t send it again', async () => {
+    mocks.store.delete(STORAGE_KEYS.reminderLedger);
+    const start = Date.now();
+    const leave = start + 600_000;
+    const info = (leaveAtMs: number) => ({
+      night: '20261016', choiceKey: '0', stationKey: '新宿', leaveAtMs, trainDepartsAtMs: start + 3_600_000,
+      trainLabel: '終電', trainDeparts: '00:10',
+    });
+    try {
+      vi.useFakeTimers({ now: start });
+      await scheduleReminders([{ minutesBefore: 0, fireAt: leave }], text, undefined, info(leave));
+      expect(mocks.notificationSchedule).toHaveBeenCalledOnce();
+      // 5 s before the leave time: iOS has shown it (set 10 s early). Walking moves the leave time a minute later.
+      vi.setSystemTime(leave - 5_000);
+      await scheduleReminders([{ minutesBefore: 0, fireAt: leave + 60_000 }], text, undefined, info(leave + 60_000));
+      expect(mocks.notificationSchedule).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a re-plan leaves AlarmKit alarms alone while the alarms ahead are the same (a ringing one isn’t stopped)', async () => {
+    const now = Date.now();
+    const plans = [{ minutesBefore: 15, fireAt: now + 120_000 }, { minutesBefore: 0, fireAt: now + 900_000, alarm: true as const }];
+    await scheduleReminders(plans, text);
+    expect(mocks.alarmSchedule).toHaveBeenCalledOnce();
+    mocks.alarmCancel.mockClear();
+    mocks.alarmSchedule.mockClear();
+    // Something else changes (the 15-minute reminder's time): the alarm stays as it is.
+    await scheduleReminders([{ minutesBefore: 15, fireAt: now + 180_000 }, plans[1]], text);
+    expect(mocks.alarmCancel).not.toHaveBeenCalled();
+    expect(mocks.alarmSchedule).not.toHaveBeenCalled();
+    // The alarm's time changes: set again.
+    await scheduleReminders([plans[0], { ...plans[1], fireAt: now + 960_000 }], text);
+    expect(mocks.alarmCancel).toHaveBeenCalledOnce();
+    expect(mocks.alarmSchedule).toHaveBeenCalledOnce();
+  });
 });

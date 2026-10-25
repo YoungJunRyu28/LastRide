@@ -93,7 +93,9 @@ export async function syncLiveActivity(
 
   const props = { ...content, shownAt: nowMs };
   // If the app never wakes again, iOS dims the countdown shortly after the last train.
-  const staleDate = new Date(plan.lastTrain.departsAt + 5 * MINUTE_MS);
+  // Stale only once the night's real last train has gone (with 1本前 / 2本前 the
+  // plan's own train goes first, and the later ones are still shown).
+  const staleDate = new Date((plan.nightLastTrain ?? plan.lastTrain).departsAt + 5 * MINUTE_MS);
   if (running) {
     await running.update(props, staleDate);
   } else {

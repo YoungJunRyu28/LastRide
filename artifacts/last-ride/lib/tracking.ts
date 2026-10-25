@@ -59,13 +59,17 @@ async function recomputeFromLocation(coordinates: Coordinates): Promise<void> {
   const [previous, startedAt] = await Promise.all([readTrackingSnapshot(), readTrackingStartedAt()]);
   // The night's notifications are all sent (or it's past 04:00): switch tracking off.
   // iOS only wakes the app on movement, so this runs at the first update after the deadline.
+  // The snapshot goes too: left behind, tomorrow night's first update would read
+  // tonight's plan, find its night over, and switch tracking off again.
   if ((previous && now >= trackingEndsAt(previous)) || (startedAt !== null && now >= trackingHardStopAt(startedAt))) {
     await stopBackgroundTracking();
+    await clearTrackingSnapshot();
     return;
   }
   // 〔乗った〕: on the earlier train, the night is over (lib/boarding.ts).
   if (await readBoarded(now)) {
     await stopBackgroundTracking();
+    await clearTrackingSnapshot();
     await cancelAllReminders().catch(() => undefined);
     return;
   }
@@ -75,7 +79,12 @@ async function recomputeFromLocation(coordinates: Coordinates): Promise<void> {
   const previousPlan = previous ? applyTrainChoice(previous, before, effectiveTrainChoice(before, choiceAt(settings.trainChoice, override, previous.station.nameJa))) : null;
   // Rough positions while leaving is over an hour away; the usual detail after that.
   if (previousPlan) await applyLocationProfile(locationProfile(previousPlan, now));
-  if (!shouldReplan(previous, coordinates, now)) return;
+  if (!shouldReplan(previous, coordinates, now)) {
+    // No re-plan, but the lock screen moves on (出るまで → the train → the next one):
+    // the Live Activity holds one countdown, so bring it up to date (skipped if unchanged).
+    if (previousPlan) await syncLiveActivity(previousPlan, settings.language ?? 'en', now).catch(() => undefined);
+    return;
+  }
   // On the way (past the leave time, train not gone): keep tonight's station and
   // times until the train departs, then re-plan from here (lib/onTheWay.ts).
   const kept = previous && previousPlan && holdOnTheWay(previous, previousPlan, now)
@@ -109,6 +118,8 @@ async function recomputeFromLocation(coordinates: Coordinates): Promise<void> {
   const followUpFor = goneAt !== undefined && basePlan.computedAt >= goneAt && !basePlan.frozenUntil && (await readAnswered()) !== goneAt ? goneAt : undefined;
   const plan = applyTrainChoice(basePlan, options, effective);
   const language = settings.language ?? 'en';
+  // Stopped (or 〔乗った〕) while this was planning: don't bring reminders or the Live Activity back.
+  if (!(await isTrackingFlagOn())) return;
   // Read again now: the user may have changed reminders or alarms while this ran.
   const times = await readReminderTimes();
   await scheduleReminders(buildReminderPlans(plan, times.reminderIntervals, now, { missedCheckIn: settings.missedCheckIn, alarmIntervals: times.alarmIntervals, includePast: true }), {
@@ -128,6 +139,7 @@ async function recomputeFromLocation(coordinates: Coordinates): Promise<void> {
     followUpFor,
     followUpLabel: gone ? trainChoiceLabel(gone.choice, language === 'ja') : undefined,
   });
+  if (!(await isTrackingFlagOn())) return;
   await syncLiveActivity(plan, language, now).catch(() => undefined);
   const destinationLabel = settings.tonightDestination
     ? language === 'ja' ? settings.tonightDestination.nameJa : settings.tonightDestination.name

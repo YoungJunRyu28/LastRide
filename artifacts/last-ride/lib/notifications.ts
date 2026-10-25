@@ -13,6 +13,8 @@ const webTimers: ReturnType<typeof setTimeout>[] = [];
 // Both the foreground app and the separate headless location-task JS runtime
 // use these keys to replace, not accumulate, locally scheduled notifications.
 const OWNED_IDS_KEY = 'lastride-owned-notification-ids';
+/** The AlarmKit alarms last set ([fire time, title]), so unchanged ones aren't cancelled and set again. */
+const ALARM_SET_KEY = 'lastride-alarm-set';
 const SIGNATURE_KEY = 'lastride-reminder-signature';
 const SCHEDULER_VERSION = 9;
 
@@ -210,6 +212,7 @@ async function cancelOwned() {
   // Cancel native alarms even when the JS runtime died before persisting the
   // schedule. AlarmKit only exposes alarms belonging to our app.
   await alarmKit.cancelAll().catch((error) => console.warn('[LastRide] Could not cancel alarms', error));
+  await AsyncStorage.removeItem(ALARM_SET_KEY).catch(() => undefined);
   await Promise.all(ids.filter((id) => !isTestNotification(id)).map((id) => Notifications.cancelScheduledNotificationAsync(id).catch(() => undefined)));
   // And everything else still scheduled: the app and its background task keep
   // the owned list separately, so it can miss one (an alarm's silent companion
@@ -416,6 +419,12 @@ export function scheduleReminders(
   { sound, vibrate, throughFocus = true }: Pick<ReminderDelivery, 'sound' | 'vibrate'> & { throughFocus?: boolean } = { sound: 'default', vibrate: true },
   delivery?: DeliveryInfo,
 ): Promise<void> {
+  // Leave-reminder notifications go SCREEN_OFF_DELAY_MS early on iOS. Shifted here,
+  // before the record decides, so "sent" means sent: a re-plan in those seconds
+  // mustn't think 出る時間です is still to come and send it again. Alarms (exact
+  // with AlarmKit), the 乗れましたか？ question and the missed-train check-in keep their time.
+  if (Platform.OS === 'ios')
+    plans = plans.map((plan) => (plan.alarm || plan.missedCheckIn || plan.boardedCheck ? plan : { ...plan, fireAt: plan.fireAt - SCREEN_OFF_DELAY_MS }));
   return enqueue(async () => {
     const now = Date.now();
     const mark = delivery ? await recentMark(now) : null;
@@ -433,13 +442,29 @@ export function scheduleReminders(
     ]);
     if (Platform.OS !== 'web' && (await AsyncStorage.getItem(SIGNATURE_KEY).catch(() => null)) === signature) return;
     // Only what changed is replaced: reminders still the same stay queued untouched
-    // (see reminderId); the rest are removed once the new set is in. AlarmKit
-    // alarms are always set again (they ring on the second regardless).
+    // (see reminderId); the rest are removed once the new set is in. AlarmKit can
+    // only cancel all alarms at once, so they're left alone while the alarms still
+    // ahead are the same: otherwise a re-plan as one rings (the user picking up the
+    // phone and starting to walk) would stop it.
+    const alarmsAhead = alarmAuthorization === 'authorized'
+      ? upcoming.filter((plan) => plan.alarm && plan.fireAt > now + 1000).map((plan) => [plan.fireAt, reminderText(text, plan).title] as const)
+      : [];
+    const alarmSet = JSON.stringify(alarmsAhead);
+    let alarmsUnchanged = false;
     if (Platform.OS === 'web') await cancelOwned();
     else {
       await AsyncStorage.removeItem(SIGNATURE_KEY).catch(() => undefined);
       configure();
-      await alarmKit.cancelAll().catch((error) => console.warn('[LastRide] Could not cancel alarms', error));
+      try {
+        const before = JSON.parse((await AsyncStorage.getItem(ALARM_SET_KEY)) ?? 'null') as Array<[number, string]> | null;
+        alarmsUnchanged = !!before && JSON.stringify(before.filter(([at]) => at > now + 1000)) === alarmSet;
+      } catch {
+        alarmsUnchanged = false;
+      }
+      if (!alarmsUnchanged) {
+        await alarmKit.cancelAll().catch((error) => console.warn('[LastRide] Could not cancel alarms', error));
+        await AsyncStorage.removeItem(ALARM_SET_KEY).catch(() => undefined);
+      }
     }
     const queued = await queuedIds();
     const kept = new Set<string>();
@@ -514,7 +539,7 @@ export function scheduleReminders(
         try {
           // Always Apple's alarm sound: only it rings through silent mode and a muted
           // ringer; a bundled tone doesn't (tested on iOS 26).
-          await alarmKit.schedule(newAlarmId(), plan.fireAt, title, 'default', stopLabel(language));
+          if (!alarmsUnchanged) await alarmKit.schedule(newAlarmId(), plan.fireAt, title, 'default', stopLabel(language));
           // The alarm rings; a silent notification keeps the details (station, times)
           // in Notification Center once it's stopped, and opens the app when tapped.
           const id = reminderId('companion', plan.fireAt, title, body, target);
@@ -529,12 +554,11 @@ export function scheduleReminders(
       // 集中モード中も通知 (on by default): every leave reminder is Time Sensitive (即時通知),
       // through Focus and the summary. An alarm standing in as a notification always is.
       const urgent = plan.alarm === true || (!plan.missedCheckIn && throughFocus);
-      // Leave reminders go a little early on iOS (SCREEN_OFF_DELAY_MS); the missed-train check-in doesn't.
-      const fireAt = Platform.OS === 'ios' && !plan.missedCheckIn ? plan.fireAt - SCREEN_OFF_DELAY_MS : plan.fireAt;
-      const id = reminderId(fireAt, title, body, target, vibrate, tone, urgent);
-      await queue(id, () => present(title, body, fireAt, target, vibrate, tone, urgent, false, { identifier: id }));
+      const id = reminderId(plan.fireAt, title, body, target, vibrate, tone, urgent);
+      await queue(id, () => present(title, body, plan.fireAt, target, vibrate, tone, urgent, false, { identifier: id }));
     }
     if (Platform.OS !== 'web') {
+      if (!alarmsUnchanged) await AsyncStorage.setItem(ALARM_SET_KEY, alarmSet).catch(() => undefined);
       // Everything queued that isn't in the new set: changed or no longer wanted.
       await Promise.all([...queued].filter((id) => !kept.has(id) && !isTestNotification(id)).map((id) => Notifications.cancelScheduledNotificationAsync(id).catch(() => undefined)));
       await writeOwnedIds([...kept]);

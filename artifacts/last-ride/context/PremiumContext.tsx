@@ -35,8 +35,10 @@ export const premiumLive = !!apiKey;
 
 export type PlanChoice = {
   id: 'monthly' | 'annual';
-  /** Store-formatted price, e.g. "¥290"; the planned price in test mode. */
+  /** Store-formatted price, e.g. "¥190"; the planned price in test mode. */
   price: string;
+  /** Yearly plan: the store's price per month (e.g. "¥100"), for 「月あたり」. */
+  perMonth?: string | null;
   /** Free-trial length in days, when the product has an introductory trial. */
   trialDays: number | null;
   /** The RevenueCat package; null in test mode. */
@@ -70,8 +72,8 @@ type PremiumValue = {
 const PremiumContext = createContext<PremiumValue | null>(null);
 
 const TEST_PLANS: PlanChoice[] = [
-  { id: 'annual', price: '¥1,980', trialDays: 14, pkg: null },
-  { id: 'monthly', price: '¥290', trialDays: 14, pkg: null },
+  { id: 'annual', price: '¥1,200', perMonth: '¥100', trialDays: 14, pkg: null },
+  { id: 'monthly', price: '¥190', trialDays: 14, pkg: null },
 ];
 
 function hasEntitlement(info: CustomerInfo) {
@@ -131,7 +133,7 @@ export function PremiumProvider({ children }: { children: React.ReactNode }) {
         const current = offerings.current;
         if (!active || !current) return;
         const choices: PlanChoice[] = [];
-        if (current.annual) choices.push({ id: 'annual', price: current.annual.product.priceString, trialDays: trialDays(current.annual), pkg: current.annual });
+        if (current.annual) choices.push({ id: 'annual', price: current.annual.product.priceString, perMonth: current.annual.product.pricePerMonthString, trialDays: trialDays(current.annual), pkg: current.annual });
         if (current.monthly) choices.push({ id: 'monthly', price: current.monthly.product.priceString, trialDays: trialDays(current.monthly), pkg: current.monthly });
         setPlans(choices);
       })

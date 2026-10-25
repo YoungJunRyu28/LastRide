@@ -120,11 +120,20 @@ function stationsQuery(
   return `[out:json][timeout:15];(node(around:${radiusMeters},${latitude},${longitude})["railway"="station"];way(around:${radiusMeters},${latitude},${longitude})["railway"="station"];);out center tags;`;
 }
 
+/** A last-plan station stands in for a failed search only within this straight distance (Apple searches 2.5 km). */
+const RECENT_STATION_METERS = 2500;
+
 /**
  * The closest distinct stations to `coordinates`, nearest first, with walking
  * routes: from Apple Maps on iOS, otherwise the API server (ODPT stations,
  * which miss JR and private railways). The OpenStreetMap fallback
  * (development only) is ordered by straight-line distance and has no walk.
+ *
+ * When Apple's search fails (its request limit, a dropped connection), the
+ * server's list is no stand-in on iPhone: it has only subway-type lines, so
+ * near 元町・中華街 it offered 伊勢佐木長者町, a 32-minute walk. Then
+ * `recent` (the last plan's stations, when nearby) are used, or it fails
+ * ('unavailable') so the plan in force stays until the next try.
  */
 export async function findNearbyStations(
   coordinates: Coordinates,
@@ -132,9 +141,26 @@ export async function findNearbyStations(
   limit = 3,
   /** Walks already known from (about) this spot, by Japanese name: not asked again. */
   knownWalks?: Map<string, WalkingRoute>,
+  /** The last plan's stations, when it was made nearby: used if Apple's search fails. */
+  recent: StationOption[] = [],
 ): Promise<NearbyStation[]> {
-  const apple = await appleNearbyStations(coordinates, walkingSpeed, limit, knownWalks).catch(() => null);
+  let appleFailed = false;
+  const apple = await appleNearbyStations(coordinates, walkingSpeed, limit, knownWalks).catch(() => {
+    appleFailed = true;
+    return null;
+  });
   if (apple && apple.length > 0) return apple;
+  if (appleFailed) {
+    // Only stations still near here: someone moving on while Apple keeps failing
+    // mustn't be given stations from where they were.
+    const near = recent
+      .map((station) => ({ station, straightMeters: distanceBetween(coordinates, station), walk: knownWalks?.get(station.nameJa) }))
+      .filter(({ straightMeters }) => straightMeters <= RECENT_STATION_METERS)
+      .sort((first, second) => first.straightMeters - second.straightMeters)
+      .slice(0, limit);
+    if (near.length === 0) throw new LocationError("unavailable");
+    return near;
+  }
   if (apiBaseUrl) {
     try {
       const stations = await getNearbyStations({

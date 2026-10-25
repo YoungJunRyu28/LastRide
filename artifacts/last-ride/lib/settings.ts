@@ -252,6 +252,20 @@ function parsePinnedStation(raw: string | null): StationOption | null {
   }
 }
 
+/**
+ * The one-night settings as stored now: each is gone (null / 0) once its night
+ * is over. The app re-reads these when it comes back, since it can stay in
+ * memory from one evening to the next.
+ */
+export async function readOneNightSettings(nowMs = Date.now()): Promise<{ trainChoice: number; pinnedStation: StationOption | null; tonightDestination: StationOption | null }> {
+  const [pinned, tonight, trainChoice] = await Promise.all([
+    AsyncStorage.getItem(STORAGE_KEYS.pinnedStation).catch(() => null),
+    AsyncStorage.getItem(STORAGE_KEYS.tonightDestination).catch(() => null),
+    readTrainChoice(nowMs),
+  ]);
+  return { trainChoice, pinnedStation: parsePinnedStation(pinned), tonightDestination: parsePinnedStation(tonight) };
+}
+
 /** Tonight-only destinations share the pinned station's one-night lifetime. */
 export async function writeTonightDestination(station: StationOption | null): Promise<void> {
   if (station) await AsyncStorage.setItem(STORAGE_KEYS.tonightDestination, JSON.stringify({ station, serviceDate: serviceDate(Date.now()) }));

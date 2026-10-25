@@ -125,16 +125,32 @@ export function earlierFirstTrain(server: TrainTime, apple: TrainTime | null): T
   return apple && !apple.approximate && apple.departsAt < server.departsAt ? apple : server;
 }
 
+/**
+ * Apple failed on a route our server doesn't cover (JR, private railways). MapKit
+ * reports "no route" and "request limit" alike, so this may be either: the
+ * planner keeps the station's last result if it has one, else treats it as no train.
+ */
+export class AppleLookupFailed extends Error {}
+
 /** The last departure from `from` tonight that still reaches `to`, or null if no train goes there. */
 export async function getLastTrain(from: StationOption, to: StationOption, nowMs: number): Promise<TrainTime | null> {
+  let appleFailed = false;
   const [server, apple] = await Promise.all([
     // The server answers the trains before the last one too (1本前 / 2本前), at no extra cost.
     fromServer(() => fetchLastTrain({ ...toParams(from, to, nowMs), before: EARLIER_TRAIN_COUNT })),
-    appleTransitEnabled ? appleLastTrain(from, to, nowMs).catch(() => null) : Promise.resolve(null),
+    appleTransitEnabled
+      ? appleLastTrain(from, to, nowMs).catch(() => {
+          appleFailed = true;
+          return null;
+        })
+      : Promise.resolve(null),
   ]);
   if (server) return laterLastTrain(server, apple);
   if (apple) return apple;
-  if (server === null) return null;
+  if (server === null) {
+    if (appleFailed) throw new AppleLookupFailed('Apple transit lookup failed');
+    return null;
+  }
   if (!apiBaseUrl) {
     requireServer();
     return { departsAt: serviceTimeToMs(SAMPLE_LAST_TRAIN, nowMs), source: 'sample' };

@@ -471,3 +471,36 @@ describe('how closely to follow the user while the app is closed', () => {
     expect(locationProfile(null, jst(2026, 9, 23, 20, 0))).toBe('normal');
   });
 });
+
+describe('edge cases in choosing the station', () => {
+  const shibuya = station('Shibuya', '渋谷');
+  const ebisu = station('Ebisu', '恵比寿', 35.6467, 139.71);
+
+  test('a locked station whose last train has gone, while another still runs, goes back to automatic', () => {
+    const gone = choice({ station: shibuya, walkingMinutes: 5, lastTrain: train(LAST_TRAIN), leaveByMs: LEAVE_BY });
+    const running = choice({ station: ebisu, walkingMinutes: 12, lastTrain: train(LAST_TRAIN + 20 * MINUTE_MS), leaveByMs: LEAVE_BY + 20 * MINUTE_MS });
+    const plan = repick(planFrom([gone, running], { computedAt: jst(2026, 9, 23, 23, 57) }), shibuya);
+    expect(plan.pinned).toBe(false);
+    expect(plan.station.nameJa).toBe('恵比寿');
+  });
+
+  test('a 目安 time (maybe a walk) never beats a closer station, however late it looks', () => {
+    const close = choice({ station: shibuya, walkingMinutes: 5, leaveByMs: LEAVE_BY });
+    const approximate = choice({
+      station: ebisu,
+      walkingMinutes: 7,
+      lastTrain: { departsAt: LAST_TRAIN + 150 * MINUTE_MS, source: 'apple', approximate: true },
+      leaveByMs: LEAVE_BY + 150 * MINUTE_MS,
+    });
+    expect(repick(planFrom([close, approximate]), null).station.nameJa).toBe('渋谷');
+  });
+});
+
+describe('closed-app updates after the last train', () => {
+  test('back to rough positions once the night’s last train has gone', () => {
+    const plan = choice({ leaveByMs: LEAVE_BY });
+    expect(locationProfile(plan, jst(2026, 9, 23, 23, 50))).toBe('normal');
+    expect(locationProfile(plan, jst(2026, 9, 24, 0, 30))).toBe('light');
+  });
+});
+

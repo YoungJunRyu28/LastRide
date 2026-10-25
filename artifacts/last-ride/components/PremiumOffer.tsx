@@ -113,6 +113,9 @@ export function PremiumOffer({
                 {plan.price}
                 <Text style={[styles.planPer, { color: colors.mutedForeground }]}>{annual ? (ja ? '/年' : '/yr') : ja ? '/月' : '/mo'}</Text>
               </Text>
+              {annual && plan.perMonth ? (
+                <Text style={[styles.planPerMonth, { color: colors.mutedForeground }]}>{ja ? `月あたり ${plan.perMonth}` : `${plan.perMonth} a month`}</Text>
+              ) : null}
               <Text style={[styles.planNote, { color: active ? colors.primary : colors.mutedForeground }]}>
                 {trialText(plan.trialDays, ja) ?? (ja ? 'いつでも解約' : 'Cancel any time')}
               </Text>
@@ -172,6 +175,7 @@ const styles = StyleSheet.create({
   planName: { fontSize: 12, fontWeight: '700' },
   planPrice: { fontFamily: DIGITS, fontSize: 22 },
   planPer: { fontFamily: undefined, fontSize: 12, fontWeight: '600' },
+  planPerMonth: { fontSize: 12, fontWeight: '600', marginTop: 2 },
   planNote: { fontSize: 12, fontWeight: '700' },
   actions: { gap: 8 },
   testMode: { fontSize: 11, fontWeight: '700', textAlign: 'center' },

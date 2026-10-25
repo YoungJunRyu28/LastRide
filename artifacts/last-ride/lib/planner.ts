@@ -8,7 +8,7 @@ import type { HomeAddress } from '@/lib/settings';
 import { matchingDisruptionLines, recommendedLeaveTime, type LeaveMargin, recommendedSafetyMarginMinutes, riskAdjustedLeaveTime } from '@/lib/reliability';
 import { distanceBetween, findNearbyStations, LocationError, walkingRoute, type Coordinates, type NearbyStation, type StationOption, type WalkingSpeed } from '@/lib/stations';
 import { MINUTE_MS, serviceDayStart } from '@/lib/time';
-import { getLastTrain, trainsBefore, type TrainTime } from '@/lib/timetable';
+import { AppleLookupFailed, getLastTrain, trainsBefore, type TrainTime } from '@/lib/timetable';
 import { hasPosition, resolveAddress, resolveStation } from '@/lib/storedPlaces';
 
 /** Time from the station entrance to the platform (gates, stairs, finding the right line). */
@@ -40,7 +40,10 @@ export type LocationProfile = 'light' | 'normal';
 const LIGHT_TRACKING_BEFORE_MS = 60 * MINUTE_MS;
 
 export function locationProfile(plan: StationChoice | null, nowMs: number): LocationProfile {
-  return plan && recommendedLeaveTime(plan) - nowMs > LIGHT_TRACKING_BEFORE_MS ? 'light' : 'normal';
+  if (!plan) return 'normal';
+  // The night's last train has gone: nothing to follow closely until tracking stops.
+  if (nowMs >= lastTrainLeftAt(plan)) return 'light';
+  return recommendedLeaveTime(plan) - nowMs > LIGHT_TRACKING_BEFORE_MS ? 'light' : 'normal';
 }
 
 /**
@@ -52,6 +55,8 @@ const FARTHER_STATION_MIN_GAIN_MINUTES = 10;
 const LONG_WALK_MINUTES = 20;
 /** Re-planning from (about) the same spot: walks found last time are used again. */
 const SAME_SPOT_METERS = 100;
+/** Apple's station search failed: the last plan's stations stand in when it was made this close. */
+const RECENT_STATIONS_METERS = 2000;
 /** A station whose lookup fails keeps the result from a plan at most this old. */
 const KEEP_RESULT_MS = 20 * MINUTE_MS;
 
@@ -94,6 +99,12 @@ export type StationChoice = {
    * plan is held for. Once it has passed, the next update re-plans from here.
    */
   frozenUntil?: number;
+  /**
+   * Set on a station's result carried over from an earlier plan because its
+   * lookup failed (lib/planner keptResult): when it was really looked up. Kept
+   * results older than KEEP_RESULT_MS are dropped, however many plans carried them.
+   */
+  keptSince?: number;
 };
 
 /** Arrival stations worth comparing: the saved home station, plus this many near the home address. */
@@ -271,6 +282,8 @@ function autoPick(options: StationChoice[]): StationChoice {
   let best = options[0];
   for (const option of options.slice(1)) {
     if (option.walkingMinutes > LONG_WALK_MINUTES && best.walkingMinutes <= LONG_WALK_MINUTES) continue;
+    // A 目安 time (Apple's answer may be a walk, not a train) never beats a closer station.
+    if (option.lastTrain.approximate) continue;
     const avoidsDisruption = (best.disruptionLines?.length ?? 0) > 0 && (option.disruptionLines?.length ?? 0) === 0;
     const extraWalk = avoidsDisruption ? 0 : Math.max(0, option.walkingMinutes - best.walkingMinutes);
     if (riskAdjustedLeaveTime(option) - riskAdjustedLeaveTime(best) >= (FARTHER_STATION_MIN_GAIN_MINUTES + extraWalk) * MINUTE_MS) {
@@ -287,7 +300,9 @@ function assemble(options: StationChoice[], pinned: StationOption | null, coordi
   // another still has one (e.g. after missing it, a farther line runs later).
   const running = sorted.filter((option) => option.lastTrain.departsAt > computedAt);
   const auto = autoPick(running.length > 0 ? running : sorted);
-  const pinnedChoice = pinned ? sorted.find((option) => sameStation(option.station, pinned)) : undefined;
+  // A pinned station whose last train has gone, while another still runs, can't get
+  // the user home: back to automatic (the app and the background task say so).
+  const pinnedChoice = pinned ? (running.length > 0 ? running : sorted).find((option) => sameStation(option.station, pinned)) : undefined;
   const chosen = pinnedChoice ?? auto;
   const { station, walkingMinutes, distanceMeters, lastTrain, leaveByMs, recommendedLeaveByMs, safetyMarginMinutes, disruptionLines, destination, walkHomeMinutes, arriveHomeMs } = chosen;
   return {
@@ -363,8 +378,11 @@ async function evaluateCandidates(
   let lookupFailed = false;
   const evaluated = await Promise.all(
     candidates.map(async ({ station, walk: knownWalk }) => {
+      // The walk from here, once found: a kept result uses it rather than the old one.
+      let walkHere = knownWalk;
       try {
         const walk = knownWalk ?? (await walkingRoute(coordinates, station, WALKING_PACE));
+        walkHere = walk;
         const legs = await Promise.all(
           destinations.map(async (destination): Promise<StationChoice | null> => {
             const lastTrain = await getLastTrain(station, destination.station, nightOf);
@@ -389,13 +407,19 @@ async function evaluateCandidates(
         );
         const usable = legs.filter((leg): leg is StationChoice => leg !== null);
         if (usable.length === 0) return null;
-        usable.sort((first, second) => recommendedLeaveTime(second) - recommendedLeaveTime(first) || (first.arriveHomeMs ?? Infinity) - (second.arriveHomeMs ?? Infinity));
+        // Exact times before 目安 ones (an approximate answer may be a walk), then the latest leave time.
+        usable.sort((first, second) =>
+          Number(!!first.lastTrain.approximate) - Number(!!second.lastTrain.approximate) ||
+          recommendedLeaveTime(second) - recommendedLeaveTime(first) ||
+          (first.arriveHomeMs ?? Infinity) - (second.arriveHomeMs ?? Infinity));
         return usable[0];
-      } catch {
+      } catch (error) {
         // Apple's request limit or a dropped connection: keep this station's last
         // result rather than lose it (and let a far station win by default).
         const kept = earlier.get(station.nameJa);
-        if (kept) return keptResult(kept, knownWalk, leaveMargin);
+        if (kept) return keptResult(kept, walkHere, leaveMargin);
+        // Apple-only route that failed with nothing to keep: as before, no train found.
+        if (error instanceof AppleLookupFailed) return null;
         lookupFailed = true;
         return null;
       }
@@ -415,12 +439,21 @@ function keptResult(kept: StationChoice, walk: NearbyStation['walk'], leaveMargi
   return withMargin({ ...choice, ...walk, leaveByMs }, leaveMargin);
 }
 
-/** The previous plan's stations, when it is recent and for the same night. */
+/**
+ * The previous plan's stations, when looked up recently and for the same night.
+ * Only a station's own fields (not the whole plan), marked with when they were
+ * really looked up, so a result can't ride along from plan to plan for ever.
+ */
 function earlierResults(previous: NightPlan | null, nightOf: number, nowMs: number): Map<string, StationChoice> {
   const results = new Map<string, StationChoice>();
-  if (!previous || nowMs - previous.computedAt > KEEP_RESULT_MS) return results;
+  if (!previous) return results;
   if (serviceDayStart(previous.lastTrain.departsAt) !== serviceDayStart(nightOf)) return results;
-  for (const option of [previous, ...previous.alternatives]) results.set(option.station.nameJa, option);
+  for (const option of [previous, ...(previous.alternatives ?? [])]) {
+    const lookedUpAt = option.keptSince ?? previous.computedAt;
+    if (nowMs - lookedUpAt > KEEP_RESULT_MS) continue;
+    const { station, walkingMinutes, distanceMeters, lastTrain, leaveByMs, recommendedLeaveByMs, safetyMarginMinutes, disruptionLines, destination, walkHomeMinutes, arriveHomeMs } = option;
+    results.set(station.nameJa, { station, walkingMinutes, distanceMeters, lastTrain, leaveByMs, recommendedLeaveByMs, safetyMarginMinutes, disruptionLines, destination, walkHomeMinutes, arriveHomeMs, keptSince: lookedUpAt });
+  }
   return results;
 }
 
@@ -487,7 +520,11 @@ export async function planNight(
   const knownWalks = previous && earlier.size > 0 && distanceBetween(previous.coordinates, coordinates) <= SAME_SPOT_METERS
     ? new Map([...earlier].map(([name, option]) => [name, { walkingMinutes: option.walkingMinutes, distanceMeters: option.distanceMeters }]))
     : undefined;
-  let candidates = await findNearbyStations(coordinates, WALKING_PACE, CANDIDATE_STATIONS_INITIAL, knownWalks);
+  // If Apple's station search fails, the last plan's stations stand in (lib/stations).
+  const recent = previous && distanceBetween(previous.coordinates, coordinates) <= RECENT_STATIONS_METERS
+    ? [previous, ...previous.alternatives].map((option) => option.station)
+    : [];
+  let candidates = await findNearbyStations(coordinates, WALKING_PACE, CANDIDATE_STATIONS_INITIAL, knownWalks, recent);
   if (pinned && !candidates.some((candidate) => sameStation(candidate.station, pinned))) {
     candidates.push({
       station: pinned,
@@ -500,7 +537,7 @@ export async function planNight(
   let options = await annotateDisruptions(firstPass.options);
 
   if (shouldExpandStationSearch(options)) {
-    const expanded = await findNearbyStations(coordinates, WALKING_PACE, CANDIDATE_STATIONS_EXPANDED, knownWalks).catch(() => []);
+    const expanded = await findNearbyStations(coordinates, WALKING_PACE, CANDIDATE_STATIONS_EXPANDED, knownWalks, recent).catch(() => []);
     const known = new Set(candidates.map((candidate) => candidate.station.nameJa));
     const extra = expanded.filter((candidate) => !known.has(candidate.station.nameJa));
     if (extra.length > 0) {

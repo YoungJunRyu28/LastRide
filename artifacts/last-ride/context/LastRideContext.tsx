@@ -56,6 +56,7 @@ import {
   writeTonightDestination,
   writeTrainChoice,
   writeWidgetTheme,
+  readOneNightSettings,
   readTrainChoiceOverride,
   writeTrainChoiceOverride,
   type TrainChoiceOverride,
@@ -121,6 +122,8 @@ export type LocationErrorCode = LocationError["code"];
 /** A station change this soon after the user chose a station counts as theirs (no notice, no catch-up). */
 
 /** Without night tracking, opening (or returning to) the app re-plans a plan this old. */
+/** A station change this soon after the user chose one is theirs, not automatic. */
+const USER_STATION_WINDOW_MS = 60_000;
 const AUTO_REPLAN_AFTER_MS = 5 * MINUTE_MS;
 
 /**
@@ -501,13 +504,24 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
   // the same render as the new plan, so nothing (reminders, the station notice)
   // ever sees the new station with the old choice. undefined = no new decision.
   const lastPlanRef = useRef<NightPlan | null>(null);
+  /**
+   * When the user last chose the station themselves (駅を選ぶ, この駅に固定, 自動に戻す).
+   * That's not an automatic change: their own 1本前 / 2本前 applies there as it is.
+   * Also holds back the lock fallback until the plan for a newly pinned station arrives.
+   */
+  const userStationAt = useRef<number>(-Infinity);
   const newOverride = useMemo((): TrainChoiceOverride | null | undefined => {
     const previous = lastPlanRef.current;
     if (!basePlan || !previous || trainChoice === 0) return undefined;
     if (sameStation(previous.station, basePlan.station)) return undefined;
     if (choiceOverride?.station === basePlan.station.nameJa) return undefined;
+    if (nowMs - userStationAt.current < USER_STATION_WINDOW_MS) return undefined;
     const slot = choiceAt(trainChoice, choiceOverride, previous.station.nameJa);
-    const choice = slotAtNewStation(trainOptions(basePlan, leaveMargin, getNow()), slot);
+    // nowMs, not getNow(): getNow is declared further down, and this runs during render.
+    const options = trainOptions(basePlan, leaveMargin, nowMs);
+    // Its earlier trains not known yet (or not found): no decision on an incomplete list.
+    if (options.length <= slot) return undefined;
+    const choice = slotAtNewStation(options, slot);
     return choice === trainChoice
       ? null
       : { station: basePlan.station.nameJa, fromStation: previous.station.nameJa, choice, until: trainChoiceUntil(basePlan.lastTrain.departsAt) };
@@ -617,6 +631,10 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
   useEffect(() => {
     const token = ++scheduleToken.current;
     if (demoActive) return;
+    // Not before saved tracking has been resumed: on launch (often invisible, for a
+    // background location update) trackingMode starts null, and cancelling then
+    // would drop every reminder and alarm until the resume finishes.
+    if (!trackingRestored) return;
     if (!trackingMode || !plan) {
       void cancelAllReminders();
       return;
@@ -651,6 +669,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       });
     })();
   }, [
+    trackingRestored,
     trackingMode,
     plan,
     boardingQuestion,
@@ -838,6 +857,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
 
   const setPinnedStation = useCallback((station: StationOption | null) => {
     markReminderChange("user");
+    userStationAt.current = getNow();
     setLockFallback(null);
     setPinnedStationState(station);
     void writePinnedStation(station);
@@ -850,6 +870,9 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
   // away, or its last train went) returns to automatic, and says so.
   const [lockFallback, setLockFallback] = useState<StationOption | null>(null);
   useEffect(() => {
+    // A station just chosen from search: its plan is still being looked up, and the
+    // plan on screen (made before the choice) isn't pinned yet. Not a fallback.
+    if (basePlan && basePlan.computedAt < userStationAt.current) return;
     if (pinnedStation && basePlan && !basePlan.pinned) {
       setPinnedStationState(null);
       void writePinnedStation(null);
@@ -905,23 +928,31 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
             destination.id === id ? item : destination,
           )
         : [...destinations, item];
+      // Editing a saved destination that isn't tonight's (renaming 職場 while heading
+      // home): just save it; tonight's plan, 今夜だけ and a locked station stay.
+      if (exists && id !== activeDestinationId) {
+        setDestinations(next);
+        void writeDestinationState(next, activeDestinationId);
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        return;
+      }
       applyDestinationState(next, id);
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     },
-    [destinations, applyDestinationState],
+    [destinations, activeDestinationId, applyDestinationState],
   );
 
   const selectDestination = useCallback(
     (id: string) => {
-      if (
-        id === activeDestinationId ||
-        !destinations.some((destination) => destination.id === id)
-      )
-        return;
+      if (!destinations.some((destination) => destination.id === id)) return;
+      // The usual destination again while a 今夜だけ one is set: back to it (the list
+      // shows none selected then, so tapping it means "my usual place").
+      if (id === activeDestinationId && !tonightDestination) return;
+      markReminderChange("user");
       applyDestinationState(destinations, id);
       void Haptics.selectionAsync();
     },
-    [activeDestinationId, destinations, applyDestinationState],
+    [activeDestinationId, destinations, applyDestinationState, tonightDestination],
   );
 
   const deleteDestination = useCallback(
@@ -982,6 +1013,25 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     },
     [activeDestinationId, destinations, clearPlan],
   );
+
+  // One-night settings (1本前 / 2本前, a locked station, 今夜だけ destination) expire
+  // at the end of their night, but only reading them drops them. iOS can keep the
+  // app in memory into the next evening, so read them again whenever it comes back.
+  const oneNightRef = useRef({ trainChoice, pinnedStation, tonightDestination });
+  oneNightRef.current = { trainChoice, pinnedStation, tonightDestination };
+  useEffect(() => {
+    if (!isHydrated) return;
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state !== "active") return;
+      void readOneNightSettings(getNow()).then((stored) => {
+        const current = oneNightRef.current;
+        if (stored.trainChoice !== current.trainChoice) setTrainChoiceState(stored.trainChoice);
+        if (current.pinnedStation && !stored.pinnedStation) setPinnedStationState(null);
+        if (current.tonightDestination && !stored.tonightDestination) setTonightDestination(null);
+      });
+    });
+    return () => subscription.remove();
+  }, [isHydrated, getNow, setTonightDestination]);
 
   // A time is a notification or an alarm, never both: choosing it in one list
   // removes it from the other.
@@ -1239,7 +1289,13 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (error) {
       if (session !== sessionRef.current) return;
-      setLocationError(errorCode(error));
+      const code = errorCode(error);
+      // A lookup that failed for now (Apple's request limit, no connection) with a
+      // plan on screen: keep it; its 確認 time shows its age and the next check retries.
+      // While tracking, keep it for any lookup answer too: an empty plan would cancel
+      // every reminder, and nothing reschedules them until the phone moves.
+      if (planRef.current && (code === "unavailable" || (trackingModeRef.current !== null && code !== "permission"))) return;
+      setLocationError(code);
       setPlan(null);
     } finally {
       if (session === sessionRef.current) setIsLocating(false);
@@ -1260,6 +1316,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
   const chooseDepartureStation = useCallback(
     async (station: StationOption) => {
       markReminderChange("user");
+      userStationAt.current = getNow();
       setLockFallback(null);
       setPinnedStationState(station);
       void writePinnedStation(station);
@@ -1270,9 +1327,11 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
         return;
       }
       const from = current?.coordinates ?? { latitude: station.latitude, longitude: station.longitude };
+      const session = sessionRef.current;
       setIsLocating(true);
       try {
         const next = await planFrom(from, { pin: station });
+        if (session !== sessionRef.current) return; // reset meanwhile
         if (next) {
           setLocationError((error) => (error === "permission" ? error : null));
           applyPlan(next);
@@ -1361,7 +1420,11 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       const startedAt =
         (resume ? await readTrackingStartedAt() : null) ?? getNow();
       if (op !== trackingOp.current) return;
-      if (!resume) void markTrackingStarted(startedAt);
+      if (!resume) {
+        void markTrackingStarted(startedAt);
+        // A new night of tracking starts from a clean slate, not an old night's snapshot.
+        void clearTrackingSnapshot();
+      }
       setTrackingStartedAt(startedAt);
       const handleCoordinates = (coordinates: Coordinates) => {
         if (op !== trackingOp.current || replanInFlight.current) return;
@@ -1597,11 +1660,12 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     // Only on launch: later starts and stops come from the user.
   }, [isHydrated]);
 
-  // When the app returns to the foreground, adopt the background task's plan if it is newer.
+  // Adopt the background task's plan if it is newer: when the app returns to the
+  // foreground, and at once when background tracking (re)starts, which on a cold
+  // launch comes after the launch's own "active" event.
   useEffect(() => {
     if (trackingMode !== "background") return;
-    const subscription = AppState.addEventListener("change", (state) => {
-      if (state !== "active") return;
+    const adopt = () => {
       const session = sessionRef.current;
       void readTrackingSnapshot().then((snapshot) => {
         if (!snapshot || session !== sessionRef.current) return;
@@ -1623,6 +1687,10 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
         });
         setUserCoordinates(snapshot.coordinates);
       });
+    };
+    adopt();
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") adopt();
     });
     return () => subscription.remove();
   }, [trackingMode, getNow]);
@@ -1662,6 +1730,11 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     void writeBoarded(null);
     void writeAnswered(null);
     setPinnedStationState(null);
+    setTonightDestinationState(null);
+    setMissedCheckInState(DEFAULT_SETTINGS.missedCheckIn);
+    setNightLocationModeState(DEFAULT_SETTINGS.nightLocationMode);
+    setLockFallback(null);
+    setSavedFor(null);
     setHomeAddressState(null);
     setDestinations(DEFAULT_SETTINGS.destinations);
     setActiveDestinationId(DEFAULT_SETTINGS.activeDestinationId);
@@ -1699,12 +1772,13 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       widgetDestination,
       language ?? "en",
       Date.now(),
-      isPremium,
+      // Until RevenueCat has answered, the saved premium state decides (as for the Live Activity).
+      premiumKnown ? isPremium : undefined,
       { tracking: !!trackingMode, firstTrain, reason: locationError, theme: widgetTheme, boarded },
     ).catch((error) => {
       if (__DEV__) console.warn("[LastRide] widget sync failed", error);
     });
-  }, [plan, widgetDestination, language, isPremium, demoActive, isHydrated, trackingMode, firstTrain, locationError, widgetTheme, boarded]);
+  }, [plan, widgetDestination, language, isPremium, premiumKnown, demoActive, isHydrated, trackingMode, firstTrain, locationError, widgetTheme, boarded]);
 
   const value = useMemo<RideContextValue>(
     () => ({
