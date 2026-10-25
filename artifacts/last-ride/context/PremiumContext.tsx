@@ -67,6 +67,11 @@ type PremiumValue = {
   testOverride: boolean;
   /** RevenueCat's (anonymous) user id; the server checks the entitlement with it. */
   appUserId: () => Promise<string>;
+  /**
+   * TestFlight check: the App Store country StoreKit uses and the plans' currency
+   * and prices as fetched now, e.g. "JPN · JPY ¥1,200 / ¥190".
+   */
+  storeInfo: () => Promise<string>;
 };
 
 const PremiumContext = createContext<PremiumValue | null>(null);
@@ -205,9 +210,21 @@ export function PremiumProvider({ children }: { children: React.ReactNode }) {
     return id;
   }, []);
 
+  const storeInfo = useCallback(async () => {
+    if (!premiumLive) return 'test mode';
+    try {
+      const [storefront, offerings] = await Promise.all([Purchases.getStorefront().catch(() => null), Purchases.getOfferings()]);
+      const products = [offerings.current?.annual, offerings.current?.monthly].filter((pkg) => !!pkg).map((pkg) => pkg!.product);
+      const currency = products[0]?.currencyCode ?? '?';
+      return `${storefront?.countryCode ?? '?'} · ${currency} ${products.map((product) => product.priceString).join(' / ')}`;
+    } catch (error) {
+      return `error: ${error instanceof Error ? error.message : String(error)}`;
+    }
+  }, []);
+
   const value = useMemo(
-    () => ({ isPremium, ready, known: determined, live: premiumLive, plans, purchase, restore, setTestPremium, testOverride: override !== null, appUserId }),
-    [isPremium, ready, determined, plans, purchase, restore, setTestPremium, override, appUserId],
+    () => ({ isPremium, ready, known: determined, live: premiumLive, plans, purchase, restore, setTestPremium, testOverride: override !== null, appUserId, storeInfo }),
+    [isPremium, ready, determined, plans, purchase, restore, setTestPremium, override, appUserId, storeInfo],
   );
   return <PremiumContext.Provider value={value}>{children}</PremiumContext.Provider>;
 }

@@ -102,7 +102,10 @@ export function PremiumOffer({
               accessibilityState={{ checked: active }}
               style={({ pressed }) => [
                 styles.plan,
-                { backgroundColor: colors.card, borderColor: active ? colors.primary : colors.border, borderWidth: active ? 2 : 1, opacity: pressed ? 0.85 : 1 },
+                { backgroundColor: colors.card, borderColor: active ? colors.primary : colors.border, opacity: pressed ? 0.85 : 1 },
+                // Same size either way: the thinner border gets a point more padding, so
+                // choosing a plan doesn't nudge everything below it.
+                active ? styles.planActive : styles.planIdle,
               ]}
             >
               {annual && (
@@ -170,7 +173,9 @@ const styles = StyleSheet.create({
   featureTitle: { fontSize: 15, fontWeight: '800' },
   featureBody: { fontSize: 12 },
   plans: { flexDirection: 'row', gap: 10 },
-  plan: { borderRadius: 18, flex: 1, gap: 3, padding: 14, paddingTop: 18 },
+  plan: { borderRadius: 18, flex: 1, gap: 3 },
+  planActive: { borderWidth: 2, padding: 14, paddingTop: 18 },
+  planIdle: { borderWidth: 1, padding: 15, paddingTop: 19 },
   planBadge: { alignSelf: 'flex-start', borderRadius: 6, fontSize: 10, fontWeight: '900', left: 12, overflow: 'hidden', paddingHorizontal: 6, paddingVertical: 2, position: 'absolute', top: -9 },
   planName: { fontSize: 12, fontWeight: '700' },
   planPrice: { fontFamily: DIGITS, fontSize: 22 },

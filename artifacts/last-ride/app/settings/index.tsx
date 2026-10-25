@@ -36,7 +36,8 @@ export default function SettingsScreen() {
     nightLocationMode, backgroundAllowed,
     demoActive, setDemoNow, demoSpeed, setDemoSpeed, nowMs, plan, currentTime, leaveBy, widgetTheme,
   } = useLastRide();
-  const { isPremium, live: premiumLive, setTestPremium, testOverride } = usePremium();
+  const { isPremium, live: premiumLive, setTestPremium, testOverride, storeInfo } = usePremium();
+  const [store, setStore] = React.useState<string | null>(null);
   // Test tools: dev builds, and TestFlight installs (detected at run time; never App Store).
   const testTools = __DEV__ || isTestFlightBuild;
   const [alarmStatus] = useAlarmStatus(alarmsEnabled);
@@ -209,6 +210,14 @@ export default function SettingsScreen() {
             title={ja ? '予約中の通知を見る' : 'Show queued notifications'}
             subtitle={queued === null ? (ja ? 'iOSに予約されている時刻と種類' : 'What iOS has queued: time and kind') : queued.length === 0 ? (ja ? 'なし' : 'None') : queued.join('\n')}
             onPress={() => void scheduledNotificationLines().then(setQueued)}
+          />
+          <Divider />
+          {/* Prices in dollars on a Japanese account: which App Store country StoreKit uses. */}
+          <Row
+            testID="store-info"
+            title={ja ? 'ストアの国と価格を見る' : 'Show store country and prices'}
+            subtitle={store ?? (ja ? 'StoreKitが使っている国・通貨・価格' : 'Country, currency and prices StoreKit is using')}
+            onPress={() => void storeInfo().then(setStore)}
           />
           <Divider />
           {premiumLive && isTestFlightBuild && (
