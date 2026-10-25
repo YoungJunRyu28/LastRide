@@ -2,7 +2,7 @@ import { PremiumOffer } from '@/components/PremiumOffer';
 import { IconButton } from '@/components/ui';
 import { useLastRide } from '@/context/LastRideContext';
 import { useColors } from '@/hooks/useColors';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import React, { useState } from 'react';
 import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -17,6 +17,8 @@ export default function PaywallScreen() {
   const insets = useSafeAreaInsets();
   const { language } = useLastRide();
   const ja = language !== 'en';
+  // Opened by tapping a widget that needs Premium: say so.
+  const fromWidget = useLocalSearchParams<{ from?: string }>().from === 'widget';
   const close = () => (router.canGoBack() ? router.back() : router.replace('/ride'));
   const [frameHeight, setFrameHeight] = useState(0);
   const [contentHeight, setContentHeight] = useState(0);
@@ -40,6 +42,11 @@ export default function PaywallScreen() {
           <Text accessibilityRole="header" style={[styles.title, { color: colors.foreground }]}>
             {ja ? 'みんなで、\n確実に帰る。' : 'Everyone home,\non time.'}
           </Text>
+          {fromWidget && (
+            <Text style={[styles.note, { color: colors.mutedForeground }]}>
+              {ja ? 'ウィジェットはプレミアムで使えます。今夜の出発時刻をホーム画面とロック画面に表示します。' : 'Widgets come with Premium: tonight’s leave time on your Home and Lock Screen.'}
+            </Text>
+          )}
         </View>
         <PremiumOffer ja={ja} onDone={close} />
       </ScrollView>
@@ -54,4 +61,5 @@ const styles = StyleSheet.create({
   heading: { gap: 4 },
   kicker: { fontSize: 12, fontWeight: '900', letterSpacing: 1.4 },
   title: { fontSize: 32, fontWeight: '800', letterSpacing: -0.8, lineHeight: 40 },
+  note: { fontSize: 13, lineHeight: 19, marginTop: 6 },
 });

@@ -75,6 +75,8 @@ export type LeaveWidgetProps = {
   title: string;
   /** "ほかの帰り方 ›" */
   link: string;
+  /** Where a tap opens. The widget itself shows no promotion (DPLA 3.3.7(E)); a locked one opens the Premium screen in the app. */
+  url: string;
 
   // message
   icon: "moon" | "alert" | "tram";
@@ -106,6 +108,7 @@ const EMPTY = {
   footnote: "",
   title: "",
   link: "",
+  url: "last-ride://ride",
   icon: "tram" as const,
   message: "",
   hint: "",
@@ -150,6 +153,8 @@ export function widgetMessage(
     hint: ja ? jaHint : enHint,
     inline: ja ? jaMessage : enMessage,
     icon,
+    // Locked (not premium): the tap opens the app's Premium screen, which explains it.
+    url: reason === "premium" ? "last-ride://paywall?from=widget" : "last-ride://ride",
   };
 }
 

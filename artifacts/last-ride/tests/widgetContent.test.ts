@@ -132,3 +132,13 @@ describe("widget reloads", () => {
     expect(widgetSignature(moved, jst(23, 3))).not.toBe(widgetSignature(first, jst(23, 0)));
   });
 });
+
+describe("a locked widget (not premium)", () => {
+  test("shows no promotion itself, and a tap opens the Premium screen", () => {
+    const props = widgetMessage("ja", "premium");
+    expect(props.message).not.toMatch(/プレミアム|円|¥/);
+    expect(props.url).toBe("last-ride://paywall?from=widget");
+    expect(widgetMessage("ja", "no-plan").url).toBe("last-ride://ride");
+  });
+});
+

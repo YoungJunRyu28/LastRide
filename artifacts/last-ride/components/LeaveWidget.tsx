@@ -31,7 +31,7 @@ const LeaveWidget = (props: LeaveWidgetProps, environment: WidgetEnvironment) =>
   "widget";
   const c = props.colors;
   const family = environment.widgetFamily;
-  const open = widgetURL("last-ride://ride");
+  const open = widgetURL(props.url || "last-ride://ride");
   const background = containerBackground(c.background, "widget");
   const toneColor = props.tone === "train" ? c.train : c.leave;
   const countdown = { lower: new Date(props.shownAt), upper: new Date(props.countdownTo) };
