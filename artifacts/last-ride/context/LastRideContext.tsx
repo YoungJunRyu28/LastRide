@@ -248,7 +248,8 @@ type RideContextValue = {
   setMissedCheckIn: (enabled: boolean) => void;
   /** Night tracking's location choice; "ask" shows the disclosure next time. */
   nightLocationMode: NightLocationMode;
-  setNightLocationMode: (mode: NightLocationMode) => void;
+  /** pendingAlways: chosen 閉じても更新 but iOS hasn't confirmed "Always" yet; switches by itself once it does. */
+  setNightLocationMode: (mode: NightLocationMode, options?: { pendingAlways?: boolean }) => void;
   /** Whether iOS allows location while the app is closed ("Always"); null until known. */
   backgroundAllowed: boolean | null;
   /** Asks iOS for "Always" if it still can; resolves to whether it's allowed now. */
@@ -1144,9 +1145,12 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     void Haptics.selectionAsync();
   }, []);
 
-  const setNightLocationMode = useCallback((mode: NightLocationMode) => {
+  const setNightLocationMode = useCallback((mode: NightLocationMode, { pendingAlways = false }: { pendingAlways?: boolean } = {}) => {
     setNightLocationModeState(mode);
     void AsyncStorage.setItem(STORAGE_KEYS.nightLocationMode, mode);
+    // A choice made now replaces a 閉じても更新 still waiting for iOS (see refreshBackgroundAllowed).
+    if (pendingAlways) void AsyncStorage.setItem(STORAGE_KEYS.wantsBackground, 'true');
+    else void AsyncStorage.removeItem(STORAGE_KEYS.wantsBackground);
   }, []);
 
   // The app's 閉じても更新 only works if iOS allows "Always"; keep track so the UI
@@ -1156,6 +1160,13 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     if (Platform.OS === "web") return false;
     const { granted } = await backgroundLocationState();
     setBackgroundAllowed(granted);
+    // Setup chose 閉じても更新 before iOS had confirmed "Always" (its prompt came late,
+    // or the user allowed it in Settings afterwards): now it's allowed, so use it.
+    if (granted && (await AsyncStorage.getItem(STORAGE_KEYS.wantsBackground).catch(() => null)) === 'true') {
+      setNightLocationModeState('background');
+      void AsyncStorage.setItem(STORAGE_KEYS.nightLocationMode, 'background');
+      void AsyncStorage.removeItem(STORAGE_KEYS.wantsBackground);
+    }
     return granted;
   }, []);
   useEffect(() => {

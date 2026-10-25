@@ -212,10 +212,25 @@ export async function requestNightLocationPermission(level: 'foreground' | 'back
     const foreground = await Location.requestForegroundPermissionsAsync();
     if (!foreground.granted) return false;
     if (level === 'foreground') return true;
-    return (await Location.requestBackgroundPermissionsAsync()).granted;
+    if ((await Location.requestBackgroundPermissionsAsync()).granted) return true;
+    return await backgroundGrantedSoon();
   } catch {
     return false;
   }
+}
+
+/**
+ * expo-location (iOS) answers the "Change to Always Allow" prompt when the app
+ * becomes active again, a moment before iOS records the choice: so "Always" can
+ * come back as "While Using". Look again for a couple of seconds before taking no.
+ */
+async function backgroundGrantedSoon(): Promise<boolean> {
+  if (Platform.OS !== 'ios') return false;
+  for (let attempt = 0; attempt < 8; attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    if ((await Location.getBackgroundPermissionsAsync().catch(() => null))?.granted) return true;
+  }
+  return false;
 }
 
 function locationOptions(profile: LocationProfile): Location.LocationTaskOptions {
@@ -263,7 +278,7 @@ export async function startBackgroundTracking(profile: LocationProfile = 'normal
   if (Platform.OS === 'web') return false;
   try {
     const background = await Location.requestBackgroundPermissionsAsync();
-    if (!background.granted) return false;
+    if (!background.granted && !(await backgroundGrantedSoon())) return false;
     await Location.startLocationUpdatesAsync(LOCATION_TASK, locationOptions(profile));
     await AsyncStorage.setItem(PROFILE_KEY, profile).catch(() => undefined);
     // Only publish the durable active flag after the native task is confirmed.

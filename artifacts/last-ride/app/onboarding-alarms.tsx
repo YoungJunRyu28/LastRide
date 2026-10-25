@@ -14,7 +14,7 @@ import { StyleSheet, Text, View } from 'react-native';
  * On the first time this step is shown, with one at the leave time, so people
  * try them; 「アラームは使わない」 turns them off (and they stay off after Back).
  * Older iOS: the same choices, plus a note that updating unlocks real alarms
- * (until then alarm times arrive as notifications with the chosen sound).
+ * (until then alarm times arrive as notifications with an alarm tone).
  */
 export default function OnboardingAlarmsScreen() {
   const colors = useColors();

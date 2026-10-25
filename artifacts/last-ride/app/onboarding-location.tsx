@@ -31,7 +31,9 @@ export default function OnboardingLocationScreen() {
     const granted = await requestNightLocationPermission(choice);
     // A refused "when closed" can still leave foreground access; ask again at tracking time otherwise.
     if (granted) setNightLocationMode(choice);
-    else if (choice === 'background' && (await requestNightLocationPermission('foreground'))) setNightLocationMode('foreground');
+    // "Always" not confirmed yet: app-only for now, switching to 閉じても更新 by itself
+    // as soon as iOS allows it (its prompt can come late, or the user allows it in Settings).
+    else if (choice === 'background' && (await requestNightLocationPermission('foreground'))) setNightLocationMode('foreground', { pendingAlways: true });
     else setNightLocationMode('ask');
     setAsking(false);
     finish();

@@ -6,7 +6,7 @@ import { useColors } from '@/hooks/useColors';
 /**
  * The alarm step shows on every iPhone: on iOS 26+ it sets up real alarms; on
  * older iOS it explains that updating unlocks them (until then alarm times
- * arrive as notifications with the chosen sound).
+ * arrive as notifications with an alarm tone).
  */
 export const SETUP_HAS_ALARMS = Platform.OS === 'ios';
 /** Step numbers: 帰り先, 通知, (アラーム), 早めに出る時間, 位置情報. */
