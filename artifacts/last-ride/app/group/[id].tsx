@@ -17,7 +17,7 @@ import {
 } from '@workspace/api-client-react';
 import { router, useLocalSearchParams } from 'expo-router';
 import React, { useState } from 'react';
-import { Alert, Modal, Platform, Pressable, ScrollView, Share, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Share, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomNav } from '@/components/BottomNav';
 import { Card, IconButton, PrimaryButton, SecondaryButton, TextButton } from '@/components/ui';
@@ -533,14 +533,17 @@ export default function GroupScreen() {
       <BottomNav language={language} />
 
       <Modal visible={sheet !== null} transparent animationType="slide" onRequestClose={() => setSheet(null)}>
-        <Pressable style={styles.scrim} onPress={() => setSheet(null)} accessibilityLabel={ja ? '閉じる' : 'Close'} />
-        <View style={[styles.sheet, { backgroundColor: colors.card, paddingBottom: insets.bottom + 16 }]}>
-          <View style={[styles.grabber, { backgroundColor: colors.input }]} />
-          <Text style={[styles.sheetGroup, { color: colors.foreground }]}>{detail.name}</Text>
-          <Text style={[styles.note, { color: colors.mutedForeground }]}>{sheetTitle}</Text>
-          <ScrollView style={styles.sheetScroll}>{sheetBody()}</ScrollView>
-          <TextButton label={sheet === 'menu' ? (ja ? '閉じる' : 'Close') : ja ? '戻る' : 'Back'} onPress={() => setSheet(sheet === 'menu' ? null : 'menu')} />
-        </View>
+        {/* The sheet rises with the keyboard, so the name being typed stays in view. */}
+        <KeyboardAvoidingView style={styles.sheetFrame} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <Pressable style={styles.scrim} onPress={() => setSheet(null)} accessibilityLabel={ja ? '閉じる' : 'Close'} />
+          <View style={[styles.sheet, { backgroundColor: colors.card, paddingBottom: insets.bottom + 16 }]}>
+            <View style={[styles.grabber, { backgroundColor: colors.input }]} />
+            <Text style={[styles.sheetGroup, { color: colors.foreground }]}>{detail.name}</Text>
+            <Text style={[styles.note, { color: colors.mutedForeground }]}>{sheetTitle}</Text>
+            <ScrollView style={styles.sheetScroll}>{sheetBody()}</ScrollView>
+            <TextButton label={sheet === 'menu' ? (ja ? '閉じる' : 'Close') : ja ? '戻る' : 'Back'} onPress={() => setSheet(sheet === 'menu' ? null : 'menu')} />
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -586,6 +589,7 @@ const styles = StyleSheet.create({
   alertsText: { flex: 1, gap: 2 },
   hostLine: { alignItems: 'center', flexDirection: 'row', gap: 6, justifyContent: 'center', paddingVertical: 4 },
   hostLineText: { fontSize: 13, fontWeight: '700' },
+  sheetFrame: { flex: 1 },
   scrim: { backgroundColor: 'rgba(0,0,0,0.5)', flex: 1 },
   sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, gap: 6, maxHeight: '80%', paddingHorizontal: 20, paddingTop: 10 },
   grabber: { alignSelf: 'center', borderRadius: 3, height: 5, marginBottom: 8, width: 40 },
