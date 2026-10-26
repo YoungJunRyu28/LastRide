@@ -26,6 +26,7 @@ import { applyTrainChoice, choiceAt, effectiveTrainChoice, slotAtNewStation, tra
 import type { Coordinates } from '@/lib/stations';
 import { formatJstTime, serviceDate } from '@/lib/time';
 import { syncSharedLeaveBy } from '@/lib/groupSharing';
+import { usableTrackingSnapshot } from '@/lib/trackingSnapshotGuard';
 
 export const LOCATION_TASK = 'lastride-night-tracking';
 const SNAPSHOT_KEY = 'lastride-tracking-snapshot';
@@ -308,10 +309,11 @@ export async function readTrackingSnapshot(): Promise<NightPlan | null> {
   try {
     const raw = await AsyncStorage.getItem(SNAPSHOT_KEY);
     if (!raw) return null;
-    const plan = JSON.parse(raw) as NightPlan;
-    if (typeof plan?.leaveByMs !== 'number') return null; // ignore snapshots from older app versions
-    // Snapshots hold positions from Apple Maps: drop one left over from a past night.
-    if (Date.now() - plan.computedAt > SNAPSHOT_MAX_AGE_MS) {
+    const plan: unknown = JSON.parse(raw);
+    // Invalid timestamps (NaN, null, absent or future-dated) previously slipped
+    // through an age subtraction, crashing trackingEndsAt() or using stale plans
+    // forever. Discard unusable cached data and recompute from location instead.
+    if (!usableTrackingSnapshot(plan)) {
       await AsyncStorage.removeItem(SNAPSHOT_KEY).catch(() => undefined);
       return null;
     }

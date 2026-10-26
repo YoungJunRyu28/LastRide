@@ -4,6 +4,7 @@ import { Platform } from 'react-native';
 import type { ReminderPlan } from '@/lib/planner';
 import { planDelivery, type DeliveryContext, type ReminderLedger } from '@/lib/reminderLedger';
 import { isNativeReminderScheduleIntact, type ScheduledLocalNotification } from '@/lib/notificationScheduleHealth';
+import { createSerialOperations } from '@/lib/serialOperations';
 import { BOARDED_ACTION, BOARDED_CATEGORY, boardedButtons, boardedFollowUp, boardedNotificationId, boardedQuestion, NOT_BOARDED_ACTION, type HeldTrain } from '@/lib/boarding';
 import { REMINDER_SOUNDS, STORAGE_KEYS, type ReminderDelivery, type ReminderSound } from '@/lib/settings';
 import { alarmKit, alarmKitAvailable, type AlarmAuthorization } from '../modules/last-ride-alarm/src';
@@ -108,23 +109,13 @@ async function nativeSchedulePresent(plans: ReminderPlan[], hasHeld: boolean): P
   }
 }
 
-// Serializes all schedule/cancel operations so an older reschedule can never
-// cancel or overwrite a newer one. Each gets a time limit: one that never
-// finishes (iOS not answering) must not hold every later reschedule back.
-const OPERATION_LIMIT_MS = 20_000;
-let queue: Promise<void> = Promise.resolve();
-function enqueue(operation: () => Promise<void>): Promise<void> {
-  const limited = () =>
-    Promise.race([
-      operation(),
-      new Promise<void>((resolve) => setTimeout(() => {
-        console.warn('[LastRide] reminder scheduling timed out; moving on');
-        resolve();
-      }, OPERATION_LIMIT_MS)),
-    ]);
-  queue = queue.then(limited, limited);
-  return queue;
-}
+// Native Expo Notifications and AlarmKit calls are not abortable. Releasing
+// the queue after an arbitrary timeout allows stale work to continue and
+// cancel a newer reminder schedule. Watchdog warnings do not unlock the queue.
+const OPERATION_WARNING_MS = 20_000;
+const enqueue = createSerialOperations(OPERATION_WARNING_MS, () => {
+  console.warn('[LastRide] reminder scheduling is still running');
+});
 
 function configure() {
   if (configured || Platform.OS === 'web') return;

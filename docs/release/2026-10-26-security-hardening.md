@@ -78,3 +78,25 @@ recovery action for this scenario. It keeps retry as the primary option,
 does not pretend to delete server-side groups, preserves unresolved join/create
 proofs by rejecting recovery while either is pending, and explains that the
 user may need a new invitation. It is not automatic credential recovery.
+
+## October 26 later audit: reminder scheduler and background snapshot bugs
+
+- The previous reminder work queue used Promise.race with a 20-second
+  resolve-only timer. If a native schedule call took longer, new work began
+  while the old non-cancellable call could still resume and erase the newer
+  plan. Even successful requests left behind an outstanding 20-second warning
+  timer. The queue now serializes until actual native completion, clearing a
+  diagnostic watchdog on settlement. Timing/failure/recovery tests cover the
+  race. A permanently hung native call can still block the queue; native calls
+  are not cancellable, and this requires device-side monitoring/recovery QA.
+- A cached night-tracking snapshot previously required only a numeric
+  leaveByMs; missing computedAt values or malformed train departure objects
+  bypassed age checks and could strand a headless background session in stale
+  data or throw during end-time calculations. Snapshot validation now requires
+  a complete recent plan with finite timestamps, realistic coordinates,
+  choices and departure information, rejecting old/future/partial records and
+  requesting a fresh plan from location. Offline restoration from corrupted
+  snapshots is intentionally refused rather than showing unreliable times.
+
+These changes require physical-device AlarmKit/iOS Focus, Android Doze, and
+cold-launch/background task regression checks before store release.
