@@ -1,16 +1,16 @@
 import { OnboardingFrame, OnboardingHeading, SETUP_HAS_ALARMS, SETUP_STEPS } from '@/components/Onboarding';
-import { Card, Chip, PrimaryButton, Row, TextButton } from '@/components/ui';
+import { Card, Chip, Divider, PrimaryButton, Row, TextButton } from '@/components/ui';
 import { REMINDER_CHOICES, useLastRide } from '@/context/LastRideContext';
 import { reminderLabel } from '@/lib/settings';
 import { useColors } from '@/hooks/useColors';
 import { router } from 'expo-router';
 import React, { useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Platform, StyleSheet, Text, View } from 'react-native';
 
 /** Setup: reminder timing, then the notification permission. */
 export default function OnboardingNotificationsScreen() {
   const colors = useColors();
-  const { language, reminderIntervals, toggleReminderInterval, missedCheckIn, setMissedCheckIn, requestNotifications } = useLastRide();
+  const { language, reminderIntervals, toggleReminderInterval, missedCheckIn, setMissedCheckIn, throughFocus, setThroughFocus, requestNotifications } = useLastRide();
   const ja = language === 'ja';
   const [asking, setAsking] = useState(false);
   const next = () => router.replace(SETUP_HAS_ALARMS ? '/onboarding-alarms' : '/onboarding-margin');
@@ -76,6 +76,18 @@ export default function OnboardingNotificationsScreen() {
       </View>
 
       <Card style={styles.toggleCard}>
+        {Platform.OS === 'ios' && (
+          <>
+            <Row
+              testID="toggle-through-focus"
+              title={ja ? '集中モード中も通知' : 'Through Focus'}
+              subtitle={ja ? 'おやすみモードなどの集中モード中も、出発のお知らせを届けます（即時通知）' : 'Leave reminders still come through Sleep and other Focus modes (Time Sensitive)'}
+              switchValue={throughFocus}
+              onSwitch={setThroughFocus}
+            />
+            <Divider />
+          </>
+        )}
         <Row
           testID="toggle-missed-check-in"
           title={ja ? '終電後の案内' : 'After the last train'}

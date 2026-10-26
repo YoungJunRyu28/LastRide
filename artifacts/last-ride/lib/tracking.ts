@@ -20,9 +20,9 @@ import { recommendedLeaveTime } from '@/lib/reliability';
 import { endLiveActivity, syncLiveActivity } from '@/lib/liveActivity';
 import { syncWidgets } from '@/lib/widgets';
 import { notifyLockFallback, scheduleReminders, cancelAllReminders } from '@/lib/notifications';
-import { buildReminderPlans, planNight, sameStation, shouldReplan, trackingEndsAt, trackingHardStopAt, type NightPlan } from '@/lib/planner';
-import { hasCoordinates, readSettings, readTrainChoiceOverride, trainChoiceUntil, writePinnedStation, writeTrainChoiceOverride } from '@/lib/settings';
-import { applyTrainChoice, choiceAt, closestChoice, effectiveTrainChoice, trainChoiceLabel, trainOptions } from '@/lib/trainChoice';
+import { buildReminderPlans, locationProfile, planNight, sameStation, shouldReplan, trackingEndsAt, trackingHardStopAt, type LocationProfile, type NightPlan } from '@/lib/planner';
+import { hasCoordinates, readSettings, readTrainChoiceOverride, trainChoiceUntil, writePinnedStation, writeTrainChoiceOverride, readReminderTimes } from '@/lib/settings';
+import { applyTrainChoice, choiceAt, effectiveTrainChoice, slotAtNewStation, trainChoiceLabel, trainOptions } from '@/lib/trainChoice';
 import type { Coordinates } from '@/lib/stations';
 import { formatJstTime, serviceDate } from '@/lib/time';
 import { syncSharedLeaveBy } from '@/lib/groupSharing';
@@ -35,6 +35,8 @@ const SNAPSHOT_MAX_AGE_MS = 36 * 60 * 60 * 1000;
 const TRACKING_ACTIVE_KEY = 'lastride-tracking-active';
 /** When the user switched tracking on, for the 04:00 backup that ends it. */
 const TRACKING_STARTED_KEY = 'lastride-tracking-started-at';
+/** The LocationProfile the native updates were last started with. */
+const PROFILE_KEY = 'lastride-tracking-profile';
 
 export async function markTrackingStarted(startedAt: number): Promise<void> {
   await AsyncStorage.setItem(TRACKING_STARTED_KEY, String(startedAt)).catch(() => undefined);
@@ -57,27 +59,38 @@ async function recomputeFromLocation(coordinates: Coordinates): Promise<void> {
   const [previous, startedAt] = await Promise.all([readTrackingSnapshot(), readTrackingStartedAt()]);
   // The night's notifications are all sent (or it's past 04:00): switch tracking off.
   // iOS only wakes the app on movement, so this runs at the first update after the deadline.
+  // The snapshot goes too: left behind, tomorrow night's first update would read
+  // tonight's plan, find its night over, and switch tracking off again.
   if ((previous && now >= trackingEndsAt(previous)) || (startedAt !== null && now >= trackingHardStopAt(startedAt))) {
     await stopBackgroundTracking();
+    await clearTrackingSnapshot();
     return;
   }
   // 〔乗った〕: on the earlier train, the night is over (lib/boarding.ts).
   if (await readBoarded(now)) {
     await stopBackgroundTracking();
+    await clearTrackingSnapshot();
     await cancelAllReminders().catch(() => undefined);
     return;
   }
-  if (!shouldReplan(previous, coordinates, now)) return;
   let override = await readTrainChoiceOverride(now);
   // The plan in force before this update, with tonight's train choice.
   const before = previous ? trainOptions(previous, settings.leaveMargin, now) : [];
   const previousPlan = previous ? applyTrainChoice(previous, before, effectiveTrainChoice(before, choiceAt(settings.trainChoice, override, previous.station.nameJa))) : null;
+  // Rough positions while leaving is over an hour away; the usual detail after that.
+  if (previousPlan) await applyLocationProfile(locationProfile(previousPlan, now));
+  if (!shouldReplan(previous, coordinates, now)) {
+    // No re-plan, but the lock screen moves on (出るまで → the train → the next one):
+    // the Live Activity holds one countdown, so bring it up to date (skipped if unchanged).
+    if (previousPlan) await syncLiveActivity(previousPlan, settings.language ?? 'en', now).catch(() => undefined);
+    return;
+  }
   // On the way (past the leave time, train not gone): keep tonight's station and
   // times until the train departs, then re-plan from here (lib/onTheWay.ts).
   const kept = previous && previousPlan && holdOnTheWay(previous, previousPlan, now)
     ? keepOnTheWay(previous, coordinates, now, previousPlan.lastTrain.departsAt)
     : null;
-  const basePlan = kept ?? await planNight(coordinates, settings.homeStation, settings.leaveMargin, now, { pinned: settings.pinnedStation, homeAddress: settings.homeAddress });
+  const basePlan = kept ?? await planNight(coordinates, settings.homeStation, settings.leaveMargin, now, { pinned: settings.pinnedStation, homeAddress: settings.homeAddress, previous });
   if (!(await isTrackingFlagOn())) return; // stopped while we were computing
   // The station locked for tonight can't get you home any more: back to automatic, and say so.
   if (settings.pinnedStation && !basePlan.pinned) {
@@ -87,9 +100,9 @@ async function recomputeFromLocation(coordinates: Coordinates): Promise<void> {
   // The snapshot keeps the plan as found; the app applies tonight's train choice itself.
   await AsyncStorage.setItem(SNAPSHOT_KEY, JSON.stringify(basePlan));
   // 終電 / 1本前 / 2本前, falling back to a later train once the chosen one can't be made.
-  // After an automatic station change, the train there with the closest leave time.
+  // After an automatic station change, the same slot there unless its leave time has passed.
   if (previous && previousPlan && settings.trainChoice > 0 && !sameStation(previous.station, basePlan.station) && override?.station !== basePlan.station.nameJa) {
-    const choice = closestChoice(trainOptions(basePlan, settings.leaveMargin, now), recommendedLeaveTime(previousPlan));
+    const choice = slotAtNewStation(trainOptions(basePlan, settings.leaveMargin, now), choiceAt(settings.trainChoice, override, previous.station.nameJa));
     override = choice === settings.trainChoice
       ? null
       : { station: basePlan.station.nameJa, fromStation: previous.station.nameJa, choice, until: trainChoiceUntil(basePlan.lastTrain.departsAt) };
@@ -105,12 +118,16 @@ async function recomputeFromLocation(coordinates: Coordinates): Promise<void> {
   const followUpFor = goneAt !== undefined && basePlan.computedAt >= goneAt && !basePlan.frozenUntil && (await readAnswered()) !== goneAt ? goneAt : undefined;
   const plan = applyTrainChoice(basePlan, options, effective);
   const language = settings.language ?? 'en';
-  await scheduleReminders(buildReminderPlans(plan, settings.reminderIntervals, now, { missedCheckIn: settings.missedCheckIn, alarmIntervals: settings.alarmIntervals, includePast: true }), {
+  // Stopped (or 〔乗った〕) while this was planning: don't bring reminders or the Live Activity back.
+  if (!(await isTrackingFlagOn())) return;
+  // Read again now: the user may have changed reminders or alarms while this ran.
+  const times = await readReminderTimes();
+  await scheduleReminders(buildReminderPlans(plan, times.reminderIntervals, now, { missedCheckIn: settings.missedCheckIn, alarmIntervals: times.alarmIntervals, includePast: true }), {
     leaveBy: formatJstTime(recommendedLeaveTime(plan)),
     station: language === 'ja' ? plan.station.nameJa : plan.station.name,
     language,
     held: heldTrain(plan, language === 'ja'),
-  }, { sound: settings.alarmSound, vibrate: settings.reminderVibrate }, {
+  }, { sound: settings.alarmSound, vibrate: settings.reminderVibrate, throughFocus: settings.throughFocus }, {
     night: serviceDate((plan.nightLastTrain ?? plan.lastTrain).departsAt),
     choiceKey: String(settings.trainChoice),
     stationKey: plan.station.nameJa,
@@ -118,10 +135,11 @@ async function recomputeFromLocation(coordinates: Coordinates): Promise<void> {
     trainDepartsAtMs: plan.lastTrain.departsAt,
     trainLabel: trainChoiceLabel(effective, language === 'ja'),
     trainDeparts: formatJstTime(plan.lastTrain.departsAt),
-    switchedToClosest: override?.station === plan.station.nameJa,
+    movedFrom: override?.station === plan.station.nameJa ? trainChoiceLabel(settings.trainChoice, language === 'ja') : undefined,
     followUpFor,
     followUpLabel: gone ? trainChoiceLabel(gone.choice, language === 'ja') : undefined,
   });
+  if (!(await isTrackingFlagOn())) return;
   await syncLiveActivity(plan, language, now).catch(() => undefined);
   const destinationLabel = settings.tonightDestination
     ? language === 'ja' ? settings.tonightDestination.nameJa : settings.tonightDestination.name
@@ -194,32 +212,75 @@ export async function requestNightLocationPermission(level: 'foreground' | 'back
     const foreground = await Location.requestForegroundPermissionsAsync();
     if (!foreground.granted) return false;
     if (level === 'foreground') return true;
-    return (await Location.requestBackgroundPermissionsAsync()).granted;
+    if ((await Location.requestBackgroundPermissionsAsync()).granted) return true;
+    return await backgroundGrantedSoon();
   } catch {
     return false;
   }
 }
 
+/**
+ * expo-location (iOS) answers the "Change to Always Allow" prompt when the app
+ * becomes active again, a moment before iOS records the choice: so "Always" can
+ * come back as "While Using". Look again for a couple of seconds before taking no.
+ */
+async function backgroundGrantedSoon(): Promise<boolean> {
+  if (Platform.OS !== 'ios') return false;
+  for (let attempt = 0; attempt < 8; attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    if ((await Location.getBackgroundPermissionsAsync().catch(() => null))?.granted) return true;
+  }
+  return false;
+}
+
+function locationOptions(profile: LocationProfile): Location.LocationTaskOptions {
+  return {
+    // Light: cell / Wi-Fi positions, an update every ~500 m. Normal: ~100 m accuracy, every ~200 m.
+    accuracy: profile === 'light' ? Location.Accuracy.Low : Location.Accuracy.Balanced,
+    distanceInterval: profile === 'light' ? 500 : 200, // meters moved before an update
+    timeInterval: 180000, // at most every 3 minutes (Android)
+    // iOS would otherwise pause updates after a while in one place (a bar) and may
+    // not resume until a big move: you'd leave without the plan following you.
+    // Updates still only come on movement, so standing still costs little.
+    pausesUpdatesAutomatically: false,
+    // No blue location pill: on Dynamic Island iPhones it takes the island's
+    // place and hides the Live Activity while the app is closed. Allowed with
+    // "Always" location (which background tracking needs); the Live Activity
+    // and iOS's status-bar arrow still show that location is in use.
+    showsBackgroundLocationIndicator: false,
+    foregroundService: {
+      notificationTitle: 'LastRide is watching the clock',
+      notificationBody: 'Tracking your nearest station for tonight.',
+    },
+  };
+}
+
+/**
+ * Restarts the native updates with `profile` if they run with another one.
+ * Called on each update and when the app has a new plan; a phone lying still
+ * past the hour mark switches at the first update after moving (≤ 500 m) or
+ * when the app is opened.
+ */
+export async function applyLocationProfile(profile: LocationProfile): Promise<void> {
+  if (Platform.OS === 'web') return;
+  try {
+    if ((await AsyncStorage.getItem(PROFILE_KEY)) === profile) return;
+    if (!(await isTrackingFlagOn()) || !(await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK))) return;
+    await Location.startLocationUpdatesAsync(LOCATION_TASK, locationOptions(profile));
+    await AsyncStorage.setItem(PROFILE_KEY, profile);
+  } catch {
+    // Keeps the current updates.
+  }
+}
+
 /** Starts OS-level background updates. Returns true if background mode is active. */
-export async function startBackgroundTracking(): Promise<boolean> {
+export async function startBackgroundTracking(profile: LocationProfile = 'normal'): Promise<boolean> {
   if (Platform.OS === 'web') return false;
   try {
     const background = await Location.requestBackgroundPermissionsAsync();
-    if (!background.granted) return false;
-    await Location.startLocationUpdatesAsync(LOCATION_TASK, {
-      accuracy: Location.Accuracy.Balanced,
-      distanceInterval: 200, // meters moved before an update
-      timeInterval: 180000, // at most every 3 minutes (Android)
-      // iOS would otherwise pause updates after a while in one place (a bar) and may
-      // not resume until a big move: you'd leave without the plan following you.
-      // Updates still only come on movement, so standing still costs little.
-      pausesUpdatesAutomatically: false,
-      showsBackgroundLocationIndicator: true,
-      foregroundService: {
-        notificationTitle: 'LastRide is watching the clock',
-        notificationBody: 'Tracking your nearest station for tonight.',
-      },
-    });
+    if (!background.granted && !(await backgroundGrantedSoon())) return false;
+    await Location.startLocationUpdatesAsync(LOCATION_TASK, locationOptions(profile));
+    await AsyncStorage.setItem(PROFILE_KEY, profile).catch(() => undefined);
     // Only publish the durable active flag after the native task is confirmed.
     // Otherwise a failed start can leave the app believing background tracking is active.
     await AsyncStorage.setItem(TRACKING_ACTIVE_KEY, 'true');

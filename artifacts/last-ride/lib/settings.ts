@@ -31,6 +31,14 @@ export const STORAGE_KEYS = {
   alarmTimes: 'lastride-alarm-times',
   alarmSound: 'lastride-alarm-sound',
   reminderVibrate: 'lastride-reminder-vibrate',
+  throughFocus: 'lastride-through-focus',
+  /** Setup's alarm step has been shown (alarms start on there only the first time). */
+  alarmsOffered: 'lastride-alarms-offered',
+  /**
+   * Setup chose 閉じても更新 but iOS hadn't confirmed "Always" yet (a slow or later
+   * prompt): switch to it by itself once iOS allows it.
+   */
+  wantsBackground: 'lastride-wants-background',
   pinnedStation: 'lastride-pinned-station',
   missedCheckIn: 'lastride-missed-check-in',
   homeAddress: 'lastride-home-address',
@@ -89,6 +97,8 @@ export type Settings = {
   alarmIntervals: number[];
   alarmSound: ReminderSound;
   reminderVibrate: boolean;
+  /** Leave reminders as Time Sensitive (即時通知): they come through Focus modes and the summary. */
+  throughFocus: boolean;
   /** Station the user chose over the automatic pick; valid for one night only. */
   pinnedStation: StationOption | null;
   /** Send the "missed the last train?" check-in after the last train has gone. */
@@ -115,6 +125,7 @@ export const DEFAULT_SETTINGS: Settings = {
   alarmIntervals: [],
   alarmSound: 'default',
   reminderVibrate: true,
+  throughFocus: true,
   pinnedStation: null,
   missedCheckIn: true,
   homeAddress: null,
@@ -209,6 +220,20 @@ function parseReminders(raw: string | null, fallback: number[]): number[] {
   }
 }
 
+/**
+ * Just the notification and alarm times, straight from storage: for the
+ * background task to use the current choice right when it schedules (the
+ * user may have changed it while the task was running).
+ */
+export async function readReminderTimes(): Promise<Pick<Settings, 'reminderIntervals' | 'alarmsEnabled' | 'alarmIntervals'>> {
+  const [reminders, alarmsEnabled, alarmTimes] = await Promise.all([
+    AsyncStorage.getItem(STORAGE_KEYS.reminders),
+    AsyncStorage.getItem(STORAGE_KEYS.alarmsEnabled),
+    AsyncStorage.getItem(STORAGE_KEYS.alarmTimes),
+  ]);
+  return parseReminderTimes(reminders, alarmsEnabled, alarmTimes);
+}
+
 /** Notification and alarm times; a time in both lists stays an alarm. */
 function parseReminderTimes(
   notifyRaw: string | null,
@@ -232,6 +257,20 @@ function parsePinnedStation(raw: string | null): StationOption | null {
   }
 }
 
+/**
+ * The one-night settings as stored now: each is gone (null / 0) once its night
+ * is over. The app re-reads these when it comes back, since it can stay in
+ * memory from one evening to the next.
+ */
+export async function readOneNightSettings(nowMs = Date.now()): Promise<{ trainChoice: number; pinnedStation: StationOption | null; tonightDestination: StationOption | null }> {
+  const [pinned, tonight, trainChoice] = await Promise.all([
+    AsyncStorage.getItem(STORAGE_KEYS.pinnedStation).catch(() => null),
+    AsyncStorage.getItem(STORAGE_KEYS.tonightDestination).catch(() => null),
+    readTrainChoice(nowMs),
+  ]);
+  return { trainChoice, pinnedStation: parsePinnedStation(pinned), tonightDestination: parsePinnedStation(tonight) };
+}
+
 /** Tonight-only destinations share the pinned station's one-night lifetime. */
 export async function writeTonightDestination(station: StationOption | null): Promise<void> {
   if (station) await AsyncStorage.setItem(STORAGE_KEYS.tonightDestination, JSON.stringify({ station, serviceDate: serviceDate(Date.now()) }));
@@ -244,7 +283,7 @@ export async function writePinnedStation(station: StationOption | null): Promise
 }
 
 export async function readSettings(): Promise<Settings> {
-  const [language, homeStation, leaveMargin, reminders, alarmsEnabled, alarmTimes, alarmSound, reminderVibrate, pinnedStation, missedCheckIn, homeAddress, destinationsRaw, activeDestinationIdRaw, nightLocationMode, tonightRaw] = await Promise.all([
+  const [language, homeStation, leaveMargin, reminders, alarmsEnabled, alarmTimes, alarmSound, reminderVibrate, throughFocus, pinnedStation, missedCheckIn, homeAddress, destinationsRaw, activeDestinationIdRaw, nightLocationMode, tonightRaw] = await Promise.all([
     AsyncStorage.getItem(STORAGE_KEYS.language),
     AsyncStorage.getItem(STORAGE_KEYS.homeStation),
     AsyncStorage.getItem(STORAGE_KEYS.leaveMargin),
@@ -253,6 +292,7 @@ export async function readSettings(): Promise<Settings> {
     AsyncStorage.getItem(STORAGE_KEYS.alarmTimes),
     AsyncStorage.getItem(STORAGE_KEYS.alarmSound),
     AsyncStorage.getItem(STORAGE_KEYS.reminderVibrate),
+    AsyncStorage.getItem(STORAGE_KEYS.throughFocus),
     AsyncStorage.getItem(STORAGE_KEYS.pinnedStation),
     AsyncStorage.getItem(STORAGE_KEYS.missedCheckIn),
     AsyncStorage.getItem(STORAGE_KEYS.homeAddress),
@@ -323,6 +363,8 @@ export async function readSettings(): Promise<Settings> {
     ...parseReminderTimes(reminders, alarmsEnabled, alarmTimes),
     alarmSound: REMINDER_SOUNDS.includes(alarmSound as ReminderSound) ? (alarmSound as ReminderSound) : 'default',
     reminderVibrate: reminderVibrate !== 'false',
+    // Absent means never changed: on by default.
+    throughFocus: throughFocus !== 'false',
     pinnedStation: pinned,
     // Absent means never changed, and the check-in is on by default.
     missedCheckIn: missedCheckIn !== 'false',
@@ -361,7 +403,7 @@ export async function readTrainChoice(nowMs = Date.now()): Promise<number> {
 
 /**
  * After an automatic station change: the train used at that station instead of
- * the chosen slot (the one with the closest leave time). Tonight only; cleared
+ * the chosen slot (a later one when its leave time there had passed). Tonight only; cleared
  * when the user picks a train themselves.
  */
 export type TrainChoiceOverride = { station: string; fromStation: string; choice: number; until: number };

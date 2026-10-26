@@ -4,16 +4,28 @@ import { useLastRide } from '@/context/LastRideContext';
 import { usePremium } from '@/context/PremiumContext';
 import { useColors } from '@/hooks/useColors';
 import { SUPPORT_URL, TERMS_URL, TOKUSHOHO_URL, siteLink } from '@/lib/links';
-import { alarmKitAvailable } from '@/lib/notifications';
+import { alarmKitAvailable, scheduledNotificationLines, sendTestNotifications } from '@/lib/notifications';
+import { formatJstTime, MINUTE_MS } from '@/lib/time';
 import { isTestFlightBuild } from '@/modules/last-ride-alarm/src';
 import { recommendedLeaveTime } from '@/lib/reliability';
-import { MINUTE_MS } from '@/lib/time';
 import { WIDGET_THEMES } from '@/lib/widgetThemes';
 import { Feather } from '@expo/vector-icons';
+import Constants from 'expo-constants';
 import { router } from 'expo-router';
+import * as Updates from 'expo-updates';
 import * as WebBrowser from 'expo-web-browser';
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+
+/** "ビルド 6 · アップデート 10/17 19:42（a1b2c3）", or "ビルド 6 · アップデートなし". */
+function runningVersion(ja: boolean): string {
+  const build = Constants.nativeBuildVersion ?? '?';
+  const head = ja ? `ビルド ${build}` : `Build ${build}`;
+  if (Updates.isEmbeddedLaunch || !Updates.updateId || !Updates.createdAt) return `${head} · ${ja ? 'アップデートなし（ビルドのまま）' : 'no update (as built)'}`;
+  const when = Updates.createdAt.toLocaleString(ja ? 'ja-JP' : 'en-GB', { timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  const id = Updates.updateId.slice(0, 6);
+  return ja ? `${head} · アップデート ${when}（${id}）` : `${head} · update ${when} (${id})`;
+}
 
 /** Settings, pushed from the gear on Leave. Each row opens a page for that setting. */
 export default function SettingsScreen() {
@@ -22,13 +34,16 @@ export default function SettingsScreen() {
     language, destination, leaveMargin,
     reminderIntervals, alarmsEnabled, alarmIntervals, alarmSound, notificationsAllowed,
     nightLocationMode, backgroundAllowed,
-    demoActive, setDemoNow, nowMs, plan, currentTime, leaveBy, widgetTheme,
+    demoActive, setDemoNow, demoSpeed, setDemoSpeed, nowMs, plan, currentTime, leaveBy, widgetTheme,
   } = useLastRide();
-  const { isPremium, live: premiumLive, setTestPremium, testOverride } = usePremium();
+  const { isPremium, live: premiumLive, setTestPremium, testOverride, storeInfo } = usePremium();
+  const [store, setStore] = React.useState<string | null>(null);
   // Test tools: dev builds, and TestFlight installs (detected at run time; never App Store).
   const testTools = __DEV__ || isTestFlightBuild;
   const [alarmStatus] = useAlarmStatus(alarmsEnabled);
   const ja = language === 'ja';
+  const [testSetFor, setTestSetFor] = React.useState<number | null>(null);
+  const [queued, setQueued] = React.useState<string[] | null>(null);
 
   const remindersNeedAttention =
     notificationsAllowed === false || (alarmsEnabled && alarmKitAvailable && alarmStatus === 'denied');
@@ -167,10 +182,44 @@ export default function SettingsScreen() {
           label={__DEV__ ? (ja ? 'デモモード（開発用）' : 'DEMO MODE (DEV ONLY)') : ja ? 'テスト用（TestFlightのみ）' : 'TESTING (TESTFLIGHT ONLY)'}
           footer={
             ja
-              ? 'デモ中は1分＝1秒で進みます。通知は夜のトラッキング中のみ届きます。App Store版には表示されません。'
-              : 'While the demo clock runs, 1 minute = 1 second. Notifications need tracking on. Not shown in the App Store version.'
+              ? 'デモ中は1分＝1秒で進みます（「実時間」で普通の速さ）。通知は夜のトラッキング中のみ届きます。App Store版には表示されません。'
+              : 'While the demo clock runs, 1 minute = 1 second (or real time). Notifications need tracking on. Not shown in the App Store version.'
           }
         >
+          {/* Which code is running: the build, and the over-the-air update on top of it (if any). */}
+          <Row
+            testID="running-version"
+            title={ja ? '動作中のバージョン' : 'Running version'}
+            subtitle={runningVersion(ja)}
+          />
+          <Divider />
+          {/* Are notifications late, and which kind? Both are set for the same second. */}
+          <Row
+            testID="test-notifications"
+            title={ja ? '1分後にテスト通知（通常＋即時通知）' : 'Test notifications in a minute (normal + Time Sensitive)'}
+            subtitle={
+              testSetFor
+                ? ja ? `${formatJstTime(testSetFor)}:00 に2件。画面を消して、届く時刻を比べてください。` : `Two at ${formatJstTime(testSetFor)}:00. Lock the phone and compare when each arrives.`
+                : ja ? '同じ秒に2件。画面を消して、届く時刻を比べます' : 'Two for the same second. Lock the phone and compare'
+            }
+            onPress={() => void sendTestNotifications(ja ? 'ja' : 'en').then(setTestSetFor)}
+          />
+          <Divider />
+          <Row
+            testID="queued-notifications"
+            title={ja ? '予約中の通知を見る' : 'Show queued notifications'}
+            subtitle={queued === null ? (ja ? 'iOSに予約されている時刻と種類' : 'What iOS has queued: time and kind') : queued.length === 0 ? (ja ? 'なし' : 'None') : queued.join('\n')}
+            onPress={() => void scheduledNotificationLines().then(setQueued)}
+          />
+          <Divider />
+          {/* Prices in dollars on a Japanese account: which App Store country StoreKit uses. */}
+          <Row
+            testID="store-info"
+            title={ja ? 'ストアの国と価格を見る' : 'Show store country and prices'}
+            subtitle={store ?? (ja ? 'StoreKitが使っている国・通貨・価格' : 'Country, currency and prices StoreKit is using')}
+            onPress={() => void storeInfo().then(setStore)}
+          />
+          <Divider />
           {premiumLive && isTestFlightBuild && (
             <>
               <Row
@@ -226,6 +275,15 @@ export default function SettingsScreen() {
             )}
             {demoActive && <Chip testID="demo-reset" label={ja ? 'リセット' : 'Reset'} selected={false} onPress={() => setDemoNow(null)} />}
           </View>
+          {demoActive && (
+            <>
+              <Row title={ja ? '時刻の進み方' : 'Clock speed'} subtitle={ja ? '実時間はスクリーンショット用' : 'Real time for screenshots'} />
+              <View style={styles.chipRow}>
+                <Chip testID="demo-speed-fast" label={ja ? '60倍速' : '60×'} selected={demoSpeed !== 1} onPress={() => setDemoSpeed(60)} />
+                <Chip testID="demo-speed-real" label={ja ? '実時間' : 'Real time'} selected={demoSpeed === 1} onPress={() => setDemoSpeed(1)} />
+              </View>
+            </>
+          )}
         </Section>
       )}
     </SettingsPage>

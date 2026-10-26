@@ -19,7 +19,9 @@ const SCHEDULED_ALARMS_KEY = 'lastride-scheduled-alarmkit-v1';
 const SIGNATURE_KEY = 'lastride-reminder-signature';
 // v10 intentionally invalidates pre-AlarmKit-ledger signatures on upgrade:
 // those builds had silent companions but no native alarm receipt to verify.
-const SCHEDULER_VERSION = 10;
+const SCHEDULER_VERSION = 11;
+/** Legacy schedule description, retained to preserve unchanged real alarms. */
+const ALARM_SET_KEY = 'lastride-alarm-set';
 
 export { alarmKitAvailable };
 export { iosMajorVersion } from '../modules/last-ride-alarm/src';
@@ -100,17 +102,27 @@ async function nativeSchedulePresent(plans: ReminderPlan[], hasHeld: boolean): P
     const nativeIds = await alarmKit.scheduledIds();
     return nativeIds !== null && savedAlarms.every((entry) => nativeIds.includes(entry.id));
   } catch {
-    // An OS query failing is not proof its schedule was lost. Avoid silently
-    // duplicating alerts; a later foreground plan can reconcile again.
-    return true;
+    // Failed OS queries do not establish that a reminder is still scheduled.
+    // Reconciliation may retry when the native bridge is available again.
+    return false;
   }
 }
 
 // Serializes all schedule/cancel operations so an older reschedule can never
-// cancel or overwrite a newer one.
+// cancel or overwrite a newer one. Each gets a time limit: one that never
+// finishes (iOS not answering) must not hold every later reschedule back.
+const OPERATION_LIMIT_MS = 20_000;
 let queue: Promise<void> = Promise.resolve();
 function enqueue(operation: () => Promise<void>): Promise<void> {
-  queue = queue.then(operation, operation);
+  const limited = () =>
+    Promise.race([
+      operation(),
+      new Promise<void>((resolve) => setTimeout(() => {
+        console.warn('[LastRide] reminder scheduling timed out; moving on');
+        resolve();
+      }, OPERATION_LIMIT_MS)),
+    ]);
+  queue = queue.then(limited, limited);
   return queue;
 }
 
@@ -233,22 +245,45 @@ async function present(
     },
     trigger: delayMs < 1000
       ? null
-      : {
-          type: Notifications.SchedulableTriggerInputTypes.DATE,
-          date: new Date(Date.now() + delayMs),
-          channelId: vibrate ? 'leave-reminders' : 'leave-reminders-no-vibrate',
-        },
+      : Platform.OS === 'ios'
+        ? clockTrigger(Date.now() + delayMs)
+        : {
+            type: Notifications.SchedulableTriggerInputTypes.DATE,
+            date: new Date(Date.now() + delayMs),
+            channelId: vibrate ? 'leave-reminders' : 'leave-reminders-no-vibrate',
+          },
   });
   const ids = await readOwnedIds();
-  ids.push(id);
+  if (!ids.includes(id)) ids.push(id);
   await writeOwnedIds(ids);
   // Immediate notices disappear from the pending OS schedule by design. Only
   // record future alerts when checking whether queued reminders were lost.
   if (fireAt !== null && delayMs >= 1000) {
     const entries = await readScheduledEntries();
+    entries.splice(0, entries.length, ...entries.filter((entry) => entry.id !== id));
     entries.push({ id, fireAt });
     await writeScheduledEntries(entries);
   }
+}
+
+/**
+ * iOS: fire at a clock time (a calendar trigger), like AlarmKit's alarms. Expo's
+ * DATE trigger becomes "in N seconds" (a time-interval trigger), which iOS
+ * delivers on power-saving timers: about 20 s late with the phone asleep.
+ */
+function clockTrigger(atMs: number): Notifications.CalendarTriggerInput {
+  const japan = new Date(atMs + 9 * 60 * 60 * 1000);
+  return {
+    type: Notifications.SchedulableTriggerInputTypes.CALENDAR,
+    timezone: 'Asia/Tokyo',
+    year: japan.getUTCFullYear(),
+    month: japan.getUTCMonth() + 1,
+    day: japan.getUTCDate(),
+    hour: japan.getUTCHours(),
+    minute: japan.getUTCMinutes(),
+    second: japan.getUTCSeconds(),
+    repeats: false,
+  };
 }
 
 async function cancelOwned() {
@@ -269,8 +304,52 @@ async function cancelOwned() {
   // Cancel native alarms even when the JS runtime died before persisting the
   // schedule. AlarmKit only exposes alarms belonging to our app.
   await alarmKit.cancelAll().catch((error) => console.warn('[LastRide] Could not cancel alarms', error));
-  await Promise.all([...new Set([...ids, ...orphanIds])]
-    .map((id) => Notifications.cancelScheduledNotificationAsync(id).catch(() => undefined)));
+  await AsyncStorage.removeItem(ALARM_SET_KEY).catch(() => undefined);
+  await Promise.all([...new Set([...ids, ...orphanIds])].filter((id) => isOwnedReminderId(id)).map((id) => Notifications.cancelScheduledNotificationAsync(id).catch(() => undefined)));
+  // And everything else still scheduled: the app and its background task keep
+  // the owned list separately, so it can miss one (an alarm's silent companion
+  // that then still arrives). Every local notification is a reminder from here,
+  // except a TestFlight test notification; ones already delivered aren't affected.
+  const queued = await queuedIds();
+  await Promise.all([...queued].filter((id) => isOwnedReminderId(id)).map((id) => Notifications.cancelScheduledNotificationAsync(id).catch(() => undefined)));
+}
+
+/**
+ * iOS delivers scheduled notifications late while the screen is off (measured:
+ * ~9 s, ~17 s with an Apple Watch paired; on time with the screen on, app open or
+ * closed; AlarmKit alarms always on time). Leave reminders that are notifications
+ * go this much early: about on time in a pocket without a watch, ~7 s late with
+ * one, at most this early with the screen on. The words say the clock time to
+ * leave, so early never misleads.
+ */
+export const SCREEN_OFF_DELAY_MS = 10_000;
+
+/** TestFlight test notifications (sendTestNotifications): never cancelled with the reminders. */
+const TEST_ID_PREFIX = 'lastride-test-';
+function isTestNotification(id: string): boolean {
+  return id.startsWith(TEST_ID_PREFIX);
+}
+function isOwnedReminderId(id: string): boolean {
+  return !isTestNotification(id) && (id.startsWith('lastride-local-') || id.startsWith('lastride-reminder-') || id.startsWith('lastride-boarded-'));
+}
+
+/**
+ * A fixed identifier for a timed reminder: the same time and words give the same
+ * id, so a re-plan leaves an unchanged reminder queued as it is (never removed
+ * and re-added just before it fires).
+ */
+function reminderId(...parts: unknown[]): string {
+  const text = JSON.stringify(parts);
+  let hash = 5381;
+  for (let index = 0; index < text.length; index++) hash = ((hash * 33) ^ text.charCodeAt(index)) >>> 0;
+  return `lastride-reminder-${hash.toString(36)}-${text.length}`;
+}
+
+/** Identifiers of the local notifications iOS has queued (not yet delivered). */
+async function queuedIds(): Promise<Set<string>> {
+  if (Platform.OS === 'web') return new Set();
+  const requests = await Notifications.getAllScheduledNotificationsAsync().catch(() => []);
+  return new Set(requests.map((request) => request.identifier));
 }
 
 export function cancelAllReminders(): Promise<void> {
@@ -283,11 +362,12 @@ export function notifyLockFallback(
   plan: { station: { name: string; nameJa: string }; lastTrain: { departsAt: number } },
   language: 'ja' | 'en',
 ): Promise<void> {
+  markReminderChange('stationTold');
   const time = new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(plan.lastTrain.departsAt));
   const text = language === 'ja'
     ? { title: 'LastRide — 出発駅を自動に戻しました', body: `固定した${locked.nameJa}駅からは帰れなくなったため、${plan.station.nameJa}駅（${time}発）にしています。` }
     : { title: 'LastRide — back to automatic', body: `${locked.name} can’t get you home any more, so you’re now leaving from ${plan.station.name} (${time} train).` };
-  return enqueue(() => present(text.title, text.body, null, '/ride', true, null, true));
+  return enqueue(async () => present(text.title, text.body, null, '/ride', true, null, (await AsyncStorage.getItem(STORAGE_KEYS.throughFocus).catch(() => null)) !== 'false'));
 }
 
 function stationNotice(text: ReminderText, info: DeliveryInfo) {
@@ -296,14 +376,14 @@ function stationNotice(text: ReminderText, info: DeliveryInfo) {
       title: 'LastRide — 出発駅が変わりました',
       body:
         `${text.station}から${info.trainLabel}（${info.trainDeparts}発）。${text.leaveBy}に出る。` +
-        (info.switchedToClosest ? `駅が変わったため、出る時刻がいちばん近い${info.trainLabel}にしています。` : ''),
+        (info.movedFrom ? `${info.movedFrom}は出る時刻を過ぎていたため、${info.trainLabel}にしています。` : ''),
     };
   }
   return {
     title: 'LastRide — your station changed',
     body:
       `Now from ${text.station}: ${info.trainLabel}, ${info.trainDeparts}. Leave at ${text.leaveBy}.` +
-      (info.switchedToClosest ? ` Switched to the ${info.trainLabel} train, the closest leave time.` : ''),
+      (info.movedFrom ? ` Too late for the ${info.movedFrom.toLowerCase()} train from there, so it’s the ${info.trainLabel.toLowerCase()}.` : ''),
   };
 }
 
@@ -356,7 +436,7 @@ function newAlarmId(): string {
 
 /**
  * Replaces all reminders for a tracking plan (fire times are real epoch ms).
- * Plans marked `alarm` become AlarmKit alarms on iOS 26+ when allowed; otherwise
+ * Plans marked `alarm` become AlarmKit alarms (iOS alarm sound) on iOS 26+ when allowed; otherwise
  * a time-sensitive notification with the chosen tone stands in for them.
  * Skips the work when the same set is already scheduled, so frequent location
  * updates from the app and the background task don't churn the OS schedule.
@@ -368,8 +448,8 @@ export type DeliveryInfo = DeliveryContext & {
   trainLabel: string;
   /** Its departure, e.g. "23:33". */
   trainDeparts: string;
-  /** The station changed and the app picked the train with the closest leave time. */
-  switchedToClosest?: boolean;
+  /** The station changed and the chosen slot's leave time there had passed: that slot's label ("2本前"). */
+  movedFrom?: string;
   /** With `followUpFor`: the departed train's label (「1本前」), for 「…に乗れなかったなら」. */
   followUpLabel?: string;
 };
@@ -382,6 +462,34 @@ async function registerBoardedCategory(language: 'ja' | 'en') {
     { identifier: BOARDED_ACTION, buttonTitle: text.boarded, options: { opensAppToForeground: true } },
     { identifier: NOT_BOARDED_ACTION, buttonTitle: text.notBoarded, options: { opensAppToForeground: true } },
   ]).catch(() => undefined);
+}
+
+/**
+ * A change the user made (userChange), or a station change already told by
+ * 「出発駅を自動に戻しました」 (stationTold). Stored so the background task sees
+ * it too: the phone may sleep before the app's own re-plan has finished.
+ */
+type ChangeMark = { kind: 'user' | 'stationTold'; at: number };
+const CHANGE_MARK_KEY = 'lastride-reminder-change-mark';
+/** Long enough for the re-plan a change starts (new lookups) to arrive. */
+const CHANGE_MARK_MS = 90_000;
+let lastMark: ChangeMark | null = null;
+
+export function markReminderChange(kind: ChangeMark['kind'], nowMs = Date.now()): void {
+  lastMark = { kind, at: nowMs };
+  void AsyncStorage.setItem(CHANGE_MARK_KEY, JSON.stringify(lastMark)).catch(() => undefined);
+}
+
+async function recentMark(nowMs: number): Promise<ChangeMark['kind'] | null> {
+  let mark = lastMark;
+  try {
+    const raw = await AsyncStorage.getItem(CHANGE_MARK_KEY);
+    const stored = raw ? (JSON.parse(raw) as ChangeMark) : null;
+    if (stored && typeof stored.at === 'number' && (!mark || stored.at > mark.at)) mark = stored;
+  } catch {
+    // No mark.
+  }
+  return mark && nowMs - mark.at >= 0 && nowMs - mark.at < CHANGE_MARK_MS ? mark.kind : null;
 }
 
 async function readLedger(): Promise<ReminderLedger | null> {
@@ -403,27 +511,76 @@ async function readLedger(): Promise<ReminderLedger | null> {
 export function scheduleReminders(
   plans: ReminderPlan[],
   text: ReminderText,
-  { sound, vibrate }: Pick<ReminderDelivery, 'sound' | 'vibrate'> = { sound: 'default', vibrate: true },
+  { sound, vibrate, throughFocus = true }: Pick<ReminderDelivery, 'sound' | 'vibrate'> & { throughFocus?: boolean } = { sound: 'default', vibrate: true },
   delivery?: DeliveryInfo,
 ): Promise<void> {
+  // Leave-reminder notifications go SCREEN_OFF_DELAY_MS early on iOS. Shifted here,
+  // before the record decides, so "sent" means sent: a re-plan in those seconds
+  // mustn't think 出る時間です is still to come and send it again. Alarms (exact
+  // with AlarmKit), the 乗れましたか？ question and the missed-train check-in keep their time.
+  if (Platform.OS === 'ios')
+    plans = plans.map((plan) => (plan.alarm || plan.missedCheckIn || plan.boardedCheck ? plan : { ...plan, fireAt: plan.fireAt - SCREEN_OFF_DELAY_MS }));
   return enqueue(async () => {
     const now = Date.now();
-    const decided = delivery ? planDelivery(await readLedger(), delivery, plans, now) : null;
+    const mark = delivery ? await recentMark(now) : null;
+    const decided = delivery
+      ? planDelivery(await readLedger(), { ...delivery, userChange: delivery.userChange || mark === 'user', stationTold: mark === 'stationTold' }, plans, now)
+      : null;
     const upcoming = decided ? decided.schedule : plans;
     const wantsAlarm = upcoming.some((plan) => plan.alarm);
     const alarmAuthorization = wantsAlarm && alarmKitAvailable ? await alarmKit.status().catch(() => 'denied') : 'unsupported';
     // Permission can change in iOS Settings without the plans changing; a schedule
     // made of stand-in notifications must be replaced once alarms are allowed.
     const signature = JSON.stringify([
-      SCHEDULER_VERSION, upcoming, text, sound, vibrate, alarmAuthorization,
+      SCHEDULER_VERSION, upcoming, text, sound, vibrate, throughFocus, alarmAuthorization,
       decided && [decided.catchUp, decided.stationChanged, decided.timeShifted, decided.followUp, decided.ledger.sent, decided.ledger.stationKey],
     ]);
     if (Platform.OS !== 'web' && (await AsyncStorage.getItem(SIGNATURE_KEY).catch(() => null)) === signature &&
         await nativeSchedulePresent(upcoming, !!text.held)) return;
-    await cancelOwned();
-    // An alarm receipt may fail to persist despite a successful native
-    // schedule. Never claim an intact signature for that uncertain state.
     let alarmReceiptsIntact = true;
+    // Only what changed is replaced: reminders still the same stay queued untouched
+    // (see reminderId); the rest are removed once the new set is in. AlarmKit can
+    // only cancel all alarms at once, so they're left alone while the alarms still
+    // ahead are the same: otherwise a re-plan as one rings (the user picking up the
+    // phone and starting to walk) would stop it.
+    const alarmsAhead = alarmAuthorization === 'authorized'
+      ? upcoming.filter((plan) => plan.alarm && plan.fireAt > now + 1000).map((plan) => [plan.fireAt, reminderText(text, plan).title] as const)
+      : [];
+    const alarmSet = JSON.stringify(alarmsAhead);
+    let alarmsUnchanged = false;
+    if (Platform.OS === 'web') await cancelOwned();
+    else {
+      await AsyncStorage.removeItem(SIGNATURE_KEY).catch(() => undefined);
+      configure();
+      try {
+        const before = JSON.parse((await AsyncStorage.getItem(ALARM_SET_KEY)) ?? 'null') as Array<[number, string]> | null;
+        const signatureMatches = !!before && JSON.stringify(before.filter(([at]) => at > now + 1000)) === alarmSet;
+        if (signatureMatches && alarmsAhead.length) {
+          // A matching description and a silent notification do NOT prove
+          // that iOS still owns a live AlarmKit alarm.
+          const receipts = (await readNativeAlarms()).filter((entry) => entry.fireAt > now + 1000);
+          const nativeIds = await alarmKit.scheduledIds().catch(() => null);
+          alarmsUnchanged = nativeIds !== null && receipts.length === alarmsAhead.length &&
+            receipts.every((entry) => nativeIds.includes(entry.id)) &&
+            alarmsAhead.every(([at]) => receipts.some((entry) => entry.fireAt === at));
+          if (nativeIds === null) alarmReceiptsIntact = false;
+        } else alarmsUnchanged = signatureMatches;
+      } catch {
+        alarmsUnchanged = false;
+      }
+      if (!alarmsUnchanged) {
+        await alarmKit.cancelAll().catch((error) => console.warn('[LastRide] Could not cancel alarms', error));
+        await AsyncStorage.removeItem(ALARM_SET_KEY).catch(() => undefined);
+        await AsyncStorage.removeItem(SCHEDULED_ALARMS_KEY).catch(() => undefined);
+      }
+    }
+    const queued = await queuedIds();
+    const kept = new Set<string>();
+    /** Queues a timed reminder unless the identical one is already queued. */
+    const queue = async (id: string, show: () => Promise<void>) => {
+      kept.add(id);
+      if (!queued.has(id)) await show();
+    };
     const language = text.language;
     if (decided && delivery) {
       // Told once: where you leave from now, or that the leave time moved after a reminder.
@@ -441,7 +598,7 @@ export function scheduleReminders(
           language,
         );
         await registerBoardedCategory(language);
-        await present(notice.title, notice.body, null, '/ride', vibrate, null, true, false, {
+        await present(notice.title, notice.body, null, '/ride', vibrate, null, throughFocus, false, {
           category: BOARDED_CATEGORY,
           data: { boardedCheck: delivery.followUpFor },
           identifier: boardedNotificationId(delivery.followUpFor),
@@ -449,17 +606,17 @@ export function scheduleReminders(
       }
       if (decided.stationChanged) {
         const notice = stationNotice(text, delivery);
-        await present(notice.title, notice.body, null, '/ride', vibrate, null, true);
+        await present(notice.title, notice.body, null, '/ride', vibrate, null, throughFocus);
       } else if (decided.timeShifted) {
         const notice = timeNotice(text, delivery);
-        await present(notice.title, notice.body, null, '/ride', vibrate, null, true);
+        await present(notice.title, notice.body, null, '/ride', vibrate, null, throughFocus);
       }
       if (decided.catchUp) {
         const minutesLeft = Math.round((delivery.leaveAtMs - now) / 60_000);
         const late = { ...decided.catchUp, minutesBefore: decided.catchUp.minutesBefore > 0 && minutesLeft > 0 ? minutesLeft : 0 };
         const { title, body } = reminderText(text, late);
         const tone = late.alarm ? soundFile(sound === 'default' ? 'urgent' : sound) : null;
-        await present(title, body, null, '/ride', vibrate, tone, true);
+        await present(title, body, null, '/ride', vibrate, tone, late.alarm === true || throughFocus);
       }
       await AsyncStorage.setItem(STORAGE_KEYS.reminderLedger, JSON.stringify(decided.ledger)).catch(() => undefined);
     }
@@ -470,30 +627,39 @@ export function scheduleReminders(
       if (plan.boardedCheck) {
         if (!text.held) continue;
         const { title, body } = reminderText(text, plan);
-        await present(title, body, plan.fireAt, '/ride', vibrate, null, false, false, {
-          category: BOARDED_CATEGORY,
-          data: { boardedCheck: plan.fireAt },
-          identifier: boardedNotificationId(plan.fireAt),
-        });
+        // A fixed id per train (the follow-up replaces it): queued again only when its words change.
+        const id = boardedNotificationId(plan.fireAt);
+        const words = reminderId(title, body, vibrate);
+        kept.add(id);
+        if (!queued.has(id) || (await AsyncStorage.getItem(`${id}-words`).catch(() => null)) !== words) {
+          await present(title, body, plan.fireAt, '/ride', vibrate, null, false, false, {
+            category: BOARDED_CATEGORY,
+            data: { boardedCheck: plan.fireAt },
+            identifier: id,
+          });
+          await AsyncStorage.setItem(`${id}-words`, words).catch(() => undefined);
+        }
         continue;
       }
       const { title, body } = reminderText(text, plan);
       const target = plan.missedCheckIn ? '/alternatives' : '/ride';
       if (plan.alarm && alarmAuthorization === 'authorized' && plan.fireAt > Date.now() + 1000) {
         try {
-          const alarmId = newAlarmId();
-          await alarmKit.schedule(alarmId, plan.fireAt, title, sound, stopLabel(language));
-          // A failed AsyncStorage receipt doesn't mean AlarmKit failed. Keep
-          // the already-scheduled native alarm and its quiet companion; avoid
-          // scheduling an extra audible notification for the same event.
-          try {
-            await appendNativeAlarm({ id: alarmId, fireAt: plan.fireAt });
-          } catch {
-            alarmReceiptsIntact = false;
+          // Apple's native alarm sound is the only reliable sound in silent
+          // mode; custom bundled notification tones are not native AlarmKit.
+          if (!alarmsUnchanged) {
+            const alarmId = newAlarmId();
+            await alarmKit.schedule(alarmId, plan.fireAt, title, 'default', stopLabel(language));
+            try {
+              await appendNativeAlarm({ id: alarmId, fireAt: plan.fireAt });
+            } catch {
+              alarmReceiptsIntact = false;
+            }
           }
           // The alarm rings; a silent notification keeps the details (station, times)
           // in Notification Center once it's stopped, and opens the app when tapped.
-          await present(title, body, plan.fireAt, target, false, null, false, true);
+          const id = reminderId('companion', plan.fireAt, title, body, target);
+          await queue(id, () => present(title, body, plan.fireAt, target, false, null, false, true, { identifier: id }));
           continue;
         } catch (error) {
           console.warn('[LastRide] AlarmKit failed; falling back to a notification', error);
@@ -501,9 +667,18 @@ export function scheduleReminders(
       }
       // An alarm's stand-in never uses the plain notification sound (or it'd be just another reminder).
       const tone = plan.alarm ? soundFile(sound === 'default' ? 'urgent' : sound) : null;
-      // Time Sensitive (breaks through Focus) only where being late means missing the train.
-      const urgent = plan.alarm === true || (plan.minutesBefore === 0 && !plan.missedCheckIn);
-      await present(title, body, plan.fireAt, target, vibrate, tone, urgent);
+      // 集中モード中も通知 (on by default): every leave reminder is Time Sensitive (即時通知),
+      // through Focus and the summary. An alarm standing in as a notification always is.
+      const urgent = plan.alarm === true || (!plan.missedCheckIn && throughFocus);
+      const id = reminderId(plan.fireAt, title, body, target, vibrate, tone, urgent);
+      await queue(id, () => present(title, body, plan.fireAt, target, vibrate, tone, urgent, false, { identifier: id }));
+    }
+    if (Platform.OS !== 'web') {
+      if (!alarmsUnchanged) await AsyncStorage.setItem(ALARM_SET_KEY, alarmSet).catch(() => undefined);
+      // Everything queued that isn't in the new set: changed or no longer wanted.
+      await Promise.all([...queued].filter((id) => !kept.has(id) && isOwnedReminderId(id)).map((id) => Notifications.cancelScheduledNotificationAsync(id).catch(() => undefined)));
+      await writeOwnedIds([...kept]);
+      await writeScheduledEntries((await readScheduledEntries()).filter((entry) => kept.has(entry.id) && entry.fireAt > now));
     }
     if (alarmReceiptsIntact) {
       await AsyncStorage.setItem(SIGNATURE_KEY, signature).catch(() => undefined);
@@ -519,11 +694,40 @@ function stopLabel(language: 'ja' | 'en'): string {
 export const TEST_ALARM_DELAY_MS = 5000;
 
 /** Schedules a real system alarm a few seconds ahead with `sound`; false when alarms aren't allowed. */
-export async function sendTestAlarm(language: 'ja' | 'en', sound: ReminderSound): Promise<boolean> {
+export async function sendTestAlarm(language: 'ja' | 'en'): Promise<boolean> {
   if (!alarmKitAvailable || (await alarmKit.status()) !== 'authorized') return false;
   await alarmKit.schedule(newAlarmId(), Date.now() + TEST_ALARM_DELAY_MS,
-    language === 'ja' ? 'LastRide — アラームのテスト' : 'LastRide — alarm test', sound, stopLabel(language));
+    language === 'ja' ? 'LastRide — アラームのテスト' : 'LastRide — alarm test', 'default', stopLabel(language));
   return true;
+}
+
+/**
+ * TestFlight check: a normal and a Time Sensitive (即時通知) notification for the
+ * same clock second, at least a minute ahead (a whole minute). Lock the phone and
+ * compare when each arrives. Re-plans and reminder changes leave them queued.
+ * Returns the time they're set for.
+ */
+export async function sendTestNotifications(language: 'ja' | 'en'): Promise<number> {
+  const at = Math.ceil((Date.now() + 70_000) / 60_000) * 60_000;
+  const time = new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' }).format(new Date(at));
+  const ja = language === 'ja';
+  await present(ja ? `テスト（通常） ${time}` : `Test (normal) ${time}`, ja ? `${time}に届く予定` : `Due at ${time}`, at, '/ride', true, null, false, false, { identifier: `${TEST_ID_PREFIX}normal-${at}` });
+  await present(ja ? `テスト（即時通知） ${time}` : `Test (Time Sensitive) ${time}`, ja ? `${time}に届く予定` : `Due at ${time}`, at, '/ride', true, null, true, false, { identifier: `${TEST_ID_PREFIX}urgent-${at}` });
+  return at;
+}
+
+/** TestFlight check: what iOS has queued, one line each: time to the second, trigger kind, level, title. */
+export async function scheduledNotificationLines(): Promise<string[]> {
+  const requests = await Notifications.getAllScheduledNotificationsAsync().catch(() => []);
+  return requests.map((request) => {
+    const trigger = request.trigger as unknown as Record<string, unknown> | null;
+    const kind = String(trigger?.type ?? 'now');
+    const parts = (trigger?.dateComponents ?? trigger) as Record<string, unknown> | undefined;
+    const pad = (value: unknown) => String(value ?? '--').padStart(2, '0');
+    const when = parts && parts.hour !== undefined ? `${pad(parts.hour)}:${pad(parts.minute)}:${pad(parts.second)}` : trigger?.seconds !== undefined ? `+${trigger.seconds}s` : '—';
+    const level = (request.content as unknown as { interruptionLevel?: string }).interruptionLevel ?? '';
+    return `${when} · ${kind}${level ? ` · ${level}` : ''} · ${request.content.title ?? ''}`;
+  });
 }
 
 /** Plays a bundled tone right away (even in silent mode, at media volume). Not for 'default': apps can't play Apple's alarm sound. */

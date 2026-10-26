@@ -20,6 +20,7 @@ const plan = {
   lastTrain: { departsAt: LAST_TRAIN, source: "live" as const },
   walkingMinutes: 8,
   station: shibuya,
+  computedAt: jst(22, 41),
 };
 
 describe("liveActivityContent", () => {
@@ -59,5 +60,11 @@ describe("liveActivityContent", () => {
     const moved = liveActivityContent({ ...plan, leaveByMs: LEAVE_BY + 5 * MINUTE_MS }, "en", jst(23, 10))!;
     expect(contentSignature(moved)).not.toBe(contentSignature(early));
     expect(contentSignature(liveActivityContent(plan, "en", jst(23, 10), "forest")!)).not.toBe(contentSignature(later));
+  });
+
+  test("says when it was last checked, and that app-only tracking needs the app", () => {
+    expect(liveActivityContent(plan, "ja", jst(23, 0))?.checked).toBe("22:41 確認");
+    expect(liveActivityContent(plan, "ja", jst(23, 0), undefined, true)?.checked).toBe("22:41 確認 · 開くと更新");
+    expect(liveActivityContent(plan, "en", jst(23, 0), undefined, true)?.checked).toBe("Checked 22:41 · open to update");
   });
 });

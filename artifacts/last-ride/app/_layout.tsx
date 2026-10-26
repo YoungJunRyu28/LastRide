@@ -41,7 +41,6 @@ function RootLayoutNav() {
       <Stack.Screen name="paywall" options={{ presentation: 'modal', animation: 'slide_from_bottom' }} />
       <Stack.Screen name="settings/index" />
       <Stack.Screen name="settings/reminders" />
-      <Stack.Screen name="settings/sound" />
       <Stack.Screen name="settings/location" />
       <Stack.Screen name="settings/margin" />
       <Stack.Screen name="settings/language" />

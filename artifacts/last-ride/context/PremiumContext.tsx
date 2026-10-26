@@ -121,8 +121,10 @@ function ensurePurchasesConfigured(): Promise<{ restoreRequired: boolean }> {
 
 export type PlanChoice = {
   id: 'monthly' | 'annual';
-  /** Store-formatted price, e.g. "¥290"; the planned price in test mode. */
+  /** Store-formatted price, e.g. "¥190"; the planned price in test mode. */
   price: string;
+  /** Yearly plan: the store's price per month (e.g. "¥100"), for 「月あたり」. */
+  perMonth?: string | null;
   /** Free-trial length in days, when the product has an introductory trial. */
   trialDays: number | null;
   /** The RevenueCat package; null in test mode. */
@@ -135,6 +137,8 @@ type PremiumValue = {
   isPremium: boolean;
   /** False until the first entitlement check finishes. */
   ready: boolean;
+  /** Premium was actually determined (RevenueCat answered, test mode, or the TestFlight switch); false after a failed check. */
+  known: boolean;
   live: boolean;
   plans: PlanChoice[];
   purchase: (plan: PlanChoice) => Promise<PurchaseResult>;
@@ -153,13 +157,18 @@ type PremiumValue = {
   groupCreationHeaders: () => Promise<Record<string, string>>;
   /** Existing anonymous subscription was not confirmed after identity migration. */
   migrationNeedsRestore: boolean;
+  /**
+   * TestFlight check: the App Store country StoreKit uses and the plans' currency
+   * and prices as fetched now, e.g. "JPN · JPY ¥1,200 / ¥190".
+   */
+  storeInfo: () => Promise<string>;
 };
 
 const PremiumContext = createContext<PremiumValue | null>(null);
 
 const TEST_PLANS: PlanChoice[] = [
-  { id: 'annual', price: '¥1,980', trialDays: 14, pkg: null },
-  { id: 'monthly', price: '¥290', trialDays: 14, pkg: null },
+  { id: 'annual', price: '¥1,200', perMonth: '¥100', trialDays: 14, pkg: null },
+  { id: 'monthly', price: '¥190', trialDays: 14, pkg: null },
 ];
 
 function hasEntitlement(info: CustomerInfo) {
@@ -186,19 +195,28 @@ export function PremiumProvider({ children }: { children: React.ReactNode }) {
   }, []);
   const [ready, setReady] = useState(false);
   const [migrationNeedsRestore, setMigrationNeedsRestore] = useState(false);
+  // Premium has actually been determined (RevenueCat answered, or test mode read it).
+  // A failed or unfinished check must never be saved as "not Premium": the
+  // background task would then end a running Live Activity.
+  const [known, setKnown] = useState(false);
   const [plans, setPlans] = useState<PlanChoice[]>(premiumLive ? [] : TEST_PLANS);
 
   useEffect(() => {
     if (!premiumLive || !apiKey) {
       void AsyncStorage.getItem(TEST_PREMIUM_KEY)
-        .then((value) => setIsPremium(value === 'true'))
+        .then((value) => {
+          setIsPremium(value === 'true');
+          setKnown(true);
+        })
         .catch(() => undefined)
         .finally(() => setReady(true));
       return;
     }
     let active = true;
     const listener = (info: CustomerInfo) => {
-      if (active) setIsPremium(hasEntitlement(info));
+      if (!active) return;
+      setIsPremium(hasEntitlement(info));
+      setKnown(true);
     };
     let registered = false;
     void ensurePurchasesConfigured().then(async ({ restoreRequired }) => {
@@ -212,7 +230,7 @@ export function PremiumProvider({ children }: { children: React.ReactNode }) {
         const current = offerings.current;
         if (!active || !current) return;
         const choices: PlanChoice[] = [];
-        if (current.annual) choices.push({ id: 'annual', price: current.annual.product.priceString, trialDays: trialDays(current.annual), pkg: current.annual });
+        if (current.annual) choices.push({ id: 'annual', price: current.annual.product.priceString, perMonth: current.annual.product.pricePerMonthString, trialDays: trialDays(current.annual), pkg: current.annual });
         if (current.monthly) choices.push({ id: 'monthly', price: current.monthly.product.priceString, trialDays: trialDays(current.monthly), pkg: current.monthly });
         setPlans(choices);
       }).catch(() => undefined);
@@ -228,9 +246,11 @@ export function PremiumProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  // The TestFlight switch decides on its own once loaded; otherwise only a real answer.
+  const determined = override !== null || known;
   useEffect(() => {
-    if (ready) void writePremiumCache(isPremium);
-  }, [isPremium, ready]);
+    if (determined) void writePremiumCache(isPremium);
+  }, [isPremium, determined]);
 
   const setTestPremium = useCallback((enabled: boolean | null) => {
     if (premiumLive) {
@@ -309,9 +329,22 @@ export function PremiumProvider({ children }: { children: React.ReactNode }) {
     };
   }, [appUserId]);
 
+  const storeInfo = useCallback(async () => {
+    if (!premiumLive) return 'test mode';
+    try {
+      await ensurePurchasesConfigured();
+      const [storefront, offerings] = await Promise.all([Purchases.getStorefront().catch(() => null), Purchases.getOfferings()]);
+      const products = [offerings.current?.annual, offerings.current?.monthly].filter((pkg) => !!pkg).map((pkg) => pkg!.product);
+      const currency = products[0]?.currencyCode ?? '?';
+      return `${storefront?.countryCode ?? '?'} · ${currency} ${products.map((product) => product.priceString).join(' / ')}`;
+    } catch (error) {
+      return `error: ${error instanceof Error ? error.message : String(error)}`;
+    }
+  }, []);
+
   const value = useMemo(
-    () => ({ isPremium, ready, live: premiumLive, plans, purchase, restore, setTestPremium, testOverride: override !== null, appUserId, groupCreationHeaders, migrationNeedsRestore }),
-    [isPremium, ready, plans, purchase, restore, setTestPremium, override, appUserId, groupCreationHeaders, migrationNeedsRestore],
+    () => ({ isPremium, ready, known: determined, live: premiumLive, plans, purchase, restore, setTestPremium, testOverride: override !== null, appUserId, groupCreationHeaders, migrationNeedsRestore, storeInfo }),
+    [isPremium, ready, determined, plans, purchase, restore, setTestPremium, override, appUserId, groupCreationHeaders, migrationNeedsRestore, storeInfo],
   );
   return <PremiumContext.Provider value={value}>{children}</PremiumContext.Provider>;
 }

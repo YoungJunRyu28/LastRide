@@ -51,11 +51,20 @@ export async function syncLiveActivity(
   premium?: boolean,
   /** The widgets' colour theme; read from settings when omitted. */
   theme?: WidgetThemeId,
+  /** Tracking only while the app is open (says so under the check time). */
+  whileOpenOnly = false,
 ): Promise<void> {
   if (!liveActivityEnabled && !countdownNotificationAvailable) return;
-  const content = liveActivityContent(plan, language, nowMs, theme ?? (await readWidgetTheme()));
-  if (!content || !(premium ?? (await readPremiumCache()))) {
+  const content = liveActivityContent(plan, language, nowMs, theme ?? (await readWidgetTheme()), whileOpenOnly);
+  if (!content) {
     await endLiveActivity();
+    return;
+  }
+  // Only end for "not Premium" when that's known for sure (the open app). The
+  // background task only has a saved flag; a running activity keeps updating,
+  // and a closed app can't start one anyway.
+  if (!(premium ?? (await readPremiumCache()))) {
+    if (premium === false) await endLiveActivity();
     return;
   }
   if (countdownNotificationAvailable) {
@@ -84,7 +93,9 @@ export async function syncLiveActivity(
 
   const props = { ...content, shownAt: nowMs };
   // If the app never wakes again, iOS dims the countdown shortly after the last train.
-  const staleDate = new Date(plan.lastTrain.departsAt + 5 * MINUTE_MS);
+  // Stale only once the night's real last train has gone (with 1本前 / 2本前 the
+  // plan's own train goes first, and the later ones are still shown).
+  const staleDate = new Date((plan.nightLastTrain ?? plan.lastTrain).departsAt + 5 * MINUTE_MS);
   if (running) {
     await running.update(props, staleDate);
   } else {

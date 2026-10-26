@@ -5,7 +5,7 @@
  * only its props.
  *
  * Four states:
- * - "live": while tracking (or just after a check), the timeline rail and the
+ * - "live": only while night tracking is on, the timeline rail and the
  *   countdown from lib/nightPhase.ts, the same count as the app and the Live Activity.
  * - "plan": not tracking: tonight's train time leads (still right if you move),
  *   with the leave time smaller and when it was checked.
@@ -45,6 +45,8 @@ export type LeaveWidgetProps = {
   countdownTo: number;
   /** The time counted to, for the round lock-screen widget: "23:19". */
   countdownTime: string;
+  /** What the count is to, beside it on the lock screen: "23:19に出る" / "23:45発". */
+  target: string;
   /** "渋谷駅から" */
   from: string;
   /** "自宅（菊名）へ" */
@@ -73,6 +75,8 @@ export type LeaveWidgetProps = {
   title: string;
   /** "ほかの帰り方 ›" */
   link: string;
+  /** Where a tap opens. The widget itself shows no promotion (DPLA 3.3.7(E)); a locked one opens the Premium screen in the app. */
+  url: string;
 
   // message
   icon: "moon" | "alert" | "tram";
@@ -82,9 +86,6 @@ export type LeaveWidgetProps = {
 
 export type WidgetEntry = { date: Date; props: LeaveWidgetProps };
 
-/** Not tracking: the live countdown is shown only this long after the plan was checked. */
-const FRESH_FOR_MS = 30 * MINUTE_MS;
-
 const EMPTY = {
   heading: "",
   inline: "",
@@ -93,6 +94,7 @@ const EMPTY = {
   shownAt: 0,
   countdownTo: 0,
   countdownTime: "",
+  target: "",
   from: "",
   to: "",
   arrival: "",
@@ -106,6 +108,7 @@ const EMPTY = {
   footnote: "",
   title: "",
   link: "",
+  url: "last-ride://ride",
   icon: "tram" as const,
   message: "",
   hint: "",
@@ -150,6 +153,8 @@ export function widgetMessage(
     hint: ja ? jaHint : enHint,
     inline: ja ? jaMessage : enMessage,
     icon,
+    // Locked (not premium): the tap opens the app's Premium screen, which explains it.
+    url: reason === "premium" ? "last-ride://paywall?from=widget" : "last-ride://ride",
   };
 }
 
@@ -206,6 +211,14 @@ function liveProps(
     shownAt: atMs,
     countdownTo: phase.countdownTo,
     countdownTime: formatJstTime(phase.countdownTo),
+    target:
+      phase.kind === "leave"
+        ? ja
+          ? `${leave}に出る`
+          : `Leave ${leave}`
+        : ja
+          ? `${time}発`
+          : `${time} dep.`,
     from: ja ? `${station}駅から` : `From ${station}`,
     arrival: arrivalText(phase.plan, ja),
     stops: stops.map((stop, index) => ({ time: formatJstTime(stop.at), ...stopLabel(stop, states[index], ja), state: states[index] })),
@@ -280,8 +293,9 @@ export function widgetTimeline(
   const morning = nightEndsAt(plan, null, { firstTrainPending: true });
   const lastGone = lastTrainLeftAt(plan);
   const stops = railStops(plan);
-  // Not tracking, the countdown is only right shortly after the check (the user may move).
-  const liveUntil = options.tracking ? Infinity : plan.computedAt + FRESH_FOR_MS;
+  // A countdown only during night tracking (any length). Without it, the times:
+  // a route checked at noon never starts a 12-hour countdown.
+  const liveUntil = options.tracking ? Infinity : -Infinity;
 
   const entries: WidgetEntry[] = [];
   for (const phase of nightPhases(plan, nowMs)) {
@@ -326,4 +340,20 @@ export function boardedTimeline(
     { date: new Date(nowMs), props },
     { date: new Date(Math.max(nowMs, morning)), props: widgetMessage(language, "morning", theme, destinationLabel) },
   ];
+}
+
+/**
+ * What the widget would show, for skipping reloads that change nothing. iOS
+ * allows a background app only so many widget reloads a day (fewer in Low
+ * Power Mode): spending one on every re-plan left none for real changes. The
+ * time a timeline is made ("now": entries already started, and `shownAt`, the
+ * timer's start) isn't part of what's shown, so it's left out.
+ */
+export function widgetSignature(entries: Array<{ date: Date; props: LeaveWidgetProps }>, nowMs: number): string {
+  return JSON.stringify(
+    entries.map(({ date, props }) => {
+      const { shownAt: _shownAt, ...shown } = props;
+      return [date.getTime() <= nowMs ? 0 : date.getTime(), shown];
+    }),
+  );
 }
