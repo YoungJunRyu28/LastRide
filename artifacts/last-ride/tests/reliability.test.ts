@@ -24,7 +24,7 @@ function choice(
   }> = {},
 ) {
   return {
-    leaveByMs: 1_000_000,
+    leaveByMs: 1_020_000, // 17:00 on a whole minute
     walkingMinutes: 8,
     lastTrain: { transfers: 0, legs: [{ line: "ＪＲ山手線外回り" }] },
     ...overrides,
@@ -36,7 +36,7 @@ describe("recommended deadline", () => {
     expect(recommendedSafetyMarginMinutes(choice())).toBe(
       BASE_SAFETY_MARGIN_MINUTES,
     );
-    expect(recommendedLeaveTime(choice())).toBe(1_000_000 - 4 * MINUTE_MS);
+    expect(recommendedLeaveTime(choice())).toBe(1_020_000 - 4 * MINUTE_MS);
   });
 
   test("transfers and a long walk add bounded uncertainty", () => {
@@ -72,9 +72,11 @@ describe("recommended deadline", () => {
         choice({ recommendedLeaveByMs: 900_000, safetyMarginMinutes: 99 }),
       ),
     ).toBe(900_000);
+    // Seconds are dropped: the leave time shown has none, so reminders mustn't either.
+    expect(recommendedLeaveTime(choice({ recommendedLeaveByMs: 900_000 + 30_000 }))).toBe(900_000);
     expect(
       recommendedLeaveTime(choice({ recommendedLeaveByMs: 1_100_000 })),
-    ).toBe(1_000_000);
+    ).toBe(1_020_000);
   });
 
   test("a disrupted route is penalized for automatic selection only", () => {

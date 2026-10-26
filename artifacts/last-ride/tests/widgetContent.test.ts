@@ -7,7 +7,7 @@ import type { NightPlan } from "@/lib/planner";
 import { applyTrainChoice, trainOptions } from "@/lib/trainChoice";
 import type { TrainTime } from "@/lib/timetable";
 import { MINUTE_MS } from "@/lib/time";
-import { widgetMessage, widgetTimeline } from "@/lib/widgetContent";
+import { widgetMessage, widgetSignature, widgetTimeline } from "@/lib/widgetContent";
 import { widgetPalette } from "@/lib/widgetThemes";
 
 function jst(hours: number, minutes = 0) {
@@ -82,10 +82,10 @@ describe("tracking: the live timeline", () => {
 });
 
 describe("not tracking", () => {
-  test("live just after the check, then tonight's train time leads", () => {
+  test("no countdown at all: tonight's train time leads, even just after a check", () => {
     const entries = widgetTimeline(night(last, jst(23, 0)), "自宅", "ja", jst(23, 0), { tracking: false });
-    expect(at(entries, jst(23, 20)).kind).toBe("live");
-    expect(at(entries, jst(23, 31))).toMatchObject({
+    expect(entries.some((entry) => entry.props.kind === "live")).toBe(false);
+    expect(at(entries, jst(23, 0))).toMatchObject({
       kind: "plan",
       trainHeading: "終電 · 渋谷",
       trainTime: "23:45",
@@ -116,5 +116,28 @@ describe("messages", () => {
     expect(widgetMessage("en", "morning", "paper").colors).toEqual(widgetPalette("paper"));
     expect(widgetPalette("paper").dark).toBe(false);
     expect(widgetPalette().background).toBe("#0a1322");
+  });
+});
+
+describe("widget reloads", () => {
+  test("a re-plan that changes nothing on screen doesn't reload the widget", () => {
+    const first = widgetTimeline(night(), "自宅", "ja", jst(23, 0), { tracking: true });
+    const again = widgetTimeline(night(), "自宅", "ja", jst(23, 3), { tracking: true });
+    expect(widgetSignature(again, jst(23, 3))).toBe(widgetSignature(first, jst(23, 0)));
+  });
+
+  test("a new leave time does", () => {
+    const first = widgetTimeline(night(), "自宅", "ja", jst(23, 0), { tracking: true });
+    const moved = widgetTimeline({ ...night(), recommendedLeaveByMs: jst(23, 30) }, "自宅", "ja", jst(23, 3), { tracking: true });
+    expect(widgetSignature(moved, jst(23, 3))).not.toBe(widgetSignature(first, jst(23, 0)));
+  });
+});
+
+describe("a locked widget (not premium)", () => {
+  test("shows no promotion itself, and a tap opens the Premium screen", () => {
+    const props = widgetMessage("ja", "premium");
+    expect(props.message).not.toMatch(/プレミアム|円|¥/);
+    expect(props.url).toBe("last-ride://paywall?from=widget");
+    expect(widgetMessage("ja", "no-plan").url).toBe("last-ride://ride");
   });
 });

@@ -43,7 +43,7 @@ export default function HomeStationScreen() {
   const [isSearchingAddress, setIsSearchingAddress] = useState(false);
   const [addressSearchError, setAddressSearchError] = useState(false);
   const addressToken = useRef(0);
-  const { isPremium, ready: premiumReady } = usePremium();
+  const { isPremium, known: premiumKnown } = usePremium();
 
   useEffect(() => {
     const trimmed = query.trim();
@@ -265,7 +265,8 @@ export default function HomeStationScreen() {
   );
 
   // Saving another destination is premium; the free plan keeps one (deep links included).
-  if (isNew && premiumReady && !isPremium && destinations.length >= FREE_DESTINATIONS) return <Redirect href="/paywall" />;
+  // Only once RevenueCat has answered: offline, a premium user isn't sent to the paywall.
+  if (isNew && premiumKnown && !isPremium && destinations.length >= FREE_DESTINATIONS) return <Redirect href="/paywall" />;
 
   if (setup) {
     return (

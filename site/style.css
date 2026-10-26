@@ -316,3 +316,4 @@ main.doc .contact-form .form-title { margin: 0; padding: 0; border: 0; font-size
 /* Platform-aware download links; shown only after a real listing is public. */
 .store-links { display: flex; flex-wrap: wrap; gap: 0.65rem; align-items: center; }
 [data-store-placeholder][hidden] { display: none !important; }
+.contact-form { scroll-margin-top: 6.5rem; }

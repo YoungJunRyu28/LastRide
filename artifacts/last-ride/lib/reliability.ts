@@ -84,13 +84,15 @@ export function recommendedSafetyMarginMinutes(
   return clampLeaveMargin(leaveMargin) + transferMargin + walkMargin;
 }
 
+/**
+ * When to leave, on the whole minute (rounded down): the time shown has no
+ * seconds, so reminders and countdowns must not either.
+ */
 export function recommendedLeaveTime(choice: DeadlineChoice): number {
-  if (Number.isFinite(choice.recommendedLeaveByMs)) {
-    return Math.min(choice.leaveByMs, choice.recommendedLeaveByMs!);
-  }
-  const margin =
-    choice.safetyMarginMinutes ?? recommendedSafetyMarginMinutes(choice);
-  return choice.leaveByMs - margin * MINUTE_MS;
+  const exact = Number.isFinite(choice.recommendedLeaveByMs)
+    ? Math.min(choice.leaveByMs, choice.recommendedLeaveByMs!)
+    : choice.leaveByMs - (choice.safetyMarginMinutes ?? recommendedSafetyMarginMinutes(choice)) * MINUTE_MS;
+  return Math.floor(exact / MINUTE_MS) * MINUTE_MS;
 }
 
 /**

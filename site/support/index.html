@@ -67,6 +67,9 @@
       var key = form.getAttribute("data-sitekey");
       if (!key || key === "TURNSTILE_SITE_KEY") return;
       form.hidden = false;
+      // Opened from a link to the form (e.g. the terms): the form was hidden at load, so scroll now.
+      if (location.hash === "#contact-form")
+        requestAnimationFrame(function () { setTimeout(function () { form.scrollIntoView({ block: "start" }); }, 50); });
       form.querySelector(".cf-turnstile").setAttribute("data-sitekey", key);
       var script = document.createElement("script");
       script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js";
@@ -119,7 +122,7 @@
   <p>設定の「夜の位置情報」で「閉じても更新」を選び、iPhoneの「設定」→「帰り時」→「位置情報」を「常に」にしてください。「アプリのみ」の場合でも、最後に計算した時刻でリマインダーは届きます。</p>
 
   <h3>アラームが鳴りません</h3>
-  <p>アラームはiOS 26以降で使えます。iPhoneの「設定」→「帰り時」でアラームを許可してください。iOS 26より前のiPhoneでは、選んだ音の通知として届きます（マナーモード中は鳴りません）。アプリの設定にある「実際のアラームで確認」で試せます。</p>
+  <p>アラームはiOS 26以降で使えます。iPhoneの「設定」→「帰り時」でアラームを許可してください。iOS 26より前のiPhoneでは、アラーム用の音の通知として届きます（マナーモード中は鳴りません）。アプリの設定にある「実際のアラームで確認」で試せます。</p>
 
   <h3>サブスクリプションを解約したい</h3>
   <p>iPhoneの「設定」→ 自分の名前 →「サブスクリプション」→「帰り時」から解約できます。アプリを削除しただけでは解約されません。返金はApple（<a href="https://reportaproblem.apple.com/">reportaproblem.apple.com</a>）からご依頼ください。</p>

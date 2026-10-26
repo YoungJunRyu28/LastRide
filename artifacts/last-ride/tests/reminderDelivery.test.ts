@@ -2,28 +2,27 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => {
   const store = new Map<string, string>();
-  const pending = new Map<string, { identifier: string; content?: { sound?: unknown; interruptionLevel?: unknown; data?: Record<string, unknown> } }>();
+  const pending = new Map<string, { identifier: string; content?: { sound?: unknown; interruptionLevel?: unknown; data?: Record<string, unknown> }; trigger?: unknown }>();
+  const queued = pending;
   const nativeAlarms = new Set<string>();
   const nativeAlarmQueryFails = { value: false };
   const nativeAlarmReceiptFails = { value: false };
   let serial = 0;
   return {
     store,
-    pending,
-    nativeAlarms,
-    nativeAlarmQueryFails,
-    nativeAlarmReceiptFails,
+    pending, queued, nativeAlarms, nativeAlarmQueryFails, nativeAlarmReceiptFails,
     alarmStatus: vi.fn(async () => 'authorized'),
     alarmSchedule: vi.fn(async (id: string, _fireAt: number, _title: string, _sound: string, _stop: string) => { nativeAlarms.add(id); }),
     alarmCancel: vi.fn(async () => { nativeAlarms.clear(); }),
     alarmScheduledIds: vi.fn(async () => nativeAlarmQueryFails.value ? null : [...nativeAlarms]),
     notificationSchedule: vi.fn(async (request: { identifier?: string; trigger: unknown; content: { sound?: unknown; interruptionLevel?: unknown; data?: Record<string, unknown> } }) => {
-      const id = request.identifier ?? `generated-${++serial}`;
-      if (request.trigger !== null) pending.set(id, { identifier: id, content: request.content });
+      const id = request.identifier ?? `notification-${++serial}`;
+      if (request.trigger !== null) pending.set(id, { identifier: id, trigger: request.trigger, content: request.content });
       return id;
     }),
     notificationCancel: vi.fn(async (id: string) => { pending.delete(id); }),
     notificationGetPending: vi.fn(async () => [...pending.values()]),
+    notificationCancelAll: vi.fn(async () => { pending.clear(); }),
   };
 });
 
@@ -46,8 +45,9 @@ vi.mock('expo-notifications', () => ({
   getPermissionsAsync: vi.fn(async () => ({ granted: true })),
   scheduleNotificationAsync: mocks.notificationSchedule,
   cancelScheduledNotificationAsync: mocks.notificationCancel,
+  cancelAllScheduledNotificationsAsync: mocks.notificationCancelAll,
   getAllScheduledNotificationsAsync: mocks.notificationGetPending,
-  SchedulableTriggerInputTypes: { DATE: 'date' },
+  SchedulableTriggerInputTypes: { DATE: 'date', CALENDAR: 'calendar' },
 }));
 vi.mock('../modules/last-ride-alarm/src', () => ({
   alarmKitAvailable: true,
@@ -63,7 +63,7 @@ vi.mock('../modules/last-ride-alarm/src', () => ({
 }));
 
 import { readSettings, STORAGE_KEYS } from '@/lib/settings';
-import { cancelAllReminders, scheduleReminders } from '@/lib/notifications';
+import { cancelAllReminders, markReminderChange, scheduleReminders, sendTestNotifications } from '@/lib/notifications';
 
 const text = { leaveBy: '23:10', station: '新宿', language: 'ja' as const };
 
@@ -103,27 +103,54 @@ describe('reminder delivery', () => {
     expect((await readSettings()).alarmIntervals).toEqual([]);
   });
 
-  it('schedules AlarmKit alarms for alarm times with the chosen sound and a localised Stop button', async () => {
+  it('schedules AlarmKit alarms for alarm times with Apple\'s alarm sound (whatever tone is chosen) and a localised Stop button', async () => {
     const now = Date.now();
     await scheduleReminders([
       { minutesBefore: 5, fireAt: now + 120000 },
       { minutesBefore: 0, fireAt: now + 180000, alarm: true },
     ], text, { sound: 'chime', vibrate: true });
     expect(mocks.alarmSchedule).toHaveBeenCalledOnce();
-    expect(mocks.alarmSchedule.mock.calls[0].slice(3)).toEqual(['chime', '停止']);
+    // Only Apple's alarm sound rings through silent mode, so a chosen tone isn't used for real alarms.
+    expect(mocks.alarmSchedule.mock.calls[0].slice(3)).toEqual(['default', '停止']);
     // The 5-minute notification, plus a silent companion for the alarm that keeps its details.
     expect(mocks.notificationSchedule).toHaveBeenCalledTimes(2);
     const [reminder, companion] = (mocks.notificationSchedule.mock.calls as unknown as [{ content: Record<string, unknown> }][]).map(([request]) => request.content);
-    expect(reminder).toMatchObject({ sound: true, interruptionLevel: 'active' });
+    expect(reminder).toMatchObject({ sound: true, interruptionLevel: 'timeSensitive' });
     expect(companion).toMatchObject({ sound: false, interruptionLevel: 'passive' });
   });
 
-  it('makes the leave-now reminder Time Sensitive, but not the earlier ones', async () => {
+  it('schedules iOS reminders at a clock time (Japan time, to the second), 10 s early for the screen-off delay', async () => {
+    // Due 23:26:00 JST: iOS delivers ~9 s late with the screen off, so it's set for 23:25:50.
+    const fireAt = Date.UTC(2099, 9, 18, 14, 26, 0);
+    vi.useFakeTimers({ now: fireAt - 30 * 60_000 });
+    try {
+      await scheduleReminders([{ minutesBefore: 10, fireAt }], text);
+      const [{ trigger }] = mocks.notificationSchedule.mock.calls[0] as unknown as [{ trigger: Record<string, unknown> }];
+      expect(trigger).toEqual({ type: 'calendar', timezone: 'Asia/Tokyo', year: 2099, month: 10, day: 18, hour: 23, minute: 25, second: 50, repeats: false });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('集中モード中も通知 (on by default): every leave reminder is Time Sensitive, not the missed-train check-in', async () => {
+    const now = Date.now();
+    await scheduleReminders([
+      { minutesBefore: 30, fireAt: now + 60000 },
+      { minutesBefore: 15, fireAt: now + 120000 },
+      { minutesBefore: 0, fireAt: now + 180000 },
+      { minutesBefore: 0, fireAt: now + 240000, missedCheckIn: true },
+    ], text, { sound: 'default', vibrate: true });
+    const levels = (mocks.notificationSchedule.mock.calls as unknown as [{ content: Record<string, unknown> }][]).map(([request]) => request.content.interruptionLevel);
+    expect(levels).toEqual(['timeSensitive', 'timeSensitive', 'timeSensitive', 'active']);
+  });
+
+  it('集中モード中も通知 off: ordinary notifications, except an alarm standing in as one', async () => {
+    mocks.alarmStatus.mockResolvedValue('denied');
     const now = Date.now();
     await scheduleReminders([
       { minutesBefore: 15, fireAt: now + 120000 },
-      { minutesBefore: 0, fireAt: now + 180000 },
-    ], text, { sound: 'default', vibrate: true });
+      { minutesBefore: 0, fireAt: now + 180000, alarm: true },
+    ], text, { sound: 'default', vibrate: true, throughFocus: false });
     const levels = (mocks.notificationSchedule.mock.calls as unknown as [{ content: Record<string, unknown> }][]).map(([request]) => request.content.interruptionLevel);
     expect(levels).toEqual(['active', 'timeSensitive']);
   });
@@ -160,7 +187,10 @@ describe('reminder delivery', () => {
     const ids = [...mocks.pending.keys()];
     mocks.pending.delete(ids[0]); // iOS/Android system or app settings cleared one alarm
     await scheduleReminders(plans, text);
-    expect(mocks.notificationSchedule).toHaveBeenCalledTimes(4);
+    // Restore ONLY the missing alert. The surviving reminder must keep its
+    // OS identifier, rather than be cancelled while about to ring.
+    expect(mocks.notificationSchedule).toHaveBeenCalledTimes(3);
+    expect(mocks.pending.has(ids[1])).toBe(true);
     expect(mocks.pending.size).toBe(2);
   });
 
@@ -226,10 +256,14 @@ describe('reminder delivery', () => {
 
   it('cancels orphan OS alarms even when a killed headless task missed the storage receipt', async () => {
     mocks.pending.set('lastride-local-crash-orphan', { identifier: 'lastride-local-crash-orphan' });
+    mocks.pending.set('lastride-reminder-stable-orphan', { identifier: 'lastride-reminder-stable-orphan' });
     mocks.pending.set('other-feature-reminder', { identifier: 'other-feature-reminder' });
+    mocks.pending.set('lastride-test-keep', { identifier: 'lastride-test-keep' });
     await cancelAllReminders();
     expect(mocks.pending.has('lastride-local-crash-orphan')).toBe(false);
+    expect(mocks.pending.has('lastride-reminder-stable-orphan')).toBe(false);
     expect(mocks.pending.has('other-feature-reminder')).toBe(true);
+    expect(mocks.pending.has('lastride-test-keep')).toBe(true);
   });
 
   it('cancels native alarms when resetting and rescheduling', async () => {
@@ -237,6 +271,9 @@ describe('reminder delivery', () => {
     await cancelAllReminders();
     expect(mocks.alarmCancel).toHaveBeenCalledTimes(2);
     expect(mocks.notificationCancel).toHaveBeenCalled();
+    // Everything still scheduled goes too, not just the tracked ids (the background
+    // task keeps its own list, so a silent alarm companion could otherwise survive).
+    expect(mocks.queued.size).toBe(0);
   });
 
   it('does not schedule stale alarms from a delayed background callback', async () => {
@@ -273,5 +310,126 @@ describe('reminder delivery', () => {
       vi.useRealTimers();
     }
   });
-});
 
+  it('the station notice names the train, departure and leave time of one plan, and says why the slot moved', async () => {
+    mocks.store.delete(STORAGE_KEYS.reminderLedger);
+    const start = Date.now();
+    const info = (stationKey: string, trainLabel: string, trainDeparts: string, movedFrom?: string) => ({
+      night: '20261016', choiceKey: '2', stationKey, leaveAtMs: start + 600_000, trainDepartsAtMs: start + 1_200_000,
+      trainLabel, trainDeparts, movedFrom,
+    });
+    try {
+      vi.useFakeTimers({ now: start });
+      await scheduleReminders([{ minutesBefore: 0, fireAt: start + 60_000 }], text, undefined, info('新宿', '2本前', '23:20'));
+      vi.setSystemTime(start + 120_000);
+      // 今すぐ出発 went out; the station changes, and 2本前 there can't be made in time.
+      await scheduleReminders([{ minutesBefore: 0, fireAt: start + 600_000 }], { ...text, station: '新宿三丁目', leaveBy: '23:22' }, undefined,
+        info('新宿三丁目', '1本前', '23:31', '2本前'));
+      const notice = (mocks.notificationSchedule.mock.calls as unknown as Array<[{ content: { title: string; body: string } }]>)
+        .map(([request]) => request.content)
+        .find((content) => content.title === 'LastRide — 出発駅が変わりました');
+      expect(notice?.body).toBe('新宿三丁目から1本前（23:31発）。23:22に出る。2本前は出る時刻を過ぎていたため、1本前にしています。');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a change the user just made is seen by every re-plan (the background task too): no 「出る時刻が変わりました」', async () => {
+    mocks.store.delete(STORAGE_KEYS.reminderLedger);
+    const start = Date.now();
+    const info = (leaveAtMs: number) => ({
+      night: '20261016', choiceKey: '0', stationKey: '新宿', leaveAtMs, trainDepartsAtMs: start + 7_200_000,
+      trainLabel: '終電', trainDeparts: '00:10',
+    });
+    const at = (leave: number) => [{ minutesBefore: 30, fireAt: leave - 1_800_000 }, { minutesBefore: 0, fireAt: leave }];
+    try {
+      vi.useFakeTimers({ now: start });
+      await scheduleReminders(at(start + 1_810_000), text, undefined, info(start + 1_810_000));
+      vi.setSystemTime(start + 60_000); // 30分前 has gone out
+      markReminderChange('user', start + 60_000); // another destination for tonight
+      vi.setSystemTime(start + 70_000);
+      await scheduleReminders(at(start + 3_000_000), text, undefined, info(start + 3_000_000));
+      const titles = (mocks.notificationSchedule.mock.calls as unknown as Array<[{ content: { title: string } }]>).map(([request]) => request.content.title);
+      expect(titles).not.toContain('LastRide — 出る時刻が変わりました');
+      // Long after the change, once 30分前 has gone out at the new time, a real move is told again.
+      vi.setSystemTime(start + 1_300_000);
+      await scheduleReminders(at(start + 3_600_000), text, undefined, info(start + 3_600_000));
+      const later = (mocks.notificationSchedule.mock.calls as unknown as Array<[{ content: { title: string } }]>).map(([request]) => request.content.title);
+      expect(later).toContain('LastRide — 出る時刻が変わりました');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a re-plan leaves unchanged reminders queued as they are: only what changed is replaced', async () => {
+    mocks.store.delete(STORAGE_KEYS.reminderLedger);
+    const start = Date.now();
+    const info = (stationKey: string) => ({
+      night: '20261016', choiceKey: '0', stationKey, leaveAtMs: start + 3_600_000, trainDepartsAtMs: start + 4_200_000,
+      trainLabel: '終電', trainDeparts: '00:10',
+    });
+    const plans = [{ minutesBefore: 15, fireAt: start + 2_700_000 }, { minutesBefore: 0, fireAt: start + 3_600_000 }];
+    try {
+      vi.useFakeTimers({ now: start });
+      await scheduleReminders(plans, text, undefined, info('新宿'));
+      const first = [...mocks.queued.keys()];
+      expect(first).toHaveLength(2);
+      mocks.notificationSchedule.mockClear();
+      // Something else changes (the 0-minute reminder's words, via the station name): 15分前 isn't touched.
+      vi.setSystemTime(start + 60_000);
+      await scheduleReminders([plans[0], { minutesBefore: 0, fireAt: start + 3_660_000 }], text, undefined, info('新宿'));
+      expect(mocks.notificationSchedule).toHaveBeenCalledOnce();
+      expect(mocks.queued.has(first[0])).toBe(true);
+      expect(mocks.queued.has(first[1])).toBe(false);
+      expect(mocks.queued.size).toBe(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('TestFlight test notifications survive cancelling and re-planning the reminders', async () => {
+    await sendTestNotifications('ja');
+    expect(mocks.queued.size).toBe(2);
+    await cancelAllReminders();
+    await scheduleReminders([{ minutesBefore: 15, fireAt: Date.now() + 600_000 }], text);
+    expect([...mocks.queued.keys()].filter((id) => id.startsWith('lastride-test-'))).toHaveLength(2);
+  });
+
+  it('出る時間です fired 10 s early counts as sent: a re-plan in those seconds doesn’t send it again', async () => {
+    mocks.store.delete(STORAGE_KEYS.reminderLedger);
+    const start = Date.now();
+    const leave = start + 600_000;
+    const info = (leaveAtMs: number) => ({
+      night: '20261016', choiceKey: '0', stationKey: '新宿', leaveAtMs, trainDepartsAtMs: start + 3_600_000,
+      trainLabel: '終電', trainDeparts: '00:10',
+    });
+    try {
+      vi.useFakeTimers({ now: start });
+      await scheduleReminders([{ minutesBefore: 0, fireAt: leave }], text, undefined, info(leave));
+      expect(mocks.notificationSchedule).toHaveBeenCalledOnce();
+      // 5 s before the leave time: iOS has shown it (set 10 s early). Walking moves the leave time a minute later.
+      vi.setSystemTime(leave - 5_000);
+      await scheduleReminders([{ minutesBefore: 0, fireAt: leave + 60_000 }], text, undefined, info(leave + 60_000));
+      expect(mocks.notificationSchedule).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a re-plan leaves AlarmKit alarms alone while the alarms ahead are the same (a ringing one isn’t stopped)', async () => {
+    const now = Date.now();
+    const plans = [{ minutesBefore: 15, fireAt: now + 120_000 }, { minutesBefore: 0, fireAt: now + 900_000, alarm: true as const }];
+    await scheduleReminders(plans, text);
+    expect(mocks.alarmSchedule).toHaveBeenCalledOnce();
+    mocks.alarmCancel.mockClear();
+    mocks.alarmSchedule.mockClear();
+    // Something else changes (the 15-minute reminder's time): the alarm stays as it is.
+    await scheduleReminders([{ minutesBefore: 15, fireAt: now + 180_000 }, plans[1]], text);
+    expect(mocks.alarmCancel).not.toHaveBeenCalled();
+    expect(mocks.alarmSchedule).not.toHaveBeenCalled();
+    // The alarm's time changes: set again.
+    await scheduleReminders([plans[0], { ...plans[1], fireAt: now + 960_000 }], text);
+    expect(mocks.alarmCancel).toHaveBeenCalledOnce();
+    expect(mocks.alarmSchedule).toHaveBeenCalledOnce();
+  });
+});

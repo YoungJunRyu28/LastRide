@@ -110,19 +110,14 @@ export function trainOptions(plan: StationChoice, leaveMargin: LeaveMargin, nowM
 }
 
 /**
- * After the station changes automatically: the option at the new station whose
- * leave time is closest to the one planned before (people pick 1本前 to leave at
- * about a certain time, not for the slot). Only trains that can still be made
- * from here (their leave time hasn't passed); the last train otherwise.
+ * After the station changes automatically: the same slot at the new station
+ * (2本前 stays 2本前), unless its leave time there has already passed; then
+ * the next later train still on time, down to the last train.
  */
-export function closestChoice(options: TrainOption[], plannedLeaveMs: number): TrainChoice {
-  let best: TrainOption | null = null;
-  for (const option of options) {
-    if (!option.catchable || (option.late && option.choice !== 0)) continue;
-    const gap = Math.abs(recommendedLeaveTime(option.station) - plannedLeaveMs);
-    if (!best || gap < Math.abs(recommendedLeaveTime(best.station) - plannedLeaveMs)) best = option;
-  }
-  return best?.choice ?? 0;
+export function slotAtNewStation(options: TrainOption[], slot: number): TrainChoice {
+  let index = Math.max(0, Math.min(slot, options.length - 1));
+  while (index > 0 && (options[index].late || !options[index].catchable)) index--;
+  return options[index].choice;
 }
 
 /** The slot in force at `stationNameJa`: an override for that station, else the user's choice. */

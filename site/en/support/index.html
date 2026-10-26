@@ -66,6 +66,9 @@
       var key = form.getAttribute("data-sitekey");
       if (!key || key === "TURNSTILE_SITE_KEY") return;
       form.hidden = false;
+      // Opened from a link to the form (e.g. the terms): the form was hidden at load, so scroll now.
+      if (location.hash === "#contact-form")
+        requestAnimationFrame(function () { setTimeout(function () { form.scrollIntoView({ block: "start" }); }, 50); });
       form.querySelector(".cf-turnstile").setAttribute("data-sitekey", key);
       var script = document.createElement("script");
       script.src = "https://challenges.cloudflare.com/turnstile/v0/api.js";
@@ -115,7 +118,7 @@
   <h3>The leave time doesn’t update when the app is closed</h3>
   <p>In Settings, choose “When closed” for night location, and set iPhone Settings → LastRide → Location to “Always”. With app-only, reminders still arrive based on the last calculated time.</p>
   <h3>Alarms don’t ring</h3>
-  <p>Alarms need iOS 26 or later; allow alarms in iPhone Settings → LastRide. On earlier iOS they arrive as notifications with your chosen sound (silent in silent mode). Try “Check with a real alarm” in the app’s settings.</p>
+  <p>Alarms need iOS 26 or later; allow alarms in iPhone Settings → LastRide. On earlier iOS they arrive as notifications with an alarm tone (silent in silent mode). Try “Check with a real alarm” in the app’s settings.</p>
   <h3>Cancel the subscription</h3>
   <p>iPhone Settings → your name → Subscriptions → LastRide. Deleting the app does not cancel it. Request refunds from Apple at <a href="https://reportaproblem.apple.com/">reportaproblem.apple.com</a>.</p>
   <h3>Premium is missing on a new phone</h3>

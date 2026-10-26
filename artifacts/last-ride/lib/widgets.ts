@@ -14,6 +14,7 @@ import type { TrainTime } from "@/lib/timetable";
 import type { BoardedRecord } from "@/lib/boarding";
 import {
   boardedTimeline,
+  widgetSignature,
   widgetMessage,
   widgetTimeline,
   type LeaveWidgetProps,
@@ -30,9 +31,6 @@ function widget() {
 
 let shownSignature: string | null = null;
 
-function signature(entries: Array<{ date: Date; props: LeaveWidgetProps }>) {
-  return JSON.stringify(entries.map(({ date, props }) => [date.getTime(), props]));
-}
 
 export type WidgetSyncOptions = {
   /** Night-out tracking is on (the background task always is). */
@@ -75,7 +73,7 @@ export async function syncWidgets(
     : plan
       ? widgetTimeline(plan, destinationLabel, language, nowMs, { tracking: options.tracking, firstTrain: options.firstTrain, theme })
       : [{ date: new Date(nowMs), props: widgetMessage(language, messageReason(options.reason), theme, destinationLabel) }];
-  const next = signature(entries);
+  const next = widgetSignature(entries, nowMs);
   if (next === shownSignature) return;
   widget().updateTimeline(entries);
   shownSignature = next;
