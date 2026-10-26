@@ -10,6 +10,15 @@ Default native application IDs:
 Local developers can override them with `IOS_BUNDLE_ID` and
 `ANDROID_PACKAGE_ID`.
 
+## Multi-store distribution
+
+A separate `galaxy` EAS profile builds the Samsung Galaxy Store APK with
+Galaxy-specific RevenueCat billing and the package `jp.lastride.app.galaxy`.
+This deliberately avoids Google Play app-signing certificate conflicts.
+**Do not upload the Google Play AAB or Google-billing APK to Galaxy Store.**
+See `docs/release/2026-10-multistore-distribution.md` for credentials,
+real certificate-based app links, signed-device tests and outstanding release gates.
+
 ## Internal Android testing
 
 The `preview` EAS profile produces an installable APK:
@@ -20,6 +29,19 @@ eas build --platform android --profile preview
 ```
 
 This is the intended path for device testing before Play Store review.
+
+## Mandatory production capabilities
+
+`app.config.js` fails closed for `EAS_BUILD_PROFILE=production` unless
+`ENABLE_REMOTE_PUSH=true`, `ENABLE_UNIVERSAL_LINKS=true`,
+`EXPO_PUBLIC_APP_JOIN_BASE_URL=https://lastride.jp` and an HTTPS
+`EXPO_PUBLIC_API_URL` are supplied. This prevents a store release that
+silently disables group alerts or deep links. It does **not** prove that APNs,
+FCM or Digital Asset Links are configured: inspect the resulting signed app,
+send actual pushes, and verify real device links before submitting.
+
+`ENABLE_LIVE_ACTIVITY=true` remains an explicitly tested product choice;
+the app/widget App Group and iOS signing must be configured if shipped.
 
 ## Store builds
 
@@ -146,6 +168,26 @@ from the join domain:
   `docs/well-known/assetlinks.json` with the Android package name and the
   SHA-256 fingerprint of the signing certificate (for Play App Signing, the
   one shown in Play Console, not the upload key).
+
+For production Google Play App Links, there is no safe placeholder:
+Google Play Console → App integrity → App signing key certificate → SHA-256
+fingerprint must be copied **from the Play app-signing certificate**. Generate
+the static website file and deploy the updated `site/` directory:
+
+```bash
+ANDROID_PLAY_SIGNING_SHA256='AA:BB:...your actual 32-byte Play SHA-256...' \
+  node scripts/generate-android-assetlinks.mjs
+# Deploy site/ with the existing website deployment; don't commit a fake key.
+curl -fsSI https://lastride.jp/.well-known/assetlinks.json
+curl -fsS https://lastride.jp/.well-known/assetlinks.json
+# After installing the Play-signed build:
+adb shell pm verify-app-links --re-verify jp.lastride.app
+adb shell pm get-app-links jp.lastride.app
+```
+
+Both `/join?token=...` (Business events) and `/group-join?invite=...`
+(consumer groups) must open directly in the signed native app; test both
+on a fresh Android 12+ installation and both iOS Universal Links on TestFlight.
 
 Verify both URLs before building. On Android 12 and later, if `autoVerify`
 verification fails, the system will not open the app for these links at all;

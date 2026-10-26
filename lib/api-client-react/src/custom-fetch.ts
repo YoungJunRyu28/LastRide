@@ -11,6 +11,11 @@ export type AuthTokenGetter = () => Promise<string | null> | string | null;
 const NO_BODY_STATUS = new Set([204, 205, 304]);
 const DEFAULT_JSON_ACCEPT = "application/json, application/problem+json";
 
+/** No query parameters or URL fragments in automatic crash-report metadata. */
+function publicErrorUrl(url: string): string {
+  return url.split(/[?#]/, 1)[0];
+}
+
 // ---------------------------------------------------------------------------
 // Module-level configuration
 // ---------------------------------------------------------------------------
@@ -195,7 +200,7 @@ export class ApiError<T = unknown> extends Error {
     this.headers = response.headers;
     this.response = response;
     this.method = requestInfo.method;
-    this.url = response.url || requestInfo.url;
+    this.url = publicErrorUrl(response.url || requestInfo.url);
   }
 }
 
@@ -217,7 +222,7 @@ export class ResponseParseError extends Error {
     requestInfo: { method: string; url: string },
   ) {
     super(
-      `Failed to parse response from ${requestInfo.method} ${response.url || requestInfo.url} ` +
+      `Failed to parse response from ${requestInfo.method} ${publicErrorUrl(response.url || requestInfo.url)} ` +
         `(${response.status} ${response.statusText}) as JSON`,
     );
     Object.setPrototypeOf(this, new.target.prototype);
@@ -227,7 +232,7 @@ export class ResponseParseError extends Error {
     this.headers = response.headers;
     this.response = response;
     this.method = requestInfo.method;
-    this.url = response.url || requestInfo.url;
+    this.url = publicErrorUrl(response.url || requestInfo.url);
     this.rawBody = rawBody;
     this.cause = cause;
   }

@@ -132,6 +132,11 @@ export interface GroupTonightParticipant {
   displayName: string;
   /** @nullable */
   leaveBy: string | null;
+  /**
+     * Server-owned CAS revision for this member tonight
+     * @minimum 0
+     */
+  leaveRevision: number;
 }
 
 export interface GroupTonight {
@@ -200,6 +205,16 @@ export type LastTrainRoute = TrainRoute & {
   earlier?: TrainRoute[];
 };
 
+/**
+ * The nearby station lookup does not return a verified pedestrian route.
+ */
+export type StationWalkingSource = typeof StationWalkingSource[keyof typeof StationWalkingSource];
+
+
+export const StationWalkingSource = {
+  estimated: 'estimated',
+} as const;
+
 export interface Station {
   id: string;
   /** Romanized name for display in English */
@@ -209,7 +224,10 @@ export interface Station {
   longitude: number;
   region?: string;
   walkingMeters?: number;
+  /** Approximate walking time based on straight-line distance and a constant multiplier. */
   walkingMinutes?: number;
+  /** The nearby station lookup does not return a verified pedestrian route. */
+  walkingSource?: StationWalkingSource;
 }
 
 export type UsageReportToday = {[key: string]: number};
@@ -255,9 +273,21 @@ export interface Address {
   longitude: number;
 }
 
+/**
+ * This endpoint does not consult a pedestrian routing provider; never treat as verified.
+ */
+export type WalkRouteSource = typeof WalkRouteSource[keyof typeof WalkRouteSource];
+
+
+export const WalkRouteSource = {
+  estimated: 'estimated',
+} as const;
+
 export interface WalkRoute {
   distanceMeters: number;
   minutes: number;
+  /** This endpoint does not consult a pedestrian routing provider; never treat as verified. */
+  source: WalkRouteSource;
 }
 
 export interface TaxiEstimate {
@@ -475,7 +505,30 @@ export interface HealthStatus {
 
 export type MemberTokenParameter = string;
 
+/**
+ * 256-bit hex capability generated before the first join request; also becomes this device's member credential
+ */
+export type GroupJoinKeyParameter = string;
+
+/**
+ * Device-generated 256-bit hexadecimal creation capability, retained across failed POST retries
+ */
+export type GroupCreateKeyParameter = string;
+
+/**
+ * Current participant leaveRevision (or 0 if not yet participating). If omitted, only unversioned legacy rows may be updated. An out-of-order version is rejected with 412 STALE_LEAVE_REVISION.
+ */
+export type LeaveExpectedRevisionParameter = number;
+
+/**
+ * SHA-256-derived paid device user ID; not sufficient proof of ownership by itself
+ */
 export type RevenueCatAppUserIdParameter = string;
+
+/**
+ * Mandatory in production. Device-held 256-bit lowercase hexadecimal capability; the server verifies that its SHA-256 derivation matches X-RevenueCat-App-User-Id. Never log this header.
+ */
+export type PremiumDeviceSecretParameter = string;
 
 export type ParticipantTokenParameter = string;
 

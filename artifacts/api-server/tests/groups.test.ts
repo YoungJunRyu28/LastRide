@@ -15,6 +15,8 @@ import { eq, inArray } from "drizzle-orm";
 import {
   apiRateLimitsTable,
   getDb,
+  groupAlertDeliveriesTable,
+  groupPushReceiptChecksTable,
   groupMembersTable,
   groupNightParticipantsTable,
   groupNightsTable,
@@ -22,6 +24,7 @@ import {
 } from "@workspace/db";
 import {
   createGroupRecord,
+  recoverCreatedGroupRecord,
   disbandGroupRecord,
   endGroupTonightRecord,
   getGroupDetailRecord,
@@ -29,6 +32,7 @@ import {
   nextGroupLeaveAlertAt,
   GROUP_MEMBER_LIMIT,
   joinGroupRecord,
+  recoverJoinedGroupRecord,
   leaveGroupRecord,
   leaveGroupTonightRecord,
   purgeEndedGroupNights,
@@ -42,7 +46,13 @@ import {
 } from "../src/lib/groupStore";
 import { nightWindow, serviceDateFor } from "../src/lib/groupNight";
 import { clearEntitlementCache } from "../src/lib/revenueCat";
+import { revenueCatUserIdForDeviceSecret } from "../src/lib/premiumDeviceIdentity";
 import { dispatchGroupLeaveAlerts } from "../src/lib/groupNotifications";
+import {
+  claimGroupDeliveryBatch, nextGroupOutboxRetryAt, settleGroupDelivery,
+  reconcileGroupPushReceipts, purgeExpiredGroupPushReceiptChecks, RECEIPT_RETENTION_MS,
+} from "../src/lib/groupAlertOutbox";
+import { withLeaveScheduleLock } from "../src/lib/leaveAlertSchedule";
 import app from "../src/app";
 
 /**
@@ -52,6 +62,8 @@ import app from "../src/app";
  * separate files in parallel.
  */
 async function clearGroups() {
+  // The minimal receipt journal intentionally outlives group nights.
+  await getDb().delete(groupPushReceiptChecksTable);
   // Cascades to members, nights and participants.
   await getDb().delete(groupsTable);
 }
@@ -122,6 +134,66 @@ describe("group creation and joining", () => {
       .from(groupMembersTable)
       .where(eq(groupMembersTable.groupId, created.group.id));
     expect(member.memberTokenHash).not.toBe(created.memberToken);
+  });
+
+  it("same creation key recovers exactly one host after a lost response", async () => {
+    const creationKey = "c1".repeat(32);
+    const input = { name: "Friends", displayName: "Alice", language: "en" as const };
+    const first = await createGroupRecord(input, creationKey);
+    expect(first.kind).toBe("created");
+    if (first.kind !== "created") return;
+    expect(first.memberToken).toBe(creationKey);
+    const replay = await createGroupRecord(input, creationKey);
+    expect(replay.kind).toBe("replayed");
+    if (replay.kind !== "replayed") return;
+    expect(replay.group.id).toBe(first.group.id);
+    expect(replay.memberToken).toBe(first.memberToken);
+    expect(replay.group.me.role).toBe("host");
+    expect((await getDb().select().from(groupsTable))).toHaveLength(1);
+    expect((await getDb().select().from(groupMembersTable))).toHaveLength(1);
+    expect(await recoverCreatedGroupRecord("c2".repeat(32))).toBeNull();
+  });
+
+  it("concurrent create requests with the same key never create duplicate hosts", async () => {
+    const creationKey = "e5".repeat(32);
+    const input = { name: "Friends", displayName: "Alice" };
+    const results = await Promise.all(Array.from({ length: 8 }, () => createGroupRecord(input, creationKey)));
+    expect(results.filter((result) => result.kind === "created")).toHaveLength(1);
+    expect(new Set(results.map((result) => result.kind !== "invalid" ? result.group.id : "invalid")).size).toBe(1);
+    expect(await getDb().select().from(groupsTable)).toHaveLength(1);
+    expect(await getDb().select().from(groupMembersTable)).toHaveLength(1);
+  });
+
+  it("anonymous member creation is idempotent and recovers across invite rotation", async () => {
+    const created = await createGroupRecord({ name: "Friends", displayName: "Host" });
+    if (created.kind !== "created" || !created.group.invite) throw new Error("missing invite");
+    const input = { inviteToken: created.group.invite.inviteToken, displayName: "Alice" };
+    const key = "b2".repeat(32);
+    const first = await joinGroupRecord(input, key);
+    expect(first.kind).toBe("joined");
+    if (first.kind !== "joined") return;
+    expect(first.memberToken).toBe(key);
+    const replay = await joinGroupRecord(input, key);
+    expect(replay.kind).toBe("already");
+    if (replay.kind !== "already") return;
+    expect(replay.group.id).toBe(first.group.id);
+    expect(replay.memberToken).toBe(first.memberToken);
+    await rotateGroupInviteRecord(created.group.id, created.memberToken);
+    const rotated = await joinGroupRecord(input, key);
+    expect(rotated.kind).toBe("already");
+    expect(await recoverJoinedGroupRecord("c3".repeat(32))).toBeNull();
+    expect(await getDb().select().from(groupMembersTable)).toHaveLength(2);
+  });
+
+  it("concurrent duplicate member joins with the same key persist only once", async () => {
+    const created = await createGroupRecord({ name: "Friends", displayName: "Host" });
+    if (created.kind !== "created" || !created.group.invite) throw new Error("missing invite");
+    const input = { joinCode: created.group.invite.joinCode, displayName: "Alice" };
+    const key = "d4".repeat(32);
+    const results = await Promise.all(Array.from({ length: 8 }, () => joinGroupRecord(input, key)));
+    expect(results.filter((result) => result.kind === "joined")).toHaveLength(1);
+    expect(new Set(results.map((result) => result.kind === "invalid" || result.kind === "full" ? "invalid" : result.memberToken)).size).toBe(1);
+    expect(await getDb().select().from(groupMembersTable)).toHaveLength(2);
   });
 
   it("joins by short join code, case- and dash-insensitively", async () => {
@@ -468,8 +540,8 @@ describe("tonight", () => {
     if (result.kind !== "ok") return;
     // Sorted by leave-by.
     expect(result.group.tonight.participants).toEqual([
-      { memberId: members[1].id, displayName: "Cai", leaveBy: earlier },
-      { memberId: members[0].id, displayName: "Bea", leaveBy: later },
+      { memberId: members[1].id, displayName: "Cai", leaveBy: earlier, leaveRevision: 0 },
+      { memberId: members[0].id, displayName: "Bea", leaveBy: later, leaveRevision: 0 },
     ]);
 
     // undefined keeps the current leave-by.
@@ -648,6 +720,212 @@ describe("tonight", () => {
     expect(await claimDueGroupLeaveAlerts(at(32))).toEqual([]);
   });
 
+  it("atomically enqueues each recipient once, retries individual failures and expires with the night", async () => {
+    const { groupId, host, members } = await groupWithMembers(["Bea", "Cai"]);
+    const [bea, cai] = members;
+    for (const [member, name] of [[host, "host"], [bea, "bea"], [cai, "cai"]] as const)
+      await setPush(groupId, member.token, name);
+    await startGroupTonightRecord(groupId, host.token);
+    const leaveBy = new Date(tonightWindow().endsAt.getTime() - 2 * 60 * 60_000);
+    await setGroupTonightParticipationRecord(groupId, bea.token, leaveBy);
+    await setGroupTonightParticipationRecord(groupId, cai.token, null);
+    const dueAt = new Date(leaveBy.getTime() + 60_000);
+    const [alert] = await claimDueGroupLeaveAlerts(dueAt);
+    expect(alert.recipients).toHaveLength(2);
+    expect(await getDb().select().from(groupAlertDeliveriesTable)).toHaveLength(2);
+    expect(await claimDueGroupLeaveAlerts(dueAt)).toEqual([]);
+    expect(await getDb().select().from(groupAlertDeliveriesTable)).toHaveLength(2);
+
+    const leased = await claimGroupDeliveryBatch(dueAt);
+    expect(leased).toHaveLength(2);
+    expect(await claimGroupDeliveryBatch(dueAt)).toHaveLength(0);
+    const succeeded = leased[0];
+    const failed = leased[1];
+    await settleGroupDelivery(succeeded, { ticketId: "ticket-1" }, dueAt);
+    await settleGroupDelivery(failed, { error: "HTTP 503" }, dueAt);
+    expect(await nextGroupOutboxRetryAt(dueAt)).toEqual(new Date(dueAt.getTime() + 30_000));
+    const retryAt = new Date(dueAt.getTime() + 31_000);
+    const retryBatch = await claimGroupDeliveryBatch(retryAt);
+    expect(retryBatch.map((delivery) => delivery.id)).toEqual([failed.id]);
+    await settleGroupDelivery(retryBatch[0], { ticketId: "ticket-2" }, retryAt);
+    expect(await claimGroupDeliveryBatch(new Date(retryAt.getTime() + 60_000))).toHaveLength(0);
+
+    // The source's private leave-by time and push tickets never survive 08:00 JST.
+    expect(await purgeEndedGroupNights(tonightWindow().endsAt)).toBe(1);
+    expect(await getDb().select().from(groupAlertDeliveriesTable)).toEqual([]);
+  });
+
+  it("checks late Expo receipts after nightly deletion without retaining any journey details", async () => {
+    const { groupId, host, members } = await groupWithMembers(["Bea"]);
+    await setPush(groupId, host.token, "latehost");
+    await startGroupTonightRecord(groupId, host.token);
+    const end = tonightWindow().endsAt;
+    const leaveBy = new Date(end.getTime() - 10 * 60_000);
+    await setGroupTonightParticipationRecord(groupId, members[0].token, leaveBy);
+    const dueAt = new Date(leaveBy.getTime() + 60_000);
+    await claimDueGroupLeaveAlerts(dueAt);
+    const [delivery] = await claimGroupDeliveryBatch(dueAt);
+    expect(delivery).toBeDefined();
+    await settleGroupDelivery(delivery, { ticketId: "late-ticket-1" }, dueAt);
+    const [before] = await getDb().select().from(groupPushReceiptChecksTable);
+    expect(before).toMatchObject({ expoTicketId: "late-ticket-1", deliveryId: delivery.id });
+    expect(before.pushTokenDigest).toBe(createHash("sha256").update(delivery.token).digest("hex"));
+    expect(JSON.stringify(before)).not.toContain(delivery.token);
+    expect(JSON.stringify(before)).not.toContain(groupId);
+    expect(JSON.stringify(before)).not.toContain(leaveBy.toISOString());
+
+    // 08:05 cleanup still deletes every private route/departure/receipt row
+    // under the group night. Only the opaque journal entry survives.
+    expect(await purgeEndedGroupNights(new Date(end.getTime() + 5 * 60_000))).toBe(1);
+    expect(await getDb().select().from(groupNightParticipantsTable)).toEqual([]);
+    expect(await getDb().select().from(groupAlertDeliveriesTable)).toEqual([]);
+    const [retained] = await getDb().select().from(groupPushReceiptChecksTable);
+    expect(retained).toMatchObject({ expoTicketId: "late-ticket-1", deliveryId: null });
+
+    const previousFetch = globalThis.fetch;
+    const seen: string[] = [];
+    globalThis.fetch = vi.fn(async (_url, options) => {
+      seen.push(...(JSON.parse(String(options?.body)).ids as string[]));
+      return new Response(JSON.stringify({data: {"late-ticket-1": {status: "error", details: {error: "DeviceNotRegistered"}}}}),
+        {status:200,headers:{"Content-Type":"application/json"}});
+    });
+    try {
+      const outcome = await reconcileGroupPushReceipts(new Date(end.getTime() + 20 * 60_000));
+      expect(outcome).toEqual({ checked: 1, invalidDevices: 1 });
+    } finally { globalThis.fetch = previousFetch; }
+    expect(seen).toEqual(["late-ticket-1"]);
+    expect(await getDb().select().from(groupPushReceiptChecksTable)).toEqual([]);
+    const [member] = await getDb().select().from(groupMembersTable).where(eq(groupMembersTable.id, host.id));
+    expect(member.expoPushToken).toBeNull();
+  });
+
+  it("preserves rotated device tokens and discards expired receipt metadata", async () => {
+    const { groupId, host, members } = await groupWithMembers(["Bea"]);
+    await setPush(groupId, host.token, "oldtoken");
+    await startGroupTonightRecord(groupId, host.token);
+    const end = tonightWindow().endsAt;
+    const leaveBy = new Date(end.getTime() - 11 * 60_000);
+    await setGroupTonightParticipationRecord(groupId, members[0].token, leaveBy);
+    const dueAt = new Date(leaveBy.getTime() + 60_000);
+    await claimDueGroupLeaveAlerts(dueAt);
+    const [delivery] = await claimGroupDeliveryBatch(dueAt);
+    await settleGroupDelivery(delivery, { ticketId: "old-token-ticket" }, dueAt);
+    await setPush(groupId, host.token, "newtoken");
+    await purgeEndedGroupNights(new Date(end.getTime() + 5 * 60_000));
+
+    const previousFetch = globalThis.fetch;
+    globalThis.fetch = vi.fn(async () => new Response(JSON.stringify({data: {
+      "old-token-ticket": {status:"error", details:{error:"DeviceNotRegistered"}},
+    }}), {status:200}));
+    try {
+      expect(await reconcileGroupPushReceipts(new Date(end.getTime() + 20 * 60_000)))
+        .toEqual({ checked: 1, invalidDevices: 0 });
+    } finally { globalThis.fetch = previousFetch; }
+    const [member] = await getDb().select().from(groupMembersTable).where(eq(groupMembersTable.id, host.id));
+    expect(member.expoPushToken).toContain('newtoken');
+    expect(await getDb().select().from(groupPushReceiptChecksTable)).toEqual([]);
+
+    // A missing Expo response is retained only up to the configured TTL.
+    await getDb().insert(groupPushReceiptChecksTable).values({
+      expoTicketId: "never-returned", pushTokenDigest: "a".repeat(64),
+      sentAt: dueAt, expiresAt: new Date(dueAt.getTime() + RECEIPT_RETENTION_MS),
+    });
+    expect(await purgeExpiredGroupPushReceiptChecks(new Date(dueAt.getTime() + RECEIPT_RETENTION_MS - 1)))
+      .toBe(0);
+    expect(await purgeExpiredGroupPushReceiptChecks(new Date(dueAt.getTime() + RECEIPT_RETENTION_MS)))
+      .toBe(1);
+    expect(await getDb().select().from(groupPushReceiptChecksTable)).toEqual([]);
+  });
+
+  it("never consumes an unverified Expo receipt after privacy cleanup, even with HTTP 200", async () => {
+    const { groupId, host, members } = await groupWithMembers(["Bea"]);
+    await setPush(groupId, host.token, "unverifiedhost");
+    await startGroupTonightRecord(groupId, host.token);
+    const end = tonightWindow().endsAt;
+    const leaveBy = new Date(end.getTime() - 10 * 60_000);
+    await setGroupTonightParticipationRecord(groupId, members[0].token, leaveBy);
+    const dueAt = new Date(leaveBy.getTime() + 60_000);
+    await claimDueGroupLeaveAlerts(dueAt);
+    const [delivery] = await claimGroupDeliveryBatch(dueAt);
+    await settleGroupDelivery(delivery, { ticketId: "unknown-status-ticket" }, dueAt);
+    await purgeEndedGroupNights(new Date(end.getTime() + 5 * 60_000));
+    const afterCleanup = new Date(end.getTime() + 20 * 60_000);
+    const previousFetch = globalThis.fetch;
+    const mocked = vi.fn(async () => new Response(JSON.stringify({data: {
+      "unknown-status-ticket": { message: "unknown receipt state" },
+    }}), {status: 200}));
+    globalThis.fetch = mocked;
+    try {
+      expect(await reconcileGroupPushReceipts(afterCleanup)).toEqual({checked: 0, invalidDevices: 0});
+      expect((await getDb().select().from(groupPushReceiptChecksTable))).toHaveLength(1);
+      mocked.mockImplementationOnce(async () => new Response(JSON.stringify({errors:[{code:"UPSTREAM"}]}), {status:200}));
+      await expect(reconcileGroupPushReceipts(afterCleanup)).rejects.toThrow("Invalid Expo group push receipt response");
+      expect((await getDb().select().from(groupPushReceiptChecksTable))).toHaveLength(1);
+      mocked.mockImplementationOnce(async () => new Response(JSON.stringify({data: {
+        "unknown-status-ticket": { status: "ok" },
+      }}), {status:200}));
+      expect(await reconcileGroupPushReceipts(afterCleanup)).toEqual({checked:1,invalidDevices:0});
+      expect(await getDb().select().from(groupPushReceiptChecksTable)).toEqual([]);
+    } finally {
+      globalThis.fetch = previousFetch;
+    }
+  });
+
+  it("stale queued alerts cannot be delivered after the sender changes their leave time", async () => {
+    const { groupId, host, members } = await groupWithMembers(["Bea", "Cai"]);
+    for (const [member, label] of [[host, "host"], [members[0], "bea"], [members[1], "cai"]] as const)
+      await setPush(groupId, member.token, label);
+    await startGroupTonightRecord(groupId, host.token);
+    const leaveBy = new Date(tonightWindow().endsAt.getTime() - 2 * 60 * 60_000);
+    await setGroupTonightParticipationRecord(groupId, members[0].token, leaveBy);
+    await setGroupTonightParticipationRecord(groupId, members[1].token, null);
+    const firstDueAt = new Date(leaveBy.getTime() + 60_000);
+    await claimDueGroupLeaveAlerts(firstDueAt);
+    expect(await getDb().select().from(groupAlertDeliveriesTable)).toHaveLength(2);
+    await setGroupTonightParticipationRecord(groupId, members[0].token, new Date(leaveBy.getTime() + 20 * 60_000));
+    expect(await claimGroupDeliveryBatch(firstDueAt)).toEqual([]);
+    expect(await nextGroupOutboxRetryAt(firstDueAt)).toBeNull();
+  });
+
+  it("recipient opt-out after enqueuing prevents the queued notification from being sent", async () => {
+    const { groupId, host, members } = await groupWithMembers(["Bea", "Cai"]);
+    for (const [member, label] of [[host, "host"], [members[0], "bea"], [members[1], "cai"]] as const)
+      await setPush(groupId, member.token, label);
+    await startGroupTonightRecord(groupId, host.token);
+    const leaveBy = new Date(tonightWindow().endsAt.getTime() - 2 * 60 * 60_000);
+    await setGroupTonightParticipationRecord(groupId, members[0].token, leaveBy);
+    await setGroupTonightParticipationRecord(groupId, members[1].token, null);
+    const dueAt = new Date(leaveBy.getTime() + 60_000);
+    await claimDueGroupLeaveAlerts(dueAt);
+    expect(await getDb().select().from(groupAlertDeliveriesTable)).toHaveLength(2);
+    await updateGroupMembershipRecord(groupId, members[1].token, { leaveTimeAlerts: false });
+    const delivery = await claimGroupDeliveryBatch(dueAt);
+    expect(delivery.map((d) => d.recipientMemberId)).toEqual([host.id]);
+  });
+
+  it("serializes two independent schedule writers using a PostgreSQL advisory lock", async () => {
+    const entered: string[] = [];
+    let unblockFirst!: () => void;
+    let announceFirst!: () => void;
+    const firstStarted = new Promise<void>((resolve) => { announceFirst = resolve; });
+    const firstBlocked = new Promise<void>((resolve) => { unblockFirst = resolve; });
+    const first = withLeaveScheduleLock(async () => {
+      entered.push("first");
+      announceFirst();
+      await firstBlocked;
+    });
+    await firstStarted;
+    const second = withLeaveScheduleLock(async () => {
+      entered.push("second");
+    });
+    // The second writer cannot modify EventBridge while the first holds
+    // the transaction-scoped lock. Releasing the first also releases its lock.
+    expect(entered).toEqual(["first"]);
+    unblockFirst();
+    await Promise.all([first, second]);
+    expect(entered).toEqual(["first", "second"]);
+  });
+
   it("does not send stale leave-time alerts", async () => {
     const { groupId, host, members } = await groupWithMembers(["Bea", "Cai"]);
     await startGroupTonightRecord(groupId, host.token);
@@ -778,6 +1056,112 @@ describe("groups HTTP routes", () => {
     expect(session.memberToken.length).toBeGreaterThanOrEqual(32);
     expect(session.group.me.role).toBe("host");
     expect(session.group.invite.joinCode).toHaveLength(8);
+  });
+
+  it("production rejects copied RevenueCat IDs even if the victim has active premium", async () => {
+    const oldNode = process.env.NODE_ENV;
+    const oldStage = process.env.LASTRIDE_STAGE;
+    process.env.NODE_ENV = "production";
+    process.env.LASTRIDE_STAGE = "production";
+    try {
+      const secret = "f7".repeat(32);
+      const victimId = revenueCatUserIdForDeviceSecret(secret)!;
+      const copy = await call("POST", "/groups", {
+        body: createBody, headers: { "X-RevenueCat-App-User-Id": victimId },
+      });
+      expect(copy.status).toBe(403);
+      expect(await copy.json()).toMatchObject({ code: 'PREMIUM_CLIENT_UPGRADE_REQUIRED' });
+      const wrongSecret = await call("POST", "/groups", {
+        body: createBody, headers: {
+          "X-RevenueCat-App-User-Id": victimId,
+          "X-Premium-Device-Secret": "99".repeat(32),
+        },
+      });
+      expect(wrongSecret.status).toBe(401);
+      expect(await wrongSecret.json()).toMatchObject({ code: 'INVALID_PREMIUM_DEVICE_PROOF' });
+      expect(await getDb().select().from(groupsTable)).toHaveLength(0);
+      const authorized = await call("POST", "/groups", {
+        body: createBody, headers: {
+          "X-RevenueCat-App-User-Id": victimId,
+          "X-Premium-Device-Secret": secret,
+        },
+      });
+      expect(authorized.status).toBe(201);
+      expect(await getDb().select().from(groupsTable)).toHaveLength(1);
+    } finally {
+      if (oldNode === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = oldNode;
+      if (oldStage === undefined) delete process.env.LASTRIDE_STAGE;
+      else process.env.LASTRIDE_STAGE = oldStage;
+    }
+  });
+
+  it("production requires device proof even when replaying a successful host creation key", async () => {
+    const oldNode = process.env.NODE_ENV;
+    const oldStage = process.env.LASTRIDE_STAGE;
+    process.env.NODE_ENV = "production";
+    process.env.LASTRIDE_STAGE = "production";
+    try {
+      const secret = "ac".repeat(32);
+      const id = revenueCatUserIdForDeviceSecret(secret)!;
+      const key = "d7".repeat(32);
+      const headers = { "X-RevenueCat-App-User-Id": id,
+        "X-Premium-Device-Secret": secret, "X-Group-Create-Key": key };
+      expect((await call("POST", "/groups", { body: createBody, headers })).status).toBe(201);
+      const { ["X-Premium-Device-Secret"]: _omitted, ...stolen } = headers;
+      expect((await call("POST", "/groups", { body: createBody, headers: stolen })).status).toBe(403);
+      expect((await call("POST", "/groups", { body: createBody, headers })).status).toBe(200);
+      expect(await getDb().select().from(groupsTable)).toHaveLength(1);
+    } finally {
+      if (oldNode === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = oldNode;
+      if (oldStage === undefined) delete process.env.LASTRIDE_STAGE;
+      else process.env.LASTRIDE_STAGE = oldStage;
+    }
+  });
+
+  it("HTTP retry recovers a paid host even if premium expires after the first accepted request", async () => {
+    const key = "a4".repeat(32);
+    const headers = { "X-RevenueCat-App-User-Id": "paid-user", "X-Group-Create-Key": key };
+    const created = await call("POST", "/groups", { body: createBody, headers });
+    expect(created.status).toBe(201);
+    const first = (await created.json()) as { memberToken: string; group: { id: string } };
+    expect(first.memberToken).toBe(key);
+    premium = false;
+    clearEntitlementCache();
+    const recovered = await call("POST", "/groups", { body: createBody, headers });
+    expect(recovered.status).toBe(200);
+    const replay = (await recovered.json()) as { memberToken: string; group: { id: string } };
+    expect(replay.memberToken).toBe(first.memberToken);
+    expect(replay.group.id).toBe(first.group.id);
+    expect(await getDb().select().from(groupsTable)).toHaveLength(1);
+    expect((await call("POST", "/groups", {
+      body: createBody,
+      headers: { "X-RevenueCat-App-User-Id": "paid-user", "X-Group-Create-Key": "not-a-valid-key" },
+    })).status).toBe(400);
+    expect((await call("POST", "/groups", {
+      body: createBody,
+      headers: { "X-RevenueCat-App-User-Id": "paid-user", "X-Group-Create-Key": "b5".repeat(32) },
+    })).status).toBe(402);
+  });
+
+  it("HTTP join key retries recover the same member, including after invite rotation", async () => {
+    const created = await createGroupRecord({ name: "Friends", displayName: "Host" });
+    if (created.kind !== "created" || !created.group.invite) throw new Error("setup");
+    const key = "b4".repeat(32);
+    const body = { joinCode: created.group.invite.joinCode, displayName: "Alice" };
+    const first = await call("POST", "/groups/join", { body, headers: { "X-Group-Join-Key": key } });
+    expect(first.status).toBe(201);
+    const firstSession = (await first.json()) as { memberToken: string; group: { id: string } };
+    expect(firstSession.memberToken).toBe(key);
+    await rotateGroupInviteRecord(created.group.id, created.memberToken);
+    const recovered = await call("POST", "/groups/join", { body, headers: { "X-Group-Join-Key": key } });
+    expect(recovered.status).toBe(200);
+    const restored = (await recovered.json()) as { memberToken: string; group: { id: string } };
+    expect(restored.memberToken).toBe(key);
+    expect(restored.group.id).toBe(firstSession.group.id);
+    expect((await call("POST", "/groups/join", { body, headers: { "X-Group-Join-Key": "bad" } })).status).toBe(400);
+    expect(await getDb().select().from(groupMembersTable)).toHaveLength(2);
   });
 
   it("reset as host over HTTP disbands the group", async () => {
@@ -924,6 +1308,86 @@ describe("groups HTTP routes", () => {
       body: { leaveBy: new Date(tonightWindow().endsAt.getTime() + 60_000).toISOString() },
     });
     expect(outside.status).toBe(400);
+  });
+
+  it("server CAS rejects an older leave time even when its HTTP request arrives last", async () => {
+    const { groupId, host, members } = await groupWithMembers(["Bea"]);
+    await call("POST", `/groups/${groupId}/tonight`, { token: host.token });
+    const [bea] = members;
+    const earlier = new Date(tonightWindow().endsAt.getTime() - 100 * 60_000);
+    const latest = new Date(tonightWindow().endsAt.getTime() - 60 * 60_000);
+    const first = await call("PUT", `/groups/${groupId}/tonight/me`, {
+      token: bea.token, headers: { "X-Leave-Expected-Revision": "0" },
+      body: { leaveBy: latest.toISOString() },
+    });
+    expect(first.status).toBe(200);
+    expect((await first.json()).tonight.participants.find((p: {memberId: string}) => p.memberId === bea.id))
+      .toMatchObject({ leaveBy: latest.toISOString(), leaveRevision: 1 });
+    const stale = await call("PUT", `/groups/${groupId}/tonight/me`, {
+      token: bea.token, headers: { "X-Leave-Expected-Revision": "0" },
+      body: { leaveBy: earlier.toISOString() },
+    });
+    expect(stale.status).toBe(412);
+    expect(await stale.json()).toMatchObject({ code: "STALE_LEAVE_REVISION" });
+    const stored = await getGroupDetailRecord(groupId, bea.token);
+    if (!stored) throw Error('missing group');
+    expect(stored.tonight.participants.find(p => p.memberId === bea.id))
+      .toMatchObject({ leaveBy: latest, leaveRevision: 1 });
+  });
+
+  it("legacy clients cannot overwrite a participant once the new CAS protocol has taken over", async () => {
+    const { groupId, host, members } = await groupWithMembers(["Bea"]);
+    await call("POST", `/groups/${groupId}/tonight`, { token: host.token });
+    const [bea] = members;
+    const base = new Date(tonightWindow().endsAt.getTime() - 90 * 60_000).toISOString();
+    const newer = new Date(tonightWindow().endsAt.getTime() - 60 * 60_000).toISOString();
+    expect((await call("PUT", `/groups/${groupId}/tonight/me`, {
+      token: bea.token, body: { leaveBy: base },
+    })).status).toBe(200);
+    const upgrade = await call("PUT", `/groups/${groupId}/tonight/me`, {
+      token: bea.token, headers: { "X-Leave-Expected-Revision": "0" }, body: { leaveBy: newer },
+    });
+    expect(upgrade.status).toBe(200);
+    expect((await call("PUT", `/groups/${groupId}/tonight/me`, {
+      token: bea.token, body: { leaveBy: base },
+    })).status).toBe(412);
+    const current = await getGroupDetailRecord(groupId, bea.token);
+    if (!current) throw Error('missing group');
+    expect(current.tonight.participants.find(p => p.memberId === bea.id))
+      .toMatchObject({ leaveBy: new Date(newer), leaveRevision: 1 });
+  });
+
+  it("concurrent client writes with the same expected revision allow only one commit", async () => {
+    const { groupId, host, members } = await groupWithMembers(["Bea"]);
+    await call("POST", `/groups/${groupId}/tonight`, { token: host.token });
+    const bea = members[0];
+    const times = [65, 70].map(minutes => new Date(tonightWindow().endsAt.getTime() - minutes * 60_000));
+    const replies = await Promise.all(times.map(leaveBy => call("PUT", `/groups/${groupId}/tonight/me`, {
+      token: bea.token,
+      headers: { "X-Leave-Expected-Revision": "0" },
+      body: { leaveBy: leaveBy.toISOString() },
+    })));
+    expect(replies.map(r => r.status).sort()).toEqual([200, 412]);
+    const current = await getGroupDetailRecord(groupId, bea.token);
+    if (!current) throw Error('missing group');
+    const participant = current.tonight.participants.find(p => p.memberId === bea.id);
+    expect(participant?.leaveRevision).toBe(1);
+    expect(times.map(t => t.getTime())).toContain(participant?.leaveBy?.getTime());
+  });
+
+  it("rejects malformed revision headers before any database mutation", async () => {
+    const { groupId, host, members } = await groupWithMembers(["Bea"]);
+    await call("POST", `/groups/${groupId}/tonight`, { token: host.token });
+    for (const bad of ['-1','01','abc','1.1','2147483647']) {
+      const reply = await call("PUT", `/groups/${groupId}/tonight/me`, {
+        token: members[0].token, headers: { "X-Leave-Expected-Revision": bad },
+        body: { leaveBy: null },
+      });
+      expect(reply.status).toBe(400);
+    }
+    const found = await getGroupDetailRecord(groupId, members[0].token);
+    if (!found) throw Error('missing group');
+    expect(found.tonight.participants).toEqual([]);
   });
 
   it("a member's new leave time silently updates the others' apps, not their own", async () => {

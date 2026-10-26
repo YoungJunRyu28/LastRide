@@ -203,3 +203,72 @@ Do not deploy production unless all of these are true:
 The repository defaults are deliberately conservative. The API calls no paid
 provider (ODPT data and on-server estimates; iOS uses Apple MapKit), so there
 are no provider quotas to size; the public rate limits still apply.
+
+### Production RevenueCat migration safety gate (October 2026)
+
+The new iOS/Android client proves ownership of its device-derived RevenueCat
+customer ID before creating paid groups. Older installed builds cannot do so.
+Production intentionally returns HTTP 403 with an upgrade-required code for legacy
+host-creation requests; no insecure customer-ID fallback exists.
+
+Before running `./infra/deploy.sh production ... --confirm`, complete the
+RevenueCat sandbox alias/restore matrix and installed-client compatibility
+review in `docs/release/2026-10-premium-identity-hardening.md`. Then explicitly
+set `LASTRIDE_PREMIUM_SANDBOX_QA_APPROVED=yes`,
+`LASTRIDE_LEGACY_CLIENT_COMPATIBILITY_APPROVED=yes`, and
+`LASTRIDE_PREMIUM_ROLLOUT_APPROVED_SHA` to the **exact reviewed main HEAD**.
+The script verifies these before accessing AWS secrets/database. A staging
+deploy does not require the production approval. Approval flags assert a
+human-reviewed condition: they do not make RevenueCat migration automatically
+safe and must never be populated just to force a deployment.
+
+## Departure alert recovery and receipt-processing operating costs
+
+`DepartureAlerts` has a **five-minute, all-day EventBridge backup** because
+LastRide's primary one-time group alarm Scheduler is best-effort and late
+consumer group alerts expire after ten minutes. A 30-minute backup can miss
+an entire train departure and must not be restored without equivalent fault
+recovery. The backup invokes the Postgres-backed scheduled Lambda **288 times
+per day** even when there are no groups. This can exceed the historical Neon
+100 CU-hour/month free tier by keeping the DB warm. Before production, check
+actual Neon CU usage, AWS Lambda/EventBridge cost, configure account budget
+alerts, and fund a suitable tier. The deploy script now also requires the
+explicit `LASTRIDE_ALERT_RECOVERY_COST_APPROVED=yes` release-owner attestation
+**before accessing AWS secrets or the production database**. Staging is exempt.
+The attestation does not itself configure a budget or cap cloud spending. The project prioritizes *correctness* over
+assuming a free backend. No live billing/resources were changed here.
+
+`PushReceipts` runs every 15 minutes during Japan evening/night independently
+of `EnableBusiness`, with a final 08:00 JST check before the 08:05 privacy
+purge. Expo group delivery receipts may take ~15 minutes to become available:
+those for the final part of a group night can be lost when the night is
+deleted. Track the unverified fraction and resolve retention/privacy policy
+before claiming complete push delivery observability. Distinct schedules have
+independent SQS DLQs. Test EventBridge Scheduler permissions and all DLQ alarm
+routes on staging, and verify that device-token revocation works against
+real APNs/FCM sandbox receipts.
+
+### Late-night receipt privacy boundary (October 22, 2026)
+
+A new **receipt-only** table `group_push_receipt_checks` in migration
+`0015_foamy_speedball.sql` is intended to solve loss of Expo receipt checks
+at the 08:05 group-night privacy purge. Accepted tickets are atomically copied
+into the short-lived journal without station, route, leave-by, names or raw
+push tokens. The journal keeps an opaque ticket, SHA-256 push-token digest,
+nullable recipient/member link, sent time and two-hour deadline. After 08:05,
+private group-night records still disappear; the retained operational record
+is minimized, **not completely anonymous**, as a still-present recipient
+member ID can temporarily identify a group.
+
+**Approve this two-hour retention policy before production deployment.**
+The deploy script requires `LASTRIDE_GROUP_RECEIPT_RETENTION_APPROVED=yes` after
+real privacy policy review and before reading AWS credentials or touching the
+production DB. This is an attestation, not automatic compliance. The
+journal expires via receipt-processing checks every 15 minutes all day. A
+service outage can delay physical expiry; monitor failed Scheduler, Lambda
+and SQS DLQ executions, and validate privacy deletion behavior on staging.
+The migration backfills unresolved accepted tickets younger than two hours;
+no stale ticket is revived. Deploy DB migration before application code that
+inserts/checks the journal. Do not claim all Expo/APNs/FCM receipts are
+recovered until physical-device verification and actual receipt timing tests
+have passed.

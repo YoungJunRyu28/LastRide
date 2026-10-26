@@ -9,6 +9,17 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 const MEMBERSHIPS_KEY = "lastride-group-memberships";
 const DISPLAY_NAME_KEY = "lastride-group-display-name";
 
+// AsyncStorage has no atomic update operation. Queue the entire read/modify/write
+// sequence so two overlapping joins, renames, resets or removals cannot erase
+// one another. A failed write must not poison subsequent operations.
+let mutationTail: Promise<void> = Promise.resolve();
+
+function serializeMutation<T>(work: () => Promise<T>): Promise<T> {
+  const result = mutationTail.then(work);
+  mutationTail = result.then(() => undefined, () => undefined);
+  return result;
+}
+
 export type GroupMembership = {
   groupId: string;
   memberToken: string;
@@ -26,14 +37,25 @@ function valid(value: unknown): value is GroupMembership {
   );
 }
 
-export async function readMemberships(): Promise<GroupMembership[]> {
+async function loadMemberships(strict = false): Promise<GroupMembership[]> {
   try {
     const raw = await AsyncStorage.getItem(MEMBERSHIPS_KEY);
     const parsed: unknown = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed.filter(valid) : [];
-  } catch {
+    // Never silently overwrite corrupt/unreadable stored capabilities with a
+    // seemingly empty list during a write; the original can be recovered.
+    if (!Array.isArray(parsed) || (strict && !parsed.every(valid)))
+      throw new Error("Invalid stored group memberships");
+    return parsed.filter(valid);
+  } catch (error) {
+    if (strict) throw error;
     return [];
   }
+}
+
+/** Public reads also wait for in-flight writes to finish. */
+export async function readMemberships(): Promise<GroupMembership[]> {
+  await mutationTail;
+  return loadMemberships();
 }
 
 async function write(memberships: GroupMembership[]) {
@@ -42,24 +64,30 @@ async function write(memberships: GroupMembership[]) {
 
 /** Adds or replaces the membership for its group. */
 export async function saveMembership(membership: GroupMembership): Promise<void> {
-  const current = await readMemberships();
-  await write([...current.filter((item) => item.groupId !== membership.groupId), membership]);
+  await serializeMutation(async () => {
+    const current = await loadMemberships(true);
+    await write([...current.filter((item) => item.groupId !== membership.groupId), membership]);
+  });
 }
 
 export async function renameMembership(groupId: string, name: string): Promise<void> {
-  const current = await readMemberships();
-  await write(current.map((item) => (item.groupId === groupId ? { ...item, name } : item)));
+  await serializeMutation(async () => {
+    const current = await loadMemberships(true);
+    await write(current.map((item) => (item.groupId === groupId ? { ...item, name } : item)));
+  });
 }
 
 /** Forgets a group (left, removed or disbanded). */
 export async function removeMembership(groupId: string): Promise<void> {
-  const current = await readMemberships();
-  await write(current.filter((item) => item.groupId !== groupId));
+  await serializeMutation(async () => {
+    const current = await loadMemberships(true);
+    await write(current.filter((item) => item.groupId !== groupId));
+  });
 }
 
 /** Forgets every group and the saved display name ("Reset & start over"). */
 export async function clearMemberships(): Promise<void> {
-  await AsyncStorage.multiRemove([MEMBERSHIPS_KEY, DISPLAY_NAME_KEY]);
+  await serializeMutation(() => AsyncStorage.multiRemove([MEMBERSHIPS_KEY, DISPLAY_NAME_KEY]));
 }
 
 /** The name last used to join a group, offered as the default next time. */

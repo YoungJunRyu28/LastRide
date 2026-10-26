@@ -68,6 +68,7 @@ app.use(
       "X-Participant-Token",
       "X-Member-Token",
       "X-RevenueCat-App-User-Id",
+      "X-Premium-Device-Secret",
       "X-Request-Id",
     ],
     maxAge: 600,

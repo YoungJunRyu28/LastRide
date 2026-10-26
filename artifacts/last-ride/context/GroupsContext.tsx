@@ -8,7 +8,6 @@ import {
   createGroup,
   getGroup,
   joinGroup,
-  joinGroupTonight,
   leaveGroup,
   leaveGroupTonight,
   resetGroupMembership,
@@ -28,7 +27,10 @@ import {
   writeDisplayName,
   type GroupMembership,
 } from "@/lib/groupMemberships";
-import { clearSharing, markSharing, stopSharing } from "@/lib/groupSharing";
+import { clearSharing, flushPendingSharedLeaveBy, markSharing, stopSharing, syncSharedLeaveByForGroup } from "@/lib/groupSharing";
+import { prepareGroupCreation, readPendingGroupCreation, finishGroupCreation, creationDefinitelyRejected } from "@/lib/pendingGroupCreation";
+import { prepareGroupJoin, readPendingGroupJoin, finishGroupJoin, joinDefinitelyRejected } from "@/lib/pendingGroupJoin";
+import { GroupRefreshGuard } from "@/lib/groupRefreshGuard";
 import { onGroupUpdated, startGroupUpdates } from "@/lib/groupUpdates";
 import { expoPushToken } from "@/lib/pushToken";
 import { recommendedLeaveTime } from "@/lib/reliability";
@@ -44,6 +46,8 @@ type GroupsValue = {
   loading: boolean;
   available: boolean;
   refresh: () => Promise<void>;
+  /** Refresh only this group when its detail screen is focused. */
+  refreshGroup: (groupId: string) => Promise<void>;
   /** Request options carrying this device's member token for `groupId`. */
   memberOptions: (groupId: string) => RequestInit;
   /** Stores a server answer for a group (after any action that returns GroupDetail). */
@@ -77,13 +81,20 @@ function errorStatus(error: unknown): number | undefined {
 
 export function GroupsProvider({ children }: { children: React.ReactNode }) {
   const { plan, language, isHydrated } = useLastRide();
-  const { appUserId } = usePremium();
+  const { groupCreationHeaders } = usePremium();
   const [memberships, setMemberships] = useState<GroupMembership[]>([]);
   const [details, setDetails] = useState<Record<string, GroupDetail>>({});
   const [loading, setLoading] = useState(true);
   const available = !!apiBaseUrl;
   const membershipsRef = useRef(memberships);
   membershipsRef.current = memberships;
+  const refreshGuard = useRef(new GroupRefreshGuard());
+  // One registration per group, language and OS push token per app session.
+  // Re-check each time the app becomes active (permission or token can change).
+  const deviceRegistrations = useRef<Record<string, string>>({});
+  // Guard only duplicate sends during the SAME membership lifetime. Opt-out,
+  // group reset and re-join clear it so the next night can publish again.
+  const sent = useRef<Record<string, string | null>>({});
 
   const memberOptions = useCallback(
     (groupId: string): RequestInit => {
@@ -94,6 +105,7 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
   );
 
   const apply = useCallback((detail: GroupDetail) => {
+    refreshGuard.current.changed(detail.id);
     setDetails((current) => ({ ...current, [detail.id]: detail }));
     const known = membershipsRef.current.find((item) => item.groupId === detail.id);
     if (known && known.name !== detail.name) {
@@ -104,6 +116,9 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const forget = useCallback(async (groupId: string) => {
+    refreshGuard.current.changed(groupId);
+    delete deviceRegistrations.current[groupId];
+    delete sent.current[groupId];
     await removeMembership(groupId);
     await stopSharing(groupId);
     setMemberships((current) => current.filter((item) => item.groupId !== groupId));
@@ -114,6 +129,10 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const leaveAll = useCallback(async () => {
+    // An in-flight POST may already have created a host whose response never
+    // arrived. Prevent reset from hiding its only recovery credential.
+    if (await readPendingGroupCreation()) throw new Error("PENDING_GROUP_CREATION");
+    if (await readPendingGroupJoin()) throw new Error("PENDING_GROUP_JOIN");
     const list = await readMemberships();
     await Promise.all(
       list.map(async (membership) => {
@@ -125,8 +144,10 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
             headers: { "X-Member-Token": membership.memberToken },
             signal: controller.signal,
           });
-        } catch {
-          // Offline or already gone: the server cleanup handles what's left.
+        } catch (error) {
+          // A confirmed 404 means the server already removed this membership.
+          // Network outages must NOT destroy the only local host credential.
+          if (errorStatus(error) !== 404) throw error;
         } finally {
           clearTimeout(timer);
         }
@@ -134,8 +155,11 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
     );
     await clearMemberships();
     await clearSharing();
+    for (const member of list) refreshGuard.current.changed(member.groupId);
     setMemberships([]);
     setDetails({});
+    deviceRegistrations.current = {};
+    sent.current = {};
   }, []);
 
   const refresh = useCallback(async () => {
@@ -145,16 +169,19 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
       return;
     }
-    await Promise.all(
-      list.map(async (membership) => {
-        try {
-          apply(await getGroup(membership.groupId, { headers: { "X-Member-Token": membership.memberToken } }));
-        } catch (error) {
-          // 404: disbanded, removed, or the token is no longer valid.
-          if (errorStatus(error) === 404) await forget(membership.groupId);
-        }
-      }),
-    );
+    await Promise.all(list.map(async (membership) => {
+      const ticket = refreshGuard.current.begin(membership.groupId);
+      try {
+        const detail = await getGroup(membership.groupId, {
+          headers: { "X-Member-Token": membership.memberToken },
+        });
+        if (refreshGuard.current.isCurrent(ticket)) apply(detail);
+      } catch (error) {
+        // Don't let a stale 404 delete a membership after a successful mutation.
+        if (errorStatus(error) === 404 && refreshGuard.current.isCurrent(ticket))
+          await forget(membership.groupId);
+      }
+    }));
     setLoading(false);
   }, [available, apply, forget]);
 
@@ -164,10 +191,12 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
       if (!available) return;
       const membership = (await readMemberships()).find((item) => item.groupId === groupId);
       if (!membership) return;
+      const ticket = refreshGuard.current.begin(groupId);
       try {
-        apply(await getGroup(groupId, { headers: { "X-Member-Token": membership.memberToken } }));
+        const detail = await getGroup(groupId, { headers: { "X-Member-Token": membership.memberToken } });
+        if (refreshGuard.current.isCurrent(ticket)) apply(detail);
       } catch (error) {
-        if (errorStatus(error) === 404) await forget(groupId);
+        if (errorStatus(error) === 404 && refreshGuard.current.isCurrent(ticket)) await forget(groupId);
       }
     },
     [available, apply, forget],
@@ -192,6 +221,21 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
     };
   }, [refresh, refreshGroup]);
 
+  // iOS can suspend a motionless background task indefinitely. Retry ONLY
+  // durable pending leave-time changes whenever the app becomes active, and
+  // occasionally while open (including after Wi-Fi connectivity returns).
+  // Empty outbox: no HTTP requests. Unmount always clears the timer.
+  useEffect(() => {
+    if (!isHydrated || !available) return;
+    const retry = () => { if (AppState.currentState === 'active') void flushPendingSharedLeaveBy().catch(() => undefined); };
+    retry();
+    const listener = AppState.addEventListener('change', (state) => {
+      if (state === 'active') retry();
+    });
+    const timer = setInterval(retry, 30_000);
+    return () => { clearInterval(timer); listener.remove(); };
+  }, [isHydrated, available]);
+
   // Remember which groups this phone shares with tonight (and the time they
   // have), so background tracking can keep them current (lib/groupSharing).
   useEffect(() => {
@@ -199,78 +243,183 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
       const mine =
         detail.tonight.active &&
         detail.tonight.participants.find((participant) => participant.memberId === detail.me.memberId);
-      if (mine) void markSharing(detail.id, mine.leaveBy ? new Date(mine.leaveBy).toISOString() : null);
-      else void stopSharing(detail.id);
+      if (mine) void markSharing(detail.id, mine.leaveBy ? new Date(mine.leaveBy).toISOString() : null, mine.leaveRevision).catch(() => undefined);
+      else void stopSharing(detail.id).catch(() => undefined);
     }
   }, [details]);
 
-  /** Registers push and language for a new membership; failures just mean no group pushes. */
-  const registerDevice = useCallback(
-    async (detail: GroupDetail, memberToken: string) => {
-      const token = await expoPushToken();
+  /**
+   * Re-register existing members when the app reopens or notification
+   * permissions / Expo push token / language changes. A null token explicitly
+   * unregisters a revoked notification permission on the server.
+   *
+   * No extra prompt is shown; expoPushToken checks existing permission only.
+   */
+  const refreshDeviceRegistrations = useCallback(async () => {
+    if (!available) return;
+    const members = await readMemberships();
+    if (members.length === 0) return;
+    const token = await expoPushToken();
+    const locale = language ?? "ja";
+    const signature = JSON.stringify([locale, token]);
+    await Promise.all(members.map(async (membership) => {
+      if (deviceRegistrations.current[membership.groupId] === signature) return;
       try {
-        apply(
-          await updateMyGroupMembership(
-            detail.id,
-            { language: language ?? "ja", ...(token ? { expoPushToken: token } : {}) },
-            { headers: { "X-Member-Token": memberToken } },
-          ),
+        const detail = await updateMyGroupMembership(
+          membership.groupId,
+          { language: locale, expoPushToken: token },
+          { headers: { "X-Member-Token": membership.memberToken } },
         );
+        deviceRegistrations.current[membership.groupId] = signature;
+        apply(detail);
       } catch {
-        // Keep the membership; the next refresh shows it anyway.
+        // Keep the capability and retry on the next foreground transition.
       }
-    },
-    [apply, language],
-  );
+    }));
+  }, [available, language, apply]);
+
+  useEffect(() => {
+    void refreshDeviceRegistrations();
+    const listener = AppState.addEventListener("change", (state) => {
+      if (state === "active") void refreshDeviceRegistrations();
+    });
+    return () => listener.remove();
+  }, [refreshDeviceRegistrations, memberships]);
 
   const remember = useCallback(
     async (memberToken: string, detail: GroupDetail, displayName: string) => {
       const membership = { groupId: detail.id, memberToken, name: detail.name };
+      delete sent.current[detail.id];
       await saveMembership(membership);
       await writeDisplayName(displayName);
       setMemberships((current) => [...current.filter((item) => item.groupId !== detail.id), membership]);
       apply(detail);
-      void registerDevice(detail, memberToken);
+      // The membership effect registers push and language once saved.
     },
-    [apply, registerDevice],
+    [apply],
   );
+
+  /**
+   * The creation capability is written before network I/O, and cleared only
+   * after the returned host membership was durably written on this device.
+   * A timeout, force-kill or response-loss cannot generate a second host.
+   */
+  const resumePendingCreation = useCallback(async () => {
+    const pending = await readPendingGroupCreation();
+    if (!pending) return null;
+    let session: Awaited<ReturnType<typeof createGroup>>;
+    try {
+      session = await createGroup(
+        { name: pending.name, displayName: pending.displayName, language: pending.language },
+        { headers: {
+          ...await groupCreationHeaders(),
+          "X-Group-Create-Key": pending.creationKey,
+        } },
+      );
+    } catch (error) {
+      if (creationDefinitelyRejected(errorStatus(error))) await finishGroupCreation(pending.creationKey);
+      throw error;
+    }
+    await remember(session.memberToken, session.group, pending.displayName);
+    await finishGroupCreation(pending.creationKey);
+    return session.group;
+  }, [groupCreationHeaders, remember]);
 
   const create = useCallback(
     async (name: string, displayName: string) => {
-      const session = await createGroup(
-        { name, displayName, language: language ?? "ja" },
-        { headers: { "X-RevenueCat-App-User-Id": await appUserId() } },
-      );
-      await remember(session.memberToken, session.group, displayName);
+      const pending = await prepareGroupCreation(name, displayName, language ?? "ja");
+      let session: Awaited<ReturnType<typeof createGroup>>;
+      try {
+        session = await createGroup(
+          { name: pending.name, displayName: pending.displayName, language: pending.language },
+          { headers: {
+            ...await groupCreationHeaders(),
+            "X-Group-Create-Key": pending.creationKey,
+          } },
+        );
+      } catch (error) {
+        if (creationDefinitelyRejected(errorStatus(error))) await finishGroupCreation(pending.creationKey);
+        throw error;
+      }
+      await remember(session.memberToken, session.group, pending.displayName);
+      await finishGroupCreation(pending.creationKey);
       return session.group;
     },
-    [appUserId, language, remember],
+    [groupCreationHeaders, language, remember],
   );
+
+  // Restore a creation interrupted between the server's DB commit and the
+  // device's membership write. Never delete pending credentials on a 402/503.
+  const pendingRecoveryRunning = useRef(false);
+  useEffect(() => {
+    if (!isHydrated || !available || pendingRecoveryRunning.current) return;
+    pendingRecoveryRunning.current = true;
+    void resumePendingCreation().catch(() => undefined).finally(() => {
+      pendingRecoveryRunning.current = false;
+    });
+  }, [isHydrated, available, resumePendingCreation]);
+
+  /** Recover a join committed just before the app lost the response. */
+  const resumePendingJoin = useCallback(async () => {
+    const pending = await readPendingGroupJoin();
+    if (!pending) return null;
+    const knownMemberTokens = (await readMemberships()).map((item) => item.memberToken).slice(0, 50);
+    let session: Awaited<ReturnType<typeof joinGroup>>;
+    try {
+      session = await joinGroup({
+        ...(pending.inviteToken ? { inviteToken: pending.inviteToken } : { joinCode: pending.joinCode }),
+        displayName: pending.displayName, language: pending.language, knownMemberTokens,
+      }, { headers: { "X-Group-Join-Key": pending.joinKey } });
+    } catch (error) {
+      if (joinDefinitelyRejected(errorStatus(error))) await finishGroupJoin(pending.joinKey);
+      throw error;
+    }
+    await remember(session.memberToken, session.group, pending.displayName);
+    await finishGroupJoin(pending.joinKey);
+    return session.group;
+  }, [remember]);
 
   const join = useCallback(
     async (input: { inviteToken?: string; joinCode?: string; displayName: string }) => {
-      // The tokens this phone holds: the server returns the existing membership
-      // instead of adding the same person twice (e.g. the host opening their own link).
-      const knownMemberTokens = membershipsRef.current.map((item) => item.memberToken).slice(0, 50);
-      const session = await joinGroup({ ...input, language: language ?? "ja", knownMemberTokens });
+      const pending = await prepareGroupJoin({ ...input, language: language ?? "ja" });
+      const knownMemberTokens = (await readMemberships()).map((item) => item.memberToken).slice(0, 50);
+      let session: Awaited<ReturnType<typeof joinGroup>>;
+      try {
+        session = await joinGroup({
+          ...input, language: pending.language, knownMemberTokens,
+        }, { headers: { "X-Group-Join-Key": pending.joinKey } });
+      } catch (error) {
+        if (joinDefinitelyRejected(errorStatus(error))) await finishGroupJoin(pending.joinKey);
+        throw error;
+      }
       const existing = membershipsRef.current.find((item) => item.groupId === session.group.id);
-      if (session.alreadyMember || existing) {
-        // An older server added a second member anyway: remove it again at once.
-        if (!session.alreadyMember && existing)
+      if (existing && existing.memberToken !== session.memberToken) {
+        // A valid existing membership takes precedence; don't overwrite a
+        // host capability with a just-issued normal member credential.
+        if (!session.alreadyMember)
           void leaveGroup(session.group.id, { headers: { "X-Member-Token": session.memberToken } }).catch(() => undefined);
-        // Never replace the membership this phone already has (a host would lose hosting).
-        apply(session.group);
-        return { group: session.group, alreadyMember: true };
+        await finishGroupJoin(pending.joinKey);
+        await refreshGroup(session.group.id);
+        return { group: details[session.group.id] ?? session.group, alreadyMember: true };
       }
       await remember(session.memberToken, session.group, input.displayName);
-      return { group: session.group, alreadyMember: false };
+      await finishGroupJoin(pending.joinKey);
+      return { group: session.group, alreadyMember: Boolean(session.alreadyMember || existing) };
     },
-    [language, remember, apply],
+    [language, remember, refreshGroup, details],
   );
+
+  const pendingJoinRecoveryRunning = useRef(false);
+  useEffect(() => {
+    if (!isHydrated || !available || pendingJoinRecoveryRunning.current) return;
+    pendingJoinRecoveryRunning.current = true;
+    void resumePendingJoin().catch(() => undefined).finally(() => {
+      pendingJoinRecoveryRunning.current = false;
+    });
+  }, [isHydrated, available, resumePendingJoin]);
 
   // Keep tonight's leave-by current in every group you've opted into tonight.
   const leaveBy = plan ? new Date(recommendedLeaveTime(plan)).toISOString() : null;
-  const sent = useRef<Record<string, string | null>>({});
   useEffect(() => {
     if (!isHydrated || !available) return;
     for (const detail of Object.values(details)) {
@@ -279,13 +428,22 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
       const serverValue = mine.leaveBy ? new Date(mine.leaveBy).toISOString() : null;
       if (serverValue === leaveBy || sent.current[detail.id] === leaveBy) continue;
       sent.current[detail.id] = leaveBy;
-      void joinGroupTonight(detail.id, { leaveBy }, memberOptions(detail.id))
-        .then(apply)
-        .catch(() => {
-          sent.current[detail.id] = null;
-        });
+      void (async () => {
+        // Ensure the group has a saved opt-in before queuing. The foreground
+        // and headless background paths share one durable, serialized outbox.
+        await markSharing(detail.id, serverValue, mine.leaveRevision);
+        // Sending null to clear an old leave time is also durable. In
+        // particular, don't mark the group as opted out just because the
+        // rider has no current departure plan.
+        const updated = await syncSharedLeaveByForGroup(
+          detail.id, leaveBy === null ? null : Date.parse(leaveBy),
+        );
+        if (updated) apply(updated);
+      })().catch(() => {
+        sent.current[detail.id] = null;
+      });
     }
-  }, [details, leaveBy, isHydrated, available, memberOptions, apply]);
+  }, [details, leaveBy, isHydrated, available, apply]);
 
   const groups = useMemo(
     () => memberships.map((membership) => ({ membership, detail: details[membership.groupId] ?? null })),
@@ -316,7 +474,11 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
     await Promise.all(
       sharingTonight.map(async (detail) => {
         const result = await leaveGroupTonight(detail.id, memberOptions(detail.id)).catch(() => null);
-        if (result) apply(result);
+        if (result) {
+          await stopSharing(detail.id); // do not replay an offline update after opting out
+          delete sent.current[detail.id];
+          apply(result);
+        }
       }),
     );
   }, [sharingTonight, memberOptions, apply]);
@@ -331,8 +493,8 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
   );
 
   const value = useMemo(
-    () => ({ groups, loading, available, refresh, memberOptions, apply, forget, leaveAll, create, join, tonightGroup, tonightOpenGroup, sharingTonight, stopSharingTonight }),
-    [groups, loading, available, refresh, memberOptions, apply, forget, leaveAll, create, join, tonightGroup, tonightOpenGroup, sharingTonight, stopSharingTonight],
+    () => ({ groups, loading, available, refresh, refreshGroup, memberOptions, apply, forget, leaveAll, create, join, tonightGroup, tonightOpenGroup, sharingTonight, stopSharingTonight }),
+    [groups, loading, available, refresh, refreshGroup, memberOptions, apply, forget, leaveAll, create, join, tonightGroup, tonightOpenGroup, sharingTonight, stopSharingTonight],
   );
   return <GroupsContext.Provider value={value}>{children}</GroupsContext.Provider>;
 }

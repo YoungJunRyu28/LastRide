@@ -32,9 +32,9 @@ describe('nearby stations when Apple Maps fails', () => {
 
   it('a failed search falls back to the last plan’s stations, not the subway-only server list', async () => {
     mocks.apple.mockRejectedValue(new Error('throttled'));
-    const found = await findNearbyStations(here, 'normal', 3, new Map([['石川町', { walkingMinutes: 13, distanceMeters: 1000 }]]), [ishikawacho, motomachi]);
+    const found = await findNearbyStations(here, 'normal', 3, new Map([['石川町', { walkingMinutes: 13, distanceMeters: 1000, source: 'estimated' as const }]]), [ishikawacho, motomachi]);
     expect(found.map(({ station }) => station.nameJa)).toEqual(['元町・中華街', '石川町']);
-    expect(found[1].walk).toEqual({ walkingMinutes: 13, distanceMeters: 1000 });
+    expect(found[1].walk).toEqual({ walkingMinutes: 13, distanceMeters: 1000, source: 'estimated' });
     expect(mocks.server).not.toHaveBeenCalled();
   });
 

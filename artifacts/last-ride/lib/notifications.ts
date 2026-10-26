@@ -3,6 +3,7 @@ import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import type { ReminderPlan } from '@/lib/planner';
 import { planDelivery, type DeliveryContext, type ReminderLedger } from '@/lib/reminderLedger';
+import { isNativeReminderScheduleIntact, type ScheduledLocalNotification } from '@/lib/notificationScheduleHealth';
 import { BOARDED_ACTION, BOARDED_CATEGORY, boardedButtons, boardedFollowUp, boardedNotificationId, boardedQuestion, NOT_BOARDED_ACTION, type HeldTrain } from '@/lib/boarding';
 import { REMINDER_SOUNDS, STORAGE_KEYS, type ReminderDelivery, type ReminderSound } from '@/lib/settings';
 import { alarmKit, alarmKitAvailable, type AlarmAuthorization } from '../modules/last-ride-alarm/src';
@@ -13,10 +14,14 @@ const webTimers: ReturnType<typeof setTimeout>[] = [];
 // Both the foreground app and the separate headless location-task JS runtime
 // use these keys to replace, not accumulate, locally scheduled notifications.
 const OWNED_IDS_KEY = 'lastride-owned-notification-ids';
-/** The AlarmKit alarms last set ([fire time, title]), so unchanged ones aren't cancelled and set again. */
-const ALARM_SET_KEY = 'lastride-alarm-set';
+const SCHEDULED_ENTRIES_KEY = 'lastride-scheduled-local-notifications-v1';
+const SCHEDULED_ALARMS_KEY = 'lastride-scheduled-alarmkit-v1';
 const SIGNATURE_KEY = 'lastride-reminder-signature';
-const SCHEDULER_VERSION = 9;
+// v10 intentionally invalidates pre-AlarmKit-ledger signatures on upgrade:
+// those builds had silent companions but no native alarm receipt to verify.
+const SCHEDULER_VERSION = 11;
+/** Legacy schedule description, retained to preserve unchanged real alarms. */
+const ALARM_SET_KEY = 'lastride-alarm-set';
 
 export { alarmKitAvailable };
 export { iosMajorVersion } from '../modules/last-ride-alarm/src';
@@ -34,6 +39,73 @@ async function readOwnedIds(): Promise<string[]> {
 
 async function writeOwnedIds(ids: string[]): Promise<void> {
   await AsyncStorage.setItem(OWNED_IDS_KEY, JSON.stringify(ids)).catch(() => undefined);
+}
+
+async function readScheduledEntries(): Promise<ScheduledLocalNotification[]> {
+  try {
+    const raw = await AsyncStorage.getItem(SCHEDULED_ENTRIES_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter((entry): entry is ScheduledLocalNotification =>
+      !!entry && typeof entry.id === 'string' && Number.isFinite(entry.fireAt)) : [];
+  } catch { return []; }
+}
+
+async function writeScheduledEntries(entries: ScheduledLocalNotification[]): Promise<void> {
+  await AsyncStorage.setItem(SCHEDULED_ENTRIES_KEY, JSON.stringify(entries)).catch(() => undefined);
+}
+
+/** Written after AlarmKit confirms a specific alarm; never trust companion
+ * notifications as proof the native AlarmKit alarm still exists. */
+type NativeAlarmReceipt = { id: string; fireAt: number };
+async function readNativeAlarms(): Promise<NativeAlarmReceipt[]> {
+  try {
+    const raw = await AsyncStorage.getItem(SCHEDULED_ALARMS_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((value): value is NativeAlarmReceipt =>
+      !!value && typeof value.id === 'string' && value.id.length > 0 &&
+      typeof value.fireAt === 'number' && Number.isFinite(value.fireAt));
+  } catch { return []; }
+}
+async function appendNativeAlarm(alarm: NativeAlarmReceipt): Promise<void> {
+  const current = await readNativeAlarms();
+  // A failed persistence is NOT confirmation that the native alarm is safe;
+  // next replan will rebuild after querying the OS.
+  await AsyncStorage.setItem(SCHEDULED_ALARMS_KEY, JSON.stringify([...current, alarm]));
+}
+
+/** Only consult the OS if the exact plan signature already matches. Reading
+ * native state on every replan would waste battery in background tracking. */
+async function nativeSchedulePresent(plans: ReminderPlan[], hasHeld: boolean): Promise<boolean> {
+  const now = Date.now();
+  const expected = plans.filter((plan) => plan.fireAt > now + 1000 && (!plan.boardedCheck || hasHeld)).length;
+  if (expected === 0) return true;
+  try {
+    const [persisted, scheduled] = await Promise.all([
+      readScheduledEntries(), Notifications.getAllScheduledNotificationsAsync(),
+    ]);
+    const notificationIntact = isNativeReminderScheduleIntact(expected, persisted,
+      new Set(scheduled.map((entry) => entry.identifier)), now);
+    if (!notificationIntact) return false;
+    // Silent, passive notifications are companions for a real AlarmKit alarm.
+    // If the native receipt is missing after a crash/storage failure, never
+    // mistake such a companion for a verified alarm.
+    const persistedIds = new Set(persisted.map((entry) => entry.id));
+    const companions = scheduled.filter((entry) =>
+      persistedIds.has(entry.identifier) &&
+      entry.content.data?.lastrideAlarmCompanion === true).length;
+    const savedAlarms = (await readNativeAlarms()).filter((entry) => entry.fireAt > now + 1000);
+    if (savedAlarms.length !== companions) return false;
+    if (savedAlarms.length === 0) return true; // A notification-only fallback.
+    // Native bridge failure is unknown, NOT confirmation. Reconcile on the
+    // next schedule call even if the ordinary companion notification survived.
+    const nativeIds = await alarmKit.scheduledIds();
+    return nativeIds !== null && savedAlarms.every((entry) => nativeIds.includes(entry.id));
+  } catch {
+    // Failed OS queries do not establish that a reminder is still scheduled.
+    // Reconciliation may retry when the native bridge is available again.
+    return false;
+  }
 }
 
 // Serializes all schedule/cancel operations so an older reschedule can never
@@ -154,8 +226,12 @@ async function present(
   }
   configure();
   await ensureChannel();
+  // Prefix identifiers even before their AsyncStorage receipts are persisted.
+  // If a background task is killed between OS scheduling and storage, the next
+  // run can still enumerate and cancel orphaned alerts belonging to LastRide.
+  const identifier = extra.identifier ?? `lastride-local-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const id = await Notifications.scheduleNotificationAsync({
-    ...(extra.identifier ? { identifier: extra.identifier } : {}),
+    identifier,
     // timeSensitive lets the alert break through Focus modes once the app has the
     // Time Sensitive Notifications entitlement. On iOS, vibration follows the
     // phone's Sounds & Haptics settings; there's no per-notification switch.
@@ -164,7 +240,7 @@ async function present(
       title, body,
       sound: silent ? false : (Platform.OS === 'ios' && sound) || true,
       interruptionLevel: silent ? 'passive' : urgent ? 'timeSensitive' : 'active',
-      data: { target, ...extra.data },
+      data: { target, ...extra.data, ...(silent ? { lastrideAlarmCompanion: true } : {}) },
       ...(extra.category ? { categoryIdentifier: extra.category } : {}),
     },
     trigger: delayMs < 1000
@@ -178,8 +254,16 @@ async function present(
           },
   });
   const ids = await readOwnedIds();
-  ids.push(id);
+  if (!ids.includes(id)) ids.push(id);
   await writeOwnedIds(ids);
+  // Immediate notices disappear from the pending OS schedule by design. Only
+  // record future alerts when checking whether queued reminders were lost.
+  if (fireAt !== null && delayMs >= 1000) {
+    const entries = await readScheduledEntries();
+    entries.splice(0, entries.length, ...entries.filter((entry) => entry.id !== id));
+    entries.push({ id, fireAt });
+    await writeScheduledEntries(entries);
+  }
 }
 
 /**
@@ -208,18 +292,26 @@ async function cancelOwned() {
   if (Platform.OS === 'web') return;
   configure();
   const ids = await readOwnedIds();
+  // Recover native schedules lost between scheduleNotificationAsync() and
+  // writing OWNED_IDS_KEY, but leave unrelated app notifications untouched.
+  const orphanIds = await Notifications.getAllScheduledNotificationsAsync()
+    .then((requests) => requests.map((request) => request.identifier).filter((id) =>
+      id.startsWith('lastride-local-') || id.startsWith('lastride-boarded-')))
+    .catch(() => [] as string[]);
   await writeOwnedIds([]);
+  await writeScheduledEntries([]);
+  await AsyncStorage.removeItem(SCHEDULED_ALARMS_KEY).catch(() => undefined);
   // Cancel native alarms even when the JS runtime died before persisting the
   // schedule. AlarmKit only exposes alarms belonging to our app.
   await alarmKit.cancelAll().catch((error) => console.warn('[LastRide] Could not cancel alarms', error));
   await AsyncStorage.removeItem(ALARM_SET_KEY).catch(() => undefined);
-  await Promise.all(ids.filter((id) => !isTestNotification(id)).map((id) => Notifications.cancelScheduledNotificationAsync(id).catch(() => undefined)));
+  await Promise.all([...new Set([...ids, ...orphanIds])].filter((id) => isOwnedReminderId(id)).map((id) => Notifications.cancelScheduledNotificationAsync(id).catch(() => undefined)));
   // And everything else still scheduled: the app and its background task keep
   // the owned list separately, so it can miss one (an alarm's silent companion
   // that then still arrives). Every local notification is a reminder from here,
   // except a TestFlight test notification; ones already delivered aren't affected.
   const queued = await queuedIds();
-  await Promise.all([...queued].filter((id) => !isTestNotification(id)).map((id) => Notifications.cancelScheduledNotificationAsync(id).catch(() => undefined)));
+  await Promise.all([...queued].filter((id) => isOwnedReminderId(id)).map((id) => Notifications.cancelScheduledNotificationAsync(id).catch(() => undefined)));
 }
 
 /**
@@ -236,6 +328,9 @@ export const SCREEN_OFF_DELAY_MS = 10_000;
 const TEST_ID_PREFIX = 'lastride-test-';
 function isTestNotification(id: string): boolean {
   return id.startsWith(TEST_ID_PREFIX);
+}
+function isOwnedReminderId(id: string): boolean {
+  return !isTestNotification(id) && (id.startsWith('lastride-local-') || id.startsWith('lastride-reminder-') || id.startsWith('lastride-boarded-'));
 }
 
 /**
@@ -440,7 +535,9 @@ export function scheduleReminders(
       SCHEDULER_VERSION, upcoming, text, sound, vibrate, throughFocus, alarmAuthorization,
       decided && [decided.catchUp, decided.stationChanged, decided.timeShifted, decided.followUp, decided.ledger.sent, decided.ledger.stationKey],
     ]);
-    if (Platform.OS !== 'web' && (await AsyncStorage.getItem(SIGNATURE_KEY).catch(() => null)) === signature) return;
+    if (Platform.OS !== 'web' && (await AsyncStorage.getItem(SIGNATURE_KEY).catch(() => null)) === signature &&
+        await nativeSchedulePresent(upcoming, !!text.held)) return;
+    let alarmReceiptsIntact = true;
     // Only what changed is replaced: reminders still the same stay queued untouched
     // (see reminderId); the rest are removed once the new set is in. AlarmKit can
     // only cancel all alarms at once, so they're left alone while the alarms still
@@ -457,13 +554,24 @@ export function scheduleReminders(
       configure();
       try {
         const before = JSON.parse((await AsyncStorage.getItem(ALARM_SET_KEY)) ?? 'null') as Array<[number, string]> | null;
-        alarmsUnchanged = !!before && JSON.stringify(before.filter(([at]) => at > now + 1000)) === alarmSet;
+        const signatureMatches = !!before && JSON.stringify(before.filter(([at]) => at > now + 1000)) === alarmSet;
+        if (signatureMatches && alarmsAhead.length) {
+          // A matching description and a silent notification do NOT prove
+          // that iOS still owns a live AlarmKit alarm.
+          const receipts = (await readNativeAlarms()).filter((entry) => entry.fireAt > now + 1000);
+          const nativeIds = await alarmKit.scheduledIds().catch(() => null);
+          alarmsUnchanged = nativeIds !== null && receipts.length === alarmsAhead.length &&
+            receipts.every((entry) => nativeIds.includes(entry.id)) &&
+            alarmsAhead.every(([at]) => receipts.some((entry) => entry.fireAt === at));
+          if (nativeIds === null) alarmReceiptsIntact = false;
+        } else alarmsUnchanged = signatureMatches;
       } catch {
         alarmsUnchanged = false;
       }
       if (!alarmsUnchanged) {
         await alarmKit.cancelAll().catch((error) => console.warn('[LastRide] Could not cancel alarms', error));
         await AsyncStorage.removeItem(ALARM_SET_KEY).catch(() => undefined);
+        await AsyncStorage.removeItem(SCHEDULED_ALARMS_KEY).catch(() => undefined);
       }
     }
     const queued = await queuedIds();
@@ -537,9 +645,17 @@ export function scheduleReminders(
       const target = plan.missedCheckIn ? '/alternatives' : '/ride';
       if (plan.alarm && alarmAuthorization === 'authorized' && plan.fireAt > Date.now() + 1000) {
         try {
-          // Always Apple's alarm sound: only it rings through silent mode and a muted
-          // ringer; a bundled tone doesn't (tested on iOS 26).
-          if (!alarmsUnchanged) await alarmKit.schedule(newAlarmId(), plan.fireAt, title, 'default', stopLabel(language));
+          // Apple's native alarm sound is the only reliable sound in silent
+          // mode; custom bundled notification tones are not native AlarmKit.
+          if (!alarmsUnchanged) {
+            const alarmId = newAlarmId();
+            await alarmKit.schedule(alarmId, plan.fireAt, title, 'default', stopLabel(language));
+            try {
+              await appendNativeAlarm({ id: alarmId, fireAt: plan.fireAt });
+            } catch {
+              alarmReceiptsIntact = false;
+            }
+          }
           // The alarm rings; a silent notification keeps the details (station, times)
           // in Notification Center once it's stopped, and opens the app when tapped.
           const id = reminderId('companion', plan.fireAt, title, body, target);
@@ -560,10 +676,13 @@ export function scheduleReminders(
     if (Platform.OS !== 'web') {
       if (!alarmsUnchanged) await AsyncStorage.setItem(ALARM_SET_KEY, alarmSet).catch(() => undefined);
       // Everything queued that isn't in the new set: changed or no longer wanted.
-      await Promise.all([...queued].filter((id) => !kept.has(id) && !isTestNotification(id)).map((id) => Notifications.cancelScheduledNotificationAsync(id).catch(() => undefined)));
+      await Promise.all([...queued].filter((id) => !kept.has(id) && isOwnedReminderId(id)).map((id) => Notifications.cancelScheduledNotificationAsync(id).catch(() => undefined)));
       await writeOwnedIds([...kept]);
+      await writeScheduledEntries((await readScheduledEntries()).filter((entry) => kept.has(entry.id) && entry.fireAt > now));
     }
-    await AsyncStorage.setItem(SIGNATURE_KEY, signature).catch(() => undefined);
+    if (alarmReceiptsIntact) {
+      await AsyncStorage.setItem(SIGNATURE_KEY, signature).catch(() => undefined);
+    }
   });
 }
 

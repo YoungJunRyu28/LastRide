@@ -7,6 +7,7 @@ import { errorStatus, useGroups } from '@/context/GroupsContext';
 import { useLastRide } from '@/context/LastRideContext';
 import { useColors } from '@/hooks/useColors';
 import { readDisplayName } from '@/lib/groupMemberships';
+import { readPendingGroupCreation } from '@/lib/pendingGroupCreation';
 
 /** Create a group (premium; the server checks the entitlement). You become its ホスト. */
 export default function NewGroupScreen() {
@@ -21,6 +22,14 @@ export default function NewGroupScreen() {
 
   useEffect(() => {
     void readDisplayName().then((saved) => setDisplayName((current) => current || saved));
+    // If the app closed after a successful server insert but before saving the
+    // host credential, prefill the interrupted operation instead of making an
+    // unrelated second group with a new key.
+    void readPendingGroupCreation().then((pending) => {
+      if (!pending) return;
+      setName(pending.name);
+      setDisplayName(pending.displayName);
+    }).catch(() => undefined);
   }, []);
 
   const submit = async () => {
@@ -30,7 +39,23 @@ export default function NewGroupScreen() {
       router.replace({ pathname: '/group/[id]', params: { id: group.id } });
     } catch (error) {
       if (errorStatus(error) === 402) router.replace('/paywall');
-      else Alert.alert(ja ? '作成できませんでした' : 'Couldn’t create the group', ja ? 'しばらくしてからもう一度お試しください。' : 'Please try again in a moment.');
+      else if (errorStatus(error) === 403) {
+        Alert.alert(
+          ja ? 'アプリの更新が必要です' : 'Update required',
+          ja ? 'グループの安全な作成には、LastRideの最新版が必要です。アプリを更新してもう一度お試しください。' : 'Creating paid groups securely requires the latest LastRide app. Update the app and try again.',
+        );
+      } else if (errorStatus(error) === 401) {
+        Alert.alert(
+          ja ? '購入情報を確認できません' : 'Couldn’t verify your purchase identity',
+          ja ? '購入情報の認証に失敗しました。再度お試しください。解決しない場合はサポートにお問い合わせください。' : 'We couldn’t verify the identity linked to your purchase. Please try again or contact support.',
+        );
+      }
+      else if (error instanceof Error && error.message === 'PENDING_GROUP_CREATION') {
+        Alert.alert(
+          ja ? '作成中のグループがあります' : 'A group creation is pending',
+          ja ? '前回のグループ作成を再試行してください。二重作成を防ぐため、別のグループはまだ作れません。' : 'Please retry your previous group creation first. A different group cannot be created until that request is recovered.',
+        );
+      } else Alert.alert(ja ? '作成できませんでした' : 'Couldn’t create the group', ja ? '接続を確認し、同じ情報で再度お試しください。作成済みの場合はグループを復元します。' : 'Check your connection and retry with the same details. If your group was already created, it will be recovered.');
     } finally {
       setBusy(false);
     }

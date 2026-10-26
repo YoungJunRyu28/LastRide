@@ -30,6 +30,7 @@ export type Station = {
   region?: string;
   walkingMeters?: number;
   walkingMinutes?: number;
+  walkingSource?: 'estimated';
 };
 
 /** Same-named platforms closer than this are one station (as in transfers.ts). */
@@ -204,6 +205,7 @@ export function nearbyStationsIn(
         ...toStation(group),
         walkingMeters,
         walkingMinutes: walkingMinutes(walkingMeters, pace),
+        walkingSource: 'estimated' as const,
       };
     });
 }

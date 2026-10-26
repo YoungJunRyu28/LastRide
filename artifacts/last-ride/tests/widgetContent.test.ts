@@ -141,4 +141,3 @@ describe("a locked widget (not premium)", () => {
     expect(widgetMessage("ja", "no-plan").url).toBe("last-ride://ride");
   });
 });
-

@@ -1,9 +1,10 @@
 /**
  * Walking and taxi estimates from straight-line distance, for Android and as
  * a fallback for iOS (which asks Apple MapKit on the device). No routing
- * provider is called: street networks add roughly 30% (walking) to 35%
- * (driving) to the straight-line distance, which is close enough for "can I
- * walk it / what will a taxi cost" decisions.
+ * provider is called. The 30% (walking) and 35% (driving) multipliers are
+ * heuristics, NOT verified walkable paths or safe last-train ETAs. Barriers,
+ * river crossings and station entrances can make actual routes much longer.
+ * Callers must expose the estimate provenance and leave precautionary time.
  *
  * The taxi fare matches the app's own fallback (estimateTaxiFare in
  * artifacts/last-ride/app/alternatives.tsx); keep the two in step.

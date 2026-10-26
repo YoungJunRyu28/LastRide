@@ -52,7 +52,7 @@ if [[ -z "$SECRET_ID" ]]; then
   exit 2
 fi
 
-for cmd in aws sam pnpm python3 curl git; do
+for cmd in aws sam pnpm node python3 curl git; do
   command -v "$cmd" >/dev/null || { echo "$cmd is required" >&2; exit 2; }
 done
 
@@ -83,6 +83,18 @@ if [[ "$STAGE" == "production" ]]; then
   echo "Deploying production from origin/main at $HEAD_SHA."
 fi
 
+# RevenueCat anonymous-ID migration is irreversible for some purchaser alias
+# graphs and older installed clients cannot supply proof of purchase. Require
+# independently reviewed, SHA-pinned sandbox QA and old-client rollout plan.
+# Fail BEFORE reading AWS secrets, touching the live database or Lambda.
+node scripts/check-premium-rollout.mjs "$STAGE"
+# Five-minute all-day fallback can exceed a scale-to-zero DB free tier.
+# The release owner must first review CU-hours and enable billing alerts.
+node scripts/check-alert-recovery-budget.mjs "$STAGE"
+# Short-lived receipt-only journal changes the old 08:05 deletion boundary.
+# Never alter production retention without explicit privacy policy approval.
+node scripts/check-receipt-retention.mjs "$STAGE"
+
 # Train times are served from the ODPT timetable snapshot bundled into the
 # Lambda package (git-ignored provider data). Check it before anything mutates;
 # the build below fails too (REQUIRE_TRANSIT_SNAPSHOT=1) if it is unusable.
@@ -93,6 +105,9 @@ if [[ ! -s "$TRANSIT_SNAPSHOT" ]]; then
   echo "  cd artifacts/api-server && set -a; . ./.env; set +a; pnpm run transit:build" >&2
   exit 1
 fi
+# Block outdated/corrupt train data before reading secrets, mutating the DB,
+# or replacing running API tasks. The latest train is safety-critical.
+node scripts/check-transit-snapshot.mjs "$TRANSIT_SNAPSHOT"
 # Absolute, because the api-server build runs from its own directory.
 export TRANSIT_SNAPSHOT_PATH="$(cd "$(dirname "$TRANSIT_SNAPSHOT")" && pwd)/$(basename "$TRANSIT_SNAPSHOT")"
 

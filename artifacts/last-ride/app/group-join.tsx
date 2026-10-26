@@ -8,6 +8,7 @@ import { errorStatus, useGroups } from '@/context/GroupsContext';
 import { useLastRide } from '@/context/LastRideContext';
 import { useColors } from '@/hooks/useColors';
 import { readDisplayName } from '@/lib/groupMemberships';
+import { readPendingGroupJoin } from '@/lib/pendingGroupJoin';
 
 /**
  * Join a group with just a display name. Opened by an invite link
@@ -27,6 +28,11 @@ export default function JoinGroupScreen() {
 
   useEffect(() => {
     void readDisplayName().then((saved) => setDisplayName((current) => current || saved));
+    void readPendingGroupJoin().then((pending) => {
+      if (!pending) return;
+      setDisplayName(pending.displayName);
+      if (pending.joinCode) setCode(pending.joinCode);
+    }).catch(() => undefined);
   }, []);
 
   const submit = async () => {
@@ -40,10 +46,17 @@ export default function JoinGroupScreen() {
       if (alreadyMember)
         Alert.alert(
           ja ? 'すでに参加しています' : 'You’re already in this group',
-          ja ? `「${group.name}」にはこのiPhoneで参加済みです。` : `This iPhone is already in “${group.name}”.`,
+          ja ? `「${group.name}」にはこの端末で参加済みです。` : `This device is already in “${group.name}”.`,
         );
     } catch (error) {
       const status = errorStatus(error);
+      if (error instanceof Error && error.message === 'PENDING_GROUP_JOIN') {
+        Alert.alert(
+          ja ? '参加処理を復元してください' : 'Finish your pending group join',
+          ja ? '通信が切れた場合、前回の招待で再試行してください。重複登録を避けるため、別の招待にはまだ参加できません。' : 'Retry your previous invite first. The original join may have succeeded, and switching invites could create duplicate memberships.',
+        );
+        return;
+      }
       Alert.alert(
         ja ? '参加できませんでした' : 'Couldn’t join',
         status === 409

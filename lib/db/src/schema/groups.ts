@@ -3,6 +3,7 @@ import {
   boolean,
   date,
   index,
+  integer,
   pgEnum,
   pgTable,
   primaryKey,
@@ -27,6 +28,9 @@ export const groupsTable = pgTable(
     // Invite credentials are capabilities. Lookups use deterministic hashes;
     // rotating replaces both hashes, which revokes every older link and code.
     inviteTokenHash: varchar("invite_token_hash", { length: 64 }).notNull(),
+    // Hash of the device-generated 256-bit host/creation capability. Legacy
+    // groups have NULL; newer POST retries use this key to recover the host.
+    creationKeyHash: varchar("creation_key_hash", { length: 64 }),
     joinCodeHash: varchar("join_code_hash", { length: 64 }).notNull(),
     // AES-256-GCM ciphertext of the current invite token + join code (bound to
     // the group id), so whoever is host can re-share the same link later.
@@ -45,6 +49,7 @@ export const groupsTable = pgTable(
   },
   (table) => [
     uniqueIndex("groups_invite_token_hash_idx").on(table.inviteTokenHash),
+    uniqueIndex("groups_creation_key_hash_idx").on(table.creationKeyHash),
     uniqueIndex("groups_join_code_hash_idx").on(table.joinCodeHash),
   ],
 );
@@ -145,6 +150,10 @@ export const groupNightParticipantsTable = pgTable(
     // persisted for group members, and it is deleted when the night ends.
     // Never add location, station, route, or destination.
     leaveBy: timestamp("leave_by", { withTimezone: true }),
+    // Server-authoritative compare-and-swap version. Version 0 is legacy;
+    // the first versioned writer switches this participant to CAS permanently
+    // for this group night. Old clients cannot overwrite a versioned update.
+    leaveRevision: integer("leave_revision").notNull().default(0),
     // The leave-by value the "time to leave" push was sent for. A later
     // leave-by re-arms the alert; an earlier or equal one does not.
     leaveAlertSentFor: timestamp("leave_alert_sent_for", { withTimezone: true }),

@@ -14,6 +14,7 @@
  * through is never stuck behind a cached "no".
  */
 import { logger } from "./logger";
+import { premiumDeviceProofRequired } from "./premiumDeviceIdentity";
 
 export const PREMIUM_ENTITLEMENT = "premium";
 const POSITIVE_CACHE_MS = 5 * 60_000;
@@ -60,7 +61,9 @@ export async function checkPremiumEntitlement(
     return process.env.LASTRIDE_STAGE === "staging" ? "active" : "unavailable";
   }
   if (!secret) {
-    return process.env.NODE_ENV === "production" ? "unavailable" : "active";
+    // Lambda may not set NODE_ENV. The same fail-closed production marker
+    // used for device ownership proof must also gate RevenueCat credentials.
+    return premiumDeviceProofRequired() ? "unavailable" : "active";
   }
 
   const cachedUntil = positiveCache.get(appUserId);

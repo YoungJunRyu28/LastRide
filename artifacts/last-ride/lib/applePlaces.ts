@@ -13,6 +13,7 @@ import { stationNames } from '@/lib/appleTransit';
 import { AppleMaps, type Place } from '@/modules/apple-maps/src';
 import type { Coordinates, NearbyStation, StationOption, WalkingRoute, WalkingSpeed } from '@/lib/stations';
 import { bilingualStationName } from '@/lib/stationNames';
+import { isValidMapCoordinate } from '@/lib/mapSnapshotGuard';
 
 const SPEED_MULTIPLIER: Record<WalkingSpeed, number> = { relaxed: 0.8, normal: 1, fast: 1.2 };
 /** How far to look for stations around the user. */
@@ -77,6 +78,7 @@ function distance(first: Coordinates, second: Coordinates) {
 export function distinctStations(origin: Coordinates, places: Place[], limit: number): Array<{ station: StationOption; straightMeters: number }> {
   const seen = new Set<string>();
   return places
+    .filter((place) => isValidMapCoordinate(place))
     .filter(isRailwayStation)
     .map((place) => ({ station: toStation(place), straightMeters: distance(origin, place) }))
     .sort((first, second) => first.straightMeters - second.straightMeters)
@@ -95,14 +97,19 @@ export async function appleWalkingRoute(
 ): Promise<WalkingRoute | null> {
   if (!AppleMaps) return null;
   // A station (it has a name): walk to the station place itself, as Apple Maps would.
+  if (!isValidMapCoordinate(from) || !isValidMapCoordinate(to)) return null;
   const route = await AppleMaps.walkingRoute(
     { latitude: from.latitude, longitude: from.longitude },
     { latitude: to.latitude, longitude: to.longitude, stationNames: stationNames(to) },
   );
+  // Malformed native ETA must not be promoted to a street-routed result.
+  if (!Number.isFinite(route.seconds) || route.seconds < 0 ||
+      !Number.isFinite(route.distanceMeters) || route.distanceMeters < 0) return null;
   return {
     distanceMeters: route.distanceMeters,
     // Apple's times assume an ordinary pace.
     walkingMinutes: Math.max(1, Math.round(route.seconds / 60 / SPEED_MULTIPLIER[walkingSpeed])),
+    source: 'routed', // MapKit pedestrian street route, not straight-line approximation.
   };
 }
 
@@ -123,6 +130,7 @@ export async function appleSearchStations(query: string): Promise<StationOption[
   const places = await AppleMaps.searchStations(/駅$/.test(query) ? query : `${query}駅`);
   const seen = new Set<string>();
   return places
+    .filter((place) => isValidMapCoordinate(place))
     .filter(isRailwayStation)
     .map(toStation)
     .filter((station) => {
@@ -136,7 +144,9 @@ export async function appleSearchStations(query: string): Promise<StationOption[
 export async function appleSearchAddresses(query: string): Promise<Array<Coordinates & { label: string }> | null> {
   if (!AppleMaps) return null;
   const results = await AppleMaps.searchAddresses(query);
-  return results.map((place) => ({ label: place.label || place.name, latitude: place.latitude, longitude: place.longitude }));
+  return results.filter((place) => isValidMapCoordinate(place)).map((place) => ({
+    label: place.label || place.name, latitude: place.latitude, longitude: place.longitude,
+  }));
 }
 
 /** Search words per kind of place to wait until morning. */
@@ -159,6 +169,7 @@ export async function appleNearbyStays(coordinates: Coordinates, radiusMeters = 
   const seen = new Set<string>();
   return results
     .flat()
+    .filter((place) => isValidMapCoordinate(place))
     .filter((place) => distance(coordinates, place) <= radiusMeters * 1.2)
     .filter((place) => {
       if (seen.has(place.name)) return false;
@@ -169,6 +180,7 @@ export async function appleNearbyStays(coordinates: Coordinates, radiusMeters = 
 
 export async function appleDrivingEta(from: Coordinates, to: Coordinates): Promise<{ minutes: number; distanceMeters: number } | null> {
   if (!AppleMaps) return null;
+  if (!isValidMapCoordinate(from) || !isValidMapCoordinate(to)) return null;
   const eta = await AppleMaps.drivingEta(from, to);
   return { minutes: Math.max(1, Math.round(eta.seconds / 60)), distanceMeters: eta.distanceMeters };
 }
@@ -181,6 +193,7 @@ export async function appleNearbyTaxiStands(coordinates: Coordinates, radiusMete
   const places = await AppleMaps.searchPlaces('タクシー乗り場', coordinates, radiusMeters);
   const seen = new Set<string>();
   return places
+    .filter((place) => isValidMapCoordinate(place))
     .filter((place) => /タクシー|taxi/i.test(place.name))
     .map((place) => ({ name: place.name, latitude: place.latitude, longitude: place.longitude, meters: distance(coordinates, place) }))
     .filter((stand) => stand.meters <= radiusMeters * 1.2)

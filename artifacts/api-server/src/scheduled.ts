@@ -9,8 +9,9 @@
  * expired event data, send departure alerts, reconcile push receipts — are
  * unchanged; only how they get invoked changes, from an in-process timer to
  * three separate EventBridge Scheduler rules calling this Lambda with a
- * different `task` each time, at the same rates the original loop used
- * (production: 5 min, 1 min, 5 min; staging runs them far less often — see infra/template.yaml).
+ * different `task` each time. Group departure alerts use an event-driven
+ * one-time schedule plus a five-minute watchdog; receipts run independently
+ * before the nightly participant-data cleanup (see infra/template.yaml).
  */
 import { isDatabaseConfigured } from "@workspace/db";
 import {
@@ -22,6 +23,7 @@ import { purgeExpiredRateLimits } from "./lib/rateLimit";
 import { purgeExpiredEnterpriseData } from "./lib/enterpriseStore";
 import { purgeEndedGroupNights, purgeInactiveGroupMembers } from "./lib/groupStore";
 import { dispatchGroupLeaveAlerts } from "./lib/groupNotifications";
+import { reconcileGroupPushReceipts } from "./lib/groupAlertOutbox";
 import { scheduleNextLeaveAlert } from "./lib/leaveAlertSchedule";
 import { logger } from "./lib/logger";
 
@@ -72,22 +74,34 @@ export async function handler(event: ScheduledEvent) {
     }
     case "departureAlerts": {
       // Group leave-time pushes ride on the same 1-minute schedule.
-      const [sent, groupLeaveAlerts] = await Promise.all([
+      const [enterprise, groups] = await Promise.allSettled([
         dispatchEnterpriseDepartureAlerts(),
         dispatchGroupLeaveAlerts(),
       ]);
-      if (sent > 0) logger.info({ sent }, "Sent enterprise departure alerts");
-      if (groupLeaveAlerts > 0) {
-        logger.info({ groupLeaveAlerts }, "Sent group leave-time alerts");
-      }
-      // Point the one-time schedule at the next alert due (never throws).
+      if (enterprise.status === "fulfilled" && enterprise.value > 0)
+        logger.info({ sent: enterprise.value }, "Sent enterprise departure alerts");
+      if (groups.status === "fulfilled" && groups.value > 0)
+        logger.info({ groupLeaveAlerts: groups.value }, "Sent group leave-time alerts");
+      // Re-arm the one-time group schedule even if the independent Business
+      // worker threw. Previously Promise.all rejection skipped this line and
+      // left the group Scheduler pointing at a spent event.
       await scheduleNextLeaveAlert({ onlyEarlier: false });
+      if (groups.status === "rejected") throw groups.reason;
+      if (enterprise.status === "rejected") throw enterprise.reason;
       return;
     }
     case "pushReceipts": {
-      const result = await reconcileEnterprisePushReceipts();
-      if (result.checked > 0)
-        logger.info(result, "Checked enterprise push receipts");
+      const [enterprise, group] = await Promise.allSettled([
+        reconcileEnterprisePushReceipts(), reconcileGroupPushReceipts(),
+      ]);
+      if (enterprise.status === "fulfilled" && enterprise.value.checked > 0)
+        logger.info(enterprise.value, "Checked enterprise push receipts");
+      if (group.status === "fulfilled" && group.value.checked > 0)
+        logger.info(group.value, "Checked group push receipts");
+      // Group receipts must run even if the independent Business receipt
+      // processor is down/disabled. Raise an error for Lambda retry/alarms.
+      if (group.status === "rejected") throw group.reason;
+      if (enterprise.status === "rejected") throw enterprise.reason;
       return;
     }
     default: {

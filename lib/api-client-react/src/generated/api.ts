@@ -855,8 +855,8 @@ export const getGetWalkRouteUrl = (params: GetWalkRouteParams,) => {
 }
 
 /**
- * Walking distance and time along the pedestrian network, at the given pace.
- * @summary Walking route
+ * Rough walking estimate (straight-line distance multiplied by 1.3), NOT a verified pedestrian route. May miss rivers, entrances, stairs and detours. Client must identify as estimated and verify with a street-routing provider.
+ * @summary Approximate walking time (not pedestrian routing)
  */
 export const getWalkRoute = async (params: GetWalkRouteParams, options?: Parameters<typeof customFetch>[1]): Promise<WalkRoute> => {
 
@@ -903,7 +903,7 @@ export type GetWalkRouteQueryError = ErrorType<void>
 
 
 /**
- * @summary Walking route
+ * @summary Approximate walking time (not pedestrian routing)
  */
 
 export function useGetWalkRoute<TData = Awaited<ReturnType<typeof getWalkRoute>>, TError = ErrorType<void>>(

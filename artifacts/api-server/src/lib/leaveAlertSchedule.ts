@@ -20,6 +20,9 @@ import {
   UpdateScheduleCommand,
 } from "@aws-sdk/client-scheduler";
 import { nextGroupLeaveAlertAt } from "./groupStore";
+import { nextGroupOutboxRetryAt } from "./groupAlertOutbox";
+import { getDb } from "@workspace/db";
+import { sql } from "drizzle-orm";
 import { logger } from "./logger";
 
 type ScheduleConfig = { name: string; targetArn: string; roleArn: string };
@@ -64,6 +67,17 @@ export function shouldMoveSchedule(
 
 let client: SchedulerClient | null = null;
 
+type Db = ReturnType<typeof getDb>;
+type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+
+/** Serialize external EventBridge mutations across independent Lambda instances. */
+export async function withLeaveScheduleLock<T>(work: (tx: Tx) => Promise<T>): Promise<T> {
+  return getDb().transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(472281, 7310)`);
+    return work(tx);
+  });
+}
+
 /**
  * Points the schedule at the next leave-time alert due, if any. Never throws:
  * a scheduling problem must not fail the request that changed a leave time
@@ -79,38 +93,47 @@ export async function scheduleNextLeaveAlert({
   const config = scheduleConfig();
   if (!config) return;
   try {
-    const due = await nextGroupLeaveAlertAt(now);
-    if (!due) return;
-    const next = new Date(Math.max(due.getTime(), now.getTime() + MIN_LEAD_MS));
-    next.setUTCMilliseconds(0);
+    // The advisory transaction lock serializes schedule read/modify/write
+    // across containers and Lambda instances. Query via the SAME transaction
+    // connection to avoid deadlocking a small serverless connection pool.
+    await withLeaveScheduleLock(async (tx) => {
+      const [unclaimedDue, retryDue] = await Promise.all([
+        nextGroupLeaveAlertAt(now, tx), nextGroupOutboxRetryAt(now, tx),
+      ]);
+      const due = [unclaimedDue, retryDue].filter((date): date is Date => date !== null)
+        .sort((a, b) => a.getTime() - b.getTime())[0];
+      if (!due) return;
+      const next = new Date(Math.max(due.getTime(), now.getTime() + MIN_LEAD_MS));
+      next.setUTCMilliseconds(0);
 
-    client ??= new SchedulerClient({});
-    let current: Date | null = null;
-    let exists = true;
-    try {
-      const schedule = await client.send(new GetScheduleCommand({ Name: config.name }));
-      current = parseAtExpression(schedule.ScheduleExpression);
-    } catch (err) {
-      if (!(err instanceof ResourceNotFoundException)) throw err;
-      exists = false;
-    }
-    if (!shouldMoveSchedule(current, next, now, onlyEarlier)) return;
+      client ??= new SchedulerClient({});
+      let current: Date | null = null;
+      let exists = true;
+      try {
+        const schedule = await client.send(new GetScheduleCommand({ Name: config.name }));
+        current = parseAtExpression(schedule.ScheduleExpression);
+      } catch (err) {
+        if (!(err instanceof ResourceNotFoundException)) throw err;
+        exists = false;
+      }
+      if (!shouldMoveSchedule(current, next, now, onlyEarlier)) return;
 
-    const input = {
-      Name: config.name,
-      ScheduleExpression: atExpression(next),
-      ScheduleExpressionTimezone: "UTC",
-      FlexibleTimeWindow: { Mode: "OFF" as const },
-      // Kept after it runs (not deleted), so the next update reuses it.
-      ActionAfterCompletion: "NONE" as const,
-      Target: {
-        Arn: config.targetArn,
-        RoleArn: config.roleArn,
-        Input: JSON.stringify({ task: "departureAlerts" }),
-        RetryPolicy: { MaximumRetryAttempts: 3, MaximumEventAgeInSeconds: 300 },
-      },
-    };
-    await client.send(exists ? new UpdateScheduleCommand(input) : new CreateScheduleCommand(input));
+      const input = {
+        Name: config.name,
+        ScheduleExpression: atExpression(next),
+        ScheduleExpressionTimezone: "UTC",
+        FlexibleTimeWindow: { Mode: "OFF" as const },
+        // Kept after it runs (not deleted), so the next update reuses it.
+        ActionAfterCompletion: "NONE" as const,
+        Target: {
+          Arn: config.targetArn,
+          RoleArn: config.roleArn,
+          Input: JSON.stringify({ task: "departureAlerts" }),
+          RetryPolicy: { MaximumRetryAttempts: 3, MaximumEventAgeInSeconds: 300 },
+        },
+      };
+      await client.send(exists ? new UpdateScheduleCommand(input) : new CreateScheduleCommand(input));
+    });
   } catch (err) {
     logger.warn({ err }, "Could not schedule the next group leave-time alert");
   }

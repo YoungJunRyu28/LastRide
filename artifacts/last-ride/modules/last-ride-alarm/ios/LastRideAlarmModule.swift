@@ -99,6 +99,13 @@ public class LastRideAlarmModule: Module {
       }
     }.runOnQueue(.main)
 
+    /** Native alarm ledger for reconciliation. A silent Expo notification is
+     * not evidence that the AlarmKit alarm will actually ring. */
+    AsyncFunction("scheduledAlarmIds") { () throws -> [String] in
+      guard #available(iOS 26.0, *) else { return [] }
+      return try AlarmManager.shared.alarms.map { $0.id.uuidString.lowercased() }
+    }
+
     AsyncFunction("cancelAll") { () throws -> Void in
       guard #available(iOS 26.0, *) else { return }
       for alarm in try AlarmManager.shared.alarms {

@@ -8,9 +8,10 @@
  * changes, night start/end and participation updates are serialized per group.
  */
 import { randomUUID } from "node:crypto";
-import { and, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, min, ne, or } from "drizzle-orm";
+import { and, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, min, ne, or, sql } from "drizzle-orm";
 import {
   getDb,
+  groupAlertDeliveriesTable,
   groupMembersTable,
   groupNightParticipantsTable,
   groupNightsTable,
@@ -67,6 +68,7 @@ export type GroupDetail = {
       memberId: string;
       displayName: string;
       leaveBy: Date | null;
+      leaveRevision: number;
     }>;
   };
 };
@@ -245,6 +247,7 @@ async function loadDetail(
         memberId: groupNightParticipantsTable.memberId,
         displayName: groupMembersTable.displayName,
         leaveBy: groupNightParticipantsTable.leaveBy,
+        leaveRevision: groupNightParticipantsTable.leaveRevision,
       })
       .from(groupNightParticipantsTable)
       .innerJoin(
@@ -257,6 +260,7 @@ async function loadDetail(
         memberId: row.memberId,
         displayName: row.displayName,
         leaveBy: row.leaveBy,
+        leaveRevision: row.leaveRevision,
       }))
       .sort((a, b) => {
         if (a.leaveBy && b.leaveBy) {
@@ -299,25 +303,61 @@ async function loadDetail(
 // Create / join
 // ---------------------------------------------------------------------------
 
+/**
+ * A creation capability is generated on the client BEFORE the first request.
+ * It also serves as the host's token, allowing recovery after response loss
+ * without storing a plaintext secret on the server. Lookup is restricted to
+ * the matching current host token so revoked/rotated hosts cannot recover.
+ */
+export async function recoverCreatedGroupRecord(creationToken: string) {
+  const hash = hashCapability(creationToken);
+  return getDb().transaction(async (tx) => {
+    const [row] = await tx.select({ group: groupsTable, member: groupMembersTable })
+      .from(groupsTable)
+      .innerJoin(groupMembersTable, and(
+        eq(groupMembersTable.groupId, groupsTable.id),
+        eq(groupMembersTable.role, "host"),
+        eq(groupMembersTable.memberTokenHash, hash),
+      ))
+      .where(eq(groupsTable.creationKeyHash, hash))
+      .limit(1);
+    if (!row) return null;
+    return {
+      kind: "replayed" as const,
+      memberToken: creationToken,
+      group: await loadDetail(tx, row.group.id, row.member.id),
+    };
+  });
+}
+
 export async function createGroupRecord(input: {
   name: string;
   displayName: string;
   language?: GroupLanguage;
-}) {
+}, creationToken?: string) {
   const name = cleanName(input.name);
   const displayName = cleanName(input.displayName);
   if (!name || !displayName) return { kind: "invalid" as const };
 
-  return withCredentialRetry(() =>
+  // Read the existing host first; a lost response can be retried without a
+  // second Premium check when the very same high-entropy capability is held.
+  if (creationToken) {
+    const existing = await recoverCreatedGroupRecord(creationToken);
+    if (existing) return existing;
+  }
+  try {
+  return await withCredentialRetry(() =>
     getDb().transaction(async (tx) => {
       const now = new Date();
       const invite = newInvite();
-      const memberToken = createCapabilityToken();
+      const memberToken = creationToken ?? createCapabilityToken();
       // Id generated up front so the invite ciphertext can be bound to it.
       const group = { id: randomUUID() };
       await tx
         .insert(groupsTable)
-        .values({ id: group.id, name, ...inviteColumns(group.id, invite, now) });
+        .values({ id: group.id, name,
+          ...(creationToken ? { creationKeyHash: hashCapability(creationToken) } : {}),
+          ...inviteColumns(group.id, invite, now) });
       const [member] = await tx
         .insert(groupMembersTable)
         .values({
@@ -335,6 +375,33 @@ export async function createGroupRecord(input: {
       };
     }),
   );
+  } catch (error) {
+    // Two concurrent POST retries can race on the unique creation key. After
+    // the failed insert transaction rolls back, return the winner's group.
+    if (creationToken && isUniqueViolation(error)) {
+      const existing = await recoverCreatedGroupRecord(creationToken);
+      if (existing) return existing;
+    }
+    throw error;
+  }
+}
+
+/** A lost join response can be recovered with the same secret even if the
+ * original invite has since rotated. The key IS the member capability. */
+export async function recoverJoinedGroupRecord(joinToken: string) {
+  const hash = hashCapability(joinToken);
+  return getDb().transaction(async (tx) => {
+    const [member] = await tx.select({
+      id: groupMembersTable.id,
+      groupId: groupMembersTable.groupId,
+    }).from(groupMembersTable).where(eq(groupMembersTable.memberTokenHash, hash)).limit(1);
+    if (!member) return null;
+    return {
+      kind: "already" as const,
+      memberToken: joinToken,
+      group: await loadDetail(tx, member.groupId, member.id),
+    };
+  });
 }
 
 export async function joinGroupRecord(input: {
@@ -344,9 +411,13 @@ export async function joinGroupRecord(input: {
   language?: GroupLanguage;
   /** Member tokens the device already holds: joining a group it's already in returns that membership. */
   knownMemberTokens?: string[];
-}) {
+}, joinToken?: string) {
   const displayName = cleanName(input.displayName);
   if (!displayName) return { kind: "invalid" as const };
+  if (joinToken) {
+    const recovered = await recoverJoinedGroupRecord(joinToken);
+    if (recovered) return recovered;
+  }
   const condition = input.inviteToken
     ? eq(groupsTable.inviteTokenHash, hashCapability(input.inviteToken))
     : input.joinCode
@@ -370,14 +441,14 @@ export async function joinGroupRecord(input: {
       .where(eq(groupMembersTable.groupId, group.id));
     // Already in this group on this device (e.g. the host opening their own invite):
     // the existing membership, never a second member for the same person.
-    for (const token of input.knownMemberTokens ?? []) {
+    for (const token of [...(joinToken ? [joinToken] : []), ...(input.knownMemberTokens ?? [])]) {
       const existing = members.find((member) => member.memberTokenHash === hashCapability(token));
       if (existing)
         return { kind: "already" as const, memberToken: token, group: await loadDetail(tx, group.id, existing.id) };
     }
     if (members.length >= GROUP_MEMBER_LIMIT) return { kind: "full" as const };
 
-    const memberToken = createCapabilityToken();
+    const memberToken = joinToken ?? createCapabilityToken();
     const [member] = await tx
       .insert(groupMembersTable)
       .values({
@@ -693,10 +764,12 @@ export async function setGroupTonightParticipationRecord(
   memberToken: string,
   leaveBy: Date | null | undefined,
   now = new Date(),
+  expectedRevision?: number,
 ): Promise<
   | { kind: "not-found" }
   | { kind: "inactive" }
   | { kind: "invalid-leave-by" }
+  | { kind: "stale" }
   | { kind: "ok"; group: GroupDetail }
 > {
   return getDb().transaction(async (tx) => {
@@ -708,24 +781,39 @@ export async function setGroupTonightParticipationRecord(
       return { kind: "invalid-leave-by" as const };
     }
     const updatedAt = new Date();
-    const set: Partial<typeof groupNightParticipantsTable.$inferInsert> = {
+    const participant = groupNightParticipantsTable;
+    if (expectedRevision !== undefined && expectedRevision > 0) {
+      const [existing] = await tx.select({ leaveRevision: participant.leaveRevision })
+        .from(participant)
+        .where(and(eq(participant.nightId, night.id), eq(participant.memberId, auth.member.id)))
+        .limit(1);
+      if (!existing) return { kind: "stale" as const };
+    }
+    // PostgreSQL handles both missing-row INSERT and existing-row UPDATE
+    // atomically: a conflicting stale writer updates ZERO rows. No separate
+    // SELECT then UPDATE race is possible between Lambda instances.
+    const set = {
       updatedAt,
+      ...(leaveBy !== undefined ? { leaveBy } : {}),
+      ...(expectedRevision !== undefined ? { leaveRevision: sql`${participant.leaveRevision} + 1` } : {}),
     };
-    if (leaveBy !== undefined) set.leaveBy = leaveBy;
-    await tx
-      .insert(groupNightParticipantsTable)
+    const updated = await tx
+      .insert(participant)
       .values({
         nightId: night.id,
         memberId: auth.member.id,
         leaveBy: leaveBy ?? null,
+        leaveRevision: expectedRevision === undefined ? 0 : 1,
       })
       .onConflictDoUpdate({
-        target: [
-          groupNightParticipantsTable.nightId,
-          groupNightParticipantsTable.memberId,
-        ],
+        target: [participant.nightId, participant.memberId],
         set,
-      });
+        setWhere: expectedRevision === undefined
+          ? eq(participant.leaveRevision, 0) // block legacy after CAS begins
+          : eq(participant.leaveRevision, expectedRevision),
+      })
+      .returning({ memberId: participant.memberId });
+    if (updated.length === 0) return { kind: "stale" as const };
     return {
       kind: "ok" as const,
       group: await loadDetail(tx, groupId, auth.member.id),
@@ -810,6 +898,7 @@ async function pushRecipients(
 export const GROUP_LEAVE_ALERT_GRACE_MS = 10 * 60_000;
 
 export type ClaimedGroupLeaveAlert = {
+  nightId: string;
   groupId: string;
   groupName: string;
   memberId: string;
@@ -848,8 +937,8 @@ export async function groupMemberIdForToken(
  * night that hasn't ended (one still inside the grace period counts as due now).
  * Same conditions as claimDueGroupLeaveAlerts, without the "already due" bound.
  */
-export async function nextGroupLeaveAlertAt(now = new Date()): Promise<Date | null> {
-  const db = getDb();
+export async function nextGroupLeaveAlertAt(now = new Date(), tx?: Tx): Promise<Date | null> {
+  const db = tx ?? getDb();
   const lowerBound = new Date(now.getTime() - GROUP_LEAVE_ALERT_GRACE_MS);
   const [row] = await db
     .select({ next: min(groupNightParticipantsTable.leaveBy) })
@@ -934,25 +1023,43 @@ export async function claimDueGroupLeaveAlerts(
         )
         .returning({ memberId: groupNightParticipantsTable.memberId });
       if (!won) return null;
+      const recipients = await pushRecipients(
+        tx,
+        candidate.groupId,
+        candidate.nightId,
+        candidate.memberId,
+        { leaveTime: true },
+      );
+      // Durable per-recipient delivery records and the sent-for marker commit
+      // together. A Lambda crash after this transaction cannot lose alerts.
+      if (recipients.length > 0) {
+        await tx.insert(groupAlertDeliveriesTable).values(recipients.map((recipient) => ({
+          nightId: candidate.nightId,
+          senderMemberId: candidate.memberId,
+          recipientMemberId: recipient.memberId,
+          leaveBy,
+        }))).onConflictDoNothing();
+      }
       return {
+        nightId: candidate.nightId,
         groupId: candidate.groupId,
         groupName: candidate.groupName,
         memberId: candidate.memberId,
         displayName: candidate.displayName,
         leaveBy,
-        recipients: await pushRecipients(
-          tx,
-          candidate.groupId,
-          candidate.nightId,
-          candidate.memberId,
-          { leaveTime: true },
-        ),
+        recipients,
       };
     });
     if (alert) claimed.push(alert);
   }
   return claimed;
 }
+
+/**
+ * Claims are permanent after enqueue: retry state is now per-recipient in the
+ * outbox, not a shared "sent-for" flag that could double-send on partial
+ * ticket success. The outbox is deleted by the group's nightly privacy purge.
+ */
 
 // ---------------------------------------------------------------------------
 // Scheduled cleanup

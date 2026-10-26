@@ -44,8 +44,75 @@ describe("app.config.js", () => {
       resolveWith({
         EAS_BUILD_PROFILE: "production",
         EXPO_PUBLIC_API_URL: "https://api.invalid.example",
+        ENABLE_REMOTE_PUSH: "true",
+        ENABLE_UNIVERSAL_LINKS: "true",
+        EXPO_PUBLIC_APP_JOIN_BASE_URL: "https://lastride.jp",
+        EXPO_ANDROID_GOOGLE_MAPS_API_KEY: `AIza${"a".repeat(35)}`,
+        EXPO_PUBLIC_REVENUECAT_ANDROID_KEY: "goog_valid_public_key",
       }),
     ).not.toThrow();
+  });
+
+  it("requires a native restricted Google Maps key for Play Store production", () => {
+    const env = {
+      EAS_BUILD_PROFILE: "production",
+      EXPO_PUBLIC_API_URL: "https://api.invalid.example",
+      ENABLE_REMOTE_PUSH: "true",
+      ENABLE_UNIVERSAL_LINKS: "true",
+      EXPO_PUBLIC_APP_JOIN_BASE_URL: "https://lastride.jp",
+      EXPO_PUBLIC_REVENUECAT_ANDROID_KEY: "goog_valid_public_key",
+    };
+    expect(() => resolveWith({ ...env, EXPO_ANDROID_GOOGLE_MAPS_API_KEY: undefined }))
+      .toThrow("EXPO_ANDROID_GOOGLE_MAPS_API_KEY");
+    expect(() => resolveWith({ ...env, EXPO_ANDROID_GOOGLE_MAPS_API_KEY: "bad-key" }))
+      .toThrow("EXPO_ANDROID_GOOGLE_MAPS_API_KEY");
+    const key = `AIza${"A".repeat(35)}`;
+    const configured = resolveWith({ ...env, EXPO_ANDROID_GOOGLE_MAPS_API_KEY: key });
+    expect(configured.android.config.googleMaps.apiKey).toBe(key);
+    expect(configured.extra.androidGoogleMapsEnabled).toBe(true);
+    expect(JSON.stringify(configured.extra)).not.toContain(key);
+  });
+
+  it("does not require the Android Maps key to ship an iOS-only production build", () => {
+    const configured = resolveWith({
+      EAS_BUILD_PROFILE: "production",
+      EAS_BUILD_PLATFORM: "ios",
+      ENABLE_LIVE_ACTIVITY: "true",
+      EXPO_PUBLIC_API_URL: "https://api.invalid.example",
+      ENABLE_REMOTE_PUSH: "true",
+      ENABLE_UNIVERSAL_LINKS: "true",
+      EXPO_PUBLIC_APP_JOIN_BASE_URL: "https://lastride.jp",
+      EXPO_ANDROID_GOOGLE_MAPS_API_KEY: undefined,
+      EXPO_PUBLIC_REVENUECAT_IOS_KEY: "appl_valid_public_key",
+    });
+    expect(configured.extra.androidGoogleMapsEnabled).toBe(false);
+    expect(configured.ios.infoPlist.NSSupportsLiveActivities).toBe(true);
+  });
+
+  it("keeps native Android Maps disabled with no key in preview builds", () => {
+    const configured = resolveWith({
+      EAS_BUILD_PROFILE: "preview",
+      EXPO_PUBLIC_API_URL: "https://api.invalid.example",
+      EXPO_ANDROID_GOOGLE_MAPS_API_KEY: undefined,
+    });
+    expect(configured.android.config?.googleMaps).toBeUndefined();
+    expect(configured.extra.androidGoogleMapsEnabled).toBe(false);
+  });
+
+  it("refuses a public binary without remote pushes or verified invite links", () => {
+    expect(() => resolveWith({
+      EAS_BUILD_PROFILE: "production",
+      EXPO_PUBLIC_API_URL: "https://api.invalid.example",
+      ENABLE_REMOTE_PUSH: undefined,
+      ENABLE_UNIVERSAL_LINKS: "true",
+      EXPO_PUBLIC_APP_JOIN_BASE_URL: "https://lastride.jp",
+    })).toThrow("ENABLE_REMOTE_PUSH");
+    expect(() => resolveWith({
+      EAS_BUILD_PROFILE: "production",
+      EXPO_PUBLIC_API_URL: "https://api.invalid.example",
+      ENABLE_REMOTE_PUSH: "true",
+      ENABLE_UNIVERSAL_LINKS: undefined,
+    })).toThrow("ENABLE_UNIVERSAL_LINKS");
   });
 
   it("does not require an API URL outside release profiles", () => {
@@ -78,6 +145,7 @@ describe("app.config.js", () => {
     expect(withFlag.ios.associatedDomains).toEqual(["applinks:join.example"]);
     expect(withFlag.android.intentFilters[0].data).toEqual([
       { scheme: "https", host: "join.example", pathPrefix: "/join" },
+      { scheme: "https", host: "join.example", pathPrefix: "/group-join" },
     ]);
   });
 
