@@ -44,6 +44,8 @@ export type GroupEntry = {
 type GroupsValue = {
   groups: GroupEntry[];
   loading: boolean;
+  /** True if saved OS-protected group credentials cannot be accessed. */
+  credentialError: boolean;
   available: boolean;
   refresh: () => Promise<void>;
   /** Refresh only this group when its detail screen is focused. */
@@ -85,6 +87,7 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
   const [memberships, setMemberships] = useState<GroupMembership[]>([]);
   const [details, setDetails] = useState<Record<string, GroupDetail>>({});
   const [loading, setLoading] = useState(true);
+  const [credentialError, setCredentialError] = useState(false);
   const available = !!apiBaseUrl;
   const membershipsRef = useRef(memberships);
   membershipsRef.current = memberships;
@@ -163,7 +166,17 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const refresh = useCallback(async () => {
-    const list = await readMemberships();
+    let list: GroupMembership[];
+    try {
+      list = await readMemberships();
+      setCredentialError(false);
+    } catch {
+      // An Android backup may restore an index without its Keystore keys.
+      // Never show an empty group list or spin indefinitely on this failure.
+      setCredentialError(true);
+      setLoading(false);
+      return;
+    }
     setMemberships(list);
     if (!available) {
       setLoading(false);
@@ -189,7 +202,13 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
   const refreshGroup = useCallback(
     async (groupId: string) => {
       if (!available) return;
-      const membership = (await readMemberships()).find((item) => item.groupId === groupId);
+      let membership: GroupMembership | undefined;
+      try {
+        membership = (await readMemberships()).find((item) => item.groupId === groupId);
+      } catch {
+        setCredentialError(true);
+        return;
+      }
       if (!membership) return;
       const ticket = refreshGuard.current.begin(groupId);
       try {
@@ -257,7 +276,13 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
    */
   const refreshDeviceRegistrations = useCallback(async () => {
     if (!available) return;
-    const members = await readMemberships();
+    let members: GroupMembership[];
+    try {
+      members = await readMemberships();
+    } catch {
+      setCredentialError(true);
+      return;
+    }
     if (members.length === 0) return;
     const token = await expoPushToken();
     const locale = language ?? "ja";
@@ -493,8 +518,8 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
   );
 
   const value = useMemo(
-    () => ({ groups, loading, available, refresh, refreshGroup, memberOptions, apply, forget, leaveAll, create, join, tonightGroup, tonightOpenGroup, sharingTonight, stopSharingTonight }),
-    [groups, loading, available, refresh, refreshGroup, memberOptions, apply, forget, leaveAll, create, join, tonightGroup, tonightOpenGroup, sharingTonight, stopSharingTonight],
+    () => ({ groups, loading, credentialError, available, refresh, refreshGroup, memberOptions, apply, forget, leaveAll, create, join, tonightGroup, tonightOpenGroup, sharingTonight, stopSharingTonight }),
+    [groups, loading, credentialError, available, refresh, refreshGroup, memberOptions, apply, forget, leaveAll, create, join, tonightGroup, tonightOpenGroup, sharingTonight, stopSharingTonight],
   );
   return <GroupsContext.Provider value={value}>{children}</GroupsContext.Provider>;
 }

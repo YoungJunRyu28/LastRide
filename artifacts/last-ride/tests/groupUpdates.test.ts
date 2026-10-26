@@ -18,6 +18,22 @@ vi.mock('@react-native-async-storage/async-storage', () => ({
   },
 }));
 vi.mock('react-native', () => ({ Platform: { OS: 'ios' } }));
+const securedTokens = new Map<string, string>();
+vi.mock('expo-secure-store', () => ({
+  AFTER_FIRST_UNLOCK: 'AFTER_FIRST_UNLOCK',
+  isAvailableAsync: vi.fn(async () => true),
+  getItemAsync: vi.fn(async (key: string) => securedTokens.get(key) ?? null),
+  setItemAsync: vi.fn(async (key: string, value: string) => { securedTokens.set(key, value); }),
+  deleteItemAsync: vi.fn(async (key: string) => { securedTokens.delete(key); }),
+}));
+vi.mock('expo-crypto', async () => {
+  const { createHash } = await import('node:crypto');
+  return {
+    CryptoDigestAlgorithm: { SHA256: 'SHA-256' },
+    digestStringAsync: vi.fn(async (_algorithm: string, value: string) =>
+      createHash('sha256').update(value).digest('hex')),
+  };
+});
 vi.mock('expo-task-manager', () => ({ defineTask: vi.fn() }));
 vi.mock('expo-notifications', () => ({ registerTaskAsync: vi.fn(), addNotificationReceivedListener: vi.fn() }));
 vi.mock('@workspace/api-client-react', () => api);
@@ -27,6 +43,7 @@ const { leaveByChanged, markSharing, syncSharedLeaveBy, syncSharedLeaveByForGrou
 
 beforeEach(() => {
   store.clear();
+  securedTokens.clear();
   api.joinGroupTonight.mockReset();
   api.getGroup.mockReset();
   failure.outboxWrite = false;

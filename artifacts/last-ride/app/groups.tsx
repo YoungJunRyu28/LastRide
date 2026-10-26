@@ -85,7 +85,7 @@ export default function GroupsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { language } = useLastRide();
-  const { groups, loading, available, refresh } = useGroups();
+  const { groups, loading, credentialError, available, refresh } = useGroups();
   const [refreshing, setRefreshing] = React.useState(false);
   useFocusEffect(React.useCallback(() => { void refresh(); }, [refresh]));
   const pullRefresh = React.useCallback(async () => {
@@ -120,7 +120,19 @@ export default function GroupsScreen() {
           </Pressable>
         </View>
 
-        {!available ? (
+        {credentialError ? (
+          <Card style={styles.option}>
+            <Text style={[styles.optionTitle, { color: colors.foreground }]}>
+              {ja ? 'グループの認証情報を読み込めません' : 'Saved group credentials are unavailable'}
+            </Text>
+            <Text style={[styles.optionBody, { color: colors.mutedForeground }]}>
+              {ja
+                ? '端末の復元後などに、暗号化されたグループのキーが失われることがあります。グループのデータは勝手に消去されません。接続・端末設定を確認して再試行してください。復旧できない場合は招待した方にご相談ください。'
+                : 'A device restore can lose the encrypted keys for your groups. LastRide has not erased your saved group list. Check your device and try again; if the keys cannot be recovered, contact your group host for a new invitation.'}
+            </Text>
+            <SecondaryButton label={ja ? 'もう一度読み込む' : 'Try again'} onPress={() => void refresh()} />
+          </Card>
+        ) : !available ? (
           <Text style={[styles.note, { color: colors.mutedForeground }]}>
             {ja ? 'グループにはサーバー接続が必要です。' : 'Groups need the LastRide server.'}
           </Text>

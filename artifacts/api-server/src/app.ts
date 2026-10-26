@@ -6,14 +6,12 @@ import cors from "cors";
 import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
+import { trustedProxySettings } from "./lib/trustedProxy";
 
 const app: Express = express();
 app.disable("x-powered-by");
 
-const trustProxyHops = Number(process.env.TRUST_PROXY_HOPS ?? "0");
-if (Number.isInteger(trustProxyHops) && trustProxyHops > 0) {
-  app.set("trust proxy", trustProxyHops);
-}
+app.set("trust proxy", trustedProxySettings(process.env));
 
 const allowedOrigins = new Set(
   (process.env.CORS_ALLOWED_ORIGINS ?? "")

@@ -14,7 +14,7 @@ This records the 58 findings from the static source audit. **Fixed** means the c
 | LR-008 | Remote group creation can orphan host on crash | **Implemented, pending CI and native-device testing** | Persisted 256-bit creation/host capability; transactional unique-key replay, UI prefill, automatic recovery on app restart |
 | LR-009 | Offline reset discards only host token | **Fixed in source** | UI/E2E offline remote-reset test |
 | LR-010 | Cross-device/reinstall membership recovery | **Pending** | Authenticated recovery plan and migrations |
-| LR-011 | Capability tokens stored in plain AsyncStorage | **Pending** | Device-backed secure storage with backup/recovery strategy |
+| LR-011 | Capability tokens stored in plain AsyncStorage | **Implemented in PR, device QA required** | Native per-token Keychain/Keystore records and hash-only metadata, with crash-retryable legacy migration. Android restore needs rejoin/recovery since Keystore secrets are not portable. Signed-device migration and backup QA remain mandatory |
 | LR-012 | Group hosting entitlement relies on client-supplied RevenueCat ID | **Pending P1** | Server-bound identity with verified authorization |
 | LR-013 | Container cleanup missing inactive group purge | **Fixed** | Exercise real timed DB cleanup in CI |
 | LR-014 | Host inactivity can delete active member groups | **Pending** | Transfer/grace period/explicit notices |
@@ -22,7 +22,7 @@ This records the 58 findings from the static source audit. **Fixed** means the c
 | LR-016 | Group visible screen can remain stale after silent push lost | **Partial** | Focus refresh + manual pull-to-refresh added; continuously visible screens still require push or manual action |
 | LR-017 | No-home-device group push tap blocked | **Fixed** | Navigation regression tests |
 | LR-018 | Group invite join limit 20/min per IP hits shared Wi-Fi | **Pending** | Token aware rate limit and realistic load test |
-| LR-019 | Proxy hop setup can attribute wrong IP | **Pending** | Trusted ingress config and spoof tests |
+| LR-019 | Proxy hop setup can attribute wrong IP | **Implemented in PR, ingress QA required** | Explicit validated TRUST_PROXY_CIDRS instead of unsafe numeric production hops; XFF spoof tests. Actual ingress IP ranges must be verified in staging |
 | LR-020 | Stale group membership cleanup on client | **Partial** | Invalidation guard prevents stale 404; test reinstall/offline |
 | LR-021 | Group language stale after app locale change | **Fixed in source** | Re-registration on locale switch |
 | LR-022 | Stale group GET overwrites newer local mutation | **Fixed in source** | Revision/ordering regression tests |

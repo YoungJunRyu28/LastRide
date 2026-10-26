@@ -1,9 +1,12 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
-const { store, failNextWrite, failNextRead } = vi.hoisted(() => ({
+const { store, secure, failNextWrite, failNextRead, failSecureWrite, secureAvailable } = vi.hoisted(() => ({
   store: new Map<string, string>(),
+  secure: new Map<string, string>(),
   failNextWrite: { current: false },
   failNextRead: { current: false },
+  failSecureWrite: { current: false },
+  secureAvailable: { current: true },
 }));
 vi.mock("@react-native-async-storage/async-storage", () => ({
   default: {
@@ -25,6 +28,28 @@ vi.mock("@react-native-async-storage/async-storage", () => ({
     multiRemove: vi.fn(async (keys: string[]) => { keys.forEach((key) => store.delete(key)); }),
   },
 }));
+vi.mock("react-native", () => ({ Platform: { OS: "ios" } }));
+vi.mock("expo-secure-store", () => ({
+  AFTER_FIRST_UNLOCK: "AFTER_FIRST_UNLOCK",
+  isAvailableAsync: vi.fn(async () => secureAvailable.current),
+  getItemAsync: vi.fn(async (key: string) => secure.get(key) ?? null),
+  setItemAsync: vi.fn(async (key: string, value: string) => {
+    if (failSecureWrite.current) {
+      failSecureWrite.current = false;
+      throw new Error("Keychain write failure");
+    }
+    secure.set(key, value);
+  }),
+  deleteItemAsync: vi.fn(async (key: string) => { secure.delete(key); }),
+}));
+vi.mock("expo-crypto", async () => {
+  const { createHash } = await import("node:crypto");
+  return {
+    CryptoDigestAlgorithm: { SHA256: "SHA-256" },
+    digestStringAsync: vi.fn(async (_algorithm: string, input: string) =>
+      createHash("sha256").update(input).digest("hex")),
+  };
+});
 vi.mock("@workspace/api-client-react", () => ({ joinGroupTonight: vi.fn() }));
 
 import {
@@ -33,11 +58,15 @@ import {
 import { markSharing, stopSharing, clearSharing } from "@/lib/groupSharing";
 
 beforeEach(async () => {
-  await clearMemberships();
-  await clearSharing();
+  // Each test gets a fresh sandbox, including cases that intentionally delete
+  // secure capabilities or make Keychain access unavailable.
   store.clear();
+  secure.clear();
+  secureAvailable.current = true;
+  failSecureWrite.current = false;
   failNextWrite.current = false;
   failNextRead.current = false;
+  await clearSharing();
 });
 
 describe("group membership storage is atomic within a device", () => {
@@ -50,6 +79,105 @@ describe("group membership storage is atomic within a device", () => {
     for (let i = 0; i < 20; i++) {
       expect(memberships.find((m) => m.groupId === `g${i}`)?.memberToken).toBe(`token${i}`);
     }
+  });
+
+  test("native memberships never store member tokens in AsyncStorage", async () => {
+    await saveMembership({ groupId: "secret-group", memberToken: "private-capability", name: "Friends" });
+    expect(store.has("lastride-group-memberships")).toBe(false);
+    expect(JSON.stringify([...store.entries()])).not.toContain("private-capability");
+    expect(secure.size).toBe(1);
+    expect([...secure.values()]).toEqual(["private-capability"]);
+    expect(await readMemberships()).toEqual([
+      { groupId: "secret-group", memberToken: "private-capability", name: "Friends" },
+    ]);
+    await clearMemberships();
+    expect(secure.size).toBe(0);
+    expect(store.has("lastride-group-memberships-v2")).toBe(false);
+  });
+
+  test("migrates old plaintext groups before deleting the backup and survives a restart", async () => {
+    store.set("lastride-group-memberships", JSON.stringify([
+      { groupId: "old", name: "Old Group", memberToken: "legacy-capability" },
+    ]));
+    expect(await readMemberships()).toEqual([
+      { groupId: "old", name: "Old Group", memberToken: "legacy-capability" },
+    ]);
+    expect(store.has("lastride-group-memberships")).toBe(false);
+    expect(JSON.stringify([...store.entries()])).not.toContain("legacy-capability");
+    expect(await readMemberships()).toHaveLength(1);
+    expect([...secure.values()]).toContain("legacy-capability");
+  });
+
+  test("legacy group migration tolerates a failed AsyncStorage index write", async () => {
+    const legacy = [{ groupId: "old", name: "Old Group", memberToken: "persistent-secret" }];
+    store.set("lastride-group-memberships", JSON.stringify(legacy));
+    failNextWrite.current = true;
+    await expect(readMemberships()).rejects.toThrow("storage failure");
+    expect(store.get("lastride-group-memberships")).toBe(JSON.stringify(legacy));
+    expect(store.has("lastride-group-memberships-v2")).toBe(false);
+    expect(await readMemberships()).toEqual(legacy);
+    expect(store.has("lastride-group-memberships")).toBe(false);
+  });
+
+  test("web-only membership fallback retains legacy behavior without Keychain", async () => {
+    const { Platform } = await import("react-native");
+    const previous = Platform.OS;
+    (Platform as { OS: string }).OS = "web";
+    try {
+      await saveMembership({ groupId: "web", name: "Web Group", memberToken: "web-token" });
+      expect((await readMemberships())[0].memberToken).toBe("web-token");
+      expect(store.get("lastride-group-memberships")).toContain("web-token");
+      expect(secure.size).toBe(0);
+    } finally {
+      (Platform as { OS: string }).OS = previous;
+    }
+  });
+
+  test("failed secure migration preserves old tokens and can be retried", async () => {
+    store.set("lastride-group-memberships", JSON.stringify([
+      { groupId: "old", name: "Old Group", memberToken: "legacy-capability" },
+    ]));
+    failSecureWrite.current = true;
+    await expect(readMemberships()).rejects.toThrow("Keychain write failure");
+    expect(store.has("lastride-group-memberships")).toBe(true);
+    expect(store.has("lastride-group-memberships-v2")).toBe(false);
+    expect((await readMemberships())[0].memberToken).toBe("legacy-capability");
+    expect(store.has("lastride-group-memberships")).toBe(false);
+  });
+
+  test("failed rejoin index update leaves the previous token valid", async () => {
+    await saveMembership({ groupId: "rejoin", memberToken: "original-token", name: "Friends" });
+    failNextWrite.current = true;
+    await expect(saveMembership({ groupId: "rejoin", memberToken: "replacement-token", name: "Friends" }))
+      .rejects.toThrow("storage failure");
+    expect((await readMemberships())[0].memberToken).toBe("original-token");
+    expect([...secure.values()]).toContain("original-token");
+  });
+
+  test("missing native capability fails closed, not overwritten by a new join", async () => {
+    await saveMembership({ groupId: "first", name: "Friends", memberToken: "keep-me" });
+    secure.clear();
+    await expect(saveMembership({ groupId: "second", name: "Other", memberToken: "new-token" }))
+      .rejects.toThrow("Saved group capability is missing");
+    expect(store.get("lastride-group-memberships-v2")).toContain("first");
+    expect(store.get("lastride-group-memberships-v2")).not.toContain("second");
+  });
+
+  test("reset works after Android restore loses Keystore tokens", async () => {
+    await saveMembership({ groupId: "restored", name: "Old phone", memberToken: "lost-key" });
+    secure.clear();
+    await expect(readMemberships()).rejects.toThrow("Saved group capability is missing");
+    await clearMemberships();
+    expect(await readMemberships()).toEqual([]);
+    await saveMembership({ groupId: "fresh", name: "New phone", memberToken: "new-key" });
+    expect((await readMemberships())[0].memberToken).toBe("new-key");
+  });
+
+  test("missing secure storage does not downgrade native tokens to plaintext", async () => {
+    secureAvailable.current = false;
+    await expect(saveMembership({ groupId: "first", name: "Friends", memberToken: "keep-me" }))
+      .rejects.toThrow("Secure device storage is required");
+    expect(store.has("lastride-group-memberships")).toBe(false);
   });
 
   test("rename, removal, and reset serialize with pending joins", async () => {
