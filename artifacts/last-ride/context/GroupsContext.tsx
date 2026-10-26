@@ -47,6 +47,8 @@ type GroupsValue = {
   loading: boolean;
   /** True if saved OS-protected group credentials cannot be accessed. */
   credentialError: boolean;
+  /** Explicitly abandon unrecoverable local credentials, without a server leave. */
+  clearUnavailableMemberships: () => Promise<void>;
   available: boolean;
   refresh: () => Promise<void>;
   /** Refresh only this group when its detail screen is focused. */
@@ -176,6 +178,24 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
     setDetails({});
     deviceRegistrations.current = {};
     sent.current = {};
+  }, []);
+
+  const clearUnavailableMemberships = useCallback(async () => {
+    // Do not discard the only recovery proof of a partially committed
+    // group create or join. An in-flight operation must be resolved first.
+    if (await readPendingGroupCreation()) throw new Error("PENDING_GROUP_CREATION");
+    if (await readPendingGroupJoin()) throw new Error("PENDING_GROUP_JOIN");
+    // This is local recovery only: we cannot authenticate missing keys to
+    // call the group leave API. The UI must warn about server-side remnants.
+    await clearMemberships();
+    await clearSharing();
+    for (const item of membershipsRef.current) refreshGuard.current.changed(item.groupId);
+    setMemberships([]);
+    setDetails({});
+    deviceRegistrations.current = {};
+    sent.current = {};
+    setCredentialError(false);
+    setLoading(false);
   }, []);
 
   const refresh = useCallback(async () => {
@@ -531,8 +551,8 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
   );
 
   const value = useMemo(
-    () => ({ groups, loading, credentialError, available, refresh, refreshGroup, memberOptions, apply, forget, leaveAll, create, join, tonightGroup, tonightOpenGroup, sharingTonight, stopSharingTonight }),
-    [groups, loading, credentialError, available, refresh, refreshGroup, memberOptions, apply, forget, leaveAll, create, join, tonightGroup, tonightOpenGroup, sharingTonight, stopSharingTonight],
+    () => ({ groups, loading, credentialError, clearUnavailableMemberships, available, refresh, refreshGroup, memberOptions, apply, forget, leaveAll, create, join, tonightGroup, tonightOpenGroup, sharingTonight, stopSharingTonight }),
+    [groups, loading, credentialError, clearUnavailableMemberships, available, refresh, refreshGroup, memberOptions, apply, forget, leaveAll, create, join, tonightGroup, tonightOpenGroup, sharingTonight, stopSharingTonight],
   );
   return <GroupsContext.Provider value={value}>{children}</GroupsContext.Provider>;
 }

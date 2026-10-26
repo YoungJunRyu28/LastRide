@@ -1,7 +1,7 @@
 import { Feather } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
 import React from 'react';
-import { ActivityIndicator, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomNav } from '@/components/BottomNav';
 import { Card, PremiumTag, PrimaryButton, SecondaryButton } from '@/components/ui';
@@ -85,7 +85,7 @@ export default function GroupsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { language } = useLastRide();
-  const { groups, loading, credentialError, available, refresh } = useGroups();
+  const { groups, loading, credentialError, clearUnavailableMemberships, available, refresh } = useGroups();
   const [refreshing, setRefreshing] = React.useState(false);
   useFocusEffect(React.useCallback(() => { void refresh(); }, [refresh]));
   const pullRefresh = React.useCallback(async () => {
@@ -95,6 +95,32 @@ export default function GroupsScreen() {
   const { isPremium } = usePremium();
   const trialDays = useTrialDays();
   const ja = language !== 'en';
+  const forgetUnavailable = React.useCallback(() => {
+    Alert.alert(
+      ja ? 'この端末のグループ情報を削除しますか？' : 'Forget local group access?',
+      ja
+        ? 'この端末に保存されたグループの参加情報がすべて失われます。元に戻せません。サーバー上のグループや参加者は削除されません。再参加には新しい招待が必要です。ホストの場合はグループが残る場合があります。'
+        : 'This permanently removes saved group access from this device, including keys that might still be recoverable. It does not delete server-side groups or remove you as a host. You will need new invitations to rejoin.',
+      [
+        { text: ja ? 'キャンセル' : 'Cancel', style: 'cancel' },
+        {
+          text: ja ? '端末の情報を削除' : 'Forget on this device',
+          style: 'destructive',
+          onPress: () => {
+            void clearUnavailableMemberships().catch(() => {
+              Alert.alert(
+                ja ? '削除できませんでした' : 'Could not reset group access',
+                ja
+                  ? '保留中の参加・作成操作や端末のストレージ設定を確認して、もう一度お試しください。'
+                  : 'An unfinished group creation/join or unavailable device storage may be blocking recovery. Please try again.',
+              );
+            });
+          },
+        },
+      ],
+    );
+  }, [ja, clearUnavailableMemberships]);
+
   const empty = groups.length === 0;
 
   return (
@@ -131,6 +157,16 @@ export default function GroupsScreen() {
                 : 'A device restore can lose the encrypted keys for your groups. LastRide has not erased your saved group list. Check your device and try again; if the keys cannot be recovered, contact your group host for a new invitation.'}
             </Text>
             <SecondaryButton label={ja ? 'もう一度読み込む' : 'Try again'} onPress={() => void refresh()} />
+            <Pressable
+              accessibilityRole="button"
+              testID="groups-recover-local"
+              onPress={forgetUnavailable}
+              style={{ paddingVertical: 12, alignItems: 'center' }}
+            >
+              <Text style={{ color: colors.mutedForeground, textDecorationLine: 'underline', fontSize: 13 }}>
+                {ja ? '復旧できないグループ情報をこの端末から削除' : 'Forget inaccessible groups on this device'}
+              </Text>
+            </Pressable>
           </Card>
         ) : !available ? (
           <Text style={[styles.note, { color: colors.mutedForeground }]}>

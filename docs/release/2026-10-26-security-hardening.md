@@ -69,3 +69,12 @@ tokens scheduled for cleanup before committing the index. After commit,
 cleanup is best-effort and retried on later reads; interrupted index writes
 cannot delete credentials still referenced by the saved group list. Reset
 also clears pending retirements. Regression tests cover both failure orders.
+
+
+After Android restore, a missing Keystore token previously blocked *all* new
+joins because group join obtains the existing member-token list first. The
+Groups tab now offers a separate, destructive, explicitly confirmed local
+recovery action for this scenario. It keeps retry as the primary option,
+does not pretend to delete server-side groups, preserves unresolved join/create
+proofs by rejecting recovery while either is pending, and explains that the
+user may need a new invitation. It is not automatic credential recovery.
