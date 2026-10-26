@@ -40,3 +40,32 @@ Full CI must pass. Signed device migration and backup QA, production transit
 licensing/coverage, pedestrian route data, RevenueCat legacy migration and
 store billing, real APNs/AlarmKit/FCM, and release approvals remain.
 No deployment, database migration or store submission performed.
+
+## October 26 follow-up: confirmed reset and rename defects
+
+The first secure-store implementation could delete some keys during Reset &
+start over, then crash or fail to remove AsyncStorage metadata. The next launch
+would see a corrupt-looking group list with missing secrets and refuse all
+writes. Reset now records a nonsecret durable reset marker **before** deleting
+any keys. It completes pending reset first on next access, and removes the
+marker only after all keys and metadata are cleared. Interrupted secure
+deletions, partially failed storage batches, and failed marker writes now have
+regression tests.
+
+The Groups provider also previously updated a cached group name optimistically
+and ignored a rejected secure-store write, leading to an unhandled promise
+rejection. It now persists the rename first and updates local cached metadata
+only after the write succeeds, without replacing the membership token.
+
+These checks do not establish device restore safety until signed iOS/Android
+upgrade and reinstall exercises pass. There is no authenticated account
+recovery for a genuinely lost Keystore credential.
+
+One more post-commit defect was confirmed: removing a group could commit a
+new index and then fail to delete the now-obsolete secure token. This used to
+reject the operation despite the index already being updated and leave an
+orphaned Keychain entry. A durable nonsecret retirement journal now records
+tokens scheduled for cleanup before committing the index. After commit,
+cleanup is best-effort and retried on later reads; interrupted index writes
+cannot delete credentials still referenced by the saved group list. Reset
+also clears pending retirements. Regression tests cover both failure orders.

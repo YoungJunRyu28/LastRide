@@ -23,6 +23,7 @@ import {
   clearMemberships,
   readMemberships,
   removeMembership,
+  renameMembership,
   saveMembership,
   writeDisplayName,
   type GroupMembership,
@@ -112,9 +113,21 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
     setDetails((current) => ({ ...current, [detail.id]: detail }));
     const known = membershipsRef.current.find((item) => item.groupId === detail.id);
     if (known && known.name !== detail.name) {
-      const next = { ...known, name: detail.name };
-      setMemberships((current) => current.map((item) => (item.groupId === detail.id ? next : item)));
-      void saveMembership(next);
+      // Do not optimistically claim a name has been saved, or leave an
+      // unhandled rejection when Keychain/AsyncStorage is unavailable.
+      // Rename only the metadata: never rewrite or downgrade a host token.
+      void renameMembership(detail.id, detail.name)
+        .then(() => {
+          setMemberships((current) => current.map((item) =>
+            item.groupId === detail.id && item.memberToken === known.memberToken
+              ? { ...item, name: detail.name }
+              : item,
+          ));
+        })
+        .catch(() => {
+          // The server's name is already in details; a later refresh retries
+          // persistence when storage is writable again.
+        });
     }
   }, []);
 

@@ -15,6 +15,8 @@ import { Platform } from "react-native";
 const LEGACY_KEY = "lastride-group-memberships";
 const INDEX_KEY = "lastride-group-memberships-v2";
 const DISPLAY_NAME_KEY = "lastride-group-display-name";
+const PENDING_CLEAR_KEY = "lastride-group-memberships-clear-pending-v1";
+const RETIRED_TOKENS_KEY = "lastride-group-memberships-retired-v1";
 const SECURE_PREFIX = "lastride-group-member-v2-";
 const OPTIONS: SecureStore.SecureStoreOptions = {
   keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK,
@@ -75,7 +77,63 @@ async function usingNativeSecureStore(): Promise<boolean> {
   return true;
 }
 
+/** Pending secure deletes are nonsecret hashes, not membership tokens. */
+function parseTokenRefs(raw: string | null): string[] {
+  if (raw === null) return [];
+  const refs: unknown = JSON.parse(raw);
+  if (!Array.isArray(refs) ||
+      !refs.every((ref) => typeof ref === "string" && /^[a-f0-9]{64}$/.test(ref)) ||
+      refs.length > 1000) {
+    throw new Error("Invalid group secure-storage cleanup journal.");
+  }
+  return [...new Set(refs)];
+}
+
+/**
+ * A successful metadata commit must not be rolled back by a failed Keychain
+ * deletion. Keep obsolete token refs in a durable cleanup journal and retry
+ * on later reads. Never delete a reference still used by the live index.
+ */
+async function retireUnusedTokens(activeIndex: GroupIndex[]): Promise<void> {
+  const pending = parseTokenRefs(await AsyncStorage.getItem(RETIRED_TOKENS_KEY));
+  if (!pending.length) return;
+  const active = new Set(activeIndex.map((entry) => entry.tokenRef));
+  const remaining: string[] = [];
+  for (const ref of pending) {
+    if (active.has(ref)) continue;
+    try {
+      await SecureStore.deleteItemAsync(secureKey(ref), OPTIONS);
+    } catch {
+      remaining.push(ref);
+    }
+  }
+  if (remaining.length) {
+    await AsyncStorage.setItem(RETIRED_TOKENS_KEY, JSON.stringify(remaining));
+  } else {
+    await AsyncStorage.removeItem(RETIRED_TOKENS_KEY);
+  }
+}
+
+/**
+ * Complete a reset interrupted after some Keychain entries were deleted.
+ * The marker is written BEFORE deleting capabilities and is removed LAST;
+ * retries never mistake a half-finished reset for corrupt membership data.
+ */
+async function finishPendingClear(): Promise<void> {
+  const raw = await AsyncStorage.getItem(PENDING_CLEAR_KEY);
+  if (raw === null) return;
+  const refs = parseTokenRefs(raw);
+  for (const ref of refs) {
+    await SecureStore.deleteItemAsync(secureKey(ref), OPTIONS);
+  }
+  // Do NOT remove the marker as part of multiRemove; native batches may fail
+  // halfway. The next launch must still know that the reset was intentional.
+  await AsyncStorage.multiRemove([LEGACY_KEY, INDEX_KEY, DISPLAY_NAME_KEY, RETIRED_TOKENS_KEY]);
+  await AsyncStorage.removeItem(PENDING_CLEAR_KEY);
+}
+
 async function loadNative(): Promise<GroupMembership[]> {
+  await finishPendingClear();
   let indexRaw = await AsyncStorage.getItem(INDEX_KEY);
   if (indexRaw === null) {
     const oldRaw = await AsyncStorage.getItem(LEGACY_KEY);
@@ -109,6 +167,8 @@ async function loadNative(): Promise<GroupMembership[]> {
   // Also cleans up a crash between index commit and plaintext deletion.
   if (await AsyncStorage.getItem(LEGACY_KEY) !== null)
     await AsyncStorage.removeItem(LEGACY_KEY);
+  // Credential cleanup is best effort: it must not strand valid groups.
+  await retireUnusedTokens(index).catch(() => undefined);
   return memberships;
 }
 
@@ -146,11 +206,18 @@ async function write(memberships: GroupMembership[]): Promise<void> {
       await SecureStore.setItemAsync(secureKey(tokenRef), item.memberToken, OPTIONS);
     }
   }
-  await AsyncStorage.setItem(INDEX_KEY, JSON.stringify(nextIndex));
-  for (const old of oldIndex) {
-    if (!nextIndex.some((item) => item.tokenRef === old.tokenRef))
-      await SecureStore.deleteItemAsync(secureKey(old.tokenRef), OPTIONS);
+  const retired = oldIndex
+    .filter((old) => !nextIndex.some((item) => item.tokenRef === old.tokenRef))
+    .map((old) => old.tokenRef);
+  if (retired.length) {
+    // Journal deletion intent BEFORE committing the index. An interrupted
+    // index write keeps its old token active, and cleanup checks that before
+    // deleting anything.
+    const pending = parseTokenRefs(await AsyncStorage.getItem(RETIRED_TOKENS_KEY));
+    await AsyncStorage.setItem(RETIRED_TOKENS_KEY, JSON.stringify([...new Set([...pending, ...retired])]));
   }
+  await AsyncStorage.setItem(INDEX_KEY, JSON.stringify(nextIndex));
+  await retireUnusedTokens(nextIndex).catch(() => undefined);
 }
 
 /** Adds or replaces the membership for its group. */
@@ -179,15 +246,20 @@ export function removeMembership(groupId: string): Promise<void> {
 export function clearMemberships(): Promise<void> {
   return serializeMutation(async () => {
     if (await usingNativeSecureStore()) {
+      await finishPendingClear();
       // A device restore can bring back the index but NOT Android Keystore
       // keys. Reset must work even when an indexed secret is already missing.
       const index = parseList(await AsyncStorage.getItem(INDEX_KEY), validIndex);
       const legacy = parseList(await AsyncStorage.getItem(LEGACY_KEY), valid);
       const keys = new Set(index.map((entry) => entry.tokenRef));
+      for (const ref of parseTokenRefs(await AsyncStorage.getItem(RETIRED_TOKENS_KEY)))
+        keys.add(ref);
       for (const entry of legacy)
         keys.add(await secureReference(entry.groupId, entry.memberToken));
-      for (const ref of keys)
-        await SecureStore.deleteItemAsync(secureKey(ref), OPTIONS);
+      // Persist the intent before any secret is deleted, including zero keys.
+      await AsyncStorage.setItem(PENDING_CLEAR_KEY, JSON.stringify([...keys]));
+      await finishPendingClear();
+      return;
     }
     await AsyncStorage.multiRemove([LEGACY_KEY, INDEX_KEY, DISPLAY_NAME_KEY]);
   });

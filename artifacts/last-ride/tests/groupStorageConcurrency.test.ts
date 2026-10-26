@@ -1,11 +1,13 @@
 import { beforeEach, describe, expect, test, vi } from "vitest";
 
-const { store, secure, failNextWrite, failNextRead, failSecureWrite, secureAvailable } = vi.hoisted(() => ({
+const { store, secure, failNextWrite, failNextRead, failSecureWrite, failSecureDelete, failMultiRemove, secureAvailable } = vi.hoisted(() => ({
   store: new Map<string, string>(),
   secure: new Map<string, string>(),
   failNextWrite: { current: false },
   failNextRead: { current: false },
   failSecureWrite: { current: false },
+  failSecureDelete: { current: false },
+  failMultiRemove: { current: false },
   secureAvailable: { current: true },
 }));
 vi.mock("@react-native-async-storage/async-storage", () => ({
@@ -25,7 +27,14 @@ vi.mock("@react-native-async-storage/async-storage", () => ({
       store.set(key, value);
     }),
     removeItem: vi.fn(async (key: string) => { store.delete(key); }),
-    multiRemove: vi.fn(async (keys: string[]) => { keys.forEach((key) => store.delete(key)); }),
+    multiRemove: vi.fn(async (keys: string[]) => {
+      if (failMultiRemove.current) {
+        failMultiRemove.current = false;
+        store.delete(keys[0]);
+        throw new Error("Interrupted AsyncStorage batch");
+      }
+      keys.forEach((key) => store.delete(key));
+    }),
   },
 }));
 vi.mock("react-native", () => ({ Platform: { OS: "ios" } }));
@@ -40,7 +49,13 @@ vi.mock("expo-secure-store", () => ({
     }
     secure.set(key, value);
   }),
-  deleteItemAsync: vi.fn(async (key: string) => { secure.delete(key); }),
+  deleteItemAsync: vi.fn(async (key: string) => {
+    if (failSecureDelete.current) {
+      failSecureDelete.current = false;
+      throw new Error("Interrupted Keychain deletion");
+    }
+    secure.delete(key);
+  }),
 }));
 vi.mock("expo-crypto", async () => {
   const { createHash } = await import("node:crypto");
@@ -64,6 +79,8 @@ beforeEach(async () => {
   secure.clear();
   secureAvailable.current = true;
   failSecureWrite.current = false;
+  failSecureDelete.current = false;
+  failMultiRemove.current = false;
   failNextWrite.current = false;
   failNextRead.current = false;
   await clearSharing();
@@ -154,6 +171,40 @@ describe("group membership storage is atomic within a device", () => {
     expect([...secure.values()]).toContain("original-token");
   });
 
+  test("failed post-commit secure delete preserves success and later cleans the orphan", async () => {
+    await saveMembership({ groupId: "old", name: "Old", memberToken: "old-secret" });
+    failSecureDelete.current = true;
+    await removeMembership("old");
+    expect(store.get("lastride-group-memberships-v2")).toBe("[]");
+    expect(secure.size).toBe(1);
+    expect(store.has("lastride-group-memberships-retired-v1")).toBe(true);
+    // Reading after the Keychain recovers retries the secure deletion.
+    expect(await readMemberships()).toEqual([]);
+    expect(secure.size).toBe(0);
+    expect(store.has("lastride-group-memberships-retired-v1")).toBe(false);
+  });
+
+  test("interrupted index update never destroys still-active secure credentials", async () => {
+    await saveMembership({ groupId: "active", name: "A", memberToken: "active-secret" });
+    failNextWrite.current = true;
+    // The pre-commit retire journal write fails; previous token stays intact.
+    await expect(removeMembership("active")).rejects.toThrow("storage failure");
+    expect((await readMemberships())[0].memberToken).toBe("active-secret");
+    // A later index failure after the journal was staged is also safe.
+    const { default: AsyncStorage } = await import("@react-native-async-storage/async-storage");
+    const original = vi.mocked(AsyncStorage.setItem);
+    const initial = original.getMockImplementation()!;
+    original.mockImplementationOnce(async (key: string, value: string) => {
+      if (key !== "lastride-group-memberships-retired-v1") throw new Error("Incorrect journal order");
+      store.set(key, value);
+    }).mockImplementationOnce(async () => { throw new Error("Index write interrupted"); });
+    await expect(removeMembership("active")).rejects.toThrow("Index write interrupted");
+    original.mockImplementation(initial);
+    expect((await readMemberships())[0].memberToken).toBe("active-secret");
+    expect(secure.size).toBe(1);
+    expect(store.has("lastride-group-memberships-retired-v1")).toBe(false);
+  });
+
   test("missing native capability fails closed, not overwritten by a new join", async () => {
     await saveMembership({ groupId: "first", name: "Friends", memberToken: "keep-me" });
     secure.clear();
@@ -171,6 +222,38 @@ describe("group membership storage is atomic within a device", () => {
     expect(await readMemberships()).toEqual([]);
     await saveMembership({ groupId: "fresh", name: "New phone", memberToken: "new-key" });
     expect((await readMemberships())[0].memberToken).toBe("new-key");
+  });
+
+  test("resumes a reset interrupted by a failed secure deletion without orphaning credentials", async () => {
+    await saveMembership({ groupId: "a", name: "A", memberToken: "secret-a" });
+    await saveMembership({ groupId: "b", name: "B", memberToken: "secret-b" });
+    failSecureDelete.current = true;
+    await expect(clearMemberships()).rejects.toThrow("Interrupted Keychain deletion");
+    expect(store.has("lastride-group-memberships-clear-pending-v1")).toBe(true);
+    // An ordinary read on the next launch completes the recorded reset.
+    expect(await readMemberships()).toEqual([]);
+    expect(secure.size).toBe(0);
+    expect(store.has("lastride-group-memberships-v2")).toBe(false);
+    expect(store.has("lastride-group-memberships-clear-pending-v1")).toBe(false);
+  });
+
+  test("recovers when an AsyncStorage reset batch only partially deleted keys", async () => {
+    await saveMembership({ groupId: "a", name: "A", memberToken: "secret-a" });
+    failMultiRemove.current = true;
+    await expect(clearMemberships()).rejects.toThrow("Interrupted AsyncStorage batch");
+    expect(store.has("lastride-group-memberships-clear-pending-v1")).toBe(true);
+    expect(await readMemberships()).toEqual([]);
+    expect(secure.size).toBe(0);
+    await saveMembership({ groupId: "new", name: "N", memberToken: "secret-new" });
+    expect((await readMemberships()).map((entry) => entry.groupId)).toEqual(["new"]);
+  });
+
+  test("a failed reset marker write does not delete or lose any capability", async () => {
+    await saveMembership({ groupId: "a", name: "A", memberToken: "secret-a" });
+    failNextWrite.current = true;
+    await expect(clearMemberships()).rejects.toThrow("storage failure");
+    expect((await readMemberships())[0].memberToken).toBe("secret-a");
+    expect(secure.size).toBe(1);
   });
 
   test("missing secure storage does not downgrade native tokens to plaintext", async () => {
@@ -195,6 +278,19 @@ describe("group membership storage is atomic within a device", () => {
       clearMemberships(),
     ]);
     expect(await readMemberships()).toEqual([]);
+  });
+
+  test("failed rename retains the previous saved name and token for retry", async () => {
+    await saveMembership({ groupId: "rename", name: "Old", memberToken: "host-secret" });
+    failNextWrite.current = true;
+    await expect(renameMembership("rename", "New")).rejects.toThrow("storage failure");
+    expect(await readMemberships()).toEqual([
+      { groupId: "rename", name: "Old", memberToken: "host-secret" },
+    ]);
+    await renameMembership("rename", "New");
+    expect(await readMemberships()).toEqual([
+      { groupId: "rename", name: "New", memberToken: "host-secret" },
+    ]);
   });
 
   test("a transient read failure does not destroy existing capability tokens", async () => {
