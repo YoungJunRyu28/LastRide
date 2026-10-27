@@ -778,9 +778,13 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
   nightEndRef.current = nightEnd;
 
   // Persisted so the app can open offline later in the night and still know tonight's plan.
+  // A previously committed effect can still flush while a full reset is in
+  // progress. Fence it with the session captured DURING render, and serialize
+  // persistence with explicit deletes in savedPlan.ts.
+  const savedPlanSession = sessionRef.current;
   useEffect(() => {
-    void writeSavedPlan(basePlan);
-  }, [basePlan]);
+    if (savedPlanSession === sessionRef.current) void writeSavedPlan(basePlan);
+  }, [basePlan, savedPlanSession]);
 
   // Apple's trains before the last one are looked up for the chosen station only:
   // fill them in when the station changes (a pin) or a saved plan comes back without them.
@@ -1665,8 +1669,8 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
   const profileMinute = trackingMode === "background" ? Math.floor(nowMs / 60_000) : 0;
   useEffect(() => {
     if (trackingMode !== "background") return;
-    void applyLocationProfile(locationProfile(plan, getNow()));
-  }, [trackingMode, plan, profileMinute, getNow]);
+    void applyLocationProfile(locationProfile(plan, getNow()), language);
+  }, [trackingMode, plan, profileMinute, getNow, language]);
 
   // Permissions change in iPhone Settings while the app is in the background.
   // Re-check them on launch and whenever the app comes back: show when
@@ -1773,6 +1777,10 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
   /** Clears every saved preference and returns the app to first-launch state. */
   const resetAll = useCallback(async () => {
     sessionRef.current += 1;
+    // Hide the old trip immediately. Pending old-render effects are fenced by
+    // savedPlanSession above; any already-started writes finish before the
+    // queued clearSavedPlan() at the end of reset.
+    setPlan(null);
     await clearPlaceCache();
     await stopTracking();
     await cancelAllReminders();
