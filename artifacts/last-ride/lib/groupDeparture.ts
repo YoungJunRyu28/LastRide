@@ -12,3 +12,15 @@ export async function completeGroupDeparture(
   await forgetDevice();
   navigateAway();
 }
+
+/**
+ * Do not delete the capability needed to retry an outstanding leave-time
+ * update until its durable sharing outbox is cleared.
+ */
+export async function forgetGroupLocalAccess(
+  stopPendingShares: () => Promise<void>,
+  removeCredential: () => Promise<void>,
+): Promise<void> {
+  await stopPendingShares();
+  await removeCredential();
+}

@@ -29,6 +29,7 @@ import {
   type GroupMembership,
 } from "@/lib/groupMemberships";
 import { clearSharing, flushPendingSharedLeaveBy, markSharing, stopSharing, syncSharedLeaveByForGroup } from "@/lib/groupSharing";
+import { forgetGroupLocalAccess } from "@/lib/groupDeparture";
 import { prepareGroupCreation, readPendingGroupCreation, finishGroupCreation, creationDefinitelyRejected } from "@/lib/pendingGroupCreation";
 import { prepareReadableGroupJoin, readPendingGroupJoin, finishGroupJoin, joinDefinitelyRejected } from "@/lib/pendingGroupJoin";
 import { GroupRefreshGuard } from "@/lib/groupRefreshGuard";
@@ -137,8 +138,13 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
     refreshGuard.current.changed(groupId);
     delete deviceRegistrations.current[groupId];
     delete sent.current[groupId];
-    await removeMembership(groupId);
-    await stopSharing(groupId);
+    // Stop queued leave-time deliveries BEFORE retiring the membership
+    // credential. If the outbox write fails, retain the credential so this
+    // departure can be retried without stranding a live background update.
+    await forgetGroupLocalAccess(
+      () => stopSharing(groupId),
+      () => removeMembership(groupId),
+    );
     setMemberships((current) => current.filter((item) => item.groupId !== groupId));
     setDetails((current) => {
       const { [groupId]: _removed, ...rest } = current;

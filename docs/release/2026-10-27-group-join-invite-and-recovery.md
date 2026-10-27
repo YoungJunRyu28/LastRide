@@ -35,5 +35,10 @@ This follow-up to draft PR #48 fixes four concrete issues:
 The HTTP host-self-remove error no longer promises unsupported host role
 transfer; the only supported host departure path is disbanding the group.
 
+During the final pass, local departure cleanup was also reordered so that
+the durable background leave-time outbox is cleared before deleting the
+membership credential. A failed outbox write now leaves the group credential
+available for retry rather than leaving pending sends without a usable token.
+
 Deployment and store release remain gated on signed-device tests, real
 transit coverage, location/notification OS behavior and purchase restore.

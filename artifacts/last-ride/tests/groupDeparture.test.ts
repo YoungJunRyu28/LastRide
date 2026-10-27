@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { completeGroupDeparture } from '@/lib/groupDeparture';
+import { completeGroupDeparture, forgetGroupLocalAccess } from '@/lib/groupDeparture';
 
 describe('group departure must finish local credential cleanup before navigation', () => {
   it('leaves server, then removes local token, then navigates', async () => {
@@ -42,5 +42,25 @@ describe('group departure must finish local credential cleanup before navigation
       failedNavigate,
     )).rejects.toThrow('Keychain inaccessible');
     expect(failedNavigate).not.toHaveBeenCalled();
+  });
+});
+
+describe('local group cleanup after server departure', () => {
+  it('stops the durable leave-time outbox before deleting the group credential', async () => {
+    const order: string[] = [];
+    await forgetGroupLocalAccess(
+      async () => { order.push('stop-sharing'); },
+      async () => { order.push('delete-capability'); },
+    );
+    expect(order).toEqual(['stop-sharing', 'delete-capability']);
+  });
+
+  it('retains the membership key if local outbox cleanup fails', async () => {
+    const removeCredential = vi.fn();
+    await expect(forgetGroupLocalAccess(
+      async () => { throw new Error('outbox storage failure'); },
+      removeCredential,
+    )).rejects.toThrow('outbox storage failure');
+    expect(removeCredential).not.toHaveBeenCalled();
   });
 });
