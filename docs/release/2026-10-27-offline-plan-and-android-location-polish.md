@@ -48,3 +48,17 @@ a restart on language change for an Android-only foreground-service notice.
   delivery or safe public launch.
 
 Review gates: DEPLOYMENT-STOP-POINT.md.
+
+## Shared database CI-test isolation discovered during verification
+
+The first PostgreSQL-backed CI run found a pre-existing order-dependent test in
+rateLimit.test.ts: it selected the first row in a table shared by concurrently
+executing suites, rather than the row matching its own SHA-256 client key. The
+test has been corrected to query that digest exactly, clean up only the fixture
+keys belonging to its suite, and use a fixed historic window for expiration
+tests to avoid deleting current rows from another suite. This modifies test
+isolation, not production rate-limiting behavior.
+
+The local container has no configured PostgreSQL. Passing mobile and TypeScript
+tests is separate from passing this database-backed check; the amended branch
+must be rerun in GitHub CI to establish that result.

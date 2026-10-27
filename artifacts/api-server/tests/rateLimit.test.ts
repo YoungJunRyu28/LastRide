@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { apiRateLimitsTable, getDb } from "@workspace/db";
 import {
   FixedWindowLimiter,
@@ -40,13 +40,22 @@ describe("FixedWindowLimiter", () => {
   });
 });
 
+// PostgreSQL integration suites run concurrently and share the same fixture
+// database. Never delete other suites' rows or assume LIMIT 1 returns ours.
+const ownHashes = [
+  createHash("sha256").update("client:203.0.113.10").digest("hex"),
+  createHash("sha256").update("public-lookup:203.0.113.99").digest("hex"),
+  "a".repeat(64),
+  "b".repeat(64),
+];
+async function clearOnlyTestRateWindows() {
+  await getDb().delete(apiRateLimitsTable)
+    .where(inArray(apiRateLimitsTable.keyHash, ownHashes));
+}
+
 describe("shared database rate limiter", () => {
-  beforeEach(async () => {
-    await getDb().delete(apiRateLimitsTable);
-  });
-  afterAll(async () => {
-    await getDb().delete(apiRateLimitsTable);
-  });
+  beforeEach(clearOnlyTestRateWindows);
+  afterAll(clearOnlyTestRateWindows);
 
   it("shares one allowance across concurrent callers", async () => {
     const now = 100_000;
@@ -63,15 +72,18 @@ describe("shared database rate limiter", () => {
     const rawKey = "public-lookup:203.0.113.99";
     await checkSharedRateLimit(rawKey, 10, 60_000, 100_000);
 
-    const [row] = await getDb().select().from(apiRateLimitsTable).limit(1);
-    expect(row.keyHash).toBe(
-      createHash("sha256").update(rawKey, "utf8").digest("hex"),
-    );
+    const digest = createHash("sha256").update(rawKey, "utf8").digest("hex");
+    const [row] = await getDb().select().from(apiRateLimitsTable)
+      .where(eq(apiRateLimitsTable.keyHash, digest)).limit(1);
+    expect(row).toBeDefined();
+    expect(row.keyHash).toBe(digest);
     expect(row.keyHash).not.toContain("203.0.113.99");
   });
 
   it("purges expired windows without deleting live windows", async () => {
-    const now = new Date();
+    // A fixed epoch before other suites' rate-limit windows avoids deleting
+    // their expired rows while testing the global garbage collector.
+    const now = new Date(0);
     await getDb().insert(apiRateLimitsTable).values([
       {
         keyHash: "a".repeat(64),
