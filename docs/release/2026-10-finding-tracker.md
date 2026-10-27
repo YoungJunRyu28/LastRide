@@ -29,7 +29,7 @@ This records the 58 findings from the static source audit. **Fixed** means the c
 | LR-023 | Stale invite shown after rotation when push lost | **Partial — in PR #48** | Share action fetches fresh server invite and never sends unverified cached token; still test notification loss and rotations while view stays open |
 | LR-024 | Host-transfer error promises unavailable transfer | **Fixed in review PR** | Error now instructs disbanding rather than implying a nonexistent host-transfer feature |
 | LR-025 | Duplicate group member on multiple personal devices | **Pending** | Identity/recovery plan |
-| LR-026 | iPhone-only copy appears on Android | **Partial** | Reset screen neutralized; full locale audit |
+| LR-026 | iPhone-only copy appears on Android | **Partial — copy pass** | Mobile Japanese UI review spans onboarding, Ride, destinations, groups, notifications, widgets and organizer; full native Android/iOS screenshot, permission and accessibility QA still required |
 | LR-027 | Group invite landing page shows only App Store | **Partial** | Platform-aware links implemented; publish only after verified App Store / Play / Galaxy listings are live |
 | LR-028 | Generic group API error messages | **Pending** | Localized actionable error states |
 | LR-029 | Scheduling error suppressed; fallback misses alerts | **Partial P1** | Backup EventBridge scan every 5 min instead of 30 (alert grace 10 min); Business worker failure no longer prevents re-arming group Scheduler. Signed device delivery, AWS schedule failure alarms and Neon CU cost validation still pending |
@@ -37,7 +37,7 @@ This records the 58 findings from the static source audit. **Fixed** means the c
 | LR-031 | Group Expo push receipts unreconciled | **Partial** | Minimal opaque receipt-only journal (2h TTL; token SHA-256, no trip/leave time/raw push token) survives 08:05 night purge; 15m all-day receipt checks, backfill of in-flight tickets, safe token rotation. Retention/privacy approval and real APNs/FCM receipt QA still required |
 | LR-032 | Motionless background task not guaranteed by OS | **Pending** | Local alarms and foreground recovery |
 | LR-033 | One destination request failure discards good routes | **Fixed in source** | Provider failure chaos/integration test |
-| LR-034 | Shared-IP route lookups exhaust limiter | **Pending** | Per-client budget and multicaller simulations |
+| LR-034 | Shared-IP route lookups exhaust limiter | **Partial — in review PR** | Separate 240/min local budget for each lookup family and aggregate 720/min IP guard; denied family requests no longer drain other families' shared budget. Campus NAT 50-client simulation and overall abuse limits tested; gateway-wide throttling, staging load, Lambda instance fanout and operational tuning still required |
 | LR-035 | Straight-line walking ignores geography/barriers | **Partial P0** | Server `/walk` and ODPT nearby return explicit `estimated` provenance; iOS MapKit returns `routed` only for valid native ETAs. Plans propagate provenance, recommend leaving 3–15 min earlier for unverified walks, label times as estimates and link to walking directions; saved legacy plans fail conservative. Actual pedestrian routing, barriers, accessible entrances and measured route corpus remain P0 release blockers |
 | LR-036 | iOS vs Android latest train results disagree | **Pending P0** | Provider parity corpus |
 | LR-037 | Changes under 60 sec not re-sent | **Decision pending** | Product spec + threshold tests |
