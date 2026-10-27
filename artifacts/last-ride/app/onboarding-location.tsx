@@ -31,7 +31,7 @@ export default function OnboardingLocationScreen() {
     const granted = await requestNightLocationPermission(choice);
     // A refused "when closed" can still leave foreground access; ask again at tracking time otherwise.
     if (granted) setNightLocationMode(choice);
-    // "Always" not confirmed yet: app-only for now, switching to 閉じても更新 by itself
+    // "Always" not confirmed yet: app-only for now, switching to アプリを閉じても更新 by itself
     // as soon as iOS allows it (its prompt can come late, or the user allows it in Settings).
     else if (choice === 'background' && (await requestNightLocationPermission('foreground'))) setNightLocationMode('foreground', { pendingAlways: true });
     else setNightLocationMode('ask');
@@ -47,16 +47,16 @@ export default function OnboardingLocationScreen() {
   const options: Array<{ value: Choice; title: string; body: string; recommended?: boolean }> = [
     {
       value: 'background',
-      title: ja ? '閉じても更新' : 'Update when closed',
+      title: ja ? 'アプリを閉じても更新' : 'Update when closed',
       body: ja
-        ? '夜のトラッキング中だけ。アプリを閉じても移動に合わせて出発時刻と通知を更新します。毎日ずっと使うわけではありません。'
+        ? '夜間の案内中のみ使用します。アプリを閉じていても、移動に合わせて出発時刻や通知を更新できます。常時利用するものではありません。'
         : 'Only during night tracking. Your leave time and alerts follow you even with the app closed. Never all day.',
       recommended: true,
     },
     {
       value: 'foreground',
       title: ja ? 'アプリ使用中のみ' : 'Only while using the app',
-      body: ja ? '閉じている間は更新せず、最後に計算した予定で通知します。' : 'No updates while closed; alerts use the last plan.',
+      body: ja ? 'アプリを閉じている間は位置情報を更新せず、最後に計算した出発時刻をもとに通知します。' : 'No updates while closed; alerts use the last plan.',
     },
   ];
 
@@ -74,10 +74,10 @@ export default function OnboardingLocationScreen() {
     >
       <OnboardingHeading
         kicker={ja ? '位置情報' : 'LOCATION'}
-        title={ja ? '移動しても\n出発時刻を正確に' : 'Keep your leave time\nright as you move'}
+        title={ja ? '移動に合わせて\n出発時刻を更新' : 'Keep your leave time\nright as you move'}
         lead={
           ja
-            ? '位置情報で近くの駅と徒歩時間を調べます。夜のトラッキング中は、アプリを閉じている間も位置情報を使い、駅・出発時刻・リマインダーを更新できます。位置情報は経路の計算のために当社のサーバーと地図サービスに送信されます。'
+            ? '近くの駅や徒歩時間を調べ、出発時刻の目安を計算します。「アプリを閉じても更新」を選ぶと、案内中はアプリを閉じていても位置情報を利用して駅や出発時刻を更新できます。経路の計算には当社サーバーや地図サービスへ位置情報を送信する場合があります。'
             : 'Location finds your nearest station and walking time. During night tracking it can also be used while the app is closed, to keep your station, leave time and reminders current. It is sent to our server and a map service to calculate routes.'
         }
       />
@@ -124,7 +124,7 @@ export default function OnboardingLocationScreen() {
       <View style={styles.footnoteRow}>
         <Feather name="settings" size={13} color={colors.mutedForeground} />
         <Text style={[styles.footnote, { color: colors.mutedForeground }]}>
-          {ja ? 'あとから設定 › 夜の位置情報 で変更できます。' : 'Change it any time in Settings › Night location.'}
+          {ja ? 'あとから「設定」→「夜間の位置情報」で変更できます。' : 'Change it any time in Settings › Night location.'}
         </Text>
       </View>
     </OnboardingFrame>

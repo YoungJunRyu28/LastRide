@@ -51,7 +51,7 @@ function GroupRow({ entry, ja }: { entry: GroupEntry; ja: boolean }) {
         ? `今夜 ${participants.length}人参加${first ? ` · 最初の出発 ${formatJstTime(Date.parse(first))}` : ''}`
         : `${participants.length} in tonight${first ? ` · first leaves ${formatJstTime(Date.parse(first))}` : ''}`
       : ja
-        ? `${detail.members.length}人 · ${detail.me.role === 'host' ? 'あなたがホスト' : 'あなたはメンバー'}`
+        ? `${detail.members.length}人 · ${detail.me.role === 'host' ? 'ホスト' : 'メンバー'}`
         : `${detail.members.length} people · ${detail.me.role === 'host' ? 'you host' : 'member'}`;
   return (
     <Pressable
@@ -69,7 +69,7 @@ function GroupRow({ entry, ja }: { entry: GroupEntry; ja: boolean }) {
             {detail?.name ?? membership.name}
           </Text>
           {active && (
-            <Text style={[styles.badge, { backgroundColor: colors.primary, color: colors.primaryForeground }]}>{ja ? '今夜アクティブ' : 'Tonight'}</Text>
+            <Text style={[styles.badge, { backgroundColor: colors.primary, color: colors.primaryForeground }]}>{ja ? '今夜の共有中' : 'Tonight'}</Text>
           )}
         </View>
         {active && participants.length > 0 && <Initials names={participants.map((participant) => participant.displayName)} />}
@@ -97,14 +97,14 @@ export default function GroupsScreen() {
   const ja = language !== 'en';
   const forgetUnavailable = React.useCallback(() => {
     Alert.alert(
-      ja ? 'この端末のグループ情報を削除しますか？' : 'Forget local group access?',
+      ja ? 'この端末のグループ情報を消去しますか？' : 'Forget local group access?',
       ja
         ? 'この端末に保存されたグループの参加情報がすべて失われます。元に戻せません。サーバー上のグループや参加者は削除されません。再参加には新しい招待が必要です。ホストの場合はグループが残る場合があります。'
         : 'This permanently removes saved group access from this device, including keys that might still be recoverable. It does not delete server-side groups or remove you as a host. You will need new invitations to rejoin.',
       [
         { text: ja ? 'キャンセル' : 'Cancel', style: 'cancel' },
         {
-          text: ja ? '端末の情報を削除' : 'Forget on this device',
+          text: ja ? 'この端末から消去' : 'Forget on this device',
           style: 'destructive',
           onPress: () => {
             void clearUnavailableMemberships().catch(() => {
@@ -153,7 +153,7 @@ export default function GroupsScreen() {
             </Text>
             <Text style={[styles.optionBody, { color: colors.mutedForeground }]}>
               {ja
-                ? '端末の復元後などに、暗号化されたグループのキーが失われることがあります。グループのデータは勝手に消去されません。接続・端末設定を確認して再試行してください。復旧できない場合は招待した方にご相談ください。'
+                ? '端末の復元などにより、グループの認証情報を読み込めなくなる場合があります。グループのデータは自動削除されません。通信状況を確認して再試行してください。復元できない場合は、グループのホストに新しい招待を依頼してください。'
                 : 'A device restore can lose the encrypted keys for your groups. LastRide has not erased your saved group list. Check your device and try again; if the keys cannot be recovered, contact your group host for a new invitation.'}
             </Text>
             <SecondaryButton label={ja ? 'もう一度読み込む' : 'Try again'} onPress={() => void refresh()} />
@@ -164,13 +164,13 @@ export default function GroupsScreen() {
               style={{ paddingVertical: 12, alignItems: 'center' }}
             >
               <Text style={{ color: colors.mutedForeground, textDecorationLine: 'underline', fontSize: 13 }}>
-                {ja ? '復旧できないグループ情報をこの端末から削除' : 'Forget inaccessible groups on this device'}
+                {ja ? '復元できないグループ情報を消去' : 'Forget inaccessible groups on this device'}
               </Text>
             </Pressable>
           </Card>
         ) : !available ? (
           <Text style={[styles.note, { color: colors.mutedForeground }]}>
-            {ja ? 'グループにはサーバー接続が必要です。' : 'Groups need the LastRide server.'}
+            {ja ? 'グループ機能を使うにはインターネット接続が必要です。' : 'Groups need the LastRide server.'}
           </Text>
         ) : loading && empty ? (
           <ActivityIndicator color={colors.primary} />
@@ -179,11 +179,11 @@ export default function GroupsScreen() {
             <View style={[styles.hero, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <Feather name="users" size={28} color={colors.primary} />
               <Text style={[styles.heroTitle, { color: colors.foreground }]}>
-                {ja ? '飲み会のみんなと\n帰る時間を共有' : 'Share leave times\nwith your group'}
+                {ja ? 'みんなで\n帰る時間を共有' : 'Share leave times\nwith your group'}
               </Text>
               <Text style={[styles.heroBody, { color: colors.mutedForeground }]}>
                 {ja
-                  ? 'ホストがグループを作り、リンクを送るだけ。メンバーの出発時刻が並び、出発の時間になると全員に通知されます。'
+                  ? 'グループを作って招待リンクを送るだけ。参加者の出発時刻を一覧で確認でき、出発時にはグループに通知が届きます。'
                   : 'The host makes a group and sends a link. Everyone’s leave time lines up, and the group is notified when it’s someone’s time to go.'}
               </Text>
             </View>
@@ -191,12 +191,12 @@ export default function GroupsScreen() {
               <Card style={styles.option}>
                 <Text style={[styles.optionTitle, { color: colors.foreground }]}>{ja ? '参加する' : 'Join'}</Text>
                 <Text style={[styles.free, { color: colors.primary }]}>{ja ? '無料' : 'Free'}</Text>
-                <Text style={[styles.optionBody, { color: colors.mutedForeground }]}>{ja ? 'リンクかコードで。アカウント不要' : 'By link or code. No account'}</Text>
+                <Text style={[styles.optionBody, { color: colors.mutedForeground }]}>{ja ? 'リンクやコードから参加。会員登録は不要' : 'By link or code. No account'}</Text>
               </Card>
               <Card style={styles.option}>
-                <Text style={[styles.optionTitle, { color: colors.foreground }]}>{ja ? '作る・ホスト' : 'Create & host'}</Text>
+                <Text style={[styles.optionTitle, { color: colors.foreground }]}>{ja ? 'グループを作成' : 'Create & host'}</Text>
                 <PremiumTag label={ja ? 'プレミアム' : 'Premium'} />
-                <Text style={[styles.optionBody, { color: colors.mutedForeground }]}>{ja ? '何度でも使えるグループ' : 'A group you keep using'}</Text>
+                <Text style={[styles.optionBody, { color: colors.mutedForeground }]}>{ja ? '繰り返し使えるグループを作成' : 'A group you keep using'}</Text>
               </Card>
             </View>
             <PrimaryButton
@@ -222,7 +222,7 @@ export default function GroupsScreen() {
               {!isPremium && <PremiumTag label={ja ? 'プレミアム' : 'Premium'} />}
             </Pressable>
             <Text style={[styles.note, { color: colors.mutedForeground }]}>
-              {ja ? '参加は無料。共有されるのは表示名と出発時刻だけです。' : 'Joining is free. Only your display name and leave time are shared.'}
+              {ja ? '参加は無料です。共有されるのは表示名と出発時刻のみです。' : 'Joining is free. Only your display name and leave time are shared.'}
             </Text>
           </>
         )}

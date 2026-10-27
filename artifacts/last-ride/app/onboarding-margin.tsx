@@ -14,7 +14,7 @@ function clock(minutes: number) {
   return `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, '0')}`;
 }
 
-/** Setup: 早めに出る時間 (余裕), how many minutes before the latest time to leave. */
+/** Setup: 出発までの余裕時間 (余裕), how many minutes before the latest time to leave. */
 export default function OnboardingMarginScreen() {
   const colors = useColors();
   const { language, leaveMargin, setLeaveMargin } = useLastRide();
@@ -30,11 +30,11 @@ export default function OnboardingMarginScreen() {
       }
     >
       <OnboardingHeading
-        kicker={ja ? '早めに出る時間' : 'LEAVE EARLY BY'}
-        title={ja ? '何分早めに\n出発しますか？' : 'How much time\nto spare?'}
+        kicker={ja ? '出発までの余裕時間' : 'LEAVE EARLY BY'}
+        title={ja ? '何分前に\n出発しますか？' : 'How much time\nto spare?'}
         lead={
           ja
-            ? '「遅くとも」の時刻ぎりぎりではなく、この分だけ早く出るようお知らせします。'
+            ? '計算した最終の出発時刻より、何分早く出るかを設定します。'
             : 'Instead of the very latest time, we’ll tell you to leave this much earlier.'
         }
       />
@@ -52,7 +52,7 @@ export default function OnboardingMarginScreen() {
       </Text>
       <Text style={[styles.footnote, { color: colors.mutedForeground }]}>
         {ja
-          ? '乗り換えが多い日や駅まで遠い日は、自動で少し足します。あとから設定で変更できます。'
+          ? '乗り換えや駅までの徒歩時間に応じて、余裕時間を追加する場合があります。あとから設定で変更できます。'
           : 'A little more is added for routes with changes or long walks. You can change this later in Settings.'}
       </Text>
     </OnboardingFrame>

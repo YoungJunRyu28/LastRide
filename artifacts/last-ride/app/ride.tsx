@@ -194,13 +194,13 @@ export default function RideScreen() {
   // 停止 while sharing with a group: ask whether to stop sharing too (the time
   // would otherwise stay as last sent, no longer following you).
   const alwaysCard = useAlwaysCard(trackingMode === "foreground");
-  // 今夜スタート starts tracking, not just notifications: say how, per the 夜の位置情報 setting.
+  // 案内を開始 starts tracking, not just notifications: say how, per the 夜の位置情報 setting.
   const startNote =
     nightLocationMode === "background" && backgroundAllowed !== false
-      ? { ja: "追跡と通知\n閉じても更新", en: "Tracking + reminders\nalso when closed" }
+      ? { ja: "位置情報と通知\n閉じていても更新", en: "Tracking + reminders\nalso when closed" }
       : nightLocationMode === "ask"
-        ? { ja: "追跡と通知を\n開始", en: "Starts tracking\n+ reminders" }
-        : { ja: "追跡と通知\n開いている間", en: "Tracking + reminders\nwhile open" };
+        ? { ja: "位置情報の更新と\n通知を開始", en: "Starts tracking\n+ reminders" }
+        : { ja: "位置情報と通知\nアプリ使用中のみ", en: "Tracking + reminders\nwhile open" };
   const confirmStop = () => {
     if (sharingTonight.length === 0) {
       void stopTracking();
@@ -210,7 +210,7 @@ export default function RideScreen() {
     Alert.alert(
       ja ? "グループへの共有も止めますか？" : "Stop sharing with your group too?",
       ja
-        ? `${names}に今夜の出発時刻を共有しています。トラッキングを止めると、時刻は更新されなくなります。`
+        ? `${names}に今夜の出発時刻を共有しています。位置情報の更新を停止すると、共有中の出発時刻も更新されなくなります。`
         : `You’re sharing tonight’s leave time with ${names}. Once tracking stops, it won’t be updated.`,
       [
         { text: ja ? "共有は続ける" : "Keep sharing", onPress: () => void stopTracking() },
@@ -312,7 +312,7 @@ export default function RideScreen() {
       ? `${destinationName}へ`
       : `To ${destinationName}`
     : ja
-      ? "帰り先を設定"
+      ? "帰る場所を設定"
       : "Set destination";
   const viaStation =
     plan && homeStationOption && !sameStation(plan.destination, homeStationOption)
@@ -447,7 +447,7 @@ export default function RideScreen() {
             <Feather name="unlock" color={colors.primary} size={18} />
             <Text style={[styles.note, styles.flex, { color: colors.foreground }]}>
               {ja
-                ? `固定した${lockFallback.nameJa}駅からは帰れないため、自動で選んでいます`
+                ? `${lockFallback.nameJa}駅からの帰宅ルートが見つからないため、出発駅を自動選択に戻しました`
                 : `${lockFallback.name} can’t get you home any more, so the station is chosen automatically`}
             </Text>
             <Pressable
@@ -490,10 +490,10 @@ export default function RideScreen() {
                   >
                     {gain >= 5
                       ? ja
-                        ? `自動なら${autoName}で${gain}分遅く出られます。`
+                        ? `自動で選ぶと、${autoName}駅から${gain}分遅く出発できます。`
                         : `${autoName} would give you ${gain} more minutes.`
                       : ja
-                        ? "自動での駅の切り替えは止まっています。"
+                        ? "出発駅の自動切り替えはオフです。"
                         : "Automatic station switching is paused."}
                   </Text>
                 </View>
@@ -530,7 +530,7 @@ export default function RideScreen() {
             <Feather name="bell-off" color={colors.destructive} size={18} />
             <View style={styles.flex}>
               <Text style={[styles.rowTitle, { color: colors.foreground }]}>
-                {ja ? "通知がオフになっています" : "Notifications are off"}
+                {ja ? "通知が許可されていません" : "Notifications are off"}
               </Text>
               <Text style={[styles.note, { color: colors.mutedForeground }]}>
                 {ja
@@ -591,7 +591,7 @@ export default function RideScreen() {
                   : `On the ${formatJstTime(boarded.trainDepartsAt)} train (${trainChoiceLabel(boarded.choice, false).toLowerCase()})`}
               </Text>
               <Text style={[styles.note, { color: colors.mutedForeground }]}>
-                {ja ? "今夜のリマインダーとトラッキングは止めました。" : "Tonight’s reminders and tracking are off."}
+                {ja ? "今夜の通知と位置情報の更新を停止しました。" : "Tonight’s reminders and tracking are off."}
               </Text>
             </View>
             <Pressable
@@ -684,7 +684,7 @@ export default function RideScreen() {
               testID="start-tracking"
               onPress={() => void startTracking()}
               accessibilityRole="button"
-              accessibilityLabel={ja ? `今夜スタート。${startNote.ja.replace("\n", "、")}` : `Start tonight. ${startNote.en.replace("\n", ", ")}`}
+              accessibilityLabel={ja ? `案内を開始。${startNote.ja.replace("\n", "、")}` : `Start tonight. ${startNote.en.replace("\n", ", ")}`}
               style={({ pressed }) => [
                 styles.startCircle,
                 { backgroundColor: colors.primary, shadowColor: colors.primary, opacity: pressed ? 0.85 : 1 },
@@ -692,7 +692,7 @@ export default function RideScreen() {
             >
               <Feather name="moon" size={28} color={colors.primaryForeground} />
               <Text maxFontSizeMultiplier={1.2} style={[styles.startTitle, { color: colors.primaryForeground }]}>
-                {ja ? "今夜スタート" : "Start tonight"}
+                {ja ? "案内を開始" : "Start tonight"}
               </Text>
               <Text numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.85} maxFontSizeMultiplier={1.2} style={[styles.startNote, { color: colors.primaryForeground }]}>
                 {ja ? startNote.ja : startNote.en}
@@ -718,7 +718,7 @@ export default function RideScreen() {
                   ? "終電は発車しました"
                   : "The last train has left"
                 : ja
-                  ? "ここを出る時刻"
+                  ? "出発する時刻"
                   : "Leave at"}
             </Text>
             <Text
@@ -771,7 +771,7 @@ export default function RideScreen() {
               >
                 {trackingMode !== null ? (
                   <>
-                    <Text style={[styles.statusStrong, { color: colors.foreground }]}>{ja ? "トラッキング中" : "Tracking"}</Text>
+                    <Text style={[styles.statusStrong, { color: colors.foreground }]}>{ja ? "位置情報を更新中" : "Tracking"}</Text>
                     {planAge === 0
                       ? ja
                         ? " · たった今確認"
@@ -828,10 +828,10 @@ export default function RideScreen() {
             <Feather name="moon" color={colors.primary} size={16} />
             <View style={styles.flex}>
               <Text numberOfLines={1} style={[styles.alwaysTitle, { color: colors.foreground }]}>
-                {ja ? "開いている間だけ更新中" : "Updating only while open"}
+                {ja ? "アプリの使用中のみ更新" : "Updating only while open"}
               </Text>
               <Text numberOfLines={2} style={[styles.note, { color: colors.mutedForeground }]}>
-                {ja ? "閉じている間は駅や時刻が更新されません" : "Your station and times won’t update while closed"}
+                {ja ? "アプリを閉じると、駅や出発時刻は更新されません" : "Your station and times won’t update while closed"}
               </Text>
             </View>
             <Pressable
@@ -844,7 +844,7 @@ export default function RideScreen() {
               accessibilityRole="button"
               style={({ pressed }) => [styles.smallButton, { backgroundColor: colors.primary, borderColor: colors.primary, opacity: pressed ? 0.85 : 1 }]}
             >
-              <Text style={[styles.smallButtonText, { color: colors.primaryForeground }]}>{ja ? "閉じても更新" : "Keep updating"}</Text>
+              <Text style={[styles.smallButtonText, { color: colors.primaryForeground }]}>{ja ? "アプリを閉じても更新" : "Keep updating"}</Text>
             </Pressable>
             <Pressable
               testID="always-card-close"
@@ -861,10 +861,10 @@ export default function RideScreen() {
           <Text style={[styles.note, { color: colors.mutedForeground }]}>
             {nightLocationMode === "background" && backgroundAllowed === false
               ? ja
-                ? "位置情報が「常に」ではないため、開いている間だけ更新します。"
+                ? "位置情報の許可が「常に」ではないため、アプリの使用中のみ更新します。"
                 : "Location isn’t “Always”, so this updates only while open."
               : ja
-                ? "アプリを開いている間だけ更新します。"
+                ? "アプリの使用中のみ位置情報を更新します。"
                 : "Updates while the app is open."}
           </Text>
         )}
@@ -884,11 +884,11 @@ export default function RideScreen() {
               <Text
                 style={[styles.rowTitle, { color: colors.primaryForeground }]}
               >
-                {ja ? "終電に間に合いませんでしたか？" : "Missed the last train?"}
+                {ja ? "終電を逃しましたか？" : "Missed the last train?"}
               </Text>
               <Text style={[styles.note, { color: colors.primaryForeground }]}>
                 {ja
-                  ? "始発・タクシー・朝まで過ごせる場所を見る"
+                  ? "始発・タクシー・近くの施設を探す"
                   : "See the first train, a taxi, and places to stay"}
               </Text>
             </View>
@@ -903,9 +903,9 @@ export default function RideScreen() {
         {disruptionFeedUnavailable && (
           <Notice
             icon="alert-triangle"
-            title={ja ? "運行情報を確認できません" : "Service alerts unavailable"}
+            title={ja ? "最新の運行情報を取得できません" : "Service alerts unavailable"}
             body={ja
-              ? "運転見合わせ・遅延の最新情報を取得できません。表示されている終電時刻は運行を保証するものではありません。駅・鉄道会社の情報を直接ご確認ください。"
+              ? "運転見合わせ・遅延の最新情報を取得できません。表示中の終電時刻は、実際の運行状況を反映していない可能性があります。鉄道会社の公式情報をご確認ください。"
               : "Live delays and suspensions could not be checked. Your last-train estimate does not confirm that trains are running. Verify with your railway operator."}
           />
         )}
@@ -948,7 +948,7 @@ export default function RideScreen() {
                         ? `● 出発時刻を共有中 · 今夜${count}人${nextInGroup?.leaveBy ? ` · 次は${nextInGroup.displayName}さん ${formatJstTime(Date.parse(nextInGroup.leaveBy))}` : ""}`
                         : `● Sharing your leave time · ${count} tonight${nextInGroup?.leaveBy ? ` · next: ${nextInGroup.displayName} ${formatJstTime(Date.parse(nextInGroup.leaveBy))}` : ""}`
                       : ja
-                        ? `今夜の会がはじまりました · ${count}人参加中`
+                        ? `今夜の共有が始まりました · ${count}人参加中`
                         : `Tonight has started · ${count} joined`}
                   </Text>
                 </View>
@@ -1165,7 +1165,7 @@ export default function RideScreen() {
                 >
                   <View style={styles.flex}>
                     <Text style={[styles.otherLabel, { color: colors.mutedForeground }]}>
-                      {ja ? "ほかの駅から" : "Other stations"}
+                      {ja ? "別の駅から帰る" : "Other stations"}
                     </Text>
                     {!showOtherStations && (
                       <Text
@@ -1218,7 +1218,7 @@ export default function RideScreen() {
                             {name}
                             {isAutoPick ? (
                               <Text style={[styles.note, { color: colors.primary }]}>
-                                {ja ? "  自動のおすすめ" : "  Automatic pick"}
+                                {ja ? "  おすすめの駅" : "  Automatic pick"}
                               </Text>
                             ) : null}
                           </Text>
@@ -1300,11 +1300,11 @@ export default function RideScreen() {
               <Text style={[styles.rowTitle, { color: colors.foreground }]}>
                 {isLocating
                   ? ja
-                    ? "最寄り駅を検索中…"
+                    ? "近くの駅を検索しています…"
                     : "Finding your closest station…"
                   : locationError === "near-home"
                     ? ja
-                      ? "帰り先の近くにいます"
+                      ? "目的地の近くにいます"
                       : "You're near home"
                     : ja
                       ? "位置情報を使う"
@@ -1314,7 +1314,7 @@ export default function RideScreen() {
                 {locationError
                   ? locationErrorText(locationError, ja)
                   : ja
-                    ? "最寄り駅と徒歩時間を正確にします"
+                    ? "近くの駅と徒歩時間を確認します"
                     : "Find your closest station and walking time."}
               </Text>
             </View>
@@ -1324,7 +1324,7 @@ export default function RideScreen() {
         {plan?.lastTrain.approximate && (
           <Notice
             icon="info"
-            title={ja ? "終電の時刻は目安です" : "The last train time is approximate"}
+            title={ja ? "終電時刻は推定値です" : "The last train time is approximate"}
             body={
               ja
                 ? "この区間はApple Mapsの推定で、電車か徒歩かを確認できませんでした。乗換案内アプリでも確認してください。"
@@ -1361,10 +1361,10 @@ export default function RideScreen() {
         {lastTrainSource === "sample" && (
           <Notice
             icon="info"
-            title={ja ? "サンプルの時刻です" : "Sample train times"}
+            title={ja ? "サンプルデータを表示しています" : "Sample train times"}
             body={
               ja
-                ? "時刻表データはまだ接続されていません。表示中の終電時刻は仮の値で、実際のダイヤではありません。"
+                ? "時刻表データを取得できていません。表示中の終電時刻はサンプル値であり、実際の運行時刻ではありません。"
                 : "Live timetables aren’t connected yet. The last train shown is a placeholder, not a real schedule."
             }
           />

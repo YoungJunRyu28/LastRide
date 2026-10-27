@@ -10,34 +10,34 @@ export default function NightLocationScreen() {
   const ja = language === 'ja';
 
   return (
-    <SettingsPage title={ja ? '夜の位置情報' : 'Night location'} backLabel={ja ? '設定' : 'Settings'}>
+    <SettingsPage title={ja ? '夜間の位置情報' : 'Night location'} backLabel={ja ? '設定' : 'Settings'}>
       <Section
         footer={
           nightLocationMode === 'ask'
             ? ja
-              ? '夜のトラッキング中だけ使います。まだ選ばれていないため、次にトラッキングを始めるときに確認します。'
+              ? '夜間の案内中のみ位置情報を使用します。次回、案内を開始するときに使用方法を確認します。'
               : 'Only used during night-out tracking. Not chosen yet, so you’ll be asked when you next start tracking.'
             : ja
-              ? '夜のトラッキング中だけ使います。'
+              ? '夜間の案内中のみ位置情報を使用します。'
               : 'Only used during night-out tracking.'
         }
       >
         <Row
           testID="night-location-foreground"
-          title={ja ? 'アプリのみ' : 'App open'}
-          subtitle={ja ? 'アプリを開いている間だけ更新' : 'Updates while the app is open'}
+          title={ja ? 'アプリの使用中のみ' : 'App open'}
+          subtitle={ja ? 'アプリの使用中のみ位置情報を更新' : 'Updates while the app is open'}
           checked={nightLocationMode === 'foreground'}
           onPress={() => setNightLocationMode('foreground')}
         />
         <Divider />
         <Row
           testID="night-location-background"
-          title={ja ? '閉じても更新' : 'When closed'}
-          subtitle={ja ? '閉じていても更新（位置情報「常に」）' : 'Also while closed (location “Always”)'}
+          title={ja ? 'アプリを閉じても更新' : 'When closed'}
+          subtitle={ja ? 'アプリを閉じている間も更新（位置情報「常に」）' : 'Also while closed (location “Always”)'}
           checked={nightLocationMode === 'background'}
           onPress={() => {
             setNightLocationMode('background');
-            // 閉じても更新 needs iOS "Always": ask now, while the choice is fresh.
+            // アプリを閉じても更新 needs iOS "Always": ask now, while the choice is fresh.
             if (Platform.OS !== 'web') void requestBackgroundLocation();
           }}
         />

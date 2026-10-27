@@ -96,7 +96,7 @@ describe("group push copy", () => {
   it("announces tonight in the member's language", () => {
     const event = { kind: "tonight_started" as const, groupName: "金曜会" };
     expect(groupPushBody(event, "ja")).toBe(
-      "金曜会: ホストが今夜の会を始めました",
+      "金曜会: ホストが今夜の共有を開始しました",
     );
     expect(groupPushBody(event, "en")).toBe(
       "金曜会: The host started tonight's meetup",
@@ -127,7 +127,7 @@ describe("group push copy", () => {
       ],
     );
     expect(messages.map((message) => message.body)).toEqual([
-      "金曜会: ホストが今夜の会を始めました",
+      "金曜会: ホストが今夜の共有を開始しました",
       "金曜会: The host started tonight's meetup",
     ]);
     expect(messages[0].data).toEqual({

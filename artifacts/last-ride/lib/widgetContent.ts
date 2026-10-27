@@ -67,7 +67,7 @@ export type LeaveWidgetProps = {
   leaveLine: string;
   /** "22:10に確認" */
   checked: string;
-  /** "今夜スタートで、移動に合わせて更新" */
+  /** "案内を開始すると、移動に合わせて更新します" */
   footnote: string;
 
   // first
@@ -133,12 +133,12 @@ export function widgetMessage(
   const text: Record<WidgetMessageReason, [string, string, string, string]> = {
     // No upsell: extensions may not show product promotion or purchase offers
     // (Apple Developer Program License Agreement 3.3.7(E)).
-    premium: ["帰り時を開いてウィジェットを設定してください", "", "Open LastRide to set up this widget", ""],
-    ended: ["今夜の終電は発車しました", "開いてほかの帰り方を確認", "Tonight’s last train has left", "Open for other ways home"],
-    "no-plan": ["今夜の出発時刻は、帰り時を開くと表示", "タップして開く", "Open LastRide to see tonight’s leave time", "Tap to open"],
-    morning: ["今夜の出発時刻は、帰り時を開くと表示", "タップして開く", "Open LastRide to see tonight’s leave time", "Tap to open"],
+    premium: ["LastRideを開いてウィジェットを設定してください", "", "Open LastRide to set up this widget", ""],
+    ended: ["今夜の終電は発車済みです", "開いてほかの帰り方を確認", "Tonight’s last train has left", "Open for other ways home"],
+    "no-plan": ["LastRideを開くと今夜の出発時刻を確認できます", "タップして開く", "Open LastRide to see tonight’s leave time", "Tap to open"],
+    morning: ["LastRideを開くと今夜の出発時刻を確認できます", "タップして開く", "Open LastRide to see tonight’s leave time", "Tap to open"],
     "location-off": ["位置情報がオフです", "開いて、iPhoneの設定で許可してください", "Location is off", "Open to allow it in iPhone Settings"],
-    "near-home": ["帰り先の近くです", "電車に乗る必要はありません", "You’re near your destination", "No train needed from here"],
+    "near-home": ["目的地の近くにいます", "電車に乗る必要はありません", "You’re near your destination", "No train needed from here"],
     "no-route": ["電車が見つかりません", "開いて確認", "No train found", "Open to check"],
   };
   const [jaMessage, jaHint, enMessage, enHint] = text[reason];
@@ -252,7 +252,7 @@ function planProps(
     leaveLine: ja ? `出る ${leave}（目安）` : `Leave ~${leave}`,
     checked: ja ? `${checkedAt}に確認` : `Checked ${checkedAt}`,
     arrival: arrivalText(plan, ja),
-    footnote: ja ? "今夜スタートで、移動に合わせて更新" : "Start tonight to follow you as you move",
+    footnote: ja ? "案内を開始すると、移動に合わせて更新します" : "Start tonight to follow you as you move",
     inline: ja ? `${plan.trainChoice ? choice : "終電"} ${time}発 · ${checkedAt}確認` : `${plan.trainChoice ? choice : "Last"} ${time} dep. · checked ${checkedAt}`,
   };
 }

@@ -1288,7 +1288,7 @@ describe("groups HTTP routes", () => {
     const visible = pushes.filter((push) => push.body);
     expect(visible.map((push) => push.body).sort()).toEqual(
       [
-        "金曜会: ホストが今夜の会を始めました",
+        "金曜会: ホストが今夜の共有を開始しました",
         "金曜会: The host started tonight's meetup",
       ].sort(),
     );

@@ -86,7 +86,7 @@ function BusinessScreen() {
       setError(
         status === 403
           ? ja
-            ? "このアカウントは法人プランに登録されていません。"
+            ? "このメールアドレスには法人プランが登録されていません。"
             : "This account is not provisioned for LastRide for Business."
           : ja
             ? "イベントを読み込めませんでした。"
@@ -177,7 +177,7 @@ function BusinessScreen() {
     ) {
       setError(
         ja
-          ? "イベント名・通知時間・参加上限を確認してください。"
+          ? "イベント名・通知時間・参加人数の上限を確認してください。"
           : "Check the event name, alert time, and participant limit.",
       );
       return;
@@ -309,11 +309,11 @@ function BusinessScreen() {
             LASTRIDE FOR BUSINESS
           </Text>
           <Text style={[styles.titleText, { color: colors.foreground }]}>
-            {ja ? "幹事モード" : "Organizer mode"}
+            {ja ? "幹事向け機能" : "Organizer mode"}
           </Text>
           <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
             {ja
-              ? "参加者が帰るタイミングを、空気を壊さず幹事から伝えられます。"
+              ? "参加者の出発時刻をまとめて確認し、帰るタイミングを自然にお知らせできます。"
               : "Help people leave on time without making them break the room’s flow."}
           </Text>
         </View>
@@ -328,16 +328,16 @@ function BusinessScreen() {
             {!enterpriseOtpConfigured() ? (
               <Text style={[styles.body, { color: colors.mutedForeground }]}>
                 {ja
-                  ? "法人サインインはまだサーバー設定されていません。"
+                  ? "法人アカウントへのログインは、現在利用できません。"
                   : "Organizer sign-in has not been configured on this build yet."}
               </Text>
             ) : (
               <>
                 <Text style={[styles.fieldLabel, { color: colors.foreground }]}>
-                  {ja ? "法人メール" : "Work email"}
+                  {ja ? "仕事用メールアドレス" : "Work email"}
                 </Text>
                 <TextInput
-                  accessibilityLabel={ja ? "法人メール" : "Work email"}
+                  accessibilityLabel={ja ? "仕事用メールアドレス" : "Work email"}
                   value={email}
                   onChangeText={setEmail}
                   keyboardType="email-address"
@@ -441,7 +441,7 @@ function BusinessScreen() {
               ]}
             >
               <Text style={[styles.cardTitle, { color: colors.foreground }]}>
-                {ja ? "今夜の飲み会を作成" : "Create tonight’s event"}
+                {ja ? "イベントを作成" : "Create tonight’s event"}
               </Text>
               <TextInput
                 accessibilityLabel={ja ? "イベント名" : "Event name"}
@@ -469,11 +469,11 @@ function BusinessScreen() {
                       { color: colors.mutedForeground },
                     ]}
                   >
-                    {ja ? "通知（分前）" : "Alert (min)"}
+                    {ja ? "通知するタイミング" : "Alert (min)"}
                   </Text>
                   <TextInput
                     accessibilityLabel={
-                      ja ? "通知（分前）" : "Alert (minutes before)"
+                      ja ? "通知するタイミング" : "Alert (minutes before)"
                     }
                     value={alertLead}
                     onChangeText={setAlertLead}
@@ -495,10 +495,10 @@ function BusinessScreen() {
                       { color: colors.mutedForeground },
                     ]}
                   >
-                    {ja ? "参加上限" : "Participant cap"}
+                    {ja ? "参加人数の上限" : "Participant cap"}
                   </Text>
                   <TextInput
-                    accessibilityLabel={ja ? "参加上限" : "Participant cap"}
+                    accessibilityLabel={ja ? "参加人数の上限" : "Participant cap"}
                     value={participantLimit}
                     onChangeText={setParticipantLimit}
                     keyboardType="number-pad"

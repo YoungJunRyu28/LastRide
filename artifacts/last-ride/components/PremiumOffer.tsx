@@ -15,7 +15,7 @@ import { TERMS_URL, TOKUSHOHO_URL, siteLink } from '@/lib/links';
 
 export function premiumFeatures(ja: boolean): Array<{ icon: IconName; title: string; body: string }> {
   return [
-    { icon: 'users', title: ja ? 'グループを作成・ホストになる' : 'Create groups and host', body: ja ? 'メンバーの参加は無料' : 'Members join free' },
+    { icon: 'users', title: ja ? 'グループを作成' : 'Create groups and host', body: ja ? 'メンバーの参加は無料' : 'Members join free' },
     {
       icon: 'lock',
       title: ja ? 'ロック画面のカウントダウン' : 'Lock-screen countdown',
@@ -23,7 +23,7 @@ export function premiumFeatures(ja: boolean): Array<{ icon: IconName; title: str
       body: Platform.OS === 'ios' ? (ja ? 'ライブアクティビティで最後の1時間を表示' : 'A Live Activity for the last hour') : ja ? '通知で残り時間を表示' : 'Time left in a notification',
     },
     { icon: 'grid', title: ja ? 'ホーム画面ウィジェット' : 'Home-screen widgets', body: ja ? '今夜の出発時刻をひと目で' : 'Tonight’s leave time at a glance' },
-    { icon: 'map-pin', title: ja ? '帰り先を無制限に' : 'Unlimited destinations', body: ja ? '無料プランは1件まで' : 'Free plan: one' },
+    { icon: 'map-pin', title: ja ? '帰る場所を何件でも登録' : 'Unlimited destinations', body: ja ? '無料プランは1件まで' : 'Free plan: one' },
   ];
 }
 
@@ -105,7 +105,7 @@ export function PremiumOffer({
         <View accessibilityRole="alert" testID="premium-migration-restore-warning" style={[styles.migrationNotice, { backgroundColor: colors.card, borderColor: colors.border }]}>
           <Text style={[styles.migrationText, { color: colors.foreground }]}>
             {ja
-              ? '以前の購入を新しいアプリIDで確認できませんでした。二重課金を避けるため、新しく購入する前に「購入を復元」をお試しください。'
+              ? '以前の購入情報を確認できませんでした。重複購入を避けるため、新しく購入する前に「購入を復元」をお試しください。'
               : 'We couldn’t confirm your previous purchase under your updated app identity. To avoid a duplicate charge, try Restore purchases before buying again.'}
           </Text>
         </View>
@@ -142,7 +142,7 @@ export function PremiumOffer({
                 <Text style={[styles.planPerMonth, { color: colors.mutedForeground }]}>{ja ? `月あたり ${plan.perMonth}` : `${plan.perMonth} a month`}</Text>
               ) : null}
               <Text style={[styles.planNote, { color: active ? colors.primary : colors.mutedForeground }]}>
-                {trialText(plan.trialDays, ja) ?? (ja ? 'いつでも解約' : 'Cancel any time')}
+                {trialText(plan.trialDays, ja) ?? (ja ? 'いつでも解約できます' : 'Cancel any time')}
               </Text>
             </Pressable>
           );

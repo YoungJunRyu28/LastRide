@@ -52,8 +52,8 @@ export default function JoinGroupScreen() {
       const status = errorStatus(error);
       if (error instanceof Error && error.message === 'PENDING_GROUP_JOIN') {
         Alert.alert(
-          ja ? '参加処理を復元してください' : 'Finish your pending group join',
-          ja ? '通信が切れた場合、前回の招待で再試行してください。重複登録を避けるため、別の招待にはまだ参加できません。' : 'Retry your previous invite first. The original join may have succeeded, and switching invites could create duplicate memberships.',
+          ja ? '前回の参加手続きを完了してください' : 'Finish your pending group join',
+          ja ? '前回の参加手続きが完了している可能性があります。二重登録を防ぐため、同じ招待から再試行してください。別の招待にはまだ参加できません。' : 'Retry your previous invite first. The original join may have succeeded, and switching invites could create duplicate memberships.',
         );
         return;
       }
@@ -65,7 +65,7 @@ export default function JoinGroupScreen() {
             : 'This group is full.'
           : status === 400
             ? ja
-              ? '招待が無効か、再発行されています。ホストに新しいリンクをもらってください。'
+              ? '招待リンクが無効か、再発行されています。ホストに新しい招待を依頼してください。'
               : 'The invite is invalid or was replaced. Ask the host for a new link.'
             : ja
               ? 'しばらくしてからもう一度お試しください。'
@@ -79,7 +79,7 @@ export default function JoinGroupScreen() {
   const shares: Array<{ icon: React.ComponentProps<typeof Feather>['name']; text: string; off?: boolean }> = [
     { icon: 'user', text: ja ? '表示名' : 'Display name' },
     { icon: 'clock', text: ja ? '今夜の出発時刻' : 'Tonight’s leave time' },
-    { icon: 'slash', text: ja ? '現在地・自宅・駅・経路は共有しません' : 'Never your location, home, station or route', off: true },
+    { icon: 'slash', text: ja ? '現在地・自宅・駅・移動経路は共有されません' : 'Never your location, home, station or route', off: true },
   ];
 
   return (
@@ -121,12 +121,12 @@ export default function JoinGroupScreen() {
             style={[styles.input, { backgroundColor: colors.card, borderColor: displayName.trim() ? colors.primary : colors.input, color: colors.foreground }]}
           />
           <Text style={[styles.note, { color: colors.mutedForeground }]}>
-            {ja ? '前回使った名前を表示しています。グループごとに変えられます。' : 'Your last-used name. You can change it per group.'}
+            {ja ? '前回使用した名前です。グループごとに変更できます。' : 'Your last-used name. You can change it per group.'}
           </Text>
         </View>
 
         <Card style={styles.shares}>
-          <Text style={[styles.label, { color: colors.foreground }]}>{ja ? '共有するのは2つだけ' : 'Only two things are shared'}</Text>
+          <Text style={[styles.label, { color: colors.foreground }]}>{ja ? '共有される情報' : 'Only two things are shared'}</Text>
           {shares.map((item) => (
             <View key={item.text} style={styles.shareRow}>
               <Feather name={item.icon} size={15} color={item.off ? colors.mutedForeground : colors.primary} />
@@ -143,7 +143,7 @@ export default function JoinGroupScreen() {
           testID="join-group"
         />
         <Text style={[styles.note, styles.center, { color: colors.mutedForeground }]}>
-          {ja ? '参加は無料・アカウント不要。いつでも退出できます。' : 'Free, no account. Leave any time.'}
+          {ja ? '参加は無料です。会員登録は不要で、いつでも退出できます。' : 'Free, no account. Leave any time.'}
         </Text>
       </ScrollView>
     </View>

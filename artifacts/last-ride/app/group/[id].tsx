@@ -57,7 +57,7 @@ function inviteMessage(detail: GroupDetail, ja: boolean) {
   if (!detail.invite) return null;
   const link = groupInviteLink(detail.invite.inviteToken);
   return ja
-    ? `「${detail.name}」に参加して、帰る時間を共有しよう（帰り時アプリ）\n${link}\n招待コード：${detail.invite.joinCode}`
+    ? `「${detail.name}」に参加して、帰る時間を共有しましょう（LastRide）\n${link}\n招待コード：${detail.invite.joinCode}`
     : `Join “${detail.name}” on LastRide to share leave times\n${link}\nInvite code: ${detail.invite.joinCode}`;
 }
 
@@ -166,8 +166,8 @@ export default function GroupScreen() {
 
   const stopSharingTonight = () =>
     confirm(
-      ja ? '今夜の参加をやめる' : 'Stop sharing tonight',
-      ja ? '今夜の出発時刻の共有をやめます。グループからは退出しません。' : 'Your leave time stops being shared tonight. You stay in the group.',
+      ja ? '今夜の共有を停止' : 'Stop sharing tonight',
+      ja ? '今夜の出発時刻の共有を停止します。グループからは退出しません。' : 'Your leave time stops being shared tonight. You stay in the group.',
       ja ? 'やめる' : 'Stop',
       ja ? 'キャンセル' : 'Cancel',
       () => void run(() => leaveGroupTonight(detail.id, options)),
@@ -179,8 +179,8 @@ export default function GroupScreen() {
         {
           key: 'notifications' as const,
           testID: 'toggle-tonight-alerts',
-          title: ja ? '今夜の開始' : 'Tonight starts',
-          subtitle: ja ? 'ホストが今夜の会をはじめたとき' : 'When the host starts tonight',
+          title: ja ? '今夜の共有開始' : 'Tonight starts',
+          subtitle: ja ? 'ホストが今夜の共有を開始したとき' : 'When the host starts tonight',
           value: detail.me.notifications,
         },
         {
@@ -209,9 +209,9 @@ export default function GroupScreen() {
     </View>
   );
 
-  /** "今夜の開始 · 出発時刻" (whichever are on), for the menu item. */
+  /** "今夜の共有開始 · 出発時刻" (whichever are on), for the menu item. */
   const notificationSummary =
-    [detail.me.notifications ? (ja ? '今夜の開始' : 'Tonight starts') : null, detail.me.leaveTimeAlerts ? (ja ? 'メンバーの出発時刻' : 'leave times') : null]
+    [detail.me.notifications ? (ja ? '今夜の共有開始' : 'Tonight starts') : null, detail.me.leaveTimeAlerts ? (ja ? 'メンバーの出発時刻' : 'leave times') : null]
       .filter(Boolean)
       .join(' · ') || (ja ? 'オフ' : 'Off');
 
@@ -227,15 +227,15 @@ export default function GroupScreen() {
       );
       if (!shared) {
         Alert.alert(
-          ja ? '招待リンクがありません' : 'Invitation unavailable',
-          ja ? 'グループの招待情報を更新して再度お試しください。' : 'Refresh the group invite and try again.',
+          ja ? '招待リンクを取得できません' : 'Invitation unavailable',
+          ja ? 'グループの招待情報を確認してから、もう一度お試しください。' : 'Refresh the group invite and try again.',
         );
       }
     } catch {
       // An offline refresh cannot prove the old invite has not been rotated.
       Alert.alert(
         ja ? '最新の招待リンクを確認できません' : 'Could not verify invite',
-        ja ? 'ネットワーク接続を確認して再度お試しください。古いリンクは共有しません。'
+        ja ? '通信状況を確認して、もう一度お試しください。以前のリンクは共有しません。'
           : 'Check your connection and try again. The previous link was not shared.',
       );
     }
@@ -324,8 +324,8 @@ export default function GroupScreen() {
         return host ? (
           <View style={styles.sheetList}>
             {tonight.active &&
-              menuItem('end-tonight', ja ? '今夜を終了する' : 'End tonight', ja ? '全員の今夜の出発時刻を削除して終了' : 'Deletes everyone’s leave times for tonight', () =>
-                confirm(ja ? '今夜を終了' : 'End tonight', ja ? '全員の今夜の出発時刻を削除します。' : 'Everyone’s leave times for tonight will be deleted.', ja ? '終了する' : 'End', ja ? 'キャンセル' : 'Cancel', () =>
+              menuItem('end-tonight', ja ? '今夜の共有を終了' : 'End tonight', ja ? '全員の今夜の出発時刻を削除して終了' : 'Deletes everyone’s leave times for tonight', () =>
+                confirm(ja ? '今夜の共有を終了' : 'End tonight', ja ? '全員の今夜の出発時刻を削除します。' : 'Everyone’s leave times for tonight will be deleted.', ja ? '終了する' : 'End', ja ? 'キャンセル' : 'Cancel', () =>
                   void run(() => endGroupTonight(detail.id, options), () => setSheet(null)),
                 ),
               )}
@@ -335,7 +335,7 @@ export default function GroupScreen() {
               setSheet('rename');
             })}
             {menuItem('notifications', ja ? '通知' : 'Notifications', notificationSummary, () => setSheet('notifications'))}
-            {menuItem('display-name', ja ? '表示名を変更' : 'Change display name', ja ? `いまの表示名：${detail.me.displayName}` : `Now: ${detail.me.displayName}`, () => {
+            {menuItem('display-name', ja ? '表示名を変更' : 'Change display name', ja ? `現在の表示名：${detail.me.displayName}` : `Now: ${detail.me.displayName}`, () => {
               setDraft(detail.me.displayName);
               setSheet('displayName');
             })}
@@ -359,7 +359,7 @@ export default function GroupScreen() {
         ) : (
           <View style={styles.sheetList}>
             {menuItem('notifications', ja ? '通知' : 'Notifications', notificationSummary, () => setSheet('notifications'))}
-            {menuItem('display-name', ja ? '表示名を変更' : 'Change display name', ja ? `いまの表示名：${detail.me.displayName}` : `Now: ${detail.me.displayName}`, () => {
+            {menuItem('display-name', ja ? '表示名を変更' : 'Change display name', ja ? `現在の表示名：${detail.me.displayName}` : `Now: ${detail.me.displayName}`, () => {
               setDraft(detail.me.displayName);
               setSheet('displayName');
             })}
@@ -383,8 +383,8 @@ export default function GroupScreen() {
           : sheet === 'notifications'
             ? ja ? 'このグループの通知' : 'Notifications for this group'
           : host
-              ? ja ? 'ホストのオプション · あなたがホストです' : 'Host options · you’re the host'
-              : ja ? 'メンバーのオプション' : 'Member options';
+              ? ja ? 'ホスト用メニュー' : 'Host options · you’re the host'
+              : ja ? 'メンバー用メニュー' : 'Member options';
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
@@ -441,7 +441,7 @@ export default function GroupScreen() {
               <View style={styles.qrWrap}>
                 <QRCode value={groupInviteLink(detail.invite.inviteToken)} size={200} quietZone={10} backgroundColor="#FFFFFF" color="#000000" />
                 <Text style={[styles.note, styles.center, { color: colors.mutedForeground }]}>
-                  {ja ? 'iPhoneのカメラで読み取ると、招待リンクが開きます。' : 'Scan with the iPhone camera to open the invite link.'}
+                  {ja ? 'カメラで読み取ると招待リンクを開けます。' : 'Scan with the iPhone camera to open the invite link.'}
                 </Text>
               </View>
             )}
@@ -474,7 +474,7 @@ export default function GroupScreen() {
         {tonight.active ? (
           <>
             <Card highlighted style={styles.tonightCard}>
-              <Text style={[styles.badge, { backgroundColor: colors.primary, color: colors.primaryForeground }]}>{ja ? '今夜アクティブ' : 'Tonight'}</Text>
+              <Text style={[styles.badge, { backgroundColor: colors.primary, color: colors.primaryForeground }]}>{ja ? '今夜の共有中' : 'Tonight'}</Text>
               <Text style={[styles.note, { color: colors.mutedForeground }]}>
                 {ja ? '明日の朝8:00に自動で終了 · 出発時刻は削除' : 'Ends at 8:00 tomorrow · leave times are deleted'}
               </Text>
@@ -513,7 +513,7 @@ export default function GroupScreen() {
                 );
               })}
               {tonight.participants.length === 0 && (
-                <Text style={[styles.note, { color: colors.mutedForeground }]}>{ja ? 'まだ誰も参加していません。' : 'Nobody has joined tonight yet.'}</Text>
+                <Text style={[styles.note, { color: colors.mutedForeground }]}>{ja ? '今夜の参加者はまだいません。' : 'Nobody has joined tonight yet.'}</Text>
               )}
             </Card>
             {mine && (
@@ -531,7 +531,7 @@ export default function GroupScreen() {
                   hitSlop={12}
                   style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}
                 >
-                  <Text style={[styles.sharingStop, { color: colors.mutedForeground }]}>{ja ? '今夜はやめる' : 'Stop tonight'}</Text>
+                  <Text style={[styles.sharingStop, { color: colors.mutedForeground }]}>{ja ? '共有を停止' : 'Stop tonight'}</Text>
                 </Pressable>
               </View>
             )}
@@ -547,19 +547,19 @@ export default function GroupScreen() {
         ) : host ? (
           <>
             <Card style={styles.tonightCard}>
-              <Text style={[styles.menuTitle, { color: colors.foreground }]}>{ja ? '今夜の会をはじめる' : 'Start tonight'}</Text>
+              <Text style={[styles.menuTitle, { color: colors.foreground }]}>{ja ? '今夜の共有を開始' : 'Start tonight'}</Text>
               <Text style={[styles.note, { color: colors.mutedForeground }]}>
                 {ja ? 'メンバーに通知が届き、参加した人の出発時刻が並びます。明日の朝8:00に自動で終了します。' : 'Members get a notification, and those who join line up by leave time. Ends at 8:00 tomorrow.'}
               </Text>
             </Card>
-            <PrimaryButton label={ja ? '今夜をはじめる' : 'Start tonight'} loading={busy} onPress={() => void startTonight()} testID="start-tonight" />
+            <PrimaryButton label={ja ? '共有を開始' : 'Start tonight'} loading={busy} onPress={() => void startTonight()} testID="start-tonight" />
             {detail.invite && <SecondaryButton label={ja ? '招待リンクを共有' : 'Share invite link'} onPress={() => void share()} />}
           </>
         ) : (
           <Card style={styles.tonightCard}>
-            <Text style={[styles.menuTitle, { color: colors.foreground }]}>{ja ? '今夜はまだ始まっていません' : 'Not started tonight'}</Text>
+            <Text style={[styles.menuTitle, { color: colors.foreground }]}>{ja ? '今夜の共有はまだ始まっていません' : 'Not started tonight'}</Text>
             <Text style={[styles.note, { color: colors.mutedForeground }]}>
-              {ja ? 'ホストが今夜をはじめると通知が届きます。' : 'You’ll get a notification when the host starts tonight.'}
+              {ja ? 'ホストが今夜の共有を開始すると通知が届きます。' : 'You’ll get a notification when the host starts tonight.'}
             </Text>
           </Card>
         )}
@@ -576,7 +576,7 @@ export default function GroupScreen() {
 
         <Text style={[styles.note, { color: colors.mutedForeground }]}>
           {ja
-            ? '表示されるのは名前と出発時刻だけ。現在地や帰り先は共有されません。出発時刻になると、今夜参加しているメンバーに通知します（⋯ の「通知」で変更できます）。'
+            ? '表示されるのは名前と出発時刻だけ。現在地や帰る場所は共有されません。出発時刻になると、今夜参加しているメンバーに通知します（⋯ の「通知」で変更できます）。'
             : 'Only names and leave times are shown — never your location or destination. Tonight’s participants are notified at each leave time (change it under ⋯ → Notifications).'}
         </Text>
       </ScrollView>

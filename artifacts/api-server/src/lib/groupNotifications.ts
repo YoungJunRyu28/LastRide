@@ -47,7 +47,7 @@ export function groupPushBody(
     case "tonight_started":
       return language === "en"
         ? `${event.groupName}: The host started tonight's meetup`
-        : `${event.groupName}: ホストが今夜の会を始めました`;
+        : `${event.groupName}: ホストが今夜の共有を開始しました`;
     case "leave_time": {
       const time = formatJstTime(event.leaveBy);
       return language === "en"

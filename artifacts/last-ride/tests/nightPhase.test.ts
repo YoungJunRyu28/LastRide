@@ -71,7 +71,7 @@ describe('the night phases', () => {
 
   test('labels say who is leaving: 出る for the user, 発 for the train', () => {
     const plan = chosen(1);
-    expect(phaseLabel(phaseAt(plan, jst(23, 0))!, true)).toEqual({ label: 'ここを出るまで', island: '出るまで' });
+    expect(phaseLabel(phaseAt(plan, jst(23, 0))!, true)).toEqual({ label: '出発まで', island: '出るまで' });
     expect(phaseLabel(phaseAt(plan, jst(23, 30))!, true)).toEqual({ label: '23:36発まで', island: '23:36発' });
     expect(phaseLabel(phaseAt(plan, jst(23, 40))!, true)).toEqual({ label: '終電 23:45発まで', island: '終電' });
     expect(phaseLabel(phaseAt(plan, jst(23, 40))!, false)).toEqual({ label: 'Last train 23:45 in', island: 'Last train' });

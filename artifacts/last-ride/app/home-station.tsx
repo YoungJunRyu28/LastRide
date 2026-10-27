@@ -190,7 +190,7 @@ export default function HomeStationScreen() {
       )}
       {searchError && <Text style={[styles.helper, { color: colors.destructive }]}>{ja ? '検索に失敗しました。もう一度お試しください。' : 'Search failed. Please try again.'}</Text>}
       {!searchError && !selected && query.trim().length >= 2 && !isSearching && results.length === 0 && (
-        <Text style={[styles.helper, { color: colors.mutedForeground }]}>{ja ? '駅が見つかりませんでした。漢字やかなでも検索してみてください。' : 'No stations found. Try the station’s Japanese name, e.g. 渋谷.'}</Text>
+        <Text style={[styles.helper, { color: colors.mutedForeground }]}>{ja ? '駅が見つかりませんでした。駅名を漢字やひらがなで入力してみてください。' : 'No stations found. Try the station’s Japanese name, e.g. 渋谷.'}</Text>
       )}
     </View>
   );
@@ -199,7 +199,7 @@ export default function HomeStationScreen() {
     <View style={styles.form}>
       <View style={styles.labelRow}>
         <Text style={[styles.label, { color: colors.foreground }]}>{ja ? '住所' : 'Address'}</Text>
-        <Text style={[styles.optional, { color: colors.mutedForeground }]}>{ja ? '（任意 · 駅から家までの徒歩も計算）' : 'optional · adds the walk from the station'}</Text>
+        <Text style={[styles.optional, { color: colors.mutedForeground }]}>{ja ? '（任意・駅から自宅までの徒歩時間も計算）' : 'optional · adds the walk from the station'}</Text>
       </View>
       <View style={[styles.inputWrap, { backgroundColor: colors.card, borderColor: selectedAddress ? colors.primary : colors.input }]}>
         <Feather name="home" color={colors.mutedForeground} size={19} />
@@ -276,12 +276,12 @@ export default function HomeStationScreen() {
         onBack={back}
         actions={<PrimaryButton label={ja ? '次へ' : 'Next'} icon="arrow-right" onPress={() => void save()} disabled={!canSave || saving} testID="save-home-station" />}
       >
-        <OnboardingHeading kicker={ja ? 'まずは帰る場所' : 'WHERE’S HOME'} title={ja ? '自宅の最寄り駅を\n教えてください。' : 'What’s your\nhome station?'} />
+        <OnboardingHeading kicker={ja ? '帰る場所を登録' : 'WHERE’S HOME'} title={ja ? '自宅の最寄り駅を\n設定しましょう' : 'What’s your\nhome station?'} />
         {stationField}
         {addressField}
         <Text style={[styles.helper, { color: colors.mutedForeground }]}>
           {ja
-            ? `「${editingDestination?.label ?? defaultLabel}」として保存します。名前はあとで変更できます。\n帰り先と設定はこの端末にだけ保存されます。アカウントは不要です。`
+            ? `「${editingDestination?.label ?? defaultLabel}」として保存します。名前はあとで変更できます。\n帰る場所と設定は、この端末にのみ保存されます。会員登録は不要です。`
             : `Saved as “${editingDestination?.label ?? defaultLabel}”. You can rename it later.\nDestinations and settings stay on this device. No account needed.`}
         </Text>
       </OnboardingFrame>
@@ -298,9 +298,9 @@ export default function HomeStationScreen() {
           <IconButton icon="chevron-left" label={ja ? '戻る' : 'Back'} onPress={back} testID="back-to-language" />
         </View>
         <OnboardingHeading
-          kicker={tonight ? (ja ? '今夜だけ' : 'TONIGHT ONLY') : isNew ? (ja ? '帰り先を追加' : 'ADD DESTINATION') : (ja ? '帰り先を編集' : 'EDIT DESTINATION')}
-          title={tonight ? (ja ? '今夜はどこへ\n帰りますか？' : 'Where are you\nheading tonight?') : isNew ? (ja ? '帰り先を\n追加します。' : 'Add somewhere\nyou might go.') : (ja ? '帰り先を\n編集します。' : 'Edit this\ndestination.')}
-          lead={tonight ? (ja ? '保存せずに今夜だけ使います。明日はいつもの帰り先に戻ります。' : 'Used tonight only and not saved. Tomorrow you’re back to your usual destination.') : undefined}
+          kicker={tonight ? (ja ? '今夜だけ' : 'TONIGHT ONLY') : isNew ? (ja ? '帰る場所を追加' : 'ADD DESTINATION') : (ja ? '帰る場所を編集' : 'EDIT DESTINATION')}
+          title={tonight ? (ja ? '今夜はどこへ\n帰りますか？' : 'Where are you\nheading tonight?') : isNew ? (ja ? '帰る場所を\n追加しましょう' : 'Add somewhere\nyou might go.') : (ja ? '帰る場所を\n編集しましょう' : 'Edit this\ndestination.')}
+          lead={tonight ? (ja ? '保存せずに今夜だけ使います。明日からはいつもの帰る場所に戻ります。' : 'Used tonight only and not saved. Tomorrow you’re back to your usual destination.') : undefined}
         />
         {!tonight && (
           <View style={styles.form}>
@@ -325,7 +325,7 @@ export default function HomeStationScreen() {
         {stationField}
         {!tonight && addressField}
         <PrimaryButton
-          label={tonight ? (ja ? '今夜はここへ帰る' : 'Head here tonight') : ja ? '帰り先を保存' : 'Save destination'}
+          label={tonight ? (ja ? '今夜はここに帰る' : 'Head here tonight') : ja ? '帰る場所を保存' : 'Save destination'}
           icon="arrow-right"
           onPress={() => void save()}
           disabled={!canSave || saving}

@@ -149,7 +149,7 @@ async function chooseNightTrackingLocation(
     const ja = language === 'ja';
     return new Promise((resolve) => {
       Alert.alert(
-        ja ? '閉じても更新するには' : 'To update when closed',
+        ja ? 'アプリを閉じても更新するには' : 'To update when closed',
         ja
           ? 'iPhoneの設定で、LastRideの位置情報を「常に」にしてください（夜のトラッキング中だけ使います）。今夜はアプリを開いている間だけ更新することもできます。'
           : 'In iPhone Settings, set LastRide’s location access to “Always” (used only during night tracking). Or track tonight while the app is open.',
@@ -251,14 +251,14 @@ type RideContextValue = {
   setMissedCheckIn: (enabled: boolean) => void;
   /** Night tracking's location choice; "ask" shows the disclosure next time. */
   nightLocationMode: NightLocationMode;
-  /** pendingAlways: chosen 閉じても更新 but iOS hasn't confirmed "Always" yet; switches by itself once it does. */
+  /** pendingAlways: chosen アプリを閉じても更新 but iOS hasn't confirmed "Always" yet; switches by itself once it does. */
   setNightLocationMode: (mode: NightLocationMode, options?: { pendingAlways?: boolean }) => void;
   /** Whether iOS allows location while the app is closed ("Always"); null until known. */
   backgroundAllowed: boolean | null;
   /** Asks iOS for "Always" if it still can; resolves to whether it's allowed now. */
   requestBackgroundLocation: () => Promise<boolean>;
   /**
-   * Tracking only while open → also while closed: sets 閉じても更新, asks iOS for
+   * Tracking only while open → also while closed: sets アプリを閉じても更新, asks iOS for
    * "Always" and starts background updates. False when iOS didn't allow it.
    */
   switchTrackingToBackground: () => Promise<boolean>;
@@ -1151,19 +1151,19 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
   const setNightLocationMode = useCallback((mode: NightLocationMode, { pendingAlways = false }: { pendingAlways?: boolean } = {}) => {
     setNightLocationModeState(mode);
     void AsyncStorage.setItem(STORAGE_KEYS.nightLocationMode, mode);
-    // A choice made now replaces a 閉じても更新 still waiting for iOS (see refreshBackgroundAllowed).
+    // A choice made now replaces a アプリを閉じても更新 still waiting for iOS (see refreshBackgroundAllowed).
     if (pendingAlways) void AsyncStorage.setItem(STORAGE_KEYS.wantsBackground, 'true');
     else void AsyncStorage.removeItem(STORAGE_KEYS.wantsBackground);
   }, []);
 
-  // The app's 閉じても更新 only works if iOS allows "Always"; keep track so the UI
+  // The app's アプリを閉じても更新 only works if iOS allows "Always"; keep track so the UI
   // can say when it doesn't (rechecked when returning from the Settings app).
   const [backgroundAllowed, setBackgroundAllowed] = useState<boolean | null>(null);
   const refreshBackgroundAllowed = useCallback(async () => {
     if (Platform.OS === "web") return false;
     const { granted } = await backgroundLocationState();
     setBackgroundAllowed(granted);
-    // Setup chose 閉じても更新 before iOS had confirmed "Always" (its prompt came late,
+    // Setup chose アプリを閉じても更新 before iOS had confirmed "Always" (its prompt came late,
     // or the user allowed it in Settings afterwards): now it's allowed, so use it.
     if (granted && (await AsyncStorage.getItem(STORAGE_KEYS.wantsBackground).catch(() => null)) === 'true') {
       setNightLocationModeState('background');
@@ -1567,14 +1567,14 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       setTrackingMode(backgroundActive ? "background" : "foreground");
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       if (locationMode === "background" && !backgroundActive) {
-        // Chosen 閉じても更新, but iOS isn't set to "Always": say so rather than
+        // Chosen アプリを閉じても更新, but iOS isn't set to "Always": say so rather than
         // quietly tracking only while the app is open.
         void refreshBackgroundAllowed();
         const ja = language === "ja";
         Alert.alert(
           ja ? "アプリを閉じている間は更新されません" : "Won’t update while closed",
           ja
-            ? "iPhoneの設定で、LastRideの位置情報が「常に」になっていません。今夜はアプリを開いている間だけ更新します。閉じても更新するには、設定で「常に」を選んでください。"
+            ? "iPhoneの設定で、LastRideの位置情報が「常に」になっていません。今夜はアプリを開いている間だけ更新します。アプリを閉じても更新するには、設定で「常に」を選んでください。"
             : "LastRide’s location access in iPhone Settings isn’t “Always”, so tonight it updates only while the app is open. Choose “Always” in Settings to update when closed.",
           [
             { text: "OK", style: "cancel" },

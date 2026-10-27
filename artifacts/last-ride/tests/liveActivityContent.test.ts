@@ -36,7 +36,7 @@ describe("liveActivityContent", () => {
 
   test("is in Japanese when the app is", () => {
     expect(liveActivityContent(plan, "ja", jst(23, 0))).toMatchObject({
-      label: "ここを出るまで",
+      label: "出発まで",
       island: "出るまで",
       from: "渋谷駅から",
       choice: "帰り時 · 終電",
