@@ -14,7 +14,7 @@ vi.mock("@react-native-async-storage/async-storage", () => ({ default: {
   }),
   removeItem: vi.fn(async (key: string) => { store.delete(key); }),
 } }));
-import { prepareGroupJoin, readPendingGroupJoin, finishGroupJoin, joinDefinitelyRejected } from "@/lib/pendingGroupJoin";
+import { prepareGroupJoin, prepareReadableGroupJoin, readPendingGroupJoin, finishGroupJoin, joinDefinitelyRejected } from "@/lib/pendingGroupJoin";
 
 beforeEach(async () => {
   const existing = await readPendingGroupJoin();
@@ -46,6 +46,30 @@ describe("pending anonymous group join recovery", () => {
     await expect(prepareGroupJoin({ ...entry, joinCode: "DIFF1234" })).rejects.toThrow("PENDING_GROUP_JOIN");
     expect(await readPendingGroupJoin()).toEqual(pending);
   });
+  test("missing restored Keystore access cannot create a blocking pending join", async () => {
+    const unreadable = vi.fn(async (): Promise<string[]> => {
+      throw new Error("Saved group capability is missing");
+    });
+    await expect(prepareReadableGroupJoin(entry, unreadable))
+      .rejects.toThrow("Saved group capability is missing");
+    expect(random).not.toHaveBeenCalled();
+    expect(await readPendingGroupJoin()).toBeNull();
+    // Local recovery can clear saved credentials before a fresh invitation.
+    const usable = await prepareReadableGroupJoin(entry, async () => []);
+    expect(usable.knownMemberTokens).toEqual([]);
+    expect(await readPendingGroupJoin()).toEqual(usable.pending);
+  });
+
+  test("existing tokens are capped and the original retryable join key is preserved", async () => {
+    const tokens = Array.from({ length: 65 }, (_, index) => "member-" + index);
+    const first = await prepareReadableGroupJoin(entry, async () => tokens);
+    const second = await prepareReadableGroupJoin(entry, async () => tokens);
+    expect(first.knownMemberTokens).toHaveLength(50);
+    expect(first.knownMemberTokens[49]).toBe("member-49");
+    expect(first.pending.joinKey).toBe(second.pending.joinKey);
+    expect(random).toHaveBeenCalledTimes(1);
+  });
+
   test("no join request is safe when the first persistent write fails", async () => {
     failWrite.current = true;
     await expect(prepareGroupJoin(entry)).rejects.toThrow("disk full");

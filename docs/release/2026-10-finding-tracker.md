@@ -21,13 +21,13 @@ This records the 58 findings from the static source audit. **Fixed** means the c
 | LR-015 | Push registration only at create/join | **Fixed in source** | Real APNs/FCM token rotation/permission test |
 | LR-016 | Group visible screen can remain stale after silent push lost | **Partial** | Focus refresh + manual pull-to-refresh added; continuously visible screens still require push or manual action |
 | LR-017 | No-home-device group push tap blocked | **Fixed** | Navigation regression tests |
-| LR-018 | Group invite join limit 20/min per IP hits shared Wi-Fi | **Pending** | Token aware rate limit and realistic load test |
+| LR-018 | Group invite join limit 20/min per IP hits shared Wi-Fi | **Partial — in PR #48** | Shared IP cap 120/min plus per-join-key 20/min, legacy clients retain 20/IP. 50-attendee simulation passes; real NAT load and abuse monitoring required |
 | LR-019 | Proxy hop setup can attribute wrong IP | **Implemented in PR, ingress QA required** | Explicit validated TRUST_PROXY_CIDRS instead of unsafe numeric production hops; XFF spoof tests. Actual ingress IP ranges must be verified in staging |
 | LR-020 | Stale group membership cleanup on client | **Partial** | Invalidation guard prevents stale 404; test reinstall/offline |
 | LR-021 | Group language stale after app locale change | **Fixed in source** | Re-registration on locale switch |
 | LR-022 | Stale group GET overwrites newer local mutation | **Fixed in source** | Revision/ordering regression tests |
-| LR-023 | Stale invite shown after rotation when push lost | **Pending** | UI invalidate/refresh after foreground |
-| LR-024 | Host-transfer error promises unavailable transfer | **Pending** | Implement transfer or remove misleading error |
+| LR-023 | Stale invite shown after rotation when push lost | **Partial — in PR #48** | Share action fetches fresh server invite and never sends unverified cached token; still test notification loss and rotations while view stays open |
+| LR-024 | Host-transfer error promises unavailable transfer | **Fixed in review PR** | Error now instructs disbanding rather than implying a nonexistent host-transfer feature |
 | LR-025 | Duplicate group member on multiple personal devices | **Pending** | Identity/recovery plan |
 | LR-026 | iPhone-only copy appears on Android | **Partial** | Reset screen neutralized; full locale audit |
 | LR-027 | Group invite landing page shows only App Store | **Partial** | Platform-aware links implemented; publish only after verified App Store / Play / Galaxy listings are live |

@@ -30,7 +30,7 @@ import {
 } from "@/lib/groupMemberships";
 import { clearSharing, flushPendingSharedLeaveBy, markSharing, stopSharing, syncSharedLeaveByForGroup } from "@/lib/groupSharing";
 import { prepareGroupCreation, readPendingGroupCreation, finishGroupCreation, creationDefinitelyRejected } from "@/lib/pendingGroupCreation";
-import { prepareGroupJoin, readPendingGroupJoin, finishGroupJoin, joinDefinitelyRejected } from "@/lib/pendingGroupJoin";
+import { prepareReadableGroupJoin, readPendingGroupJoin, finishGroupJoin, joinDefinitelyRejected } from "@/lib/pendingGroupJoin";
 import { GroupRefreshGuard } from "@/lib/groupRefreshGuard";
 import { onGroupUpdated, startGroupUpdates } from "@/lib/groupUpdates";
 import { expoPushToken } from "@/lib/pushToken";
@@ -224,8 +224,16 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
         if (refreshGuard.current.isCurrent(ticket)) apply(detail);
       } catch (error) {
         // Don't let a stale 404 delete a membership after a successful mutation.
-        if (errorStatus(error) === 404 && refreshGuard.current.isCurrent(ticket))
-          await forget(membership.groupId);
+        if (errorStatus(error) === 404 && refreshGuard.current.isCurrent(ticket)) {
+          try {
+            await forget(membership.groupId);
+          } catch {
+            // Inaccessible Keychain/Keystore cannot be interpreted as
+            // successful removal. Keep the local capability and surface
+            // recovery instead of rejecting an AppState/push callback.
+            setCredentialError(true);
+          }
+        }
       }
     }));
     setLoading(false);
@@ -248,7 +256,13 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
         const detail = await getGroup(groupId, { headers: { "X-Member-Token": membership.memberToken } });
         if (refreshGuard.current.isCurrent(ticket)) apply(detail);
       } catch (error) {
-        if (errorStatus(error) === 404 && refreshGuard.current.isCurrent(ticket)) await forget(groupId);
+        if (errorStatus(error) === 404 && refreshGuard.current.isCurrent(ticket)) {
+          try {
+            await forget(groupId);
+          } catch {
+            setCredentialError(true);
+          }
+        }
       }
     },
     [available, apply, forget],
@@ -317,7 +331,14 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
       return;
     }
     if (members.length === 0) return;
-    const token = await expoPushToken();
+    let token: string | null;
+    try {
+      token = await expoPushToken();
+    } catch {
+      // A failed APNs/FCM lookup isn't evidence notifications were revoked.
+      // Retry on the next app activation without unregistering valid devices.
+      return;
+    }
     const locale = language ?? "ja";
     const signature = JSON.stringify([locale, token]);
     await Promise.all(members.map(async (membership) => {
@@ -439,12 +460,17 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
 
   const join = useCallback(
     async (input: { inviteToken?: string; joinCode?: string; displayName: string }) => {
-      const pending = await prepareGroupJoin({ ...input, language: language ?? "ja" });
-      const knownMemberTokens = (await readMemberships()).map((item) => item.memberToken).slice(0, 50);
+      const { pending, knownMemberTokens } = await prepareReadableGroupJoin(
+        { ...input, language: language ?? "ja" },
+        async () => (await readMemberships()).map((item) => item.memberToken),
+      );
       let session: Awaited<ReturnType<typeof joinGroup>>;
       try {
         session = await joinGroup({
-          ...input, language: pending.language, knownMemberTokens,
+          ...(pending.inviteToken ? { inviteToken: pending.inviteToken } : { joinCode: pending.joinCode }),
+          displayName: pending.displayName,
+          language: pending.language,
+          knownMemberTokens,
         }, { headers: { "X-Group-Join-Key": pending.joinKey } });
       } catch (error) {
         if (joinDefinitelyRejected(errorStatus(error))) await finishGroupJoin(pending.joinKey);
@@ -460,7 +486,7 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
         await refreshGroup(session.group.id);
         return { group: details[session.group.id] ?? session.group, alreadyMember: true };
       }
-      await remember(session.memberToken, session.group, input.displayName);
+      await remember(session.memberToken, session.group, pending.displayName);
       await finishGroupJoin(pending.joinKey);
       return { group: session.group, alreadyMember: Boolean(session.alreadyMember || existing) };
     },

@@ -1,9 +1,11 @@
 import { Feather } from '@expo/vector-icons';
 import { groupInviteLink } from '@/lib/inviteLinks';
+import { shareLatestGroupInvite } from '@/lib/shareLatestGroupInvite';
 import { completeGroupDeparture } from '@/lib/groupDeparture';
 import QRCode from 'react-native-qrcode-svg';
 import {
   disbandGroup,
+  getGroup,
   endGroupTonight,
   joinGroupTonight,
   leaveGroup,
@@ -214,8 +216,29 @@ export default function GroupScreen() {
       .join(' · ') || (ja ? 'オフ' : 'Off');
 
   const share = async () => {
-    const message = inviteMessage(detail, ja);
-    if (message) await Share.share({ message });
+    try {
+      // Invites can be rotated by another member while this screen is open.
+      // Never send a cached invite link that may already be invalid.
+      const shared = await shareLatestGroupInvite(
+        () => getGroup(detail.id, options),
+        (current) => inviteMessage(current, ja),
+        apply,
+        async (message) => { await Share.share({ message }); },
+      );
+      if (!shared) {
+        Alert.alert(
+          ja ? '招待リンクがありません' : 'Invitation unavailable',
+          ja ? 'グループの招待情報を更新して再度お試しください。' : 'Refresh the group invite and try again.',
+        );
+      }
+    } catch {
+      // An offline refresh cannot prove the old invite has not been rotated.
+      Alert.alert(
+        ja ? '最新の招待リンクを確認できません' : 'Could not verify invite',
+        ja ? 'ネットワーク接続を確認して再度お試しください。古いリンクは共有しません。'
+          : 'Check your connection and try again. The previous link was not shared.',
+      );
+    }
   };
 
   const statusFor = (leaveBy: string | null) => {

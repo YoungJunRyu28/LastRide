@@ -14,6 +14,7 @@ import {
   UpdateMyGroupMembershipBody,
 } from "@workspace/api-zod";
 import { rateLimitMiddleware, requestAddress } from "../lib/rateLimit";
+import { groupJoinAttemptRateKey, GROUP_JOIN_IP_LIMIT, GROUP_JOIN_ATTEMPT_LIMIT } from "../lib/groupJoinRateLimit";
 import { hashCapability } from "../lib/enterpriseTokens";
 import { checkPremiumEntitlement } from "../lib/revenueCat";
 import { premiumDeviceProofRequired, verifiedPremiumDeviceIdentity } from "../lib/premiumDeviceIdentity";
@@ -59,10 +60,17 @@ const createLimiter = rateLimitMiddleware({
   key: (req) => `groups-create:${requestAddress(req)}`,
 });
 
-const joinLimiter = rateLimitMiddleware({
-  limit: 20,
+// A shared campus IP supports distinct idempotent join attempts. A separate
+// total-IP ceiling also bounds requests with invented random join keys.
+const joinIpGuard = rateLimitMiddleware({
+  limit: GROUP_JOIN_IP_LIMIT,
   windowMs: 60_000,
-  key: (req) => `groups-join:${requestAddress(req)}`,
+  key: (req) => "groups-join-ip:" + requestAddress(req),
+});
+const joinLimiter = rateLimitMiddleware({
+  limit: GROUP_JOIN_ATTEMPT_LIMIT,
+  windowMs: 60_000,
+  key: (req) => groupJoinAttemptRateKey(requestAddress(req), req.header("x-group-join-key")),
 });
 
 const memberLimiter = rateLimitMiddleware({
@@ -193,7 +201,7 @@ router.post("/groups", createLimiter, async (req, res) => {
   );
 });
 
-router.post("/groups/join", joinLimiter, async (req, res) => {
+router.post("/groups/join", joinIpGuard, joinLimiter, async (req, res) => {
   const body = JoinGroupBody.safeParse(req.body);
   if (!body.success) {
     res
@@ -303,7 +311,7 @@ router.delete(
     if (result.kind === "self") {
       res
         .status(400)
-        .json({ error: "Transfer the host role or disband the group instead" });
+        .json({ error: "A host cannot remove themselves. Disband the group instead." });
       return;
     }
     if (result.kind === "member-not-found") {
