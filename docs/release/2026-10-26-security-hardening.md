@@ -126,3 +126,10 @@ cold-launch/background task regression checks before store release.
 
 Store billing, licensed transit coverage, real pedestrian routing, real
 APNs/AlarmKit/Android Doze and signed-device restore remain release blockers.
+
+A further asynchronous-start review found that a stale tracking operation's
+late cleanup could remove the active subscription created by a subsequent
+Start. The cleanup now removes only the native or web watcher owned by the
+stale operation, with concurrency regression coverage. The low-level native
+background-task start/stop still needs a real-device overlap matrix, including
+permission revocation during an in-flight registration.

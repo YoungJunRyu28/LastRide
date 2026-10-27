@@ -114,6 +114,7 @@ import {
 } from "@/lib/tracking";
 
 import { beginForegroundLocationWatch } from "@/lib/foregroundLocationWatch";
+import { releaseOwnedWatch } from "@/lib/locationWatchOwnership";
 
 export type { HomeAddress, Language, SavedDestination } from "@/lib/settings";
 export type { StationOption } from "@/lib/stations";
@@ -1469,6 +1470,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       // until a foreground watch actually exists. Users can deny permission,
       // and iOS/Android can reject watch registration after granting it.
       const recordSuccessfulStart = async () => {
+        if (op !== trackingOp.current) return;
         if (!resume) {
           await markTrackingStarted(startedAt);
           // The new session must not adopt an old night's background snapshot.
@@ -1515,9 +1517,13 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
           setLocationError("unavailable");
           return;
         }
+        const installedWebWatch = webWatchId.current;
         await recordSuccessfulStart();
         if (op !== trackingOp.current) {
-          removeWatches();
+          if (installedWebWatch !== null && webWatchId.current === installedWebWatch) {
+            navigator.geolocation.clearWatch(installedWebWatch);
+            webWatchId.current = null;
+          }
           return;
         }
         setTrackingMode("foreground");
@@ -1554,7 +1560,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       }
       await recordSuccessfulStart();
       if (op !== trackingOp.current) {
-        removeWatches();
+        releaseOwnedWatch(foregroundWatch, watchResult.subscription);
         if (backgroundActive) await stopBackgroundTracking();
         return;
       }
