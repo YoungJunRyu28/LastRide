@@ -100,3 +100,29 @@ user may need a new invitation. It is not automatic credential recovery.
 
 These changes require physical-device AlarmKit/iOS Focus, Android Doze, and
 cold-launch/background task regression checks before store release.
+
+## October 26 evening — foreground location and group lifecycle follow-up
+
+- Native location watcher registration and permission prompts can reject after
+  an iOS/Android Settings change. Fire-and-forget tracking UI handlers
+  previously propagated those errors; startup now fails safely with an
+  unavailable state rather than publishing an active tracking mode. A
+  foreground-only fallback is shown when background permission has actually
+  been revoked, while a stale cached permission result cannot cancel a newly
+  authorized tracking session. Native watcher exceptions are unit tested.
+- A failed tracking start no longer records its start time or clears an older
+  valid background snapshot before watcher registration. Permission failure
+  during resume also clears an abandoned background task. Signed-device tests
+  are still required for OS settings transitions.
+- When leaving/disbanding a group, the screen previously navigated away
+  immediately after remote success while local secure membership removal
+  was still pending. Local removal is now awaited; failure-ordering tests
+  cover server refusal and Keychain deletion rejection. A 404 cleanup error
+  now shows a warning rather than rejecting an unobserved button Promise.
+- Old saved-plan caches with missing/invalid/future computedAt, corrupted
+  coordinates or missing train times slipped through read validation. A
+  missing timestamp prevented the launch freshness comparison from starting
+  another lookup. Invalid offline plans are dropped and recomputed.
+
+Store billing, licensed transit coverage, real pedestrian routing, real
+APNs/AlarmKit/Android Doze and signed-device restore remain release blockers.

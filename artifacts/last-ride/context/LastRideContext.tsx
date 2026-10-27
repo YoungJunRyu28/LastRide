@@ -113,6 +113,8 @@ import {
   stopBackgroundTracking,
 } from "@/lib/tracking";
 
+import { beginForegroundLocationWatch } from "@/lib/foregroundLocationWatch";
+
 export type { HomeAddress, Language, SavedDestination } from "@/lib/settings";
 export type { StationOption } from "@/lib/stations";
 export { REMINDER_CHOICES } from "@/lib/settings";
@@ -1378,6 +1380,38 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     await clearTrackingSnapshot();
   }, [removeWatches]);
 
+  // A return from iOS/Android Settings can revoke location while tracking
+  // was already active. Do not leave "tracking in background" on the screen
+  // after the OS has blocked the foreground permission entirely.
+  useEffect(() => {
+    if (locationError !== 'permission' || trackingMode === null) return;
+    void stopTracking().catch(() => undefined);
+  }, [locationError, trackingMode, stopTracking]);
+
+  // Background permission can be revoked independently of foreground access:
+  // downgrade honestly to app-open tracking, preserving the foreground watch.
+  useEffect(() => {
+    if (Platform.OS === 'web' || trackingMode !== 'background' || backgroundAllowed !== false) return;
+    let cancelled = false;
+    const operation = trackingOp.current;
+    void backgroundLocationState()
+      .then(async ({ granted }) => {
+        if (cancelled || operation !== trackingOp.current) return;
+        if (granted) {
+          // The cached value may be older than an iOS permission prompt that
+          // just completed; never stop freshly granted background tracking.
+          setBackgroundAllowed(true);
+          return;
+        }
+        await stopBackgroundTracking();
+        if (!cancelled && operation === trackingOp.current) {
+          setTrackingMode((current) => current === 'background' ? 'foreground' : current);
+        }
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [trackingMode, backgroundAllowed]);
+
   const answerBoarding = useCallback(
     async (onBoard: boolean, departsAt?: number) => {
       const at = departsAt ?? boardingQuestionRef.current?.departsAt;
@@ -1431,12 +1465,17 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       const startedAt =
         (resume ? await readTrackingStartedAt() : null) ?? getNow();
       if (op !== trackingOp.current) return;
-      if (!resume) {
-        void markTrackingStarted(startedAt);
-        // A new night of tracking starts from a clean slate, not an old night's snapshot.
-        void clearTrackingSnapshot();
-      }
-      setTrackingStartedAt(startedAt);
+      // Do not publish a session start or erase the previous night snapshot
+      // until a foreground watch actually exists. Users can deny permission,
+      // and iOS/Android can reject watch registration after granting it.
+      const recordSuccessfulStart = async () => {
+        if (!resume) {
+          await markTrackingStarted(startedAt);
+          // The new session must not adopt an old night's background snapshot.
+          await clearTrackingSnapshot();
+        }
+        if (op === trackingOp.current) setTrackingStartedAt(startedAt);
+      };
       const handleCoordinates = (coordinates: Coordinates) => {
         if (op !== trackingOp.current || replanInFlight.current) return;
         if (!shouldReplan(planRef.current, coordinates, getNow())) return;
@@ -1462,47 +1501,61 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
           setLocationError("unsupported");
           return;
         }
-        webWatchId.current = navigator.geolocation.watchPosition(
-          ({ coords }) =>
-            handleCoordinates({
-              latitude: coords.latitude,
-              longitude: coords.longitude,
-            }),
-          () => setLocationError("permission"),
-          { enableHighAccuracy: true },
-        );
+        try {
+          webWatchId.current = navigator.geolocation.watchPosition(
+            ({ coords }) =>
+              handleCoordinates({
+                latitude: coords.latitude,
+                longitude: coords.longitude,
+              }),
+            () => setLocationError("permission"),
+            { enableHighAccuracy: true },
+          );
+        } catch {
+          setLocationError("unavailable");
+          return;
+        }
+        await recordSuccessfulStart();
+        if (op !== trackingOp.current) {
+          removeWatches();
+          return;
+        }
         setTrackingMode("foreground");
         return;
       }
-      const permission = await Location.requestForegroundPermissionsAsync();
-      if (op !== trackingOp.current) return;
-      if (!permission.granted) {
-        setLocationError("permission");
-        return;
-      }
-      const watch = await Location.watchPositionAsync(
-        {
-          accuracy: Location.Accuracy.Balanced,
-          distanceInterval: 150,
-          timeInterval: 120000,
-        },
-        (position) =>
-          handleCoordinates({
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-          }),
+      const watchResult = await beginForegroundLocationWatch((position) =>
+        handleCoordinates({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        }),
       );
       if (op !== trackingOp.current) {
-        watch.remove(); // a stop/reset happened while we were awaiting — tear down
+        if (watchResult.status === 'started') watchResult.subscription.remove();
+        return; // a stop/reset happened while awaiting — tear down
+      }
+      if (watchResult.status !== 'started') {
+        setLocationError(watchResult.status === 'denied' ? 'permission' : 'unavailable');
+        setTrackingMode(null);
+        setTrackingStartedAt(null);
+        // A resumed native background task may still be registered even if
+        // foreground permission was revoked while this app was closed.
+        await stopBackgroundTracking().catch(() => undefined);
         return;
       }
-      foregroundWatch.current = watch;
+      foregroundWatch.current = watchResult.subscription;
+      setLocationError(null);
       // Background updates keep it fresh while the app is closed (dev/production builds).
       const backgroundActive = locationMode === 'background'
         ? await startBackgroundTracking(locationProfile(effectivePlanRef.current, getNow()))
         : false;
       if (op !== trackingOp.current) {
         if (backgroundActive) await stopBackgroundTracking(); // compensate a stale start
+        return;
+      }
+      await recordSuccessfulStart();
+      if (op !== trackingOp.current) {
+        removeWatches();
+        if (backgroundActive) await stopBackgroundTracking();
         return;
       }
       setTrackingMode(backgroundActive ? "background" : "foreground");

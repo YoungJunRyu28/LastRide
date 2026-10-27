@@ -46,6 +46,32 @@ describe('legacy cached plan walking confidence', () => {
     expect(upgraded!.autoPick.recommendedLeaveByMs).toBe(old.recommendedLeaveByMs! - 3*MINUTE_MS);
   });
 
+  it('rejects truncated and future-dated offline plans instead of suppressing launch re-plan', async () => {
+    for (const computedAt of [undefined, null, 'old', Number.NaN, Infinity,
+      now + 6 * MINUTE_MS, now - 37 * 60 * MINUTE_MS]) {
+      const broken = { ...plan(), computedAt };
+      state.store.set('lastride-last-plan', JSON.stringify(broken));
+      expect(await readSavedPlan()).toBeNull();
+      expect(state.store.has('lastride-last-plan')).toBe(false);
+    }
+  });
+
+  it('rejects damaged coordinates and transit deadlines instead of displaying unsafe leave times', async () => {
+    const cases = [
+      { coordinates: { latitude: 900, longitude: 140 } },
+      { coordinates: { latitude: Number.POSITIVE_INFINITY, longitude: 140 } },
+      { lastTrain: {} },
+      { lastTrain: { departsAt: null } },
+      { station: null },
+      { leaveByMs: null },
+      { walkingMinutes: -10 },
+    ];
+    for (const invalid of cases) {
+      state.store.set('lastride-last-plan', JSON.stringify({ ...plan(), ...invalid }));
+      expect(await readSavedPlan()).toBeNull();
+    }
+  });
+
   it('keeps MapKit-route and already buffered estimated plans unchanged on repeated reads', async () => {
     for (const source of ['routed','estimated'] as const) {
       const current = plan({ walkingSource:source });

@@ -45,7 +45,7 @@ This records the 58 findings from the static source audit. **Fixed** means the c
 | LR-039 | OS clears reminder but cached signature remains | **Partial** | Native schedule receipts reconciled; non-cancellable reminder schedule queue now remains serialized after 20s watchdog to prevent older work overwriting newer plans. Physical-device delivery, Focus/AlarmKit recovery and native-hang QA remain pending |
 | LR-040 | Android selected notification tone fallback | **Pending** | Channel/tone parity |
 | LR-041 | Doze and Focus delivery OS limits | **Platform limit** | Document realistic guarantees and E2E |
-| LR-042 | Revoked Android permission leaves tracking state stale | **Pending** | Reconcile on foreground and service lifecycle |
+| LR-042 | Revoked Android permission leaves tracking state stale | **Partial — patched in review PR** | Foreground permission revocation now ends stale tracking; background-only revocation downgrades after fresh OS check; watcher registration errors are caught. Signed-device Settings/relaunch transitions remain unverified |
 | LR-043 | Same-name stations/location ambiguous | **Pending** | Disambiguation by coordinates/operator/prefecture |
 | LR-044 | Disruption feed failure appears as no incidents | **Pending** | Health/missing-data UI state |
 | LR-045 | Timetable snapshot age not enforced | **Partial** | Deployment preflight plus runtime request-time expiry now reject stale or future-dated cached snapshots; licensed provider coverage, freshness SLO and live disruption checks still pending |

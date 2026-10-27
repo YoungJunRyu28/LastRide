@@ -35,14 +35,41 @@ function upgradeLegacyWalkingChoice<T extends StationChoice>(choice: T): T {
   };
 }
 
+/** Cached plans are untrusted on upgrade or after an interrupted write.
+ * Missing computedAt used to bypass the launch refresh comparison, potentially
+ * leaving a user staring at a stale departure with no re-plan. */
+function usableOfflinePlan(value: unknown, nowMs: number): value is NightPlan {
+  if (!value || typeof value !== 'object') return false;
+  const plan = value as Partial<NightPlan>;
+  const station = plan.station;
+  const lastTrain = plan.lastTrain;
+  const coordinates = plan.coordinates;
+  return typeof plan.computedAt === 'number' && Number.isFinite(plan.computedAt) &&
+    nowMs - plan.computedAt <= 36 * 60 * MINUTE_MS &&
+    plan.computedAt <= nowMs + 5 * MINUTE_MS &&
+    typeof plan.leaveByMs === 'number' && Number.isFinite(plan.leaveByMs) &&
+    typeof lastTrain?.departsAt === 'number' && Number.isFinite(lastTrain.departsAt) &&
+    typeof station?.nameJa === 'string' &&
+    typeof plan.destination?.nameJa === 'string' &&
+    typeof plan.walkingMinutes === 'number' && Number.isFinite(plan.walkingMinutes) &&
+    plan.walkingMinutes >= 0 &&
+    typeof coordinates?.latitude === 'number' && Number.isFinite(coordinates.latitude) &&
+    typeof coordinates?.longitude === 'number' && Number.isFinite(coordinates.longitude) &&
+    Math.abs(coordinates.latitude) <= 90 && Math.abs(coordinates.longitude) <= 180;
+}
+
 /** The saved plan, if it is still for tonight's trains. */
 export async function readSavedPlan(): Promise<NightPlan | null> {
   try {
     const raw = await AsyncStorage.getItem(SAVED_PLAN_KEY);
     if (!raw) return null;
-    const plan = JSON.parse(raw) as NightPlan;
-    if (typeof plan?.leaveByMs !== 'number' || !plan.lastTrain) return null;
-    if (serviceDate(plan.lastTrain.departsAt) === serviceDate(Date.now())) {
+    const plan: unknown = JSON.parse(raw);
+    const now = Date.now();
+    if (!usableOfflinePlan(plan, now)) {
+      await AsyncStorage.removeItem(SAVED_PLAN_KEY).catch(() => undefined);
+      return null;
+    }
+    if (serviceDate(plan.lastTrain.departsAt) === serviceDate(now)) {
       return {
         ...upgradeLegacyWalkingChoice(plan),
         alternatives: (plan.alternatives ?? []).map(upgradeLegacyWalkingChoice),

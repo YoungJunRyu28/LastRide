@@ -1,5 +1,6 @@
 import { Feather } from '@expo/vector-icons';
 import { groupInviteLink } from '@/lib/inviteLinks';
+import { completeGroupDeparture } from '@/lib/groupDeparture';
 import QRCode from 'react-native-qrcode-svg';
 import {
   disbandGroup,
@@ -115,8 +116,20 @@ export default function GroupScreen() {
       after?.();
     } catch (error) {
       if (errorStatus(error) === 404) {
-        await forget(detail.id);
-        router.replace('/groups');
+        try {
+          await forget(detail.id);
+          router.replace('/groups');
+        } catch {
+          // The server says this membership is gone, but OS secure storage
+          // could not remove its local capability. Do not navigate away or
+          // produce an unhandled rejection from a fire-and-forget press.
+          Alert.alert(
+            ja ? '端末のグループ情報を更新できません' : 'Could not clear saved group access',
+            ja
+              ? '端末のストレージを確認し、再度お試しください。'
+              : 'Check device storage and try again.',
+          );
+        }
         return;
       }
       Alert.alert(ja ? 'できませんでした' : 'That didn’t work', ja ? 'しばらくしてからもう一度お試しください。' : 'Please try again in a moment.');
@@ -127,10 +140,11 @@ export default function GroupScreen() {
 
   const leaveGone = async (action: () => Promise<void>) => {
     setSheet(null);
-    await run(action, () => {
-      void forget(detail.id);
-      router.replace('/groups');
-    });
+    await run(() => completeGroupDeparture(
+      action,
+      () => forget(detail.id),
+      () => router.replace('/groups'),
+    ));
   };
 
   /**
