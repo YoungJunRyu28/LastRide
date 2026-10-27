@@ -46,8 +46,8 @@ This records the 58 findings from the static source audit. **Fixed** means the c
 | LR-040 | Android selected notification tone fallback | **Pending** | Channel/tone parity |
 | LR-041 | Doze and Focus delivery OS limits | **Platform limit** | Document realistic guarantees and E2E |
 | LR-042 | Revoked Android permission leaves tracking state stale | **Partial — patched in review PR** | Foreground permission revocation now ends stale tracking; background-only revocation downgrades after fresh OS check; watcher registration errors are caught. Signed-device Settings/relaunch transitions remain unverified |
-| LR-043 | Same-name stations/location ambiguous | **Pending** | Disambiguation by coordinates/operator/prefecture |
-| LR-044 | Disruption feed failure appears as no incidents | **Pending** | Health/missing-data UI state |
+| LR-043 | Same-name stations/location ambiguous | **Partial — in review PR** | Physical station matching checks distance/locality and preserves distant namesakes through nearby search and prior-plan reuse; MapKit/ODPT real journey QA remains |
+| LR-044 | Disruption feed failure appears as no incidents | **Partial — in review PR** | API returns 503 for missing key, malformed/partial ODPT outage or uncovered operators; Ride warns and rechecks on foreground/five-minute cadence. Licensed live provider QA remains |
 | LR-045 | Timetable snapshot age not enforced | **Partial** | Deployment preflight plus runtime request-time expiry now reject stale or future-dated cached snapshots; licensed provider coverage, freshness SLO and live disruption checks still pending |
 | LR-046 | Midnight/GPS/transfer journey edge cases | **Pending** | Scenario corpus with real data |
 | LR-047 | Coordinates/invites in API parse exception message | **Partial** | URL query scrubbed in message and URL; audit remaining fields |

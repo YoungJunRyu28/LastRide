@@ -516,7 +516,7 @@ export const getGetTrainDisruptionsUrl = (params: GetTrainDisruptionsParams,) =>
 }
 
 /**
- * Returns RescueNow disruption information matching the supplied rail line names. Returns an empty list when the optional provider product is unavailable so core planning remains unaffected.
+ * Returns ODPT disruption information matching the supplied rail line names. An empty list means the configured providers responded and reported no matching incidents. Provider failure or missing credentials returns 503, so clients can show an explicit unknown service-health state without blocking timetable planning.
  * @summary Live disruption information for route lines
  */
 export const getTrainDisruptions = async (params: GetTrainDisruptionsParams, options?: Parameters<typeof customFetch>[1]): Promise<TrainDisruption[]> => {
@@ -541,7 +541,7 @@ export const getGetTrainDisruptionsQueryKey = (params?: GetTrainDisruptionsParam
     }
 
 
-export const getGetTrainDisruptionsQueryOptions = <TData = Awaited<ReturnType<typeof getTrainDisruptions>>, TError = ErrorType<unknown>>(params: GetTrainDisruptionsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTrainDisruptions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getGetTrainDisruptionsQueryOptions = <TData = Awaited<ReturnType<typeof getTrainDisruptions>>, TError = ErrorType<void>>(params: GetTrainDisruptionsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTrainDisruptions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
@@ -560,14 +560,14 @@ const {query: queryOptions, request: requestOptions} = options ?? {};
 }
 
 export type GetTrainDisruptionsQueryResult = NonNullable<Awaited<ReturnType<typeof getTrainDisruptions>>>
-export type GetTrainDisruptionsQueryError = ErrorType<unknown>
+export type GetTrainDisruptionsQueryError = ErrorType<void>
 
 
 /**
  * @summary Live disruption information for route lines
  */
 
-export function useGetTrainDisruptions<TData = Awaited<ReturnType<typeof getTrainDisruptions>>, TError = ErrorType<unknown>>(
+export function useGetTrainDisruptions<TData = Awaited<ReturnType<typeof getTrainDisruptions>>, TError = ErrorType<void>>(
  params: GetTrainDisruptionsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getTrainDisruptions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {

@@ -206,7 +206,7 @@ export const GetPartwayTrainTaxiResponse = zod.object({
 
 
 /**
- * Returns RescueNow disruption information matching the supplied rail line names. Returns an empty list when the optional provider product is unavailable so core planning remains unaffected.
+ * Returns ODPT disruption information matching the supplied rail line names. An empty list means the configured providers responded and reported no matching incidents. Provider failure or missing credentials returns 503, so clients can show an explicit unknown service-health state without blocking timetable planning.
  * @summary Live disruption information for route lines
  */
 export const getTrainDisruptionsQueryLinesMax = 600;

@@ -6,7 +6,7 @@
 import { getTrainDisruptions } from '@workspace/api-client-react';
 import type { HomeAddress } from '@/lib/settings';
 import { matchingDisruptionLines, recommendedLeaveTime, type LeaveMargin, recommendedSafetyMarginMinutes, walkingUncertaintyMarginMinutes, riskAdjustedLeaveTime } from '@/lib/reliability';
-import { distanceBetween, findNearbyStations, LocationError, walkingRoute, type Coordinates, type NearbyStation, type StationOption, type WalkingRoute, type WalkingSpeed } from '@/lib/stations';
+import { distanceBetween, findNearbyStations, LocationError, samePhysicalStation, walkingRoute, type Coordinates, type NearbyStation, type StationOption, type WalkingRoute, type WalkingSpeed } from '@/lib/stations';
 import { MINUTE_MS, serviceDayStart } from '@/lib/time';
 import { AppleLookupFailed, getLastTrain, trainsBefore, type TrainTime } from '@/lib/timetable';
 import { hasPosition, resolveAddress, resolveStation } from '@/lib/storedPlaces';
@@ -245,7 +245,7 @@ export function nextNightOf(nightOf: number, nowMs: number): number | null {
 }
 
 export function sameStation(first: StationOption, second: StationOption) {
-  return first.nameJa === second.nameJa;
+  return samePhysicalStation(first, second);
 }
 
 /**
@@ -442,7 +442,7 @@ async function evaluateCandidates(
       } catch (error) {
         // Apple's request limit or a dropped connection: keep this station's last
         // result rather than lose it (and let a far station win by default).
-        const kept = earlier.get(station.nameJa);
+        const kept = [...earlier.values()].find((option) => sameStation(option.station, station));
         if (kept) return keptResult(kept, walkHere, leaveMargin);
         // Apple-only route that failed with nothing to keep: as before, no train found.
         if (error instanceof AppleLookupFailed) return null;
@@ -478,7 +478,9 @@ function earlierResults(previous: NightPlan | null, nightOf: number, nowMs: numb
     const lookedUpAt = option.keptSince ?? previous.computedAt;
     if (nowMs - lookedUpAt > KEEP_RESULT_MS) continue;
     const { station, walkingMinutes, distanceMeters, lastTrain, leaveByMs, recommendedLeaveByMs, safetyMarginMinutes, disruptionLines, destination, walkHomeMinutes, arriveHomeMs } = option;
-    results.set(station.nameJa, { station, walkingMinutes, distanceMeters, lastTrain, leaveByMs, recommendedLeaveByMs, safetyMarginMinutes, disruptionLines, destination, walkHomeMinutes, arriveHomeMs, keptSince: lookedUpAt });
+    // A name alone can collide across separate Japanese stations. Preserve
+    // each candidate independently and match by physical identity on reuse.
+    results.set(String(results.size), { station, walkingMinutes, distanceMeters, lastTrain, leaveByMs, recommendedLeaveByMs, safetyMarginMinutes, disruptionLines, destination, walkHomeMinutes, arriveHomeMs, keptSince: lookedUpAt });
   }
   return results;
 }
@@ -544,7 +546,11 @@ export async function planNight(
   const earlier = earlierResults(previous, nightOf, nowMs);
   // Barely moved: the walks found last time still hold, so Apple isn't asked again.
   const knownWalks = previous && earlier.size > 0 && distanceBetween(previous.coordinates, coordinates) <= SAME_SPOT_METERS
-    ? new Map([...earlier].map(([name, option]) => [name, { walkingMinutes: option.walkingMinutes, distanceMeters: option.distanceMeters, source: option.walkingSource ?? 'estimated' }]))
+    ? new Map([...earlier.values()]
+        // Apple Maps accepts walks keyed by station name, so omit colliding
+        // namesakes instead of reusing one station's walk for another.
+        .filter((option, _, all) => all.filter((other) => other.station.nameJa === option.station.nameJa).length === 1)
+        .map((option) => [option.station.nameJa, { walkingMinutes: option.walkingMinutes, distanceMeters: option.distanceMeters, source: option.walkingSource ?? 'estimated' as const }]))
     : undefined;
   // If Apple's station search fails, the last plan's stations stand in (lib/stations).
   const recent = previous && distanceBetween(previous.coordinates, coordinates) <= RECENT_STATIONS_METERS
@@ -564,8 +570,8 @@ export async function planNight(
 
   if (shouldExpandStationSearch(options)) {
     const expanded = await findNearbyStations(coordinates, WALKING_PACE, CANDIDATE_STATIONS_EXPANDED, knownWalks, recent).catch(() => []);
-    const known = new Set(candidates.map((candidate) => candidate.station.nameJa));
-    const extra = expanded.filter((candidate) => !known.has(candidate.station.nameJa));
+    const extra = expanded.filter((candidate) =>
+      !candidates.some((known) => sameStation(known.station, candidate.station)));
     if (extra.length > 0) {
       const secondPass = await evaluateCandidates(extra, destinations, coordinates, leaveMargin, nightOf, earlier);
       lookupFailed ||= secondPass.lookupFailed;

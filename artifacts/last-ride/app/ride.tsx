@@ -131,6 +131,7 @@ export default function RideScreen() {
   const ja = language === "ja";
   const station = ja ? stationNameJa : stationName;
   const [disruptions, setDisruptions] = useState<TrainDisruption[]>([]);
+  const [disruptionFeedUnavailable, setDisruptionFeedUnavailable] = useState(false);
   const [showOtherStations, setShowOtherStations] = useState(false);
   const [showRoute, setShowRoute] = useState(false);
   const clockMs = useSecondClock(nowMs, demoActive);
@@ -235,25 +236,53 @@ export default function RideScreen() {
   const msLeft = phase ? phase.countdownTo - clockMs : null;
   const departed = status === "departed";
 
+  const disruptionLineNames = [...new Set(
+    (plan?.lastTrain.legs ?? []).map((leg) => leg.line).filter(Boolean),
+  )].join(":");
   useEffect(() => {
-    const legs = plan?.lastTrain.legs ?? [];
-    if (!apiBaseUrl || lastTrainSource !== "live" || legs.length === 0) {
+    if (!apiBaseUrl || lastTrainSource !== "live" || !disruptionLineNames) {
       setDisruptions([]);
+      setDisruptionFeedUnavailable(false);
       return;
     }
-    const lines = [...new Set(legs.map((leg) => leg.line).filter(Boolean))];
     let active = true;
-    void getTrainDisruptions({ lines: lines.join(":") })
-      .then((items) => {
-        if (active) setDisruptions(items);
-      })
-      .catch(() => {
-        if (active) setDisruptions([]);
-      });
+    let lastCheckAt = 0;
+    const check = (force = false) => {
+      if (AppState.currentState !== "active") return;
+      const now = Date.now();
+      // Avoid a burst of provider requests when the user repeatedly switches
+      // away and back from Settings or another app.
+      if (!force && now - lastCheckAt < 60_000) return;
+      lastCheckAt = now;
+      void getTrainDisruptions({ lines: disruptionLineNames })
+        .then((items) => {
+          if (active) {
+            setDisruptions(items);
+            setDisruptionFeedUnavailable(false);
+          }
+        })
+        .catch(() => {
+          if (active) {
+            setDisruptions([]);
+            setDisruptionFeedUnavailable(true);
+          }
+        });
+    };
+    // Clear stale alerts from a different route. A same-route refresh leaves
+    // the previous status visible until the response settles.
+    setDisruptions([]);
+    setDisruptionFeedUnavailable(false);
+    check(true);
+    const timer = setInterval(() => check(), 5 * 60_000);
+    const listener = AppState.addEventListener("change", (state) => {
+      if (state === "active") check();
+    });
     return () => {
       active = false;
+      clearInterval(timer);
+      listener.remove();
     };
-  }, [plan?.computedAt, lastTrainSource]);
+  }, [plan?.computedAt, lastTrainSource, disruptionLineNames]);
 
   useEffect(() => {
     if (homeStationOption && !isLocationReady && !isLocating && !locationError)
@@ -871,6 +900,15 @@ export default function RideScreen() {
           </Pressable>
         )}
 
+        {disruptionFeedUnavailable && (
+          <Notice
+            icon="alert-triangle"
+            title={ja ? "運行情報を確認できません" : "Service alerts unavailable"}
+            body={ja
+              ? "運転見合わせ・遅延の最新情報を取得できません。表示されている終電時刻は運行を保証するものではありません。駅・鉄道会社の情報を直接ご確認ください。"
+              : "Live delays and suspensions could not be checked. Your last-train estimate does not confirm that trains are running. Verify with your railway operator."}
+          />
+        )}
         {disruptions.map((incident) => (
           <Notice
             key={`${incident.lineCode ?? incident.line}-${incident.title}`}
