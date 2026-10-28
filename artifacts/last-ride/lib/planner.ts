@@ -67,6 +67,8 @@ export type StationChoice = {
   distanceMeters: number;
   /** Optional for older saved plans; unknown walking routes are treated as estimates. */
   walkingSource?: WalkingRoute['source'];
+  /** The walk's route shape (Apple's), for the map card's line; absent for estimates and older plans. */
+  walkPath?: Coordinates[];
   lastTrain: TrainTime;
   /** Absolute/latest practical time to start walking, epoch ms. */
   leaveByMs: number;
@@ -306,12 +308,13 @@ function assemble(options: StationChoice[], pinned: StationOption | null, coordi
   // the user home: back to automatic (the app and the background task say so).
   const pinnedChoice = pinned ? (running.length > 0 ? running : sorted).find((option) => sameStation(option.station, pinned)) : undefined;
   const chosen = pinnedChoice ?? auto;
-  const { station, walkingMinutes, distanceMeters, walkingSource, lastTrain, leaveByMs, recommendedLeaveByMs, safetyMarginMinutes, disruptionLines, destination, walkHomeMinutes, arriveHomeMs } = chosen;
+  const { station, walkingMinutes, distanceMeters, walkingSource, walkPath, lastTrain, leaveByMs, recommendedLeaveByMs, safetyMarginMinutes, disruptionLines, destination, walkHomeMinutes, arriveHomeMs } = chosen;
   return {
     station,
     walkingMinutes,
     distanceMeters,
     walkingSource,
+    walkPath,
     lastTrain,
     leaveByMs,
     recommendedLeaveByMs,
@@ -357,12 +360,13 @@ export function replanMargin(plan: NightPlan, leaveMargin: LeaveMargin): NightPl
 
 /** Switches an existing plan to `pinned` (or back to the automatic pick with null) without new lookups. */
 export function repick(plan: NightPlan, pinned: StationOption | null): NightPlan {
-  const { station, walkingMinutes, distanceMeters, walkingSource, lastTrain, leaveByMs, recommendedLeaveByMs, safetyMarginMinutes, disruptionLines, destination, walkHomeMinutes, arriveHomeMs } = plan;
+  const { station, walkingMinutes, distanceMeters, walkingSource, walkPath, lastTrain, leaveByMs, recommendedLeaveByMs, safetyMarginMinutes, disruptionLines, destination, walkHomeMinutes, arriveHomeMs } = plan;
   const current: StationChoice = {
     station,
     walkingMinutes,
     distanceMeters,
     walkingSource,
+    walkPath,
     lastTrain,
     leaveByMs,
     recommendedLeaveByMs,
@@ -424,6 +428,7 @@ async function evaluateCandidates(
               walkingMinutes: walk.walkingMinutes,
               distanceMeters: walk.distanceMeters,
               walkingSource: walk.source,
+              walkPath: walk.path,
             };
             const safetyMarginMinutes = planSafetyMarginMinutes(base, leaveMargin);
             return {
@@ -468,7 +473,7 @@ function keptResult(kept: StationChoice, walk: NearbyStation['walk'], leaveMargi
   if (!walk) return choice;
   const leaveByMs = choice.lastTrain.departsAt - (walk.walkingMinutes + STATION_BUFFER_MINUTES) * MINUTE_MS;
   // The walk's own fields only: whether it's a real route decides 「（推定）」 and the extra margin.
-  return withMargin({ ...choice, walkingMinutes: walk.walkingMinutes, distanceMeters: walk.distanceMeters, walkingSource: walk.source, leaveByMs }, leaveMargin);
+  return withMargin({ ...choice, walkingMinutes: walk.walkingMinutes, distanceMeters: walk.distanceMeters, walkingSource: walk.source, walkPath: walk.path, leaveByMs }, leaveMargin);
 }
 
 /**
@@ -483,8 +488,8 @@ function earlierResults(previous: NightPlan | null, nightOf: number, nowMs: numb
   for (const option of [previous, ...(previous.alternatives ?? [])]) {
     const lookedUpAt = option.keptSince ?? previous.computedAt;
     if (nowMs - lookedUpAt > KEEP_RESULT_MS) continue;
-    const { station, walkingMinutes, distanceMeters, walkingSource, lastTrain, leaveByMs, recommendedLeaveByMs, safetyMarginMinutes, disruptionLines, destination, walkHomeMinutes, arriveHomeMs } = option;
-    results.set(station.nameJa, { station, walkingMinutes, distanceMeters, walkingSource, lastTrain, leaveByMs, recommendedLeaveByMs, safetyMarginMinutes, disruptionLines, destination, walkHomeMinutes, arriveHomeMs, keptSince: lookedUpAt });
+    const { station, walkingMinutes, distanceMeters, walkingSource, walkPath, lastTrain, leaveByMs, recommendedLeaveByMs, safetyMarginMinutes, disruptionLines, destination, walkHomeMinutes, arriveHomeMs } = option;
+    results.set(station.nameJa, { station, walkingMinutes, distanceMeters, walkingSource, walkPath, lastTrain, leaveByMs, recommendedLeaveByMs, safetyMarginMinutes, disruptionLines, destination, walkHomeMinutes, arriveHomeMs, keptSince: lookedUpAt });
   }
   return results;
 }
@@ -550,7 +555,7 @@ export async function planNight(
   const earlier = earlierResults(previous, nightOf, nowMs);
   // Barely moved: the walks found last time still hold, so Apple isn't asked again.
   const knownWalks = previous && earlier.size > 0 && distanceBetween(previous.coordinates, coordinates) <= SAME_SPOT_METERS
-    ? new Map([...earlier].map(([name, option]) => [name, { walkingMinutes: option.walkingMinutes, distanceMeters: option.distanceMeters, source: option.walkingSource ?? 'estimated' }]))
+    ? new Map([...earlier].map(([name, option]) => [name, { walkingMinutes: option.walkingMinutes, distanceMeters: option.distanceMeters, source: option.walkingSource ?? 'estimated', path: option.walkPath }]))
     : undefined;
   // If Apple's station search fails, the last plan's stations stand in (lib/stations).
   const recent = previous && distanceBetween(previous.coordinates, coordinates) <= RECENT_STATIONS_METERS

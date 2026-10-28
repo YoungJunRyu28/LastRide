@@ -286,6 +286,10 @@ function RealOverlay({
   const middle = line.length > 0 ? line[Math.floor(line.length / 2)] : null;
   const youPx = you ? project(frame, you) : null;
   const targetPx = target ? project(frame, target) : null;
+  // Labels sit above their dot, but slide inward at the map's edges (never cut
+  // off); the dot always stays exactly on the place.
+  const stationWidth = stationTag ? Math.min(labelWidth(stationTag, 13), frame.width - 2 * EDGE) : 0;
+  const walkWidth = walkLabel ? Math.min(labelWidth(walkLabel, 11), frame.width - 2 * EDGE) : 0;
   return (
     <>
       <Image source={{ uri: snapshot }} style={StyleSheet.absoluteFill} accessibilityIgnoresInvertColors />
@@ -303,18 +307,38 @@ function RealOverlay({
         </Svg>
       )}
       {targetPx && stationTag ? (
-        <View style={[styles.stationTag, { left: targetPx.x - 60, top: targetPx.y - 33, width: 120 }]}>
-          <Text numberOfLines={1} style={[styles.stationTagText, { backgroundColor: colors.line }]}>
+        <>
+          <View style={[styles.stationDot, styles.placed, { left: targetPx.x - 6, top: targetPx.y - 6, backgroundColor: colors.line, borderColor: colors.map }]} />
+          <Text
+            numberOfLines={1}
+            style={[
+              styles.stationTagText,
+              styles.placed,
+              {
+                left: clampLeft(targetPx.x, stationWidth, frame.width),
+                top: labelTop(targetPx.y, 22, 9, frame.height),
+                maxWidth: frame.width - 2 * EDGE,
+                backgroundColor: colors.line,
+              },
+            ]}
+          >
             {stationTag}
           </Text>
-          <View style={[styles.stationDot, { backgroundColor: colors.line, borderColor: colors.map }]} />
-        </View>
+        </>
       ) : null}
       {walkLabel ? (
         <Text
+          numberOfLines={1}
           style={[
             styles.bubble,
-            { left: middle ? middle.x - 30 : 10, top: middle ? middle.y - 10 : 10, backgroundColor: colors.background, borderColor: colors.input, color: colors.foreground },
+            {
+              left: middle ? clampLeft(middle.x, walkWidth, frame.width) : 10,
+              top: middle ? clampTop(middle.y - 10, 20, frame.height) : 10,
+              maxWidth: frame.width - 2 * EDGE,
+              backgroundColor: colors.background,
+              borderColor: colors.input,
+              color: colors.foreground,
+            },
           ]}
         >
           {walkLabel}
@@ -323,25 +347,60 @@ function RealOverlay({
       {pinsToDraw(pins).map((pin, index) => {
         if (pin.latitude === undefined || pin.longitude === undefined) return null;
         const { x, y } = project(frame, { latitude: pin.latitude, longitude: pin.longitude });
+        const width = Math.min(labelWidth(pin.label, 11), frame.width - 2 * EDGE);
         return (
-          <Text
-            key={`${index}-${pin.label}`}
-            numberOfLines={1}
-            style={[
-              styles.bubble,
-              { left: x - 40, top: y - 10 },
-              pin.emphasis
-                ? { backgroundColor: colors.primary, borderColor: colors.primary, color: colors.primaryForeground }
-                : { backgroundColor: colors.background, borderColor: colors.input, color: colors.foreground },
-            ]}
-          >
-            {pin.label}
-          </Text>
+          <React.Fragment key={`${index}-${pin.label}`}>
+            {/* A small dot exactly on the place (taxi stand, somewhere to wait), its label above. */}
+            <View
+              style={[
+                styles.pinDot,
+                styles.placed,
+                { left: x - 5, top: y - 5, backgroundColor: pin.emphasis ? colors.primary : colors.foreground, borderColor: colors.map },
+              ]}
+            />
+            <Text
+              numberOfLines={1}
+              style={[
+                styles.bubble,
+                { left: clampLeft(x, width, frame.width), top: labelTop(y, 20, 7, frame.height), maxWidth: frame.width - 2 * EDGE },
+                pin.emphasis
+                  ? { backgroundColor: colors.primary, borderColor: colors.primary, color: colors.primaryForeground }
+                  : { backgroundColor: colors.background, borderColor: colors.input, color: colors.foreground },
+              ]}
+            >
+              {pin.label}
+            </Text>
+          </React.Fragment>
         );
       })}
       {youPx ? <View style={[styles.you, { left: youPx.x - 11, top: youPx.y - 11, borderColor: colors.primary }]} /> : null}
     </>
   );
+}
+
+/** Labels keep at least this far from the map's edges. */
+const EDGE = 4;
+
+/** A label's rough drawn width: full-width (Japanese) characters ~1 em, others ~0.6 em, plus padding. */
+function labelWidth(text: string, fontSize: number): number {
+  let width = 0;
+  for (const char of text) width += /[\u3000-\u9fff\uff00-\uffef]/.test(char) ? fontSize : fontSize * 0.62;
+  return Math.ceil(width + 16);
+}
+
+/** Left edge for a label centred on `center`, slid inward to stay inside the map. */
+function clampLeft(center: number, width: number, frameWidth: number): number {
+  return Math.max(EDGE, Math.min(center - width / 2, frameWidth - width - EDGE));
+}
+
+function clampTop(top: number, height: number, frameHeight: number): number {
+  return Math.max(EDGE, Math.min(top, frameHeight - height - EDGE));
+}
+
+/** Top for a label just above a dot at `y` (`gap` from its centre), or just below when there's no room above. */
+function labelTop(y: number, height: number, gap: number, frameHeight: number): number {
+  const above = y - gap - height;
+  return clampTop(above >= EDGE ? above : y + gap, height, frameHeight);
 }
 
 /** The first four pins plus the highlighted one, drawn last so it's on top. */
@@ -446,6 +505,8 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
   },
   stationDot: { borderRadius: 6, borderWidth: 3, height: 12, width: 12 },
+  pinDot: { borderRadius: 5, borderWidth: 2, height: 10, width: 10 },
+  placed: { position: 'absolute' },
   bubble: {
     borderRadius: 8,
     borderWidth: 1,

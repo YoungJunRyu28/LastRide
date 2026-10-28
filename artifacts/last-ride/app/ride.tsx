@@ -953,6 +953,8 @@ export default function RideScreen() {
             // The plan's own position until fresh GPS arrives (e.g. right after relaunch).
             you={userCoordinates ?? plan.coordinates}
             target={plan.station}
+            // Apple's street route, when known: the card never draws a straight line instead.
+            path={plan.walkPath}
             stationTag={station}
             walkLabel={
               walkingMinutes

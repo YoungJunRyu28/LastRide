@@ -959,6 +959,7 @@ export default function AlternativesScreen() {
                 height={160}
                 you={userCoordinates}
                 target={plan.station}
+                path={plan.walkPath}
                 stationTag={station}
                 walkLabel={ja ? `徒歩${plan.walkingMinutes}分` : `${plan.walkingMinutes} min walk`}
                 onPress={() => openTransitRoute(plan.destination)}
@@ -1556,6 +1557,7 @@ export default function AlternativesScreen() {
                 height={160}
                 you={userCoordinates}
                 target={taxiTarget}
+                path={walkHome.path}
                 stationTag={homeLabel}
                 walkLabel={ja ? `徒歩${walkHome.walkingMinutes}分` : `${walkHome.walkingMinutes} min walk`}
                 onPress={() => openWalkingRoute(taxiTarget)}

@@ -30,7 +30,13 @@ export type WalkingSpeed = "relaxed" | "normal" | "fast";
 
 /** "routed" comes from pedestrian street routing; "estimated" is a
  * straight-line multiplier with no sidewalk/bridge/entrance verification. */
-export type WalkingRoute = { distanceMeters: number; walkingMinutes: number; source: 'routed' | 'estimated' };
+export type WalkingRoute = {
+  distanceMeters: number;
+  walkingMinutes: number;
+  source: 'routed' | 'estimated';
+  /** The route's shape (Apple's, thinned to ~40 points), drawn on the map card; absent for estimates. */
+  path?: Coordinates[];
+};
 
 export type NearbyStation = {
   station: StationOption;

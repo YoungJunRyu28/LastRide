@@ -110,6 +110,8 @@ export async function appleWalkingRoute(
     // Apple's times assume an ordinary pace.
     walkingMinutes: Math.max(1, Math.round(route.seconds / 60 / SPEED_MULTIPLIER[walkingSpeed])),
     source: 'routed', // MapKit pedestrian street route, not straight-line approximation.
+    // The street route itself, for the map card's walking line (which never draws a straight line).
+    path: Array.isArray(route.path) ? route.path.filter(isValidMapCoordinate) : undefined,
   };
 }
 
