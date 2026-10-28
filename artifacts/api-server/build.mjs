@@ -27,6 +27,8 @@ async function buildAll() {
       path.resolve(artifactDir, "src/index.ts"),
       path.resolve(artifactDir, "src/lambda.ts"),
       path.resolve(artifactDir, "src/scheduled.ts"),
+      // The monthly timetable refresh (its own Lambda: longer timeout, more memory).
+      path.resolve(artifactDir, "src/transitRefresh.ts"),
     ],
     platform: "node",
     bundle: true,

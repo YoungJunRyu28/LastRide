@@ -99,6 +99,24 @@ node scripts/check-receipt-retention.mjs "$STAGE"
 # Lambda package (git-ignored provider data). Check it before anything mutates;
 # the build below fails too (REQUIRE_TRANSIT_SNAPSHOT=1) if it is unusable.
 TRANSIT_SNAPSHOT="${TRANSIT_SNAPSHOT_PATH:-artifacts/api-server/data/transit-snapshot.json.gz}"
+# The monthly refresh (TransitRefreshFunction) keeps the newest timetable in S3.
+# Bundle that one when it's newer than the local file, so a deploy never ships
+# (or is blocked by) an older copy. Read-only; no secrets are read here.
+ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text 2>/dev/null || true)"
+TRANSIT_BUCKET="lastride-${STAGE}-transit-${ACCOUNT_ID}"
+REMOTE_SNAPSHOT="$(mktemp)"
+if [[ -n "$ACCOUNT_ID" ]] && aws s3 cp "s3://${TRANSIT_BUCKET}/transit-snapshot.json.gz" "$REMOTE_SNAPSHOT" \
+    --region "$AWS_REGION" --only-show-errors >/dev/null 2>&1; then
+  if [[ ! -s "$TRANSIT_SNAPSHOT" ]] || node -e '
+    const zlib = require("node:zlib"), fs = require("node:fs");
+    const at = (file) => Date.parse(JSON.parse(zlib.gunzipSync(fs.readFileSync(file))).generatedAt);
+    process.exit(at(process.argv[1]) > at(process.argv[2]) ? 0 : 1);' "$REMOTE_SNAPSHOT" "$TRANSIT_SNAPSHOT"; then
+    mkdir -p "$(dirname "$TRANSIT_SNAPSHOT")"
+    cp "$REMOTE_SNAPSHOT" "$TRANSIT_SNAPSHOT"
+    echo "Using the refreshed timetable from s3://${TRANSIT_BUCKET} (newer than the local one)."
+  fi
+fi
+rm -f "$REMOTE_SNAPSHOT"
 if [[ ! -s "$TRANSIT_SNAPSHOT" ]]; then
   echo "Timetable snapshot not found at $TRANSIT_SNAPSHOT." >&2
   echo "Build it first (needs ODPT_KEY in artifacts/api-server/.env):" >&2

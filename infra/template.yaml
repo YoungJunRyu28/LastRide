@@ -165,6 +165,9 @@ Resources:
           LEAVE_ALERT_WATCHDOG_NAME: !Sub "lastride-${Stage}-leave-alert-watchdog"
           LEAVE_ALERT_TARGET_ARN: !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:lastride-${Stage}-scheduled:live"
           LEAVE_ALERT_ROLE_ARN: !GetAtt LeaveAlertSchedulerRole.Arn
+          # The monthly timetable refresh lands here; the API checks for a newer one
+          # every few hours and falls back to the copy bundled at deploy.
+          TRANSIT_SNAPSHOT_BUCKET: !Ref TransitSnapshotBucket
       Policies:
         - Statement:
             - Effect: Allow
@@ -178,6 +181,9 @@ Resources:
             - Effect: Allow
               Action: iam:PassRole
               Resource: !GetAtt LeaveAlertSchedulerRole.Arn
+            - Effect: Allow
+              Action: s3:GetObject
+              Resource: !Sub "${TransitSnapshotBucket.Arn}/*"
       DeploymentPreference:
         Enabled: !If [UseCanary, true, false]
         Type: Canary10Percent5Minutes
@@ -340,6 +346,98 @@ Resources:
               Type: SQS
               QueueLogicalId: PushReceiptsScheduleDlq
 
+  # Timetables (ODPT open data) refreshed monthly by TransitRefreshFunction.
+  # Private; earlier versions kept 60 days to roll back a bad refresh.
+  TransitSnapshotBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "lastride-${Stage}-transit-${AWS::AccountId}"
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireOldTimetables
+            Status: Enabled
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 60
+
+  TransitRefreshLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/lastride-${Stage}-transit-refresh"
+      RetentionInDays: 30
+
+  # Rebuilds the timetable snapshot from ODPT and stores it in the bucket
+  # (src/transitRefresh.ts). The API refuses timetables over 30 days old, so it
+  # runs twice a month: one failed run still leaves time for the next. No
+  # database use. A broken result isn't published (the previous one stays) and
+  # raises TransitRefreshErrorsAlarm.
+  TransitRefreshFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "lastride-${Stage}-transit-refresh"
+      CodeUri: ../artifacts/api-server/dist/
+      Handler: transitRefresh.handler
+      # Downloads ODPT's full timetable dumps: ~10 s and ~550 MB measured (Oct 2026), with headroom.
+      Timeout: 300
+      MemorySize: 1536
+      LoggingConfig:
+        LogGroup: !Ref TransitRefreshLogGroup
+      Environment:
+        Variables:
+          NODE_ENV: production
+          LASTRIDE_STAGE: !Ref Stage
+          LOG_LEVEL: info
+          ODPT_KEY: !Sub "{{resolve:secretsmanager:${AppSecretName}:SecretString:ODPT_KEY}}"
+          TRANSIT_SNAPSHOT_BUCKET: !Ref TransitSnapshotBucket
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - s3:GetObject
+                - s3:PutObject
+              Resource: !Sub "${TransitSnapshotBucket.Arn}/*"
+      Events:
+        Refresh:
+          Type: ScheduleV2
+          Properties:
+            OmitName: true
+            # 04:30 JST on the 1st and 15th, when nobody is waiting for a last train.
+            ScheduleExpression: "cron(30 4 1,15 * ? *)"
+            ScheduleExpressionTimezone: Asia/Tokyo
+            Input: '{}'
+            FlexibleTimeWindow:
+              Mode: "OFF"
+            RetryPolicy:
+              MaximumRetryAttempts: 2
+              MaximumEventAgeInSeconds: 3600
+
+  TransitRefreshErrorsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: LastRide timetable refresh failed (the previous timetable stays; it expires after 30 days)
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref TransitRefreshFunction
+      Statistic: Sum
+      Period: 3600
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref OperationsTopic]
+
   ApiErrorsAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
@@ -407,3 +505,7 @@ Outputs:
     Value: !Ref ScheduledFunction
   OperationsTopicArn:
     Value: !Ref OperationsTopic
+  TransitSnapshotBucketName:
+    Value: !Ref TransitSnapshotBucket
+  TransitRefreshFunctionName:
+    Value: !Ref TransitRefreshFunction

@@ -72,10 +72,19 @@ The snapshot goes to `data/` (git-ignored: it is provider data).
   `REQUIRE_TRANSIT_SNAPSHOT=1`, which fails the build if it is missing or
   unreadable. So **build the snapshot on the deploying machine before
   deploying.**
-- **Keeping it current:** timetables change, most of all at the March
-  timetable revision (ダイヤ改正), and operators also change them at other
-  times. Rebuild with `pnpm run transit:build` and redeploy after each
-  revision; the build prints the snapshot's age.
+- **Keeping it current (automatic):** timetables change, most of all at the
+  March timetable revision (ダイヤ改正), and the server refuses a snapshot
+  more than 30 days old. `TransitRefreshFunction` (`src/transitRefresh.ts`,
+  `infra/template.yaml`) rebuilds it from ODPT at 04:30 JST on the 1st and
+  15th and stores it in the stage's S3 bucket (`lastride-<stage>-transit-<account>`,
+  versioned). The API loads the newer of that and the bundled copy, and checks
+  S3 again every 6 hours, so no redeploy is needed. A result missing an
+  operator, or with far fewer trains or stations than the one in place, isn't
+  published, and `TransitRefreshErrorsAlarm` emails the operations topic.
+  `infra/deploy.sh` bundles the S3 copy when it's newer than the local file.
+  To refresh now (after a ダイヤ改正, or the first time):
+  `aws lambda invoke --function-name lastride-<stage>-transit-refresh /dev/stdout`.
+  `pnpm run transit:build` still builds one locally (and can add GTFS feeds).
 - **Licensing at load time:** `LICENSED_OPERATORS` in
   `src/lib/timetableEngine.ts` lists the operators from the table below that
   may be used commercially. Anything else in a snapshot is dropped when it is

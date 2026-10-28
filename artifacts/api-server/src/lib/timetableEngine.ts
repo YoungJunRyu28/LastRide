@@ -9,6 +9,7 @@
  * or with no journey that night, answers null, which the route turns into a
  * 404 so the app can fall back to Apple Maps.
  */
+import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { access } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -19,6 +20,7 @@ import {
   firstTrainBetween,
   lastTrainBetween,
   lastTrainsBetween,
+  decodeSnapshot,
   readSnapshot,
   type JourneyAt,
 } from "./transit/snapshot";
@@ -84,7 +86,38 @@ export type TimetableEngine = {
   snapshot: TransitSnapshot;
   /** "odpt.Railway:TokyoMetro.Hanzomon" → its display names, for operation information. */
   railways: Map<string, Railway>;
+  /** When this process loaded it (epoch ms): S3 is checked for a newer one every few hours. */
+  loadedAt: number;
 };
+
+/**
+ * The monthly refresh (src/transitRefresh.ts) stores new timetables in S3; a
+ * running server looks there for a newer one this often, so no redeploy is needed.
+ */
+const S3_RECHECK_MS = 6 * 60 * 60_000;
+
+let s3: S3Client | null = null;
+
+/** The snapshot in S3 (TRANSIT_SNAPSHOT_BUCKET), or null when there is none or it can't be read. */
+async function readSnapshotFromBucket(): Promise<{ raw: TransitSnapshot; where: string } | null> {
+  const bucket = process.env.TRANSIT_SNAPSHOT_BUCKET?.trim();
+  if (!bucket) return null;
+  try {
+    s3 ??= new S3Client({});
+    const object = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: SNAPSHOT_FILE_NAME }));
+    return { raw: decodeSnapshot(await object.Body!.transformToByteArray()), where: `s3://${bucket}/${SNAPSHOT_FILE_NAME}` };
+  } catch (err) {
+    logger.warn({ err: (err as Error).message }, "Timetable snapshot not read from S3; using the bundled one");
+    return null;
+  }
+}
+
+/** The newer of two snapshots by generatedAt (ISO strings with a timezone). */
+export function newerSnapshot<T extends { raw: { generatedAt: string } }>(first: T | null, second: T | null): T | null {
+  if (!first) return second;
+  if (!second) return first;
+  return Date.parse(second.raw.generatedAt) > Date.parse(first.raw.generatedAt) ? second : first;
+}
 
 /** Drop every station, trip and source of an operator not in `allowed`. */
 export function filterLicensedOperators(
@@ -195,22 +228,28 @@ async function firstExisting(paths: string[]): Promise<string | null> {
 let enginePromise: Promise<TimetableEngine> | null = null;
 
 async function loadEngine(): Promise<TimetableEngine> {
+  // The monthly refresh in S3 and the copy bundled at deploy: whichever is newer.
+  const fromBucket = await readSnapshotFromBucket();
   const candidates = snapshotPathCandidates();
   const found = await firstExisting(candidates);
-  if (!found) {
+  let bundled: { raw: TransitSnapshot; where: string } | null = null;
+  let bundledError: string | null = null;
+  if (found) {
+    try {
+      bundled = { raw: await readSnapshot(found), where: found };
+    } catch (err) {
+      bundledError = `Timetable snapshot at ${found} could not be read: ${(err as Error).message}`;
+    }
+  }
+  const chosen = newerSnapshot(bundled, fromBucket);
+  if (!chosen) {
     throw new TimetableUnavailableError(
-      `Timetable snapshot not found (looked in ${candidates.join(", ")}). ` +
-        "Build it with `pnpm run transit:build` (needs ODPT_KEY) or set TRANSIT_SNAPSHOT_PATH.",
+      bundledError ??
+        `Timetable snapshot not found (looked in ${candidates.join(", ")}). ` +
+          "Build it with `pnpm run transit:build` (needs ODPT_KEY) or set TRANSIT_SNAPSHOT_PATH.",
     );
   }
-  let raw: TransitSnapshot;
-  try {
-    raw = await readSnapshot(found);
-  } catch (err) {
-    throw new TimetableUnavailableError(
-      `Timetable snapshot at ${found} could not be read: ${(err as Error).message}`,
-    );
-  }
+  const { raw, where } = chosen;
   // Unlike deployment preflight, this also runs on every request below: an
   // API that remains up for weeks must stop serving an expired timetable.
   try {
@@ -222,7 +261,7 @@ async function loadEngine(): Promise<TimetableEngine> {
   const snapshot = filterLicensedOperators(raw);
   logger.info(
     {
-      path: found,
+      path: where,
       generatedAt: snapshot.generatedAt,
       stations: snapshot.stations.length,
       trips: snapshot.trips.length,
@@ -230,7 +269,32 @@ async function loadEngine(): Promise<TimetableEngine> {
     },
     "Timetable snapshot loaded",
   );
-  return { snapshot, railways: railwaysOf(snapshot) };
+  return { snapshot, railways: railwaysOf(snapshot), loadedAt: Date.now() };
+}
+
+let reloading: Promise<void> | null = null;
+
+/**
+ * Looks for a newer timetable (the monthly refresh in S3) and switches to it.
+ * Never fails: the timetable in use stays until a newer one loads.
+ */
+function reloadFromBucket(current: TimetableEngine): Promise<void> {
+  if (!process.env.TRANSIT_SNAPSHOT_BUCKET?.trim()) return Promise.resolve();
+  reloading ??= loadEngine()
+    .then((next) => {
+      if (Date.parse(next.snapshot.generatedAt) > Date.parse(current.snapshot.generatedAt)) {
+        enginePromise = Promise.resolve(next);
+        logger.info({ generatedAt: next.snapshot.generatedAt }, "Switched to a newer timetable snapshot");
+      } else current.loadedAt = Date.now();
+    })
+    .catch((err: unknown) => {
+      current.loadedAt = Date.now(); // try again at the next check, not on every request
+      logger.warn({ err: (err as Error).message }, "No newer timetable snapshot loaded");
+    })
+    .finally(() => {
+      reloading = null;
+    });
+  return reloading;
 }
 
 /**
@@ -248,22 +312,35 @@ export function timetableEngine(): Promise<TimetableEngine> {
       ? err
       : new TimetableUnavailableError((err as Error).message);
   });
-  return enginePromise.then((engine) => {
+  return enginePromise.then(async (engine) => {
+    // A newer timetable may be in S3 (the monthly refresh): look in the background.
+    if (Date.now() - engine.loadedAt >= S3_RECHECK_MS) void reloadFromBucket(engine);
     // Snapshot was loaded once, but its age changes over the process lifetime.
     // Never answer a time-sensitive train question with expired cached data.
-    try {
-      assertRuntimeTransitFresh(engine.snapshot.generatedAt, Date.now(),
+    const fresh = (candidate: TimetableEngine) =>
+      assertRuntimeTransitFresh(candidate.snapshot.generatedAt, Date.now(),
         maxTransitSnapshotAgeDays(process.env.TRANSIT_SNAPSHOT_MAX_AGE_DAYS));
+    try {
+      fresh(engine);
+      return engine;
     } catch (error) {
-      throw new TimetableUnavailableError((error as Error).message);
+      // Expired: a refreshed one may be waiting in S3. Wait for that once before giving up.
+      await reloadFromBucket(engine);
+      const latest = await (enginePromise ?? Promise.resolve(engine));
+      try {
+        fresh(latest);
+        return latest;
+      } catch {
+        throw new TimetableUnavailableError((error as Error).message);
+      }
     }
-    return engine;
   });
 }
 
 /** Forget the loaded snapshot (tests switch TRANSIT_SNAPSHOT_PATH). */
 export function resetTimetableEngine(): void {
   enginePromise = null;
+  reloading = null;
 }
 
 /** API dates are YYYYMMDD; the engine uses YYYY-MM-DD. */
