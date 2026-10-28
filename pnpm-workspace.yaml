@@ -52,6 +52,15 @@ catalog:
 
 autoInstallPeers: false
 
+packageExtensions:
+  # Sentry's Expo config plugin (enabled when SENTRY_ORG/SENTRY_PROJECT are set,
+  # to upload source maps) requires @expo/config-plugins without declaring it,
+  # which pnpm's strict layout can't resolve ("Cannot find module"). Same
+  # version as Expo's own.
+  "@sentry/react-native":
+    dependencies:
+      "@expo/config-plugins": "~57.0.10"
+
 onlyBuiltDependencies:
   - "@swc/core"
   - esbuild
