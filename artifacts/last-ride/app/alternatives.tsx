@@ -316,6 +316,7 @@ export default function AlternativesScreen() {
   const [partway, setPartway] = useState<PartwayTrainTaxi | null>(null);
   const [isLoadingPartway, setIsLoadingPartway] = useState(false);
   const [walkHome, setWalkHome] = useState<WalkingRoute | null>(null);
+  const [isLoadingWalk, setIsLoadingWalk] = useState(false);
   const [taxiStands, setTaxiStands] = useState<TaxiStand[] | null>(null);
   const [standIndex, setStandIndex] = useState(0);
   /** The waiting spot shown on the map (by name); the first one until one is tapped. */
@@ -361,6 +362,7 @@ export default function AlternativesScreen() {
     setStaysError(false);
     setTaxi(null);
     setWalkHome(null);
+    setIsLoadingWalk(false);
     if (!userCoordinates) {
       setIsLoadingStays(false);
       setIsLoadingTaxi(false);
@@ -392,6 +394,7 @@ export default function AlternativesScreen() {
       // Walking is only worth offering when the actual destination is close enough.
       const walkTarget = taxiTarget ?? homeStationOption;
       if (distanceBetween(userCoordinates, walkTarget) <= WALKABLE_METERS) {
+        setIsLoadingWalk(true);
         walkingRoute(userCoordinates, walkTarget, "normal")
           .then((route) => {
             if (
@@ -400,7 +403,10 @@ export default function AlternativesScreen() {
             )
               setWalkHome(route);
           })
-          .catch(() => undefined);
+          .catch(() => undefined)
+          .finally(() => {
+            if (token === requestToken.current) setIsLoadingWalk(false);
+          });
       }
     }
     // nowMs is deliberately not a dependency: it ticks constantly and would refetch.
@@ -597,14 +603,40 @@ export default function AlternativesScreen() {
         ]
       : []),
   ];
+  // Options still being looked up: a placeholder row where each will appear, so it's
+  // clear more are coming (and nothing jumps when they arrive).
+  type PendingOption = { key: OptionKey; icon: Option["icon"]; label: string; detail: string };
+  const pendingOptions: PendingOption[] = [
+    ...(isLoadingPartway && status === "departed" && !partway
+      ? [{ key: "partway" as const, icon: "shuffle" as const, label: ja ? "途中まで電車＋タクシー" : "Train partway + taxi", detail: ja ? "まだ乗れる電車を確認中…" : "Checking for a train that’s still running…" }]
+      : []),
+    ...(isLoadingStays && !stays
+      ? [{ key: "stay" as const, icon: "moon" as const, label: ja ? "近くで待つ＋始発" : "Wait somewhere + first train", detail: ja ? "近くの店を探しています…" : "Finding places nearby…" }]
+      : []),
+    ...(isLoadingTaxi && !taxi
+      ? [{ key: "taxi" as const, icon: "truck" as const, label: ja ? "タクシー" : "Taxi", detail: ja ? "料金と時間を確認中…" : "Checking fare and time…" }]
+      : []),
+    ...(isLoadingWalk && !walkHome
+      ? [{ key: "walk" as const, icon: "navigation" as const, label: ja ? "歩いて向かう" : "Walk there", detail: ja ? "徒歩ルートを確認中…" : "Checking the walking route…" }]
+      : []),
+  ];
+  const stillLoading = pendingOptions.length > 0;
+  const OPTION_ORDER: OptionKey[] = ["train", "partway", "stay", "taxi", "walk"];
+  const rows = OPTION_ORDER.flatMap((key): Array<{ option: Option } | { pending: PendingOption }> => {
+    const option = options.find((entry) => entry.key === key);
+    if (option) return [{ option }];
+    const pending = pendingOptions.find((entry) => entry.key === key);
+    return pending ? [{ pending }] : [];
+  });
   const costs = options
     .map((option) => option.cost)
     .filter((cost): cost is number => cost !== null);
   const times = options
     .map((option) => option.homeBy)
     .filter((time): time is number => time !== null);
-  const cheapest = costs.length > 1 ? Math.min(...costs) : null;
-  const fastest = times.length > 1 ? Math.min(...times) : null;
+  // Not until every option is in: the tags would otherwise hop from one to another.
+  const cheapest = !stillLoading && costs.length > 1 ? Math.min(...costs) : null;
+  const fastest = !stillLoading && times.length > 1 ? Math.min(...times) : null;
 
   const visibleStays = stays
     ? kindFilter
@@ -684,7 +716,28 @@ export default function AlternativesScreen() {
 
         {/* Pick an option; only its details are shown below */}
         <View style={styles.options}>
-          {options.map((option) => {
+          {rows.map((row) => {
+            if ("pending" in row) {
+              const pending = row.pending;
+              return (
+                <View
+                  key={pending.key}
+                  testID={`option-${pending.key}-loading`}
+                  accessibilityLabel={`${pending.label}: ${pending.detail}`}
+                  style={[styles.option, { backgroundColor: colors.card, borderColor: colors.border, borderWidth: 1, opacity: 0.7 }]}
+                >
+                  <Feather name={pending.icon} size={19} color={colors.mutedForeground} />
+                  <View style={styles.optionCopy}>
+                    <Text style={[styles.optionLabel, { color: colors.foreground }]}>{pending.label}</Text>
+                    <Text style={[styles.optionDetail, { color: colors.mutedForeground }]}>{pending.detail}</Text>
+                  </View>
+                  <View style={styles.optionRight}>
+                    <ActivityIndicator size="small" color={colors.mutedForeground} />
+                  </View>
+                </View>
+              );
+            }
+            const option = row.option;
             const isSelected = option.key === selected;
             const isCheapest = cheapest !== null && option.cost === cheapest;
             const isFastest = fastest !== null && option.homeBy === fastest;
@@ -788,17 +841,6 @@ export default function AlternativesScreen() {
             );
           })}
         </View>
-
-        {isLoadingPartway && status === "departed" && (
-          <View style={styles.loadingRow}>
-            <ActivityIndicator color={colors.primary} />
-            <Text style={[styles.note, { color: colors.mutedForeground }]}>
-              {ja
-                ? "まだ乗れる電車＋タクシーを確認中…"
-                : "Checking whether a train can shorten the taxi…"}
-            </Text>
-          </View>
-        )}
 
         {/* Train partway, taxi the rest */}
         {selected === "partway" && partway && (
