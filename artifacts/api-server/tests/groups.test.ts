@@ -51,6 +51,7 @@ import { dispatchGroupLeaveAlerts } from "../src/lib/groupNotifications";
 import {
   claimGroupDeliveryBatch, nextGroupOutboxRetryAt, settleGroupDelivery,
   reconcileGroupPushReceipts, purgeExpiredGroupPushReceiptChecks, RECEIPT_RETENTION_MS,
+  nextGroupReceiptWorkAt,
 } from "../src/lib/groupAlertOutbox";
 import { withLeaveScheduleLock } from "../src/lib/leaveAlertSchedule";
 import app from "../src/app";
@@ -1408,3 +1409,38 @@ describe("groups HTTP routes", () => {
     ]);
   });
 });
+
+// Receipt checks run from the one-time schedule (no all-day polling): when is
+// receipt work next due? (Here, not in its own file: this file clears and
+// inspects the receipt table, so the two can't run side by side.)
+describe("when group receipt work is next due", () => {
+  const MIN = 60_000;
+  const now = new Date("2026-10-14T14:00:00Z");
+  const at = (minutes: number) => new Date(now.getTime() + minutes * MIN);
+  async function ticket(id: string, sentMinutes: number, expiresMinutes = sentMinutes + 120) {
+    await getDb().insert(groupPushReceiptChecksTable).values({
+      expoTicketId: `test-receipt-schedule-${id}`, pushTokenDigest: "0".repeat(64),
+      sentAt: at(sentMinutes), expiresAt: at(expiresMinutes),
+    });
+  }
+
+  it("nothing to do: no wake-up at all", async () => {
+    expect(await nextGroupReceiptWorkAt(now)).toBeNull();
+  });
+
+  it("a push just sent: its check about 15 minutes later", async () => {
+    await ticket("a", -2);
+    expect((await nextGroupReceiptWorkAt(now))?.toISOString()).toBe(at(13).toISOString());
+  });
+
+  it("a check that found the receipt not ready: again in 5 minutes, not every minute", async () => {
+    await ticket("b", -20);
+    expect((await nextGroupReceiptWorkAt(now))?.toISOString()).toBe(at(5).toISOString());
+  });
+
+  it("a ticket about to reach its 2-hour limit: woken to delete it on time", async () => {
+    await ticket("c", -118, 2);
+    expect((await nextGroupReceiptWorkAt(now))?.toISOString()).toBe(at(2).toISOString());
+  });
+});
+

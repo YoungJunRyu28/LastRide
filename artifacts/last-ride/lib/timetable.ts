@@ -126,9 +126,10 @@ export function earlierFirstTrain(server: TrainTime, apple: TrainTime | null): T
 }
 
 /**
- * Apple failed on a route our server doesn't cover (JR, private railways). MapKit
- * reports "no route" and "request limit" alike, so this may be either: the
- * planner keeps the station's last result if it has one, else treats it as no train.
+ * Apple failed on a route our server doesn't cover (JR, private railways): its
+ * request limit or no connection. The planner keeps the station's last result if
+ * it has one, else treats it as no train. (Builds from before the native module
+ * told "no route" apart, ERR_ETA_NO_ROUTE, report both as failures.)
  */
 export class AppleLookupFailed extends Error {}
 
@@ -139,8 +140,9 @@ export async function getLastTrain(from: StationOption, to: StationOption, nowMs
     // The server answers the trains before the last one too (1本前 / 2本前), at no extra cost.
     fromServer(() => fetchLastTrain({ ...toParams(from, to, nowMs), before: EARLIER_TRAIN_COUNT })),
     appleTransitEnabled
-      ? appleLastTrain(from, to, nowMs).catch(() => {
-          appleFailed = true;
+      ? appleLastTrain(from, to, nowMs).catch((error: unknown) => {
+          // "No route" is an answer: no train from here. Only real failures count.
+          if ((error as { code?: string } | null)?.code !== 'ERR_ETA_NO_ROUTE') appleFailed = true;
           return null;
         })
       : Promise.resolve(null),

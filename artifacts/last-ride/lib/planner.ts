@@ -399,6 +399,8 @@ async function evaluateCandidates(
       try {
         const walk = knownWalk ?? (await walkingRoute(coordinates, station, WALKING_PACE));
         walkHere = walk;
+        // A failed destination is set aside, not fatal: another may still answer.
+        const failures: unknown[] = [];
         const legs = await Promise.all(
           destinations.map(async (destination): Promise<StationChoice | null> => {
             // A single operator/provider failure must not discard another
@@ -406,8 +408,8 @@ async function evaluateCandidates(
             let lastTrain: TrainTime | null;
             try {
               lastTrain = await getLastTrain(station, destination.station, nightOf);
-            } catch {
-              lookupFailed = true;
+            } catch (error) {
+              failures.push(error);
               return null;
             }
             if (!lastTrain) return null;
@@ -432,6 +434,9 @@ async function evaluateCandidates(
           }),
         );
         const usable = legs.filter((leg): leg is StationChoice => leg !== null);
+        // Every destination failed (none just had no train): the station failed,
+        // so the catch below keeps its result from the plan before.
+        if (usable.length === 0 && failures.length > 0) throw failures.find((error) => !(error instanceof AppleLookupFailed)) ?? failures[0];
         if (usable.length === 0) return null;
         // Exact times before 目安 ones (an approximate answer may be a walk), then the latest leave time.
         usable.sort((first, second) =>
@@ -462,7 +467,8 @@ function keptResult(kept: StationChoice, walk: NearbyStation['walk'], leaveMargi
   const { disruptionLines: _disruptionLines, ...choice } = kept;
   if (!walk) return choice;
   const leaveByMs = choice.lastTrain.departsAt - (walk.walkingMinutes + STATION_BUFFER_MINUTES) * MINUTE_MS;
-  return withMargin({ ...choice, ...walk, leaveByMs }, leaveMargin);
+  // The walk's own fields only: whether it's a real route decides 「（推定）」 and the extra margin.
+  return withMargin({ ...choice, walkingMinutes: walk.walkingMinutes, distanceMeters: walk.distanceMeters, walkingSource: walk.source, leaveByMs }, leaveMargin);
 }
 
 /**
@@ -477,8 +483,8 @@ function earlierResults(previous: NightPlan | null, nightOf: number, nowMs: numb
   for (const option of [previous, ...(previous.alternatives ?? [])]) {
     const lookedUpAt = option.keptSince ?? previous.computedAt;
     if (nowMs - lookedUpAt > KEEP_RESULT_MS) continue;
-    const { station, walkingMinutes, distanceMeters, lastTrain, leaveByMs, recommendedLeaveByMs, safetyMarginMinutes, disruptionLines, destination, walkHomeMinutes, arriveHomeMs } = option;
-    results.set(station.nameJa, { station, walkingMinutes, distanceMeters, lastTrain, leaveByMs, recommendedLeaveByMs, safetyMarginMinutes, disruptionLines, destination, walkHomeMinutes, arriveHomeMs, keptSince: lookedUpAt });
+    const { station, walkingMinutes, distanceMeters, walkingSource, lastTrain, leaveByMs, recommendedLeaveByMs, safetyMarginMinutes, disruptionLines, destination, walkHomeMinutes, arriveHomeMs } = option;
+    results.set(station.nameJa, { station, walkingMinutes, distanceMeters, walkingSource, lastTrain, leaveByMs, recommendedLeaveByMs, safetyMarginMinutes, disruptionLines, destination, walkHomeMinutes, arriveHomeMs, keptSince: lookedUpAt });
   }
   return results;
 }

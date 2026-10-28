@@ -88,8 +88,8 @@ fi
 # independently reviewed, SHA-pinned sandbox QA and old-client rollout plan.
 # Fail BEFORE reading AWS secrets, touching the live database or Lambda.
 node scripts/check-premium-rollout.mjs "$STAGE"
-# Five-minute all-day fallback can exceed a scale-to-zero DB free tier.
-# The release owner must first review CU-hours and enable billing alerts.
+# Refuses scheduled jobs that would keep the scale-to-zero database awake
+# (all-day or more often than every 30 minutes); alerts are event-driven.
 node scripts/check-alert-recovery-budget.mjs "$STAGE"
 # Short-lived receipt-only journal changes the old 08:05 deletion boundary.
 # Never alter production retention without explicit privacy policy approval.

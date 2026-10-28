@@ -8,7 +8,7 @@
  * changes, night start/end and participation updates are serialized per group.
  */
 import { randomUUID } from "node:crypto";
-import { and, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, min, ne, or, sql } from "drizzle-orm";
+import { and, eq, gt, gte, inArray, isNotNull, isNull, lt, lte, max, min, ne, or, sql } from "drizzle-orm";
 import {
   getDb,
   groupAlertDeliveriesTable,
@@ -961,6 +961,33 @@ export async function nextGroupLeaveAlertAt(now = new Date(), tx?: Tx): Promise<
       ),
     );
   return row?.next ?? null;
+}
+
+/** The latest leave-time alert still to send tonight: the on-demand watchdog runs until just after it. */
+export async function lastGroupLeaveAlertAt(now = new Date(), tx?: Tx): Promise<Date | null> {
+  const db = tx ?? getDb();
+  const lowerBound = new Date(now.getTime() - GROUP_LEAVE_ALERT_GRACE_MS);
+  const [row] = await db
+    .select({ last: max(groupNightParticipantsTable.leaveBy) })
+    .from(groupNightParticipantsTable)
+    .innerJoin(
+      groupNightsTable,
+      eq(groupNightParticipantsTable.nightId, groupNightsTable.id),
+    )
+    .where(
+      and(
+        gt(groupNightsTable.endsAt, now),
+        gte(groupNightParticipantsTable.leaveBy, lowerBound),
+        or(
+          isNull(groupNightParticipantsTable.leaveAlertSentFor),
+          lt(
+            groupNightParticipantsTable.leaveAlertSentFor,
+            groupNightParticipantsTable.leaveBy,
+          ),
+        ),
+      ),
+    );
+  return row?.last ?? null;
 }
 
 export async function claimDueGroupLeaveAlerts(

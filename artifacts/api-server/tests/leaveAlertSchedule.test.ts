@@ -3,6 +3,9 @@ import {
   atExpression,
   parseAtExpression,
   shouldMoveSchedule,
+  watchdogUntil,
+  WATCHDOG_RATE,
+  WATCHDOG_TAIL_MS,
 } from "../src/lib/leaveAlertSchedule";
 
 const now = new Date("2026-10-14T13:00:00Z");
@@ -41,3 +44,23 @@ describe("moving the schedule", () => {
     expect(shouldMoveSchedule(minutes(10), minutes(10), now, false)).toBe(false);
   });
 });
+
+describe("the on-demand watchdog", () => {
+  it("runs until 15 minutes after the last pending alert", () => {
+    const last = new Date("2026-10-14T14:30:00Z");
+    expect(watchdogUntil(last, null, now)?.toISOString()).toBe("2026-10-14T14:45:00.000Z");
+  });
+  it("isn't started when no alert is pending (a quiet night leaves the database asleep)", () => {
+    expect(watchdogUntil(null, null, now)).toBeNull();
+  });
+  it("is extended for a later alert, never shortened", () => {
+    const end = new Date("2026-10-14T14:45:00Z");
+    expect(watchdogUntil(new Date("2026-10-14T14:00:00Z"), end, now)).toBeNull();
+    expect(watchdogUntil(new Date("2026-10-14T15:00:00Z"), end, now)?.toISOString()).toBe("2026-10-14T15:15:00.000Z");
+  });
+  it("checks every 5 minutes, inside the 10-minute alert window", () => {
+    expect(WATCHDOG_RATE).toBe("rate(5 minutes)");
+    expect(WATCHDOG_TAIL_MS).toBe(15 * 60_000);
+  });
+});
+

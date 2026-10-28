@@ -57,6 +57,7 @@ import {
   writeTrainChoice,
   writeWidgetTheme,
   readOneNightSettings,
+  REMINDER_CHOICES,
   readTrainChoiceOverride,
   writeTrainChoiceOverride,
   type TrainChoiceOverride,
@@ -1068,18 +1069,35 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     void Haptics.selectionAsync();
   }, [reminderIntervals, alarmIntervals]);
 
+  // The alarm times from when alarms were last switched off, to bring back when they're switched on.
+  const lastAlarmTimes = useRef<number[]>([]);
+  useEffect(() => {
+    void AsyncStorage.getItem(STORAGE_KEYS.lastAlarmTimes)
+      .then((raw) => {
+        const parsed: unknown = raw ? JSON.parse(raw) : [];
+        if (Array.isArray(parsed)) lastAlarmTimes.current = parsed.filter((entry): entry is number => REMINDER_CHOICES.includes(entry as number));
+      })
+      .catch(() => undefined);
+  }, []);
+
   const setAlarmsEnabled = useCallback((enabled: boolean) => {
     if (enabled === alarmsEnabled) return;
     markReminderChange("user");
     let notifications: number[];
     let alarms: number[];
     if (enabled) {
-      // Start with an alarm at the leave time. Settings asks for permission.
-      alarms = [0];
-      notifications = reminderIntervals.filter((entry) => entry !== 0);
+      // The alarm times chosen before they were switched off, or one at the leave
+      // time the first time. Those times stop being notifications. Settings asks for permission.
+      alarms = lastAlarmTimes.current.length > 0 ? [...lastAlarmTimes.current] : [0];
+      notifications = reminderIntervals.filter((entry) => !alarms.includes(entry));
       setAlarmPermissionRevision((revision) => revision + 1);
     } else {
-      // Their times go back to notifications, so switching alarms off never drops a reminder.
+      // Remembered for next time; meanwhile their times go back to notifications,
+      // so switching alarms off never drops a reminder.
+      if (alarmIntervals.length > 0) {
+        lastAlarmTimes.current = [...alarmIntervals];
+        void AsyncStorage.setItem(STORAGE_KEYS.lastAlarmTimes, JSON.stringify(alarmIntervals));
+      }
       alarms = [];
       notifications = [...new Set([...reminderIntervals, ...alarmIntervals])].sort((a, b) => b - a);
     }

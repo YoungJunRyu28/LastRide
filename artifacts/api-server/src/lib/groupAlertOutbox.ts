@@ -199,6 +199,27 @@ export function parseGroupPushReceiptEnvelope(payload: unknown): Record<string, 
   return payload.data as Record<string, unknown>;
 }
 
+/** A receipt Expo hadn't produced yet at its check: look again after this. */
+const RECEIPT_RECHECK_MS = 5 * 60_000;
+
+/**
+ * When receipt work is next due, for the one-time schedule (so no all-day
+ * polling keeps the database awake): the first check ~15 minutes after a push
+ * (or again a few minutes after a check that found it not ready yet), and each
+ * ticket's 2-hour expiry. Null when there are no receipt tickets.
+ */
+export async function nextGroupReceiptWorkAt(now = new Date(), tx?: Tx): Promise<Date | null> {
+  const db = tx ?? getDb();
+  const [row] = await db.select({
+    firstSent: min(groupPushReceiptChecksTable.sentAt),
+    firstExpiry: min(groupPushReceiptChecksTable.expiresAt),
+  }).from(groupPushReceiptChecksTable);
+  if (!row?.firstSent || !row.firstExpiry) return null;
+  const firstCheck = new Date(row.firstSent).getTime() + RECEIPT_DELAY_MS;
+  const check = firstCheck > now.getTime() ? firstCheck : now.getTime() + RECEIPT_RECHECK_MS;
+  return new Date(Math.min(check, new Date(row.firstExpiry).getTime()));
+}
+
 /** Expire opaque receipt tickets even if Expo stops returning them. */
 export async function purgeExpiredGroupPushReceiptChecks(now = new Date()): Promise<number> {
   const deleted = await getDb().delete(groupPushReceiptChecksTable)

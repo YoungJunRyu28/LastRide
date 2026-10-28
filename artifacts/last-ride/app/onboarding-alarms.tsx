@@ -32,8 +32,17 @@ export default function OnboardingAlarmsScreen() {
     }).catch(() => undefined);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // On with no times left (e.g. 出発時 moved back to notifications on the step before):
+  // no alarms, and nothing to ask permission for.
+  const alarmsChosen = alarmsEnabled && alarmIntervals.length > 0;
+
   const proceed = async () => {
-    if (alarmsEnabled && alarmKitAvailable) {
+    if (alarmsEnabled && !alarmsChosen) {
+      setAlarmsEnabled(false);
+      next();
+      return;
+    }
+    if (alarmsChosen && alarmKitAvailable) {
       // iOS asks once. Refused: alarms go back off, so the leave time is an ordinary notification again.
       setAsking(true);
       const status = await requestAlarmAuthorization().catch(() => 'denied');
@@ -56,7 +65,7 @@ export default function OnboardingAlarmsScreen() {
       actions={
         <>
           <PrimaryButton
-            label={alarmsEnabled && alarmKitAvailable ? (ja ? 'アラームを許可して次へ' : 'Allow alarms and continue') : ja ? '次へ' : 'Continue'}
+            label={alarmsChosen && alarmKitAvailable ? (ja ? 'アラームを許可して次へ' : 'Allow alarms and continue') : ja ? '次へ' : 'Continue'}
             onPress={() => void proceed()}
             loading={asking}
             testID="onboarding-alarms-next"

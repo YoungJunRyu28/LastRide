@@ -75,7 +75,12 @@ public class LastRideAppleMapsModule: Module {
           let directions = MKDirections(request: self.directionsRequest(request, source: source, destination: destination, transport: .transit))
           directions.calculateETA { response, error in
             guard let eta = response else {
-              promise.reject("ERR_ETA", error?.localizedDescription ?? "No transit route")
+              // Apple's "no route" is an answer (no train goes there); anything else
+              // (its request limit, no connection) is a failed lookup, kept apart so the
+              // planner can keep a station's last result instead of dropping it.
+              let code = (error as? MKError)?.code
+              let noRoute = error == nil || code == .directionsNotFound || code == .placemarkNotFound
+              promise.reject(noRoute ? "ERR_ETA_NO_ROUTE" : "ERR_ETA", error?.localizedDescription ?? "No transit route")
               return
             }
             promise.resolve([

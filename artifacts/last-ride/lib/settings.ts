@@ -34,6 +34,8 @@ export const STORAGE_KEYS = {
   throughFocus: 'lastride-through-focus',
   /** Setup's alarm step has been shown (alarms start on there only the first time). */
   alarmsOffered: 'lastride-alarms-offered',
+  /** The alarm times when alarms were last switched off: switching them on again brings them back. */
+  lastAlarmTimes: 'lastride-last-alarm-times',
   /**
    * Setup chose 閉じても更新 but iOS hadn't confirmed "Always" yet (a slow or later
    * prompt): switch to it by itself once iOS allows it.

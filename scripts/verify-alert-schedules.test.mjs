@@ -23,30 +23,36 @@ function assertTask(section, task) {
   assert.match(section, /QueueLogicalId: \w+ScheduleDlq/);
 }
 
-test('backup group alert scan is within the 10-minute expiration window and covers all JST hours', () => {
-  const fallback = scheduleSection('DepartureAlerts', 'PushReceipts');
-  assertTask(fallback, 'departureAlerts');
-  const [minutes, hours, day, month, weekday, year] = cron(fallback);
-  assert.equal(hours, '*', 'No night-only gaps: participants may leave between 04:00 and 08:00 JST');
-  assert.equal(day, '*');
-  assert.equal(month, '*');
-  assert.equal(weekday, '?');
-  assert.equal(year, '*');
-  const step = Number(minutes.match(/^\*\/(\d+)$/)?.[1]);
-  assert.ok(Number.isInteger(step) && step > 0 && 60 % step === 0, 'Continuous valid minute interval');
+const scheduler = readFileSync(new URL('../artifacts/api-server/src/lib/leaveAlertSchedule.ts', import.meta.url), 'utf8');
+const scheduled = readFileSync(new URL('../artifacts/api-server/src/scheduled.ts', import.meta.url), 'utf8');
+
+test('a missed group alert is caught within its 10-minute window, without polling all day', () => {
+  // While alerts are pending, the on-demand watchdog checks at least twice per window.
   const graceMinutes = Number(groupStore.match(/GROUP_LEAVE_ALERT_GRACE_MS = (\d+) \* 60_000/)?.[1]);
   assert.ok(Number.isInteger(graceMinutes));
-  assert.ok(step <= graceMinutes / 2,
-    `Fallback ${step} minutes must allow sufficient margin before ${graceMinutes}-minute alert expiry`);
+  const rate = Number(scheduler.match(/WATCHDOG_RATE = "rate\((\d+) minutes\)"/)?.[1]);
+  assert.ok(Number.isInteger(rate) && rate <= graceMinutes / 2,
+    `Watchdog every ${rate} minutes must allow margin before ${graceMinutes}-minute alert expiry`);
+  assert.match(scheduler, /WATCHDOG_TAIL_MS = GROUP_LEAVE_ALERT_GRACE_MS \+/, 'Watchdog runs past the last alert window');
+  // The fixed schedule is a sparse night backstop that skips the database while the watchdog runs.
+  const backstop = scheduleSection('DepartureAlerts', 'PushReceipts');
+  assert.match(backstop, /Type: ScheduleV2/);
+  assert.ok(backstop.includes(`Input: '{"task":"departureAlerts","backstop":true}'`));
+  assert.match(backstop, /FlexibleTimeWindow:\s*\n\s*Mode: "OFF"/);
+  assert.deepEqual(cron(backstop), ['*/30', '20-23,0-1', '*', '*', '?', '*']);
+  assert.match(scheduled, /event\.backstop && \(await watchdogRunning\(\)\)/);
+  assert.match(template, /LEAVE_ALERT_WATCHDOG_NAME: !Sub "lastride-\$\{Stage\}-leave-alert-watchdog"/);
 });
 
-test('Expo group receipts run all day, across nightly privacy cleanup, without Business enabled', () => {
+test('Expo group receipts are checked when due from the one-time schedule, plus a daily backstop', () => {
+  assert.match(scheduler, /nextGroupReceiptWorkAt\(now, tx\)/, 'Receipt checks and expiry wake the one-time schedule');
+  assert.match(scheduled, /reconcileGroupPushReceipts\(\)/);
   const receipts = scheduleSection('PushReceipts', 'ApiErrorsAlarm');
   const cleanup = scheduleSection('Cleanup', 'DepartureAlerts');
   assertTask(receipts, 'pushReceipts');
   assert.match(receipts, /State: ENABLED/);
   assert.doesNotMatch(receipts, /State: !If \[BusinessEnabled/);
-  assert.deepEqual(cron(receipts), ['*/15', '*', '*', '*', '?', '*']);
+  assert.deepEqual(cron(receipts), ['10', '8', '*', '*', '?', '*']);
   assert.deepEqual(cron(cleanup), ['5', '8', '*', '*', '?', '*']);
 });
 

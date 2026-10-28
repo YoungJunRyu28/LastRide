@@ -9,9 +9,11 @@
  * expired event data, send departure alerts, reconcile push receipts — are
  * unchanged; only how they get invoked changes, from an in-process timer to
  * three separate EventBridge Scheduler rules calling this Lambda with a
- * different `task` each time. Group departure alerts use an event-driven
- * one-time schedule plus a five-minute watchdog; receipts run independently
- * before the nightly participant-data cleanup (see infra/template.yaml).
+ * different `task` each time. Group departure alerts, their retries and push-
+ * receipt checks all run from one event-driven one-time schedule, with an
+ * on-demand watchdog while alerts are pending and a sparse night backstop
+ * (src/lib/leaveAlertSchedule.ts, infra/template.yaml). Nothing polls the
+ * database all day, so the scale-to-zero Postgres can sleep.
  */
 import { isDatabaseConfigured } from "@workspace/db";
 import {
@@ -24,12 +26,16 @@ import { purgeExpiredEnterpriseData } from "./lib/enterpriseStore";
 import { purgeEndedGroupNights, purgeInactiveGroupMembers } from "./lib/groupStore";
 import { dispatchGroupLeaveAlerts } from "./lib/groupNotifications";
 import { reconcileGroupPushReceipts } from "./lib/groupAlertOutbox";
-import { scheduleNextLeaveAlert } from "./lib/leaveAlertSchedule";
+import { scheduleNextLeaveAlert, watchdogRunning } from "./lib/leaveAlertSchedule";
 import { logger } from "./lib/logger";
 
 export type ScheduledTask = "cleanup" | "departureAlerts" | "pushReceipts";
 
-type ScheduledEvent = { task: ScheduledTask };
+type ScheduledEvent = {
+  task: ScheduledTask;
+  /** The night backstop: does nothing while the on-demand watchdog is running. */
+  backstop?: boolean;
+};
 
 export async function handler(event: ScheduledEvent) {
   if (!isDatabaseConfigured()) {
@@ -73,11 +79,18 @@ export async function handler(event: ScheduledEvent) {
       return;
     }
     case "departureAlerts": {
-      // Group leave-time pushes ride on the same 1-minute schedule.
+      // The backstop only matters when nothing else is watching: while the watchdog
+      // runs (every 5 minutes) it checks the same things, so don't wake the database.
+      if (event.backstop && (await watchdogRunning())) return;
       const [enterprise, groups] = await Promise.allSettled([
         dispatchEnterpriseDepartureAlerts(),
         dispatchGroupLeaveAlerts(),
       ]);
+      // Push receipts due ~15 minutes after a send (and expired tickets) come in on
+      // this same one-time schedule: no separate all-day receipt job.
+      const receipts = await Promise.allSettled([reconcileGroupPushReceipts()]).then(([result]) => result);
+      if (receipts.status === "fulfilled" && receipts.value.checked > 0)
+        logger.info(receipts.value, "Checked group push receipts");
       if (enterprise.status === "fulfilled" && enterprise.value > 0)
         logger.info({ sent: enterprise.value }, "Sent enterprise departure alerts");
       if (groups.status === "fulfilled" && groups.value > 0)
@@ -85,9 +98,11 @@ export async function handler(event: ScheduledEvent) {
       // Re-arm the one-time group schedule even if the independent Business
       // worker threw. Previously Promise.all rejection skipped this line and
       // left the group Scheduler pointing at a spent event.
-      await scheduleNextLeaveAlert({ onlyEarlier: false });
+      // rethrow: if the schedule can't be re-armed, fail so EventBridge retries this run.
+      await scheduleNextLeaveAlert({ onlyEarlier: false, rethrow: true });
       if (groups.status === "rejected") throw groups.reason;
       if (enterprise.status === "rejected") throw enterprise.reason;
+      if (receipts.status === "rejected") throw receipts.reason;
       return;
     }
     case "pushReceipts": {

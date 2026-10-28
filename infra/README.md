@@ -238,6 +238,16 @@ explicit `LASTRIDE_ALERT_RECOVERY_COST_APPROVED=yes` release-owner attestation
 The attestation does not itself configure a budget or cap cloud spending. The project prioritizes *correctness* over
 assuming a free backend. No live billing/resources were changed here.
 
+> **Update (low-cost recovery):** the all-day five-minute backup was replaced by
+> an architecture with the same alert guarantee that leaves the database asleep:
+> an on-demand watchdog (EventBridge `rate(5 minutes)`, created only while group
+> alerts are pending and ending 15 minutes after the last), group receipt checks
+> and 2-hour ticket expiry on the existing one-time schedule, a night backstop
+> every 30 minutes 20:00–01:59 JST that skips the database while the watchdog
+> runs, and the receipt job back to daily at 08:10. `check-alert-recovery-budget.mjs`
+> now checks the template instead of requiring an approval flag. See
+> `artifacts/api-server/src/lib/leaveAlertSchedule.ts`.
+
 `PushReceipts` runs every 15 minutes during Japan evening/night independently
 of `EnableBusiness`, with a final 08:00 JST check before the 08:05 privacy
 purge. Expo group delivery receipts may take ~15 minutes to become available:

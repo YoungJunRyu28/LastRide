@@ -321,6 +321,16 @@ budget-alert review; staging remains usable without it. The flag is an
 attestation, not a billing-control mechanism. Never loosen this watchdog back to >10 minutes
 without changing the expiry/safety model and validating the resulting UX.
 
+> **Update (low-cost recovery):** the all-day five-minute backup was replaced by
+> an architecture with the same alert guarantee that leaves the database asleep:
+> an on-demand watchdog (EventBridge `rate(5 minutes)`, created only while group
+> alerts are pending and ending 15 minutes after the last), group receipt checks
+> and 2-hour ticket expiry on the existing one-time schedule, a night backstop
+> every 30 minutes 20:00–01:59 JST that skips the database while the watchdog
+> runs, and the receipt job back to daily at 08:10. `check-alert-recovery-budget.mjs`
+> now checks the template instead of requiring an approval flag. See
+> `artifacts/api-server/src/lib/leaveAlertSchedule.ts`.
+
 **Receipts:** `PushReceipts` was configured as DISABLED whenever `EnableBusiness`
 was false, even though it processes *consumer group* Expo push receipts too.
 Now group receipts run every 15 minutes during 18:00–07:59 JST even with

@@ -161,6 +161,8 @@ Resources:
           # Group leave-time alerts: one EventBridge one-time schedule, kept pointing
           # at the next alert due (src/lib/leaveAlertSchedule.ts).
           LEAVE_ALERT_SCHEDULE_NAME: !Sub "lastride-${Stage}-leave-alert"
+          # Recurring every 5 minutes, created only while group alerts are pending.
+          LEAVE_ALERT_WATCHDOG_NAME: !Sub "lastride-${Stage}-leave-alert-watchdog"
           LEAVE_ALERT_TARGET_ARN: !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:lastride-${Stage}-scheduled:live"
           LEAVE_ALERT_ROLE_ARN: !GetAtt LeaveAlertSchedulerRole.Arn
       Policies:
@@ -170,7 +172,9 @@ Resources:
                 - scheduler:GetSchedule
                 - scheduler:CreateSchedule
                 - scheduler:UpdateSchedule
-              Resource: !Sub "arn:${AWS::Partition}:scheduler:${AWS::Region}:${AWS::AccountId}:schedule/default/lastride-${Stage}-leave-alert"
+              Resource:
+                - !Sub "arn:${AWS::Partition}:scheduler:${AWS::Region}:${AWS::AccountId}:schedule/default/lastride-${Stage}-leave-alert"
+                - !Sub "arn:${AWS::Partition}:scheduler:${AWS::Region}:${AWS::AccountId}:schedule/default/lastride-${Stage}-leave-alert-watchdog"
             - Effect: Allow
               Action: iam:PassRole
               Resource: !GetAtt LeaveAlertSchedulerRole.Arn
@@ -254,6 +258,8 @@ Resources:
           # Group leave-time alerts: one EventBridge one-time schedule, kept pointing
           # at the next alert due (src/lib/leaveAlertSchedule.ts).
           LEAVE_ALERT_SCHEDULE_NAME: !Sub "lastride-${Stage}-leave-alert"
+          # Recurring every 5 minutes, created only while group alerts are pending.
+          LEAVE_ALERT_WATCHDOG_NAME: !Sub "lastride-${Stage}-leave-alert-watchdog"
           LEAVE_ALERT_TARGET_ARN: !Sub "arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:lastride-${Stage}-scheduled:live"
           LEAVE_ALERT_ROLE_ARN: !GetAtt LeaveAlertSchedulerRole.Arn
       Policies:
@@ -263,7 +269,9 @@ Resources:
                 - scheduler:GetSchedule
                 - scheduler:CreateSchedule
                 - scheduler:UpdateSchedule
-              Resource: !Sub "arn:${AWS::Partition}:scheduler:${AWS::Region}:${AWS::AccountId}:schedule/default/lastride-${Stage}-leave-alert"
+              Resource:
+                - !Sub "arn:${AWS::Partition}:scheduler:${AWS::Region}:${AWS::AccountId}:schedule/default/lastride-${Stage}-leave-alert"
+                - !Sub "arn:${AWS::Partition}:scheduler:${AWS::Region}:${AWS::AccountId}:schedule/default/lastride-${Stage}-leave-alert-watchdog"
             - Effect: Allow
               Action: iam:PassRole
               Resource: !GetAtt LeaveAlertSchedulerRole.Arn
@@ -291,14 +299,18 @@ Resources:
           Type: ScheduleV2
           Properties:
             OmitName: true
-            # Safety watchdog: a missed one-time Scheduler write MUST be retried
-            # before group leave alerts expire after 10 minutes. Run every 5
-            # minutes across the whole JST service day, including 04:00-08:00.
-            # Reliability has a compute cost: this may exceed Neon free-tier CU
-            # hours. Capacity/billing alarms are a pre-release requirement.
-            ScheduleExpression: "cron(*/5 * * * ? *)"
+            # Night backstop. Group alerts, retries and receipt checks run from the
+            # one-time schedule, and while alerts are pending a recurring watchdog
+            # checks every 5 minutes, inside the 10-minute alert window
+            # (src/lib/leaveAlertSchedule.ts). This covers only a write lost before
+            # either was set (a crash between saving a leave time and scheduling),
+            # and skips the database while the watchdog runs. Every 30 minutes,
+            # 20:00-01:59 JST, so the scale-to-zero database sleeps the rest of the
+            # day and on nights without groups (a query every <5 minutes would
+            # keep it awake around the clock: ~180 CU-hours a month on Neon).
+            ScheduleExpression: "cron(*/30 20-23,0-1 * * ? *)"
             ScheduleExpressionTimezone: Asia/Tokyo
-            Input: '{"task":"departureAlerts"}'
+            Input: '{"task":"departureAlerts","backstop":true}'
             FlexibleTimeWindow:
               Mode: "OFF"
             RetryPolicy:
@@ -311,10 +323,11 @@ Resources:
           Type: ScheduleV2
           Properties:
             OmitName: true
-            # Group receipt journal outlives nightly PRIVATE data by <=2h,
-            # and must be reconciled + TTL-purged at least every 15 minutes,
-            # including AFTER the 08:05 JST group-night cleanup.
-            ScheduleExpression: "cron(*/15 * * * ? *)"
+            # Group receipts are checked and their tickets deleted (within 2 hours)
+            # from the one-time schedule, at the times they're due. This daily run,
+            # just after the 08:05 cleanup while the database is awake anyway, is a
+            # backstop for that and runs the Business receipt check.
+            ScheduleExpression: "cron(10 8 * * ? *)"
             State: ENABLED
             ScheduleExpressionTimezone: Asia/Tokyo
             Input: '{"task":"pushReceipts"}'

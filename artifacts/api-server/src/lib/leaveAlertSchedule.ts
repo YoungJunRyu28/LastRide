@@ -7,7 +7,13 @@
  *   new alert is due sooner (never later, so concurrent writes can't delay one).
  * - When the schedule fires, the scheduled Lambda sends what's due and points
  *   the schedule at the next alert (or leaves it spent if there is none).
- * - A slow fallback check (infra/template.yaml) covers a missed update.
+ * - The same schedule wakes for group push-receipt checks (~15 minutes after a
+ *   push) and each receipt ticket's 2-hour expiry: no all-day receipt polling.
+ * - While alerts are pending, a recurring watchdog (every 5 minutes, inside the
+ *   10-minute alert window) covers a missed update, and ends 15 minutes after
+ *   the last one. Nights without groups have none, so the database can sleep.
+ * - A sparse night backstop (infra/template.yaml) covers a write lost before
+ *   any of this was set, and skips the database while the watchdog runs.
  *
  * Without the LEAVE_ALERT_* environment (local development) this does nothing:
  * the in-process timer in index.ts sends alerts there.
@@ -19,19 +25,36 @@ import {
   SchedulerClient,
   UpdateScheduleCommand,
 } from "@aws-sdk/client-scheduler";
-import { nextGroupLeaveAlertAt } from "./groupStore";
-import { nextGroupOutboxRetryAt } from "./groupAlertOutbox";
+import { GROUP_LEAVE_ALERT_GRACE_MS, lastGroupLeaveAlertAt, nextGroupLeaveAlertAt } from "./groupStore";
+import { nextGroupOutboxRetryAt, nextGroupReceiptWorkAt } from "./groupAlertOutbox";
 import { getDb } from "@workspace/db";
 import { sql } from "drizzle-orm";
 import { logger } from "./logger";
 
-type ScheduleConfig = { name: string; targetArn: string; roleArn: string };
+type ScheduleConfig = { name: string; targetArn: string; roleArn: string; watchdogName: string | null };
 
 function scheduleConfig(): ScheduleConfig | null {
   const name = process.env.LEAVE_ALERT_SCHEDULE_NAME;
   const targetArn = process.env.LEAVE_ALERT_TARGET_ARN;
   const roleArn = process.env.LEAVE_ALERT_ROLE_ARN;
-  return name && targetArn && roleArn ? { name, targetArn, roleArn } : null;
+  const watchdogName = process.env.LEAVE_ALERT_WATCHDOG_NAME || null;
+  return name && targetArn && roleArn ? { name, targetArn, roleArn, watchdogName } : null;
+}
+
+/** Inside the 10-minute alert window with room to spare (one missed run still leaves one). */
+export const WATCHDOG_RATE = "rate(5 minutes)";
+/** The watchdog keeps going this long after the last pending alert (its window, plus a margin). */
+export const WATCHDOG_TAIL_MS = GROUP_LEAVE_ALERT_GRACE_MS + 5 * 60_000;
+
+/**
+ * Until when the watchdog should run: just past the last pending alert, or
+ * null when none is pending. Never shortens an end already set further out.
+ */
+export function watchdogUntil(lastAlert: Date | null, currentEnd: Date | null, now: Date): Date | null {
+  if (!lastAlert) return null;
+  const end = new Date(Math.max(lastAlert.getTime() + WATCHDOG_TAIL_MS, now.getTime() + WATCHDOG_TAIL_MS));
+  end.setUTCMilliseconds(0);
+  return currentEnd && currentEnd.getTime() >= end.getTime() ? null : end;
 }
 
 /** Fire no sooner than this from now: a time already due is handled right away. */
@@ -86,27 +109,38 @@ export async function withLeaveScheduleLock<T>(work: (tx: Tx) => Promise<T>): Pr
 export async function scheduleNextLeaveAlert({
   onlyEarlier,
   now = new Date(),
+  rethrow = false,
 }: {
   onlyEarlier: boolean;
   now?: Date;
+  /** The scheduled run: fail loudly, so EventBridge retries the run instead of the chain stopping. */
+  rethrow?: boolean;
 }): Promise<void> {
   const config = scheduleConfig();
   if (!config) return;
+  // A watchdog problem mustn't stop the one-time schedule being set: noted, raised after.
+  let watchdogError: unknown = null;
   try {
     // The advisory transaction lock serializes schedule read/modify/write
     // across containers and Lambda instances. Query via the SAME transaction
     // connection to avoid deadlocking a small serverless connection pool.
     await withLeaveScheduleLock(async (tx) => {
-      const [unclaimedDue, retryDue] = await Promise.all([
+      const [unclaimedDue, retryDue, receiptDue, lastAlert] = await Promise.all([
         nextGroupLeaveAlertAt(now, tx), nextGroupOutboxRetryAt(now, tx),
+        nextGroupReceiptWorkAt(now, tx), lastGroupLeaveAlertAt(now, tx),
       ]);
-      const due = [unclaimedDue, retryDue].filter((date): date is Date => date !== null)
+      client ??= new SchedulerClient({});
+      if (config.watchdogName) {
+        await ensureWatchdog(client, config, lastAlert, now).catch((err: unknown) => {
+          watchdogError = err;
+        });
+      }
+      const due = [unclaimedDue, retryDue, receiptDue].filter((date): date is Date => date !== null)
         .sort((a, b) => a.getTime() - b.getTime())[0];
       if (!due) return;
       const next = new Date(Math.max(due.getTime(), now.getTime() + MIN_LEAD_MS));
       next.setUTCMilliseconds(0);
 
-      client ??= new SchedulerClient({});
       let current: Date | null = null;
       let exists = true;
       try {
@@ -136,5 +170,59 @@ export async function scheduleNextLeaveAlert({
     });
   } catch (err) {
     logger.warn({ err }, "Could not schedule the next group leave-time alert");
+    if (rethrow) throw err;
+  }
+  if (watchdogError) {
+    logger.warn({ err: watchdogError }, "Could not start the group alert watchdog");
+    if (rethrow) throw watchdogError;
+  }
+}
+
+/** Starts or extends the recurring watchdog while leave alerts are pending. */
+async function ensureWatchdog(client: SchedulerClient, config: ScheduleConfig, lastAlert: Date | null, now: Date): Promise<void> {
+  if (!config.watchdogName || !lastAlert) return;
+  let currentEnd: Date | null = null;
+  let exists = true;
+  try {
+    const schedule = await client.send(new GetScheduleCommand({ Name: config.watchdogName }));
+    currentEnd = schedule.State === "ENABLED" && schedule.EndDate ? new Date(schedule.EndDate) : null;
+  } catch (err) {
+    if (!(err instanceof ResourceNotFoundException)) throw err;
+    exists = false;
+  }
+  const until = watchdogUntil(lastAlert, currentEnd && currentEnd > now ? currentEnd : null, now);
+  if (!until) return;
+  const input = {
+    Name: config.watchdogName,
+    ScheduleExpression: WATCHDOG_RATE,
+    EndDate: until,
+    State: "ENABLED" as const,
+    FlexibleTimeWindow: { Mode: "OFF" as const },
+    // Kept once it ends (not deleted), so the next night's first alert reuses it.
+    ActionAfterCompletion: "NONE" as const,
+    Target: {
+      Arn: config.targetArn,
+      RoleArn: config.roleArn,
+      Input: JSON.stringify({ task: "departureAlerts" }),
+      RetryPolicy: { MaximumRetryAttempts: 3, MaximumEventAgeInSeconds: 300 },
+    },
+  };
+  await client.send(exists ? new UpdateScheduleCommand(input) : new CreateScheduleCommand(input));
+}
+
+/**
+ * For the night backstop: whether the watchdog is running now. If so it already
+ * checks every 5 minutes, and the backstop needn't wake the database. An AWS
+ * call only; unknown counts as not running (the backstop then checks itself).
+ */
+export async function watchdogRunning(now = new Date()): Promise<boolean> {
+  const config = scheduleConfig();
+  if (!config?.watchdogName) return false;
+  try {
+    client ??= new SchedulerClient({});
+    const schedule = await client.send(new GetScheduleCommand({ Name: config.watchdogName }));
+    return schedule.State === "ENABLED" && !!schedule.EndDate && new Date(schedule.EndDate) > now;
+  } catch {
+    return false;
   }
 }
