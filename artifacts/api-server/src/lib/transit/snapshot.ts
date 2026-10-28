@@ -32,20 +32,27 @@ export function assembleSnapshot(
   return { version: 1, generatedAt, sources, stations, services, trips };
 }
 
+/** The gzipped bytes of a snapshot, as stored in a file or in S3. */
+export function encodeSnapshot(snapshot: TransitSnapshot): Buffer {
+  return gzipSync(JSON.stringify(snapshot));
+}
+
+export function decodeSnapshot(bytes: Uint8Array): TransitSnapshot {
+  const snapshot = JSON.parse(gunzipSync(bytes).toString("utf8")) as TransitSnapshot;
+  if (snapshot.version !== 1)
+    throw new Error(`Unsupported snapshot version ${String(snapshot.version)}`);
+  return snapshot;
+}
+
 export async function writeSnapshot(
   path: string,
   snapshot: TransitSnapshot,
 ): Promise<void> {
-  await writeFile(path, gzipSync(JSON.stringify(snapshot)));
+  await writeFile(path, encodeSnapshot(snapshot));
 }
 
 export async function readSnapshot(path: string): Promise<TransitSnapshot> {
-  const snapshot = JSON.parse(
-    gunzipSync(await readFile(path)).toString("utf8"),
-  ) as TransitSnapshot;
-  if (snapshot.version !== 1)
-    throw new Error(`Unsupported snapshot version ${String(snapshot.version)}`);
-  return snapshot;
+  return decodeSnapshot(await readFile(path));
 }
 
 /** Every station index matching a name, in Japanese ("渋谷") or English ("Shibuya"). */

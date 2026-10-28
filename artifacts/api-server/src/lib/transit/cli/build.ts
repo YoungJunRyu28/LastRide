@@ -16,32 +16,15 @@ import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import { unzipSync } from "fflate";
-import type { Service, SnapshotSource, Station, Trip } from "../model";
 import { importGtfs, type GtfsFiles } from "../importers/gtfs";
-import { importOdpt, type OdptData } from "../importers/odpt";
 import { assembleSnapshot, writeSnapshot } from "../snapshot";
-
-/**
- * Operators whose train timetables ODPT publishes under licences that allow
- * commercial use (checked October 2026 in the ODPT catalogue). JR East and the
- * private railways (Tokyu, Odakyu, Keio, Keikyu, Seibu, Tobu, Sotetsu) are
- * only under the Challenge-limited licence, which does not.
- */
-const LICENSES: Record<string, string> = {
-  TokyoMetro: "公共交通オープンデータ基本ライセンス",
-  Toei: "CC BY 4.0",
-  MIR: "公共交通オープンデータ基本ライセンス",
-  TWR: "公共交通オープンデータ基本ライセンス",
-  TamaMonorail: "公共交通オープンデータ基本ライセンス",
-  YokohamaMunicipal: "公共交通オープンデータ基本ライセンス",
-};
-const DEFAULT_OPERATORS = Object.keys(LICENSES);
+import { DEFAULT_ODPT_BASE, DEFAULT_ODPT_OPERATORS, downloadOdpt, withOdptKey } from "../buildOdpt";
 
 const { values } = parseArgs({
   options: {
     operators: { type: "string" },
     gtfs: { type: "string", multiple: true },
-    "odpt-base": { type: "string", default: "https://api.odpt.org/api/v4" },
+    "odpt-base": { type: "string", default: DEFAULT_ODPT_BASE },
     out: { type: "string", default: "data/transit-snapshot.json.gz" },
   },
 });
@@ -52,17 +35,7 @@ if (!key) {
   process.exit(1);
 }
 
-function withKey(url: string): string {
-  if (!/odpt\.org/.test(url) || url.includes("acl:consumerKey")) return url;
-  return `${url}${url.includes("?") ? "&" : "?"}acl:consumerKey=${encodeURIComponent(key!)}`;
-}
-
-async function fetchJson<T>(url: string): Promise<T> {
-  const response = await fetch(withKey(url));
-  if (!response.ok)
-    throw new Error(`${response.status} ${response.statusText} for ${url}`);
-  return (await response.json()) as T;
-}
+const withKey = (url: string) => withOdptKey(url, key!);
 
 async function readGtfs(location: string): Promise<GtfsFiles> {
   const bytes = /^https?:\/\//.test(location)
@@ -77,56 +50,14 @@ async function readGtfs(location: string): Promise<GtfsFiles> {
 }
 
 async function main() {
-  const operators = (values.operators?.split(",") ?? DEFAULT_OPERATORS).map(
-    (name) => `odpt.Operator:${name.trim()}`,
-  );
+  const operators = values.operators?.split(",") ?? DEFAULT_ODPT_OPERATORS;
   const base = values["odpt-base"]!;
-  const sources: SnapshotSource[] = [];
-  const stationIndex = new Map<string, number>();
-  const stations: Station[] = [];
-  const services: Record<string, Service> = {};
-  const trips: Trip[] = [];
-
   console.log(`Downloading ODPT dumps from ${base} …`);
-  const keep = <T extends { "odpt:operator"?: string }>(items: T[]) =>
-    items.filter(
-      (item) =>
-        !item["odpt:operator"] || operators.includes(item["odpt:operator"]),
-    );
-  const [allStations, railways, calendars, timetables] = await Promise.all([
-    fetchJson<OdptData["stations"]>(`${base}/odpt:Station.json`),
-    fetchJson<OdptData["railways"]>(`${base}/odpt:Railway.json`),
-    fetchJson<NonNullable<OdptData["calendars"]>>(`${base}/odpt:Calendar.json`),
-    fetchJson<OdptData["trainTimetables"]>(`${base}/odpt:TrainTimetable.json`),
-  ]);
-  const odpt = importOdpt(
-    {
-      stations: keep(allStations),
-      railways,
-      calendars,
-      trainTimetables: keep(timetables),
-    },
-    stationIndex,
-    stations,
-  );
-  Object.assign(services, odpt.services);
-  trips.push(...odpt.trips);
-  for (const operator of operators) {
-    const count = odpt.trips.filter((trip) =>
-      trip.id.includes(`:${operator.split(":")[1]}.`),
-    ).length;
+  const { sources, stationIndex, stations, services, trips, trainsByOperator } = await downloadOdpt(key!, { operators, base });
+  for (const [operator, count] of Object.entries(trainsByOperator)) {
     console.log(
-      `  ${operator.padEnd(34)} ${count} trains${count === 0 ? "  ← none: not in this API, or needs another endpoint" : ""}`,
+      `  ${`odpt.Operator:${operator}`.padEnd(34)} ${count} trains${count === 0 ? "  ← none: not in this API, or needs another endpoint" : ""}`,
     );
-    if (count > 0)
-      sources.push({
-        operator,
-        format: "odpt",
-        url: base,
-        license:
-          LICENSES[operator.split(":")[1]] ??
-          "unknown — check the ODPT catalogue before production use",
-      });
   }
 
   for (const entry of values.gtfs ?? []) {

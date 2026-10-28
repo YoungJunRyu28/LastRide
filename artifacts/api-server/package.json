@@ -13,6 +13,7 @@
     "transit:last-train": "tsx src/lib/transit/cli/lastTrain.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1157.0",
     "@aws-sdk/client-scheduler": "^3.1150.0",
     "@holiday-jp/holiday_jp": "^2.5.2",
     "@workspace/api-zod": "workspace:*",
