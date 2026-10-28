@@ -370,6 +370,15 @@ export function notifyLockFallback(
   return enqueue(async () => present(text.title, text.body, null, '/ride', true, null, (await AsyncStorage.getItem(STORAGE_KEYS.throughFocus).catch(() => null)) !== 'false'));
 }
 
+/**
+ * A farther station worth knowing about (lib/stationSuggestion.ts), sent by the
+ * background task at most once a night per reason. Informational: not Time
+ * Sensitive, so Focus holds it like any other notification.
+ */
+export function notifyStationSuggestion(text: { title: string; body: string }): Promise<void> {
+  return enqueue(async () => present(`LastRide — ${text.title}`, text.body, null, '/ride', false));
+}
+
 function stationNotice(text: ReminderText, info: DeliveryInfo) {
   if (text.language === 'ja') {
     return {

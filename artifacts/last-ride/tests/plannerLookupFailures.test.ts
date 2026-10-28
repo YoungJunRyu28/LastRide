@@ -76,6 +76,33 @@ describe('train lookups failing', () => {
     expect(after.leaveByMs).toBe(jst(23, 40) - (6 + 3) * MINUTE_MS);
   });
 
+  test('a station’s result is kept all night (its trains don’t change), but not for another destination', async () => {
+    mocks.lastTrain.mockResolvedValue({ departsAt: jst(23, 40), arrivesAt: jst(24, 10), source: 'live' });
+    const before = await planNight(here, home, 4, jst(21), { nightOf: jst(21) });
+    mocks.lastTrain.mockRejectedValue(new AppleLookupFailed('throttled'));
+    // Two hours later, every lookup refused: still 元町・中華街, not "no route".
+    const later = await planNight(here, home, 4, jst(23), { nightOf: jst(21), previous: before });
+    expect(later.station.nameJa).toBe('元町・中華街');
+    expect(later.lastTrain.departsAt).toBe(jst(23, 40));
+    // Home changed to 大倉山 meanwhile: the 菊名 result is no answer for it.
+    await expect(planNight(here, otherHomeStation, 4, jst(23), { nightOf: jst(21), previous: before })).rejects.toThrow();
+  });
+
+  test('the station in use, missing from Apple’s search although nearer than one found, is looked at too', async () => {
+    const ishikawacho = { name: 'Ishikawacho', nameJa: '石川町', latitude: 35.4392, longitude: 139.6430 };
+    mocks.lastTrain.mockImplementation(async (from: { nameJa: string }) =>
+      // 石川町's line runs much later: it may be suggested, never switched to.
+      ({ departsAt: from.nameJa === '石川町' ? jst(24, 20) : jst(23, 40), arrivesAt: jst(24, 30), source: 'live' }));
+    mocks.nearby.mockResolvedValue([{ station: motomachi, straightMeters: 80, walk }, { station: ishikawacho, straightMeters: 800, walk: { walkingMinutes: 11, distanceMeters: 900, source: 'routed' } }]);
+    const before = await planNight(here, home, 4, jst(21), { nightOf: jst(21) });
+    expect(before.station.nameJa).toBe('元町・中華街');
+    // This time Apple's search leaves 元町・中華街 out.
+    mocks.nearby.mockResolvedValue([{ station: ishikawacho, straightMeters: 800, walk: { walkingMinutes: 11, distanceMeters: 900, source: 'routed' } }]);
+    const after = await planNight(here, home, 4, jst(21, 12), { nightOf: jst(21), previous: before });
+    expect(after.station.nameJa).toBe('元町・中華街');
+    expect(after.alternatives.map((option) => option.station.nameJa)).toEqual(['石川町']);
+  });
+
   test('from (about) the same spot, an Apple route is reused but an estimate is looked up again', async () => {
     mocks.lastTrain.mockResolvedValue({ departsAt: jst(23, 40), arrivesAt: jst(24, 10), source: 'live' });
     const routed = { walkingMinutes: 4, distanceMeters: 300, source: 'routed' as const, path: [here, motomachi] };

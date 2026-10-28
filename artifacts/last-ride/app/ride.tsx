@@ -22,6 +22,15 @@ import { formatCountdown } from "@/lib/countdown";
 import { useSecondClock } from "@/hooks/useSecondClock";
 import { shortLineName } from "@/lib/timetable";
 import { trainChoiceLabel } from "@/lib/trainChoice";
+import {
+  markDismissed,
+  markSeen,
+  readSuggestionLog,
+  stationSuggestion,
+  suggestionNight,
+  suggestionText,
+  type SuggestionLog,
+} from "@/lib/stationSuggestion";
 import { phaseAt, phaseLabel } from "@/lib/nightPhase";
 import { TimelineRail } from "@/components/TimelineRail";
 import { boardedButtons } from "@/lib/boarding";
@@ -36,6 +45,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   AppState,
   Linking,
@@ -103,6 +113,7 @@ export default function RideScreen() {
     walkingMinutes,
     isLocationReady,
     isLocating,
+    isSearching,
     locationError,
     requestLocation,
     nowMs,
@@ -134,6 +145,31 @@ export default function RideScreen() {
   const [showOtherStations, setShowOtherStations] = useState(false);
   const [showRoute, setShowRoute] = useState(false);
   const clockMs = useSecondClock(nowMs, demoActive);
+  // A farther station that gets you home later: suggested, never switched to (lib/stationSuggestion.ts).
+  const suggestion = plan && !demoActive ? stationSuggestion(plan, nowMs) : null;
+  const suggestionNightKey = plan ? suggestionNight(plan) : null;
+  const [suggestionLog, setSuggestionLog] = useState<SuggestionLog | null>(null);
+  useEffect(() => {
+    if (!suggestionNightKey) return;
+    let live = true;
+    void readSuggestionLog(suggestionNightKey).then((log) => live && setSuggestionLog(log));
+    return () => {
+      live = false;
+    };
+  }, [suggestionNightKey]);
+  const suggested =
+    suggestion &&
+    suggestionLog?.night === suggestionNightKey &&
+    !suggestionLog.dismissed.includes(suggestion.option.station.nameJa)
+      ? suggestion
+      : null;
+  const suggestedName = suggested?.option.station.nameJa;
+  // Seen on screen: the background task won't also send it as a notification.
+  useEffect(() => {
+    if (!suggestedName || !suggestionNightKey || AppState.currentState !== "active") return;
+    if (suggestionLog?.seen.includes(suggestedName)) return;
+    void markSeen(suggestionNightKey, suggestedName).then(setSuggestionLog);
+  }, [suggestedName, suggestionNightKey]); // eslint-disable-line react-hooks/exhaustive-deps
   // "Stop tracking" from the Android countdown notification opens last-ride://ride?stop=1.
   const { stop } = useLocalSearchParams<{ stop?: string }>();
   useEffect(() => {
@@ -464,8 +500,8 @@ export default function RideScreen() {
                         ? `自動なら${autoName}で${gain}分遅く出られます。`
                         : `${autoName} would give you ${gain} more minutes.`
                       : ja
-                        ? "自動での駅の切り替えは止まっています。"
-                        : "Automatic station switching is paused."}
+                        ? "一番近い駅への自動の切り替えは止まっています。"
+                        : "Following the closest station is paused."}
                   </Text>
                 </View>
                 <Pressable
@@ -482,6 +518,46 @@ export default function RideScreen() {
                   >
                     {ja ? "自動に戻す" : "Back to auto"}
                   </Text>
+                </Pressable>
+              </Card>
+            );
+          })()}
+
+        {suggested &&
+          suggestionNightKey &&
+          (() => {
+            const text = suggestionText(suggested, ja);
+            const name = suggested.option.station.nameJa;
+            return (
+              <Card style={styles.banner}>
+                <Pressable
+                  testID="use-suggested-station"
+                  onPress={() => setPinnedStation(suggested.option.station)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${text.title}。${text.body}。${ja ? "タップでこの駅にする" : "Tap to use this station"}`}
+                  style={({ pressed }) => [styles.suggestion, { opacity: pressed ? 0.7 : 1 }]}
+                >
+                  <Feather
+                    name={suggested.reason === "clean" ? "alert-triangle" : "clock"}
+                    color={colors.primary}
+                    size={18}
+                  />
+                  <View style={styles.flex}>
+                    <Text style={[styles.rowTitle, { color: colors.foreground }]}>{text.title}</Text>
+                    <Text style={[styles.note, { color: colors.mutedForeground }]}>
+                      {text.body}
+                      {ja ? " · タップでこの駅にする" : " · tap to use it"}
+                    </Text>
+                  </View>
+                </Pressable>
+                <Pressable
+                  testID="dismiss-suggested-station"
+                  onPress={() => void markDismissed(suggestionNightKey, name).then(setSuggestionLog)}
+                  accessibilityRole="button"
+                  accessibilityLabel={ja ? "閉じる" : "Dismiss"}
+                  hitSlop={10}
+                >
+                  <Feather name="x" size={18} color={colors.mutedForeground} />
                 </Pressable>
               </Card>
             );
@@ -743,13 +819,17 @@ export default function RideScreen() {
                 {trackingMode !== null ? (
                   <>
                     <Text style={[styles.statusStrong, { color: colors.foreground }]}>{ja ? "トラッキング中" : "Tracking"}</Text>
-                    {planAge === 0
+                    {isSearching
                       ? ja
-                        ? " · たった今確認"
-                        : " · checked just now"
-                      : ja
-                        ? ` · ${planAge}分前に確認`
-                        : ` · checked ${planAge} min ago`}
+                        ? " · 確認中…"
+                        : " · checking…"
+                      : planAge === 0
+                        ? ja
+                          ? " · たった今確認"
+                          : " · checked just now"
+                        : ja
+                          ? ` · ${planAge}分前に確認`
+                          : ` · checked ${planAge} min ago`}
                   </>
                 ) : ja ? (
                   `${formatJstTime(plan.computedAt)}に確認`
@@ -757,7 +837,9 @@ export default function RideScreen() {
                   `Checked ${formatJstTime(plan.computedAt)}`
                 )}
               </Text>
-              {trackingMode !== null && canRefresh && (
+              {/* Looking for stations and trains: a small spinner, so it's clear something is happening. */}
+              {trackingMode !== null && isSearching && <ActivityIndicator size="small" color={colors.mutedForeground} style={styles.searching} />}
+              {trackingMode !== null && canRefresh && !isSearching && (
                 <Feather
                   name={freshness === "stale" ? "alert-triangle" : "refresh-cw"}
                   size={12}
@@ -783,11 +865,15 @@ export default function RideScreen() {
                 style={({ pressed }) => [
                   styles.smallButton,
                   styles.lockButton,
-                  { borderColor: colors.input, opacity: !canRefresh ? 0.4 : pressed ? 0.7 : 1 },
+                  { borderColor: colors.input, opacity: isSearching ? 1 : !canRefresh ? 0.4 : pressed ? 0.7 : 1 },
                 ]}
               >
-                <Feather name="refresh-cw" size={13} color={colors.foreground} />
-                <Text style={[styles.smallButtonText, { color: colors.foreground }]}>{ja ? "更新" : "Refresh"}</Text>
+                {isSearching ? (
+                  <ActivityIndicator size="small" color={colors.foreground} style={styles.searching} />
+                ) : (
+                  <Feather name="refresh-cw" size={13} color={colors.foreground} />
+                )}
+                <Text style={[styles.smallButtonText, { color: colors.foreground }]}>{isSearching ? (ja ? "確認中" : "Checking") : ja ? "更新" : "Refresh"}</Text>
               </Pressable>
             )}
           </View>
@@ -1204,8 +1290,8 @@ export default function RideScreen() {
                 {showOtherStations && (
                   <Text style={[styles.note, { color: colors.mutedForeground }]}>
                     {ja
-                      ? "タップでその駅に切り替えます。自動では、10分以上遅く出られる場合のみ遠い駅を選びます。"
-                      : "Tap to switch. On automatic, a farther station is only chosen if it gives you 10+ more minutes."}
+                      ? "タップでその駅に切り替えます。自動では一番近い駅を使い、遠い駅で10分以上遅く出られるときは上でお知らせします。"
+                      : "Tap to switch. On automatic, the closest station is used; a farther one that gives you 10+ more minutes is suggested above."}
                   </Text>
                 )}
               </>
@@ -1378,6 +1464,7 @@ export default function RideScreen() {
 }
 
 const styles = StyleSheet.create({
+  searching: { transform: [{ scale: 0.75 }] },
   screen: { flex: 1 },
   content: { gap: 14, paddingHorizontal: 20 },
   flex: { flex: 1, gap: 2 },
@@ -1385,6 +1472,7 @@ const styles = StyleSheet.create({
   destination: { alignItems: "center", alignSelf: "flex-start", flexDirection: "row", gap: 4, marginTop: 2 },
   destinationText: { flexShrink: 1, fontSize: 22, fontWeight: "800" },
   banner: { alignItems: "center", flexDirection: "row", gap: 12, padding: 14 },
+  suggestion: { alignItems: "center", flex: 1, flexDirection: "row", gap: 12 },
   hero: { alignItems: "center", flexDirection: "row", gap: 16, marginVertical: 4 },
   startCircle: {
     alignItems: "center",

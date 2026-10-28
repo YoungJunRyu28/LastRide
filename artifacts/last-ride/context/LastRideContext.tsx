@@ -224,6 +224,8 @@ type RideContextValue = {
   userCoordinates: Coordinates | null;
   isLocationReady: boolean;
   isLocating: boolean;
+  /** A station search is running (any re-plan): the 更新 / tracking line shows a spinner. */
+  isSearching: boolean;
   locationError: LocationErrorCode | null;
   /** Notification times, minutes before leaving (0 = at leave time). */
   reminderIntervals: number[];
@@ -1269,7 +1271,22 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
   }, []);
 
   /** Plans from a position; returns null when there is no home station to plan toward. */
+  // Searches in flight (any re-plan: 更新, moving while tracking, the periodic check),
+  // so the screen can show that it's looking.
+  const [searches, setSearches] = useState(0);
   const planFrom = useCallback(
+    async (coordinates: Coordinates, options: { dropPin?: boolean; pin?: StationOption } = {}) => {
+      setSearches((count) => count + 1);
+      try {
+        return await planFromNow(coordinates, options);
+      } finally {
+        setSearches((count) => Math.max(0, count - 1));
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [getNow],
+  );
+  const planFromNow = useCallback(
     async (coordinates: Coordinates, { dropPin = false, pin }: { dropPin?: boolean; pin?: StationOption } = {}) => {
       const {
         homeStationOption: home,
@@ -1852,6 +1869,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       userCoordinates,
       isLocationReady: plan !== null,
       isLocating,
+      isSearching: searches > 0 || isLocating,
       locationError,
       reminderIntervals,
       alarmsEnabled,
@@ -1924,6 +1942,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       homeStationOption,
       isHydrated,
       isLocating,
+      searches,
       language,
       locationError,
       notificationsAllowed,

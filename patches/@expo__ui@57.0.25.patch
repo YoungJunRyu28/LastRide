@@ -1,0 +1,75 @@
+diff --git a/build/swift-ui/Text/index.d.ts b/build/swift-ui/Text/index.d.ts
+index a8843b740a937f5245db0cb74d4d0dd2caf9363a..0d62b0e20a6a61545ead8d8b375f5bf4ce9ca3ae 100644
+--- a/build/swift-ui/Text/index.d.ts
++++ b/build/swift-ui/Text/index.d.ts
+@@ -41,6 +41,12 @@ export interface TextProps extends CommonViewModifierProps {
+      * @platform tvos 16.0+
+      */
+     pauseTime?: Date;
++    /**
++     * With `timerInterval` (counting down, not paused): show only this many fields,
++     * so 2 gives "1:12" over an hour and "12:34" under. Ignored before iOS 18.
++     * @platform ios 18.0+
++     */
++    maxFieldCount?: number;
+ }
+ export declare function Text(props: TextProps): import("react/jsx-runtime").JSX.Element | null;
+ //# sourceMappingURL=index.d.ts.map
+\ No newline at end of file
+diff --git a/ios/TextView.swift b/ios/TextView.swift
+index 7dfe0a9dc9fafb625067dbb29f80d82f767d63e1..9e140a46a8b77e8d7b9a2c9727daf5d23e63af57 100644
+--- a/ios/TextView.swift
++++ b/ios/TextView.swift
+@@ -25,6 +25,8 @@ public final class TextViewProps: UIBaseViewProps {
+   @Field public var timerInterval: ClosedRangeDate?
+   @Field public var countsDown: Bool?
+   @Field public var pauseTime: Date?
++  // LastRide patch: with timerInterval, keep only this many fields (2: "1:12" over an hour, "12:34" under). iOS 18+.
++  @Field public var maxFieldCount: Int?
+ 
+   // Override default frame alignment for text views
+   override var defaultFrameAlignment: Alignment { .leading }
+@@ -45,7 +47,16 @@ public struct TextView: ExpoSwiftUI.View {
+   internal func buildText(applyModifiers: Bool = true) -> Text {
+     let text: Text
+ 
+-    if #available(iOS 16.0, tvOS 16.0, *),
++    if #available(iOS 18.0, tvOS 18.0, *),
++       let maxFieldCount = props.maxFieldCount,
++       props.pauseTime == nil,
++       props.countsDown ?? true,
++       let timerInterval = props.timerInterval,
++       let lower = timerInterval.lower,
++       let upper = timerInterval.upper,
++       lower <= upper {
++      text = Text(.currentDate, format: .timer(countingDownIn: lower..<upper, maxFieldCount: maxFieldCount))
++    } else if #available(iOS 16.0, tvOS 16.0, *),
+        let timerInterval = props.timerInterval,
+        let lower = timerInterval.lower,
+        let upper = timerInterval.upper,
+diff --git a/src/swift-ui/Text/index.tsx b/src/swift-ui/Text/index.tsx
+index 2351ee84db1984243d4b65ed4a52dec843a74906..a439edf04e167a395dc1b02498f0777d4ec1ea8c 100644
+--- a/src/swift-ui/Text/index.tsx
++++ b/src/swift-ui/Text/index.tsx
+@@ -52,6 +52,13 @@ export interface TextProps extends CommonViewModifierProps {
+    * @platform tvos 16.0+
+    */
+   pauseTime?: Date;
++
++  /**
++   * With `timerInterval` (counting down, not paused): show only this many fields,
++   * so 2 gives "1:12" over an hour and "12:34" under. Ignored before iOS 18.
++   * @platform ios 18.0+
++   */
++  maxFieldCount?: number;
+ }
+ 
+ type NativeTextProps = CommonViewModifierProps & {
+@@ -63,6 +70,7 @@ type NativeTextProps = CommonViewModifierProps & {
+   timerInterval?: { lower: number; upper: number };
+   countsDown?: boolean;
+   pauseTime?: number;
++  maxFieldCount?: number;
+ };
+ 
+ const TextNativeView: React.ComponentType<NativeTextProps> = requireNativeView(

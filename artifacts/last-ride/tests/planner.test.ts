@@ -8,7 +8,7 @@
  *
  * Several of the rules here are product decisions that currently live only in
  * comments — the 3-minute station buffer, the 30-minute warning, the
- * 10-minute gain (plus the extra walk) needed to justify a farther station, the 01:30/04:00/05:00
+ * closest station as the automatic pick (farther ones only suggested), the 01:30/04:00/05:00
  * backstops. Pinning them down is the point: they should not be able to change
  * by accident.
  */
@@ -370,7 +370,7 @@ describe('choosing between stations', () => {
     expect(sameStation(shibuya, ebisu)).toBe(false);
   });
 
-  test('a farther station needs to buy real time to be worth it', () => {
+  test('a farther station is never the automatic pick while the closest runs', () => {
     const close = choice({
       station: shibuya,
       walkingMinutes: 5,
@@ -399,17 +399,19 @@ describe('choosing between stations', () => {
     expect(plan.station.nameJa).toBe('恵比寿');
   });
 
-  test('ten minutes plus each extra minute of walking is enough', () => {
-    const close = choice({
-      station: shibuya,
-      walkingMinutes: 5,
-      leaveByMs: LEAVE_BY,
-    });
-    // 7 minutes more walking: 17 minutes later is needed.
-    const farther = (gain: number) => choice({ station: ebisu, walkingMinutes: 12, leaveByMs: LEAVE_BY + gain * MINUTE_MS });
+  test('even a much later farther station is only suggested (lib/stationSuggestion), not switched to', () => {
+    const close = choice({ station: shibuya, walkingMinutes: 5, leaveByMs: LEAVE_BY });
+    const farther = choice({ station: ebisu, walkingMinutes: 12, leaveByMs: LEAVE_BY + 40 * MINUTE_MS });
+    expect(repick(planFrom([close, farther]), null).station.nameJa).toBe('渋谷');
+    expect(repick(planFrom([farther, close], { autoPick: close }), null).station.nameJa).toBe('渋谷');
+  });
 
-    expect(repick(planFrom([close, farther(16)]), null).station.nameJa).toBe('渋谷');
-    expect(repick(planFrom([close, farther(17)]), null).station.nameJa).toBe('恵比寿');
+  test('the station in use stays until another is 3 minutes closer on foot', () => {
+    const inUse = choice({ station: shibuya, walkingMinutes: 7 });
+    // 恵比寿 two minutes closer: no swap (and no "station changed" notice).
+    expect(repick(planFrom([inUse, choice({ station: ebisu, walkingMinutes: 5 })]), null).station.nameJa).toBe('渋谷');
+    // Three minutes closer: the closest wins.
+    expect(repick(planFrom([inUse, choice({ station: ebisu, walkingMinutes: 4 })]), null).station.nameJa).toBe('恵比寿');
   });
 
   test('never a walk over 20 minutes while a closer station gets the user home', () => {
@@ -423,7 +425,7 @@ describe('choosing between stations', () => {
     expect(repick(planFrom([gone, running], { computedAt: jst(2026, 9, 23, 23, 57) }), null).station.nameJa).toBe('新宿');
   });
 
-  test('a current disruption can make a slightly earlier clean station the automatic pick', () => {
+  test('a disruption on the closest station’s line doesn’t switch by itself (the clean one is suggested)', () => {
     const disruptedClose = choice({
       station: shibuya,
       walkingMinutes: 5,
@@ -437,7 +439,7 @@ describe('choosing between stations', () => {
     });
 
     const plan = repick(planFrom([disruptedClose, cleanFarther]), null);
-    expect(plan.station.nameJa).toBe('恵比寿');
+    expect(plan.station.nameJa).toBe('渋谷');
   });
 
   test('pinning overrides the automatic pick, and unpinning restores it', () => {

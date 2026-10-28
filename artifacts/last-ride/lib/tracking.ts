@@ -12,14 +12,15 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import { syncEnterpriseLeaveBy } from '@/lib/enterpriseParticipation';
 import { holdOnTheWay, keepOnTheWay } from '@/lib/onTheWay';
 import { heldTrain, readAnswered, readBoarded } from '@/lib/boarding';
 import { recommendedLeaveTime } from '@/lib/reliability';
 import { endLiveActivity, syncLiveActivity } from '@/lib/liveActivity';
 import { syncWidgets } from '@/lib/widgets';
-import { notifyLockFallback, scheduleReminders, cancelAllReminders } from '@/lib/notifications';
+import { notifyLockFallback, notifyStationSuggestion, scheduleReminders, cancelAllReminders } from '@/lib/notifications';
+import { readSuggestionLog, recordSuggestion, shouldNotifySuggestion, stationSuggestion, suggestionNight, suggestionText } from '@/lib/stationSuggestion';
 import { buildReminderPlans, locationProfile, planNight, sameStation, shouldReplan, trackingEndsAt, trackingHardStopAt, type LocationProfile, type NightPlan } from '@/lib/planner';
 import { hasCoordinates, readSettings, readTrainChoiceOverride, trainChoiceUntil, writePinnedStation, writeTrainChoiceOverride, readReminderTimes } from '@/lib/settings';
 import { applyTrainChoice, choiceAt, effectiveTrainChoice, slotAtNewStation, trainChoiceLabel, trainOptions } from '@/lib/trainChoice';
@@ -101,8 +102,12 @@ async function recomputeFromLocation(coordinates: Coordinates): Promise<void> {
   await AsyncStorage.setItem(SNAPSHOT_KEY, JSON.stringify(basePlan));
   // 終電 / 1本前 / 2本前, falling back to a later train once the chosen one can't be made.
   // After an automatic station change, the same slot there unless its leave time has passed.
-  if (previous && previousPlan && settings.trainChoice > 0 && !sameStation(previous.station, basePlan.station) && override?.station !== basePlan.station.nameJa) {
-    const choice = slotAtNewStation(trainOptions(basePlan, settings.leaveMargin, now), choiceAt(settings.trainChoice, override, previous.station.nameJa));
+  // Not while its earlier trains are unknown (only the last train found yet): a
+  // decision then would wrongly switch 2本前 to 終電 there for the whole night.
+  const slotThere = previous ? choiceAt(settings.trainChoice, override, previous.station.nameJa) : 0;
+  const optionsThere = trainOptions(basePlan, settings.leaveMargin, now);
+  if (previous && previousPlan && settings.trainChoice > 0 && !sameStation(previous.station, basePlan.station) && override?.station !== basePlan.station.nameJa && optionsThere.length > slotThere) {
+    const choice = slotAtNewStation(optionsThere, slotThere);
     override = choice === settings.trainChoice
       ? null
       : { station: basePlan.station.nameJa, fromStation: previous.station.nameJa, choice, until: trainChoiceUntil(basePlan.lastTrain.departsAt) };
@@ -140,6 +145,7 @@ async function recomputeFromLocation(coordinates: Coordinates): Promise<void> {
     followUpLabel: gone ? trainChoiceLabel(gone.choice, language === 'ja') : undefined,
   });
   if (!(await isTrackingFlagOn())) return;
+  await suggestStation(basePlan, recommendedLeaveTime(plan), language, now).catch(() => undefined);
   await syncLiveActivity(plan, language, now).catch(() => undefined);
   const destinationLabel = settings.tonightDestination
     ? language === 'ja' ? settings.tonightDestination.nameJa : settings.tonightDestination.name
@@ -149,6 +155,22 @@ async function recomputeFromLocation(coordinates: Coordinates): Promise<void> {
   // Groups you're sharing with tonight get the new time (if it moved a minute or more),
   // so friends' alerts are right even with LastRide closed.
   await syncSharedLeaveBy(recommendedLeaveTime(plan)).catch(() => undefined);
+}
+
+/**
+ * A farther station that gets the user home later (or avoids a line with a
+ * service problem): told once a night per reason while the app is closed
+ * (lib/stationSuggestion.ts). Open, the main screen shows it instead.
+ */
+async function suggestStation(plan: NightPlan, leaveAtMs: number, language: 'ja' | 'en', now: number): Promise<void> {
+  if (AppState.currentState === 'active') return;
+  const suggestion = stationSuggestion(plan, now);
+  if (!suggestion) return;
+  const night = suggestionNight(plan);
+  if (!shouldNotifySuggestion(suggestion, await readSuggestionLog(night), leaveAtMs, now)) return;
+  // Recorded first: a task cut short after sending must not send it again.
+  await recordSuggestion(night, (log) => ({ ...log, notified: [...log.notified, suggestion.reason] }));
+  await notifyStationSuggestion(suggestionText(suggestion, language === 'ja'));
 }
 
 // Must be registered at module scope so the OS can invoke it headlessly.

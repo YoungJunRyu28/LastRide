@@ -26,16 +26,35 @@ The app starts saying **Leave now** at the recommended departure. It changes to
 intentional: between the two deadlines the route may still be physically
 possible, but LastRide no longer considers it comfortably reliable.
 
-## Disruption-aware automatic station choice
+## Automatic station choice and suggestions
+
+The automatic pick is the closest station whose last train hasn't left. The
+station in use stays until another is at least 3 minutes closer on foot, so two
+nearby stations don't swap back and forth (each swap moving the leave time and
+sending a notice). A farther station is never switched to by itself, however
+much later it runs (`lib/planner.ts` `autoPick`).
+
+A farther station is instead *suggested* (`lib/stationSuggestion.ts`) when it
+lets the user leave at least 10 minutes later on the last train, or, when the
+closest station's route has a current service incident, when it offers a clean
+route. Never for a 目安 (approximate) time, a walk over 20 minutes, a route with
+its own incident, a leave time under 5 minutes away, a locked station, or while
+the plan is held on the way to the train. The main screen shows the one with
+the latest leave time; tapping it locks that station for the night. With the
+app closed, background tracking sends it as a notification at most once a night
+per reason (later / clean route), from 15 minutes later, while the user's own
+leave time is at least 10 minutes away, and never for a station already seen in
+the app or dismissed.
 
 When timetable legs are available, planning asks the existing disruption
 endpoint once for the distinct lines used by candidate routes. The lookup is
 best-effort; an unavailable disruption product never breaks core planning.
 
-For automatic station selection only, a candidate with a current service
-incident receives a 15-minute ranking penalty. This does not rewrite train
-times or claim a delay duration. It simply requires a disrupted route to have a
-meaningful timing advantage before LastRide recommends it.
+A station whose lookup fails (Apple's request limit, no connection) keeps its
+earlier result for the rest of the night, since its trains don't change; the
+walk is looked up from wherever the user is. The station in use is also looked
+at when Apple's station search leaves it out although it is nearer than one
+found, so a refused or varying answer can't make the closest station disappear.
 
 Pinned stations still override the automatic choice.
 
