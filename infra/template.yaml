@@ -184,6 +184,10 @@ Resources:
             - Effect: Allow
               Action: s3:GetObject
               Resource: !Sub "${TransitSnapshotBucket.Arn}/*"
+            # Without it, S3 answers a missing file with AccessDenied instead of NoSuchKey.
+            - Effect: Allow
+              Action: s3:ListBucket
+              Resource: !GetAtt TransitSnapshotBucket.Arn
       DeploymentPreference:
         Enabled: !If [UseCanary, true, false]
         Type: Canary10Percent5Minutes
@@ -406,6 +410,11 @@ Resources:
                 - s3:GetObject
                 - s3:PutObject
               Resource: !Sub "${TransitSnapshotBucket.Arn}/*"
+            # Without it, S3 answers a missing file (the first refresh) with
+            # AccessDenied instead of NoSuchKey.
+            - Effect: Allow
+              Action: s3:ListBucket
+              Resource: !GetAtt TransitSnapshotBucket.Arn
       Events:
         Refresh:
           Type: ScheduleV2
