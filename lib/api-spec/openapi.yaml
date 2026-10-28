@@ -259,8 +259,8 @@ paths:
     get:
       operationId: getWalkRoute
       tags: [walk]
-      summary: Walking route
-      description: Walking distance and time along the pedestrian network, at the given pace.
+      summary: Approximate walking time (not pedestrian routing)
+      description: Rough walking estimate (straight-line distance multiplied by 1.3), NOT a verified pedestrian route. May miss rivers, entrances, stairs and detours. Client must identify as estimated and verify with a street-routing provider.
       parameters:
         - $ref: "#/components/parameters/FromLat"
         - $ref: "#/components/parameters/FromLon"
@@ -272,7 +272,7 @@ paths:
           schema: { type: string, enum: [relaxed, normal, fast] }
       responses:
         "200":
-          description: Walking route
+          description: Heuristic walking estimate, no verified street/footpath geometry.
           content:
             application/json:
               schema:
@@ -517,25 +517,36 @@ paths:
       summary: Create a persistent group (requires the premium entitlement)
       parameters:
         - $ref: "#/components/parameters/RevenueCatAppUserId"
+        - $ref: "#/components/parameters/PremiumDeviceSecret"
+        - $ref: "#/components/parameters/GroupCreateKey"
       requestBody:
         required: true
         content:
           application/json:
             schema: { $ref: "#/components/schemas/CreateGroupRequest" }
       responses:
+        "200":
+          description: An earlier creation with the same high-entropy key was recovered; host capability is unchanged
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GroupSession" }
         "201":
           description: Group created; the caller is its host
           content:
             application/json:
               schema: { $ref: "#/components/schemas/GroupSession" }
         "400": { description: Invalid body }
+        "401": { description: Invalid production premium device proof }
         "402": { description: Premium entitlement required }
+        "403": { description: LastRide client upgrade required; proof-of-possession protocol unsupported }
         "503": { description: Groups or entitlement checks unavailable }
   /groups/join:
     post:
       operationId: joinGroup
       tags: [groups]
       summary: Join a group with an invite token or join code
+      parameters:
+        - $ref: "#/components/parameters/GroupJoinKey"
       requestBody:
         required: true
         content:
@@ -543,7 +554,7 @@ paths:
             schema: { $ref: "#/components/schemas/JoinGroupRequest" }
       responses:
         "200":
-          description: Already a member (one of knownMemberTokens); nothing changed
+          description: Already a member (knownMemberTokens or saved X-Group-Join-Key); no new member created
           content:
             application/json:
               schema: { $ref: "#/components/schemas/GroupSession" }
@@ -721,6 +732,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/GroupId"
         - $ref: "#/components/parameters/MemberToken"
+        - $ref: "#/components/parameters/LeaveExpectedRevision"
       requestBody:
         required: true
         content:
@@ -735,6 +747,7 @@ paths:
         "400": { description: Leave-by time is outside tonight's window }
         "404": { description: Group not found or no longer a member }
         "409": { description: The group is not active tonight }
+        "412": { description: "STALE_LEAVE_REVISION: a newer value already won; refresh before any new update" }
     delete:
       operationId: leaveGroupTonight
       tags: [groups]
@@ -775,11 +788,36 @@ components:
       in: header
       required: true
       schema: { type: string, minLength: 32, maxLength: 256 }
+    GroupJoinKey:
+      name: X-Group-Join-Key
+      in: header
+      required: false
+      description: 256-bit hex capability generated before the first join request; also becomes this device's member credential
+      schema: { type: string, pattern: "^[a-fA-F0-9]{64}$", minLength: 64, maxLength: 64 }
+    GroupCreateKey:
+      name: X-Group-Create-Key
+      in: header
+      required: false
+      description: Device-generated 256-bit hexadecimal creation capability, retained across failed POST retries
+      schema: { type: string, pattern: "^[a-fA-F0-9]{64}$", minLength: 64, maxLength: 64 }
+    LeaveExpectedRevision:
+      name: X-Leave-Expected-Revision
+      in: header
+      required: false
+      description: Current participant leaveRevision (or 0 if not yet participating). If omitted, only unversioned legacy rows may be updated. An out-of-order version is rejected with 412 STALE_LEAVE_REVISION.
+      schema: { type: integer, minimum: 0, maximum: 2147483646 }
     RevenueCatAppUserId:
       name: X-RevenueCat-App-User-Id
       in: header
       required: true
+      description: SHA-256-derived paid device user ID; not sufficient proof of ownership by itself
       schema: { type: string, minLength: 1, maxLength: 200 }
+    PremiumDeviceSecret:
+      name: X-Premium-Device-Secret
+      in: header
+      required: false
+      description: Mandatory in production. Device-held 256-bit lowercase hexadecimal capability; the server verifies that its SHA-256 derivation matches X-RevenueCat-App-User-Id. Never log this header.
+      schema: { type: string, minLength: 64, maxLength: 64, pattern: "^[a-f0-9]{64}$" }
     EventId:
       name: eventId
       in: path
@@ -930,7 +968,8 @@ components:
         memberId: { type: string }
         displayName: { type: string }
         leaveBy: { type: [string, "null"], format: date-time }
-      required: [memberId, displayName, leaveBy]
+        leaveRevision: { type: integer, minimum: 0, description: Server-owned CAS revision for this member tonight }
+      required: [memberId, displayName, leaveBy, leaveRevision]
     GroupTonight:
       type: object
       properties:
@@ -1026,6 +1065,11 @@ components:
           type: number
         walkingMinutes:
           type: number
+          description: Approximate walking time based on straight-line distance and a constant multiplier.
+        walkingSource:
+          type: string
+          enum: [estimated]
+          description: The nearby station lookup does not return a verified pedestrian route.
       required: [id, name, nameJa, latitude, longitude]
     UsageReport:
       type: object
@@ -1084,7 +1128,11 @@ components:
           type: number
         minutes:
           type: number
-      required: [distanceMeters, minutes]
+        source:
+          type: string
+          enum: [estimated]
+          description: This endpoint does not consult a pedestrian routing provider; never treat as verified.
+      required: [distanceMeters, minutes, source]
     TaxiEstimate:
       type: object
       properties:

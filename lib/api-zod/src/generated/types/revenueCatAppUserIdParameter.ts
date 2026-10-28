@@ -6,4 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 
+/**
+ * SHA-256-derived paid device user ID; not sufficient proof of ownership by itself
+ */
 export type RevenueCatAppUserIdParameter = string;

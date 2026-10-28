@@ -76,7 +76,7 @@ describe("stations", () => {
     );
     expect(status).toBe(200);
     expect(body).toEqual([
-      expect.objectContaining({ nameJa: "渋谷", walkingMeters: 0, walkingMinutes: 1 }),
+      expect.objectContaining({ nameJa: "渋谷", walkingMeters: 0, walkingMinutes: 1, walkingSource: "estimated" }),
     ]);
   });
 
@@ -101,7 +101,7 @@ describe("walk and taxi", () => {
   it("estimates a walk", async () => {
     const { status, body } = await get(`/walk?${coords}&pace=fast`);
     expect(status).toBe(200);
-    expect(body).toEqual(walkEstimate(from, to, "fast"));
+    expect(body).toEqual({ ...walkEstimate(from, to, "fast"), source: "estimated" });
   });
 
   it("estimates a taxi at the given start time", async () => {

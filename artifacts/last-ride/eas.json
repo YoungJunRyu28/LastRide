@@ -13,7 +13,22 @@
     },
     "production": {
       "autoIncrement": true,
-      "channel": "production"
+      "channel": "production",
+      "env": {
+        "EXPO_PUBLIC_ANDROID_STORE": "google-play"
+      }
+    },
+    "galaxy": {
+      "autoIncrement": true,
+      "distribution": "store",
+      "channel": "galaxy",
+      "environment": "production",
+      "env": {
+        "EXPO_PUBLIC_ANDROID_STORE": "galaxy"
+      },
+      "android": {
+        "buildType": "apk"
+      }
     }
   },
   "submit": {

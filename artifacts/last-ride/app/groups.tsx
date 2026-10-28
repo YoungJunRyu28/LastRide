@@ -1,7 +1,7 @@
 import { Feather } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import React from 'react';
-import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomNav } from '@/components/BottomNav';
 import { Card, PremiumTag, PrimaryButton, SecondaryButton } from '@/components/ui';
@@ -85,7 +85,13 @@ export default function GroupsScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { language } = useLastRide();
-  const { groups, loading, available } = useGroups();
+  const { groups, loading, available, refresh } = useGroups();
+  const [refreshing, setRefreshing] = React.useState(false);
+  useFocusEffect(React.useCallback(() => { void refresh(); }, [refresh]));
+  const pullRefresh = React.useCallback(async () => {
+    setRefreshing(true);
+    try { await refresh(); } finally { setRefreshing(false); }
+  }, [refresh]);
   const { isPremium } = usePremium();
   const trialDays = useTrialDays();
   const ja = language !== 'en';
@@ -93,7 +99,9 @@ export default function GroupsScreen() {
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
-      <ScrollView contentContainerStyle={[styles.content, { paddingTop: insets.top + (Platform.OS === 'web' ? 24 : 12) }]}>
+      <ScrollView
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void pullRefresh()} tintColor={colors.primary} />}
+        contentContainerStyle={[styles.content, { paddingTop: insets.top + (Platform.OS === 'web' ? 24 : 12) }]}>
         <View style={styles.header}>
           <View>
             <Text style={[styles.kicker, { color: colors.mutedForeground }]}>GROUPS</Text>

@@ -5,8 +5,11 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { WalkRouteSource } from './walkRouteSource';
 
 export interface WalkRoute {
   distanceMeters: number;
   minutes: number;
+  /** This endpoint does not consult a pedestrian routing provider; never treat as verified. */
+  source: WalkRouteSource;
 }

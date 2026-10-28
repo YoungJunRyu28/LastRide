@@ -36,6 +36,16 @@ describe("isRailwayStation", () => {
 });
 
 describe("distinctStations", () => {
+  it("discards an invalid MapKit coordinate rather than computing NaN distance", () => {
+    const origin = { latitude: 35.6595, longitude: 139.7005 };
+    const stations = distinctStations(origin, [
+      place('東京都外駅', Infinity, 139.7),
+      place('渋谷駅', 35.658, 139.701),
+    ], 3);
+    expect(stations).toHaveLength(1);
+    expect(stations[0].station.nameJa).toBe('渋谷');
+  });
+
   it("keeps one entry per station, nearest first", () => {
     const origin = { latitude: 35.6595, longitude: 139.7005 };
     const stations = distinctStations(

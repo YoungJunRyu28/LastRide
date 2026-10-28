@@ -29,14 +29,16 @@
   <div class="card">
     <p>帰り時（LastRide）のイベントに招待されています。</p>
     <p><a class="btn btn-amber" id="open-app" href="last-ride://join">アプリで開く</a></p>
-    <p class="muted">アプリをお持ちでない方は、App Storeで「帰り時」を検索してインストールし、もう一度このリンクを開いてください。イベントは、アプリで参加コードを入力しても参加できます。</p>
+    <div class="store-links" data-store-links data-lang="ja"></div>
+    <p class="muted">iPhone・Android版の配信開始後は、下のストアリンクからインストールして、この招待リンクをもう一度開いてください。イベントは、アプリで参加コードを入力しても参加できます。</p>
   </div>
 
 <h2 id="en" lang="en">Join an event</h2>
   <div class="card" lang="en">
     <p>You’ve been invited to an event on LastRide.</p>
     <p><a class="btn btn-amber" id="open-app-en" href="last-ride://join">Open in the app</a></p>
-    <p class="muted">Don’t have the app? Search for “LastRide” on the App Store, install it, then open this link again. You can also join with the invite code in the app.</p>
+    <div class="store-links" data-store-links data-lang="en"></div>
+    <p class="muted">Once the iPhone and Android apps are published, use the store links below to install LastRide, then reopen this invitation. You can also join with the invite code in the app.</p>
   </div>
 </main>
 <script>
@@ -61,5 +63,7 @@
     <p>© 2026 LastRide（帰り時）· 開発：Nicholas Roberts、YoungJun Ryu</p>
   </div>
 </footer>
+<script src="/store-listings.js"></script>
+<script src="/store-downloads.js"></script>
 </body>
 </html>

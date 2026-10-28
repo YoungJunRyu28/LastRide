@@ -16,14 +16,17 @@ import {
 import { rateLimitMiddleware, requestAddress } from "../lib/rateLimit";
 import { hashCapability } from "../lib/enterpriseTokens";
 import { checkPremiumEntitlement } from "../lib/revenueCat";
+import { premiumDeviceProofRequired, verifiedPremiumDeviceIdentity } from "../lib/premiumDeviceIdentity";
 import { notifyGroupUpdated, sendGroupPush } from "../lib/groupNotifications";
 import {
   createGroupRecord,
+  recoverCreatedGroupRecord,
   disbandGroupRecord,
   endGroupTonightRecord,
   getGroupDetailRecord,
   groupMemberIdForToken,
   joinGroupRecord,
+  recoverJoinedGroupRecord,
   leaveGroupRecord,
   leaveGroupTonightRecord,
   removeGroupMemberRecord,
@@ -111,6 +114,7 @@ function sendDetail(res: Response, group: GroupDetail, status = 200) {
 router.post("/groups", createLimiter, async (req, res) => {
   const header = CreateGroupHeader.safeParse({
     "X-RevenueCat-App-User-Id": req.header("x-revenuecat-app-user-id"),
+    "X-Group-Create-Key": req.header("x-group-create-key") ?? undefined,
   });
   if (!header.success) {
     res.status(400).json({ error: "RevenueCat app user id required" });
@@ -120,6 +124,48 @@ router.post("/groups", createLimiter, async (req, res) => {
   if (!body.success) {
     res.status(400).json({ error: "Invalid group", issues: body.error.issues });
     return;
+  }
+
+  // A RevenueCat customer ID is NOT authentication. Anyone can copy an
+  // anonymous App User ID and request its entitlement. A production creator
+  // must prove possession of the 256-bit device capability from which its
+  // RevenueCat ID was derived. Check before any create-key recovery too.
+  if (premiumDeviceProofRequired()) {
+    const deviceSecret = req.header("x-premium-device-secret");
+    // Previously installed clients have no proof header. Never silently
+    // accept their caller-supplied RevenueCat ID; explain the required app
+    // update with an explicit, machine-readable status instead.
+    if (!deviceSecret) {
+      res.status(403).json({
+        code: "PREMIUM_CLIENT_UPGRADE_REQUIRED",
+        error: "Update LastRide to create paid groups",
+      });
+      return;
+    }
+    if (!verifiedPremiumDeviceIdentity(
+      header.data["X-RevenueCat-App-User-Id"], deviceSecret,
+    )) {
+      res.status(401).json({
+        code: "INVALID_PREMIUM_DEVICE_PROOF",
+        error: "Verified premium device identity required",
+      });
+      return;
+    }
+  }
+
+  const creationKey = req.header("x-group-create-key");
+  if (creationKey !== undefined && !/^[a-f0-9]{64}$/i.test(creationKey)) {
+    res.status(400).json({ error: "Invalid group creation key" });
+    return;
+  }
+  if (creationKey) {
+    const recovered = await recoverCreatedGroupRecord(creationKey);
+    if (recovered) {
+      res.status(200).json(CreateGroupResponse.parse({
+        memberToken: recovered.memberToken, group: recovered.group,
+      }));
+      return;
+    }
   }
 
   const entitlement = await checkPremiumEntitlement(
@@ -134,12 +180,12 @@ router.post("/groups", createLimiter, async (req, res) => {
     return;
   }
 
-  const result = await createGroupRecord(body.data);
+  const result = await createGroupRecord(body.data, creationKey);
   if (result.kind === "invalid") {
     res.status(400).json({ error: "Group and display names cannot be blank" });
     return;
   }
-  res.status(201).json(
+  res.status(result.kind === "replayed" ? 200 : 201).json(
     CreateGroupResponse.parse({
       memberToken: result.memberToken,
       group: result.group,
@@ -159,7 +205,12 @@ router.post("/groups/join", joinLimiter, async (req, res) => {
     res.status(400).json({ error: "An invite token or join code is required" });
     return;
   }
-  const result = await joinGroupRecord(body.data);
+  const joinKey = req.header("x-group-join-key");
+  if (joinKey !== undefined && !/^[a-f0-9]{64}$/i.test(joinKey)) {
+    res.status(400).json({ error: "Invalid group join key" });
+    return;
+  }
+  const result = await joinGroupRecord(body.data, joinKey);
   if (result.kind === "invalid") {
     res.status(400).json({ error: "Invite is invalid or has been replaced" });
     return;
@@ -355,12 +406,27 @@ router.put("/groups/:groupId/tonight/me", memberLimiter, async (req, res) => {
     res.status(400).json({ error: "Invalid leave-by time" });
     return;
   }
+  const revisionHeader = req.header("x-leave-expected-revision");
+  let expectedRevision: number | undefined;
+  if (revisionHeader !== undefined) {
+    if (!/^(0|[1-9]\d{0,9})$/.test(revisionHeader) || Number(revisionHeader) > 2147483646) {
+      res.status(400).json({ error: "Invalid leave-by revision" });
+      return;
+    }
+    expectedRevision = Number(revisionHeader);
+  }
   const result = await setGroupTonightParticipationRecord(
     auth.groupId,
     auth.token,
     body.data.leaveBy,
+    new Date(),
+    expectedRevision,
   );
   if (result.kind === "not-found") return notFound(res);
+  if (result.kind === "stale") {
+    res.status(412).json({ code: "STALE_LEAVE_REVISION", error: "Leave-by update was superseded; refresh the group" });
+    return;
+  }
   if (result.kind === "inactive") {
     res.status(409).json({ error: "The group is not active tonight" });
     return;

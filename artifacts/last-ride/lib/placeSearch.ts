@@ -5,6 +5,7 @@
 import { searchAddresses as searchAddressesApi, searchStations as searchStationsApi } from "@workspace/api-client-react";
 import { apiBaseUrl, communityFallbacksEnabled } from "@/lib/api";
 import { appleSearchAddresses, appleSearchStations } from "@/lib/applePlaces";
+import { nativeAddressSearch } from "@/lib/nativeAddressSearch";
 import type { HomeAddress } from "@/lib/settings";
 import type { StationOption } from "@/lib/stations";
 
@@ -38,6 +39,7 @@ export async function searchStations(query: string): Promise<StationOption[]> {
             id: _id,
             walkingMeters: _meters,
             walkingMinutes: _minutes,
+            walkingSource: _walkSource,
             region,
             ...station
           }) => ({ ...station, regionJa: region }),
@@ -118,18 +120,34 @@ async function searchStationsPhoton(trimmed: string): Promise<StationOption[]> {
   return options.slice(0, 8);
 }
 
-/** Searches Japanese addresses: Apple Maps on iOS; the API server otherwise (currently returns none). */
+/** Searches Japanese addresses: MapKit on iOS, native Geocoder on Android.
+ * The server is the final fallback; it intentionally does not forward user
+ * addresses to unauthenticated public geocoding services in production. */
 export async function searchAddresses(query: string): Promise<HomeAddress[]> {
   const trimmed = query.trim();
   if (trimmed.length < 2) return [];
   const apple = await appleSearchAddresses(trimmed).catch(() => null);
   if (apple) return apple;
-  if (!apiBaseUrl) return [];
-  const results = await searchAddressesApi({ q: trimmed });
-  return results.map((address) => ({
-    label: address.name,
-    latitude: address.latitude,
-    longitude: address.longitude,
-  }));
+  let nativeError: unknown;
+  try {
+    const android = await nativeAddressSearch(trimmed);
+    if (android && android.length > 0) return android;
+  } catch (error) {
+    nativeError = error;
+  }
+  if (apiBaseUrl) {
+    try {
+      const results = await searchAddressesApi({ q: trimmed });
+      if (results.length > 0) return results.map((address) => ({
+        label: address.name,
+        latitude: address.latitude,
+        longitude: address.longitude,
+      }));
+    } catch {
+      // The backend geocoder may be disabled; preserve a specific native error.
+    }
+  }
+  if (nativeError) throw nativeError;
+  return [];
 }
 

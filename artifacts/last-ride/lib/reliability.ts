@@ -34,6 +34,21 @@ export const TRANSFER_SAFETY_MARGIN_MINUTES = 2;
 export const MAX_TRANSFER_SAFETY_MARGIN_MINUTES = 6;
 export const LONG_WALK_MINUTES = 15;
 export const LONG_WALK_SAFETY_MARGIN_MINUTES = 2;
+/** An unverified straight-line walk can be substantially longer around rail
+ * yards, rivers, overpasses or blocked station exits. This is a pragmatic
+ * precaution, NOT a statistical confidence bound or verified route ETA. */
+export const UNVERIFIED_WALK_MIN_MARGIN = 3;
+export const UNVERIFIED_WALK_MAX_MARGIN = 15;
+export function walkingUncertaintyMarginMinutes(
+  minutes: number,
+  source: 'routed' | 'estimated' | undefined,
+): number {
+  if (source === 'routed') return 0;
+  if (!Number.isFinite(minutes) || minutes < 0) return UNVERIFIED_WALK_MAX_MARGIN;
+  return Math.max(UNVERIFIED_WALK_MIN_MARGIN,
+    Math.min(UNVERIFIED_WALK_MAX_MARGIN, Math.ceil(minutes * 0.35)));
+}
+
 export const DISRUPTION_SELECTION_PENALTY_MINUTES = 15;
 
 export const PLAN_AGING_AFTER_MS = 5 * MINUTE_MS;

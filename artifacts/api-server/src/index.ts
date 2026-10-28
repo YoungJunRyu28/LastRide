@@ -7,8 +7,9 @@ import {
 import { purgeExpiredCacheEntries } from "./lib/cache";
 import { purgeExpiredRateLimits } from "./lib/rateLimit";
 import { purgeExpiredEnterpriseData } from "./lib/enterpriseStore";
-import { purgeEndedGroupNights } from "./lib/groupStore";
+import { purgeEndedGroupNights, purgeInactiveGroupMembers } from "./lib/groupStore";
 import { dispatchGroupLeaveAlerts } from "./lib/groupNotifications";
+import { reconcileGroupPushReceipts } from "./lib/groupAlertOutbox";
 import { logger } from "./lib/logger";
 
 const rawPort = process.env["PORT"];
@@ -28,19 +29,21 @@ if (Number.isNaN(port) || port <= 0) {
 if (isDatabaseConfigured()) {
   const cleanup = async () => {
     try {
-      const [eventsPurged, cacheRowsPurged, rateLimitRowsPurged, groupNightsPurged] =
+      const [eventsPurged, cacheRowsPurged, rateLimitRowsPurged, groupNightsPurged, groupMembersPurged] =
         await Promise.all([
           purgeExpiredEnterpriseData(),
           purgeExpiredCacheEntries(),
           purgeExpiredRateLimits(),
           // Deletes every group night past 08:00 JST with its leave-by rows.
           purgeEndedGroupNights(),
+          purgeInactiveGroupMembers(),
         ]);
       if (
         eventsPurged > 0 ||
         cacheRowsPurged > 0 ||
         rateLimitRowsPurged > 0 ||
-        groupNightsPurged > 0
+        groupNightsPurged > 0 ||
+        groupMembersPurged > 0
       ) {
         logger.info(
           {
@@ -48,6 +51,7 @@ if (isDatabaseConfigured()) {
             cacheRowsPurged,
             rateLimitRowsPurged,
             groupNightsPurged,
+            groupMembersPurged,
           },
           "Purged expired application data",
         );
@@ -74,10 +78,11 @@ if (isDatabaseConfigured()) {
   };
   const checkPushReceipts = async () => {
     try {
-      const result = await reconcileEnterprisePushReceipts();
-      if (result.checked > 0) {
-        logger.info(result, "Checked enterprise push receipts");
-      }
+      const [result, group] = await Promise.all([
+        reconcileEnterprisePushReceipts(), reconcileGroupPushReceipts(),
+      ]);
+      if (result.checked > 0) logger.info(result, "Checked enterprise push receipts");
+      if (group.checked > 0) logger.info(group, "Checked group push receipts");
     } catch (err) {
       logger.error({ err }, "Enterprise push receipt worker failed");
     }

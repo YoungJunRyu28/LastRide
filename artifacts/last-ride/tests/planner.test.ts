@@ -24,6 +24,9 @@ import {
   locationProfile,
   nextNightOf,
   repick,
+  replanMargin,
+  withMargin,
+  planSafetyMarginMinutes,
   rideStatus,
   sameStation,
   shouldExpandStationSearch,
@@ -62,6 +65,7 @@ function choice(overrides: Partial<StationChoice> = {}): StationChoice {
     station: station('Shibuya', '渋谷'),
     walkingMinutes: 8,
     distanceMeters: 640,
+    walkingSource: 'routed',
     lastTrain: train(LAST_TRAIN),
     leaveByMs: LEAVE_BY,
     destination: station('Kichijoji', '吉祥寺'),
@@ -310,6 +314,53 @@ describe('shouldReplan', () => {
   });
 });
 
+describe('walking route provenance and precautionary departure', () => {
+  test('a real MapKit pedestrian route keeps the existing recommended deadline', () => {
+    const routed = choice({ walkingSource: 'routed', walkingMinutes: 8 });
+    const adjusted = withMargin(routed, 4);
+    expect(planSafetyMarginMinutes(routed, 4)).toBe(4);
+    expect(adjusted.recommendedLeaveByMs).toBe(LEAVE_BY - 4 * MINUTE_MS);
+    expect(adjusted.walkingSource).toBe('routed');
+  });
+
+  test('an estimated walk advances both the recommendation and leave-now alarm', () => {
+    const estimate = withMargin(choice({ walkingSource: 'estimated', walkingMinutes: 8 }), 4);
+    const realRoute = withMargin(choice({ walkingSource: 'routed', walkingMinutes: 8 }), 4);
+    expect(planSafetyMarginMinutes(estimate, 4)).toBe(7); // 4 configured + 3 unverified.
+    expect(estimate.leaveByMs).toBe(realRoute.leaveByMs); // train and physical walk unchanged
+    expect(estimate.recommendedLeaveByMs).toBe(realRoute.recommendedLeaveByMs! - 3 * MINUTE_MS);
+    expect(buildReminderPlans(estimate, [0], RECOMMENDED_LEAVE_BY - 20 * MINUTE_MS, { missedCheckIn: false })[0].fireAt)
+      .toBe(estimate.recommendedLeaveByMs);
+  });
+
+  test('legacy plans with no route provenance fail safe as unverified', () => {
+    const legacy = choice({ walkingSource: undefined });
+    expect(planSafetyMarginMinutes(legacy, 0)).toBe(3);
+    expect(withMargin(legacy, 4).recommendedLeaveByMs).toBe(LEAVE_BY - 7 * MINUTE_MS);
+  });
+
+  test('a user setting zero spare time does not disable unverified-walk precaution', () => {
+    expect(planSafetyMarginMinutes(choice({ walkingSource: 'estimated', walkingMinutes: 8 }), 0)).toBe(3);
+    expect(planSafetyMarginMinutes(choice({ walkingSource: 'estimated', walkingMinutes: 40 }), 0)).toBe(16); // 14 + 2 for long walk
+    expect(planSafetyMarginMinutes(choice({ walkingSource: 'estimated', walkingMinutes: 90 }), 0)).toBe(17);
+  });
+
+  test('re-pinning and changing the margin keep distinct route provenance for every station', () => {
+    const current = withMargin(choice({ station: station('Shibuya', '渋谷'), walkingSource: 'estimated' }), 4);
+    const second = withMargin(choice({ station: station('Ebisu', '恵比寿'), walkingSource: 'routed',
+      leaveByMs: LEAVE_BY + 2 * MINUTE_MS }), 4);
+    const base = planFrom([current, second]);
+    const pinned = repick(base, second.station);
+    expect(pinned.walkingSource).toBe('routed');
+    expect(pinned.alternatives[0].walkingSource).toBe('estimated');
+    const adjusted = replanMargin(pinned, 0);
+    expect(adjusted.walkingSource).toBe('routed');
+    expect(adjusted.recommendedLeaveByMs).toBe(second.leaveByMs);
+    expect(adjusted.alternatives[0].recommendedLeaveByMs).toBe(current.leaveByMs - 3 * MINUTE_MS);
+    expect(repick(adjusted, current.station).walkingSource).toBe('estimated');
+  });
+});
+
 describe('choosing between stations', () => {
   const shibuya = station('Shibuya', '渋谷');
   const ebisu = station('Ebisu', '恵比寿', 35.6467, 139.71);
@@ -503,4 +554,3 @@ describe('closed-app updates after the last train', () => {
     expect(locationProfile(plan, jst(2026, 9, 24, 0, 30))).toBe('light');
   });
 });
-

@@ -15,7 +15,7 @@ router.get("/walk", (req, res) => {
   const { fromLat, fromLon, toLat, toLon, pace } = parsed.data;
   res.json(
     GetWalkRouteResponse.parse(
-      walkEstimate({ latitude: fromLat, longitude: fromLon }, { latitude: toLat, longitude: toLon }, pace),
+      { ...walkEstimate({ latitude: fromLat, longitude: fromLon }, { latitude: toLat, longitude: toLon }, pace), source: 'estimated' as const },
     ),
   );
 });

@@ -25,6 +25,7 @@ function plan(lastTrain: TrainTime = last, walkingMinutes = 2): NightPlan {
   const base = {
     station: shibuya,
     walkingMinutes,
+    walkingSource: 'routed' as const, // This fixture models a real pedestrian route.
     distanceMeters: 150,
     lastTrain,
     leaveByMs,
@@ -49,6 +50,21 @@ describe('the train options', () => {
     expect(trainOptions(plan(train(jst(23, 45), jst(24, 37), [])), 4, jst(23, 0))).toHaveLength(1);
     // Not looked up yet (Apple): also just the last train for now.
     expect(trainOptions(plan(train(jst(23, 45), jst(24, 37))), 4, jst(23, 0))).toHaveLength(1);
+  });
+});
+
+describe('earlier train with an unverified walking path', () => {
+  test('1本前 inherits the warning-worthy estimate and earlier departure reminder', () => {
+    const estimated = { ...plan(), walkingSource: 'estimated' as const };
+    const options = trainOptions(estimated, 4, jst(23, 0));
+    expect(options[1].station.walkingSource).toBe('estimated');
+    // 23:36 train, 2 min walk + 3 min entrance = 23:31; 4 configured
+    // plus 3 extra unverified-walk minutes => recommended 23:24.
+    expect(recommendedLeaveTime(options[1].station)).toBe(jst(23, 24));
+    const chosen = applyTrainChoice(estimated, options, 1);
+    expect(chosen.walkingSource).toBe('estimated');
+    expect(buildReminderPlans(chosen, [0], jst(23, 0), { missedCheckIn: false })[0].fireAt)
+      .toBe(jst(23, 24));
   });
 });
 

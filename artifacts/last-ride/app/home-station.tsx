@@ -41,6 +41,7 @@ export default function HomeStationScreen() {
   const [addressResults, setAddressResults] = useState<HomeAddress[]>([]);
   const [selectedAddress, setSelectedAddress] = useState<HomeAddress | null>(initialAddress);
   const [isSearchingAddress, setIsSearchingAddress] = useState(false);
+  const [addressSearchError, setAddressSearchError] = useState(false);
   const addressToken = useRef(0);
   const { isPremium, known: premiumKnown } = usePremium();
 
@@ -77,20 +78,24 @@ export default function HomeStationScreen() {
     const token = ++addressToken.current;
     if (trimmed.length < 2 || trimmed === selectedAddress?.label) {
       setAddressResults([]);
+      setAddressSearchError(false);
       setIsSearchingAddress(false);
       return;
     }
     setIsSearchingAddress(true);
+    setAddressSearchError(false);
     const timer = setTimeout(() => {
       searchAddresses(trimmed)
         .then((results) => {
           if (token !== addressToken.current) return;
           setAddressResults(results);
+          setAddressSearchError(false);
           setIsSearchingAddress(false);
         })
         .catch(() => {
           if (token !== addressToken.current) return;
           setAddressResults([]);
+          setAddressSearchError(true);
           setIsSearchingAddress(false);
         });
     }, 450);
@@ -228,6 +233,11 @@ export default function HomeStationScreen() {
           </Pressable>
         ) : null}
       </View>
+      {addressSearchError && !isSearchingAddress ? (
+        <Text accessibilityRole="alert" style={{ color: colors.mutedForeground, fontSize: 12 }}>
+          {ja ? '住所を検索できません。位置情報の許可とネットワーク接続を確認してください。' : 'Address lookup unavailable. Check location permission and network access.'}
+        </Text>
+      ) : null}
       {addressResults.length > 0 && (
         <View style={[styles.resultBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
           {addressResults.map((address, index) => (

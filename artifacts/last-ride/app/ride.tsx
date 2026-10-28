@@ -1,5 +1,5 @@
 import { BottomNav } from "@/components/BottomNav";
-import { MapCard, openTransitRoute } from "@/components/MapCard";
+import { MapCard, openTransitRoute, openWalkingRoute } from "@/components/MapCard";
 import { PremiumCard } from "@/components/PremiumCard";
 import { Notice } from "@/components/RideUI";
 import { Card, CountdownRing, IconButton } from "@/components/ui";
@@ -957,8 +957,8 @@ export default function RideScreen() {
             walkLabel={
               walkingMinutes
                 ? ja
-                  ? `徒歩${walkingMinutes}分`
-                  : `${walkingMinutes} min walk`
+                  ? `徒歩${walkingMinutes}分${plan.walkingSource === 'routed' ? '' : '（推定）'}`
+                  : `${walkingMinutes} min walk${plan.walkingSource === 'routed' ? '' : ' (estimate)'}`
                 : undefined
             }
             // The whole trip home (transfers and walks included), not just the walk to the station.
@@ -971,6 +971,22 @@ export default function RideScreen() {
             openLabel={ja ? "経路を地図アプリで開く" : "Open route in Maps"}
             legalLabel={ja ? "法的情報" : "Legal"}
           />
+        )}
+
+        {plan && plan.walkingSource !== 'routed' && (
+          <Pressable
+            testID="estimated-walk-warning"
+            accessibilityRole="button"
+            accessibilityLabel={ja ? '徒歩時間は概算です。徒歩経路を地図で確認' : 'Walking time is estimated. Verify walking directions in Maps'}
+            onPress={() => openWalkingRoute(plan.station)}
+            style={({ pressed }) => ({ marginHorizontal: 20, marginTop: 5, marginBottom: 8, opacity: pressed ? 0.65 : 1 })}
+          >
+            <Text style={[styles.note, { color: colors.mutedForeground }]}>
+              {ja
+                ? '徒歩時間は直線距離からの概算です。迂回路・駅の出入口を地図で確認してください。安全のため出発時刻を早めています。 徒歩経路を開く ↗'
+                : 'Walking time is an estimate, not a verified path. Allow for detours and station entrances. Departure is moved earlier as a precaution. Open walking directions ↗'}
+            </Text>
+          </Pressable>
         )}
 
         {plan && (
@@ -1122,8 +1138,8 @@ export default function RideScreen() {
                           const first = otherStations[0];
                           const name = ja ? first.station.nameJa : first.station.name;
                           return ja
-                            ? `${name} · 徒歩${first.walkingMinutes}分 · 終電 ${formatJstTime(first.lastTrain.departsAt)}`
-                            : `${name} · ${first.walkingMinutes} min walk · last ${formatJstTime(first.lastTrain.departsAt)}`;
+                            ? `${name} · 徒歩${first.walkingMinutes}分${first.walkingSource === 'routed' ? '' : '（推定）'} · 終電 ${formatJstTime(first.lastTrain.departsAt)}`
+                            : `${name} · ${first.walkingMinutes} min walk${first.walkingSource === 'routed' ? '' : ' (estimate)'} · last ${formatJstTime(first.lastTrain.departsAt)}`;
                         })()}
                       </Text>
                     )}
@@ -1170,8 +1186,8 @@ export default function RideScreen() {
                           </Text>
                           <Text style={[styles.note, { color: colors.mutedForeground }]}>
                             {ja
-                              ? `徒歩${option.walkingMinutes}分 · 終電 ${formatJstTime(option.lastTrain.departsAt)}`
-                              : `${option.walkingMinutes} min walk · last train ${formatJstTime(option.lastTrain.departsAt)}`}
+                              ? `徒歩${option.walkingMinutes}分${option.walkingSource === 'routed' ? '' : '（推定）'} · 終電 ${formatJstTime(option.lastTrain.departsAt)}`
+                              : `${option.walkingMinutes} min walk${option.walkingSource === 'routed' ? '' : ' (estimate)'} · last train ${formatJstTime(option.lastTrain.departsAt)}`}
                             {(option.disruptionLines?.length ?? 0) > 0
                               ? ja
                                 ? " · 運行情報あり"

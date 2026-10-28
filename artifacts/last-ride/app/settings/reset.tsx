@@ -41,7 +41,19 @@ export default function ResetScreen() {
         {
           text: ja ? '消去する' : 'Erase',
           style: 'destructive',
-          onPress: () => void leaveAll().then(resetAll).then(() => router.replace('/')),
+          onPress: () => {
+            void leaveAll()
+              .then(resetAll)
+              .then(() => router.replace('/'))
+              .catch(() =>
+                Alert.alert(
+                  ja ? 'グループの退出に失敗しました' : 'Could not leave your groups',
+                  ja
+                    ? '接続を確認してもう一度お試しください。グループのデータは保持されました。'
+                    : 'Check your connection and try again. Your group credentials were kept on this device.',
+                ),
+              );
+          },
         },
       ],
     );
@@ -50,8 +62,8 @@ export default function ResetScreen() {
     <SettingsPage title={ja ? 'データを消去' : 'Erase data'} backLabel={ja ? '設定' : 'Settings'}>
       <Text style={[styles.lead, { color: colors.foreground }]}>
         {ja
-          ? 'このiPhoneのLastRideのデータをすべて消去して、最初の設定からやり直します。'
-          : 'Erases all of LastRide’s data on this iPhone and starts again from setup.'}
+          ? 'この端末のLastRideのデータをすべて消去して、最初の設定からやり直します。'
+          : 'Erases LastRide data on this device and starts again from setup.'}
       </Text>
 
       <View style={styles.block}>
