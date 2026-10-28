@@ -322,6 +322,26 @@ export default function AlternativesScreen() {
   /** The waiting spot shown on the map (by name); the first one until one is tapped. */
   const [chosenStay, setChosenStay] = useState<string | null>(null);
   const [selected, setSelected] = useState<OptionKey>("train");
+  // Apple's walking route to the chosen taxi stand (its line and real minutes),
+  // asked once per stand, only while the taxi option is open.
+  const [standWalk, setStandWalk] = useState<{ key: string; route: WalkingRoute } | null>(null);
+  const chosenStand = taxiStands?.[standIndex] ?? null;
+  const chosenStandKey = chosenStand ? `${chosenStand.latitude},${chosenStand.longitude}` : null;
+  useEffect(() => {
+    if (selected !== "taxi" || !chosenStand || !chosenStandKey || !userCoordinates) return;
+    if (standWalk?.key === chosenStandKey) return;
+    let active = true;
+    walkingRoute(userCoordinates, { latitude: chosenStand.latitude, longitude: chosenStand.longitude }, "normal")
+      .then((route) => {
+        if (active && route.source === "routed") setStandWalk({ key: chosenStandKey, route });
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+    // The stand and the user's position decide it; standWalk is only checked.
+  }, [selected, chosenStandKey, userCoordinates]); // eslint-disable-line react-hooks/exhaustive-deps
+  const chosenStandRoute = standWalk && standWalk.key === chosenStandKey ? standWalk.route : null;
   const [kindFilter, setKindFilter] = useState<StayKind | null>(null);
   const [sortBy, setSortBy] = useState<"distance" | "price">("distance");
   const [showAllStays, setShowAllStays] = useState(false);
@@ -1384,13 +1404,15 @@ export default function AlternativesScreen() {
                   height={160}
                   you={userCoordinates}
                   pins={taxiStands.map((stand, index) => ({
+                    // The chosen stand: Apple's walking minutes once its route is known.
                     label: ja
-                      ? `乗り場 徒歩${walkMinutesFor(stand.meters)}分`
-                      : `Taxi stand ${walkMinutesFor(stand.meters)} min`,
+                      ? `乗り場 徒歩${index === standIndex && chosenStandRoute ? chosenStandRoute.walkingMinutes : walkMinutesFor(stand.meters)}分`
+                      : `Taxi stand ${index === standIndex && chosenStandRoute ? chosenStandRoute.walkingMinutes : walkMinutesFor(stand.meters)} min`,
                     emphasis: index === standIndex,
                     latitude: stand.latitude,
                     longitude: stand.longitude,
                   }))}
+                  path={chosenStandRoute?.path}
                   // Walking directions to the chosen stand.
                   onPress={() => openWalkingRoute(taxiStands[standIndex] ?? taxiStands[0])}
                   accessibilityLabel={

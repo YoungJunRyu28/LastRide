@@ -165,7 +165,7 @@ export function MapCard({
   /** Where the user is. With `target` (or pins with coordinates) the card shows a real map where available. */
   you?: Point | null;
   target?: Point | null;
-  /** Walking path from `you` to `target`, if known. */
+  /** Walking path from `you` to `target` (or, with pins, to the highlighted one), if known. */
   path?: Point[];
   onPress?: () => void;
   accessibilityLabel: string;
@@ -282,7 +282,8 @@ function RealOverlay({
   const colors = useColors();
   // Never draw an imaginary straight-line walk on an Apple map when MapKit
   // provided an ETA but not an actual polyline (barriers and crossings matter).
-  const line = you && target ? verifiedMapPath(path).map((point) => project(frame, point)) : [];
+  // With places (taxi stands), the walk to the chosen one when its route is known.
+  const line = you && (target || pins) ? verifiedMapPath(path).map((point) => project(frame, point)) : [];
   const middle = line.length > 0 ? line[Math.floor(line.length / 2)] : null;
   const youPx = you ? project(frame, you) : null;
   const targetPx = target ? project(frame, target) : null;
