@@ -40,11 +40,11 @@ export default function PaywallScreen() {
             <IconButton icon="x" label={ja ? '閉じる' : 'Close'} onPress={close} testID="close-paywall" />
           </View>
           <Text accessibilityRole="header" style={[styles.title, { color: colors.foreground }]}>
-            {ja ? 'みんなで、\n確実に帰る。' : 'Everyone home,\non time.'}
+            {ja ? '帰る時間を、\nもっと便利に。' : 'Everyone home,\non time.'}
           </Text>
           {fromWidget && (
             <Text style={[styles.note, { color: colors.mutedForeground }]}>
-              {ja ? 'ウィジェットはプレミアムで使えます。今夜の出発時刻をホーム画面とロック画面に表示します。' : 'Widgets come with Premium: tonight’s leave time on your Home and Lock Screen.'}
+              {ja ? 'プレミアムでは、今夜の出発時刻をホーム画面やロック画面のウィジェットで確認できます。' : 'Widgets come with Premium: tonight’s leave time on your Home and Lock Screen.'}
             </Text>
           )}
         </View>

@@ -91,7 +91,7 @@ export function boardedQuestion(held: HeldTrain, language: 'ja' | 'en') {
   return language === 'ja'
     ? {
         title: `LastRide — ${held.label}に乗れましたか？`,
-        body: `乗れなかった場合：${held.next}は${held.nextDeparts}発。開くと今いる場所から出る時刻を計算します。`,
+        body: `乗り遅れた場合：${held.next}は${held.nextDeparts}発。アプリを開くと、現在地からの出発時刻を再計算します。`,
       }
     : {
         title: `LastRide — did you make the ${held.label.toLowerCase()} train?`,

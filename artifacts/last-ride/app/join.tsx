@@ -146,7 +146,7 @@ function JoinBusinessEventScreen() {
             {participation
               ? participation.eventTitle
               : ja
-                ? "飲み会に参加"
+                ? "イベントに参加"
                 : "Join a group"}
           </Text>
           <Text style={[styles.subtitle, { color: colors.mutedForeground }]}>
@@ -177,15 +177,15 @@ function JoinBusinessEventScreen() {
                 maxFontSizeMultiplier={1.4}
                 style={[styles.leaveTime, { color: colors.foreground }]}
               >
-                {plan ? leaveBy : ja ? "計算待ち" : "Waiting for a plan"}
+                {plan ? leaveBy : ja ? "時刻を確認中" : "Waiting for a plan"}
               </Text>
               <Text style={[styles.body, { color: colors.mutedForeground }]}>
                 {plan
                   ? ja
-                    ? "LastRideが出発時刻を再計算すると、幹事側も自動で更新されます。"
+                    ? "出発時刻が更新されると、幹事の画面にも反映されます。"
                     : "When LastRide recalculates your leave time, the organizer’s roster updates automatically."
                   : ja
-                    ? "いつものLastRideで現在地からプランを計算すると自動で共有されます。"
+                    ? "LastRideで現在地から出発時刻を計算すると、幹事にも共有されます。"
                     : "Calculate your normal LastRide plan and the leave time will sync automatically."}
               </Text>
             </View>
@@ -204,7 +204,7 @@ function JoinBusinessEventScreen() {
                   { color: colors.destructive },
                 ]}
               >
-                {ja ? "この飲み会から退出" : "Leave this group"}
+                {ja ? "このイベントから退出" : "Leave this group"}
               </Text>
             </Pressable>
           </>
@@ -283,11 +283,11 @@ function JoinBusinessEventScreen() {
                 <Text
                   style={[styles.privacyTitle, { color: colors.foreground }]}
                 >
-                  {ja ? "共有するのは2つだけ" : "Only two things are shared"}
+                  {ja ? "共有される情報" : "Only two things are shared"}
                 </Text>
                 <Text style={[styles.body, { color: colors.mutedForeground }]}>
                   {ja
-                    ? "表示名と出発時刻のみ。現在地、自宅、駅、経路は幹事に共有されません。"
+                    ? "幹事に共有されるのは表示名と出発時刻のみです。現在地・自宅・駅・移動経路は共有されません。"
                     : "Your display name and leave-by time only. Your location, home, station and route are never shown to the organizer."}
                 </Text>
               </View>

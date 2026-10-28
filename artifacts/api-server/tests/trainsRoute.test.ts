@@ -100,11 +100,11 @@ describe("GET /trains/last and /trains/first", () => {
 });
 
 describe("GET /trains/disruptions", () => {
-  it("answers [] without an ODPT key", async () => {
+  it("answers 503 rather than claiming no disruption when the ODPT key is missing", async () => {
     delete process.env.ODPT_KEY;
-    const response = await fetch(`${baseUrl}/trains/disruptions?lines=${encodeURIComponent("都営浅草線")}`);
-    expect(response.status).toBe(200);
-    expect(await response.json()).toEqual([]);
+    const response = await fetch(baseUrl + "/trains/disruptions?lines=" + encodeURIComponent("都営浅草線"));
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ error: "Live train disruption information unavailable" });
   });
 
   it("returns ODPT disruptions on the route's lines", async () => {
@@ -150,13 +150,52 @@ describe("GET /trains/disruptions", () => {
     expect(fetchMock.mock.calls.length).toBe(calls);
   });
 
-  it("answers [] when ODPT fails", async () => {
+  it("does not claim unsupported JR/private railway lines have no disruptions", async () => {
     process.env.ODPT_KEY = "test-odpt-key";
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => new Response("oops", { status: 500 })),
-    );
-    const { trainDisruptionsForLines } = await import("../src/lib/trainInformation");
+    const fetchMock = vi.fn(async () => new Response("[]", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const { trainDisruptionsForLines, TrainInformationUnavailableError } =
+      await import("../src/lib/trainInformation");
+    await expect(trainDisruptionsForLines(["ＪＲ山手線"]))
+      .rejects.toBeInstanceOf(TrainInformationUnavailableError);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("does not cache a false no-incidents result when every operator fails", async () => {
+    process.env.ODPT_KEY = "test-odpt-key";
+    const broken = vi.fn(async () => new Response("oops", { status: 500 }));
+    vi.stubGlobal("fetch", broken);
+    const { trainDisruptionsForLines, TrainInformationUnavailableError } =
+      await import("../src/lib/trainInformation");
+    await expect(trainDisruptionsForLines(["都営浅草線"]))
+      .rejects.toBeInstanceOf(TrainInformationUnavailableError);
+    const failedCalls = broken.mock.calls.length;
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("[]", { status: 200 })));
     expect(await trainDisruptionsForLines(["都営浅草線"])).toEqual([]);
+    expect(failedCalls).toBeGreaterThan(0);
+  });
+
+  it("does not hide a partial ODPT outage when other operators report no issues", async () => {
+    process.env.ODPT_KEY = "test-odpt-key";
+    vi.stubGlobal("fetch", vi.fn(async (url: URL | string) => {
+      const operator = new URL(String(url)).searchParams.get("odpt:operator");
+      return operator === "odpt.Operator:Toei"
+        ? new Response("bad gateway", { status: 502 })
+        : new Response("[]", { status: 200 });
+    }));
+    const { trainDisruptionsForLines, TrainInformationUnavailableError } =
+      await import("../src/lib/trainInformation");
+    await expect(trainDisruptionsForLines(["都営浅草線"]))
+      .rejects.toBeInstanceOf(TrainInformationUnavailableError);
+  });
+
+  it("rejects malformed ODPT JSON instead of treating it as normal service", async () => {
+    process.env.ODPT_KEY = "test-odpt-key";
+    vi.stubGlobal("fetch", vi.fn(async () =>
+      new Response(JSON.stringify({ error: "provider error" }), { status: 200 })));
+    const { trainDisruptionsForLines, TrainInformationUnavailableError } =
+      await import("../src/lib/trainInformation");
+    await expect(trainDisruptionsForLines(["都営浅草線"]))
+      .rejects.toBeInstanceOf(TrainInformationUnavailableError);
   });
 });

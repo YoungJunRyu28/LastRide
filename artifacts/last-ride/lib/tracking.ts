@@ -22,11 +22,13 @@ import { syncWidgets } from '@/lib/widgets';
 import { notifyLockFallback, notifyStationSuggestion, scheduleReminders, cancelAllReminders } from '@/lib/notifications';
 import { readSuggestionLog, recordSuggestion, shouldNotifySuggestion, stationSuggestion, suggestionNight, suggestionText } from '@/lib/stationSuggestion';
 import { buildReminderPlans, locationProfile, planNight, sameStation, shouldReplan, trackingEndsAt, trackingHardStopAt, type LocationProfile, type NightPlan } from '@/lib/planner';
-import { hasCoordinates, readSettings, readTrainChoiceOverride, trainChoiceUntil, writePinnedStation, writeTrainChoiceOverride, readReminderTimes } from '@/lib/settings';
+import { hasCoordinates, readSettings, readTrainChoiceOverride, trainChoiceUntil, writePinnedStation, writeTrainChoiceOverride, readReminderTimes, STORAGE_KEYS, type Language } from '@/lib/settings';
 import { applyTrainChoice, choiceAt, effectiveTrainChoice, slotAtNewStation, trainChoiceLabel, trainOptions } from '@/lib/trainChoice';
 import type { Coordinates } from '@/lib/stations';
 import { formatJstTime, serviceDate } from '@/lib/time';
 import { syncSharedLeaveBy } from '@/lib/groupSharing';
+import { usableTrackingSnapshot } from '@/lib/trackingSnapshotGuard';
+import { backgroundTrackingNotification, backgroundTrackingProfileKey } from '@/lib/backgroundTrackingCopy';
 
 export const LOCATION_TASK = 'lastride-night-tracking';
 const SNAPSHOT_KEY = 'lastride-tracking-snapshot';
@@ -255,7 +257,7 @@ async function backgroundGrantedSoon(): Promise<boolean> {
   return false;
 }
 
-function locationOptions(profile: LocationProfile): Location.LocationTaskOptions {
+function locationOptions(profile: LocationProfile, language: Language | null): Location.LocationTaskOptions {
   return {
     // Light: cell / Wi-Fi positions, an update every ~500 m. Normal: ~100 m accuracy, every ~200 m.
     accuracy: profile === 'light' ? Location.Accuracy.Low : Location.Accuracy.Balanced,
@@ -270,10 +272,7 @@ function locationOptions(profile: LocationProfile): Location.LocationTaskOptions
     // "Always" location (which background tracking needs); the Live Activity
     // and iOS's status-bar arrow still show that location is in use.
     showsBackgroundLocationIndicator: false,
-    foregroundService: {
-      notificationTitle: 'LastRide is watching the clock',
-      notificationBody: 'Tracking your nearest station for tonight.',
-    },
+    foregroundService: backgroundTrackingNotification(language),
   };
 }
 
@@ -283,13 +282,21 @@ function locationOptions(profile: LocationProfile): Location.LocationTaskOptions
  * past the hour mark switches at the first update after moving (≤ 500 m) or
  * when the app is opened.
  */
-export async function applyLocationProfile(profile: LocationProfile): Promise<void> {
+export async function applyLocationProfile(profile: LocationProfile, languageOverride?: Language | null): Promise<void> {
   if (Platform.OS === 'web') return;
   try {
-    if ((await AsyncStorage.getItem(PROFILE_KEY)) === profile) return;
+    const language = languageOverride ?? (
+      (await AsyncStorage.getItem(STORAGE_KEYS.language)) === 'ja' ? 'ja' : 'en'
+    );
+    // Foreground-service notification is an Android feature. Language changes
+    // should not restart iOS location updates unnecessarily.
+    const identity = Platform.OS === 'android'
+      ? backgroundTrackingProfileKey(profile, language)
+      : profile;
+    if ((await AsyncStorage.getItem(PROFILE_KEY)) === identity) return;
     if (!(await isTrackingFlagOn()) || !(await Location.hasStartedLocationUpdatesAsync(LOCATION_TASK))) return;
-    await Location.startLocationUpdatesAsync(LOCATION_TASK, locationOptions(profile));
-    await AsyncStorage.setItem(PROFILE_KEY, profile);
+    await Location.startLocationUpdatesAsync(LOCATION_TASK, locationOptions(profile, language));
+    await AsyncStorage.setItem(PROFILE_KEY, identity);
   } catch {
     // Keeps the current updates.
   }
@@ -301,8 +308,12 @@ export async function startBackgroundTracking(profile: LocationProfile = 'normal
   try {
     const background = await Location.requestBackgroundPermissionsAsync();
     if (!background.granted && !(await backgroundGrantedSoon())) return false;
-    await Location.startLocationUpdatesAsync(LOCATION_TASK, locationOptions(profile));
-    await AsyncStorage.setItem(PROFILE_KEY, profile).catch(() => undefined);
+    const language = (await AsyncStorage.getItem(STORAGE_KEYS.language).catch(() => null)) === 'ja' ? 'ja' : 'en';
+    await Location.startLocationUpdatesAsync(LOCATION_TASK, locationOptions(profile, language));
+    const identity = Platform.OS === 'android'
+      ? backgroundTrackingProfileKey(profile, language)
+      : profile;
+    await AsyncStorage.setItem(PROFILE_KEY, identity).catch(() => undefined);
     // Only publish the durable active flag after the native task is confirmed.
     // Otherwise a failed start can leave the app believing background tracking is active.
     await AsyncStorage.setItem(TRACKING_ACTIVE_KEY, 'true');
@@ -330,10 +341,11 @@ export async function readTrackingSnapshot(): Promise<NightPlan | null> {
   try {
     const raw = await AsyncStorage.getItem(SNAPSHOT_KEY);
     if (!raw) return null;
-    const plan = JSON.parse(raw) as NightPlan;
-    if (typeof plan?.leaveByMs !== 'number') return null; // ignore snapshots from older app versions
-    // Snapshots hold positions from Apple Maps: drop one left over from a past night.
-    if (Date.now() - plan.computedAt > SNAPSHOT_MAX_AGE_MS) {
+    const plan: unknown = JSON.parse(raw);
+    // Invalid timestamps (NaN, null, absent or future-dated) previously slipped
+    // through an age subtraction, crashing trackingEndsAt() or using stale plans
+    // forever. Discard unusable cached data and recompute from location instead.
+    if (!usableTrackingSnapshot(plan)) {
       await AsyncStorage.removeItem(SNAPSHOT_KEY).catch(() => undefined);
       return null;
     }

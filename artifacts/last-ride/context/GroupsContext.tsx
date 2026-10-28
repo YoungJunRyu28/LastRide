@@ -23,13 +23,15 @@ import {
   clearMemberships,
   readMemberships,
   removeMembership,
+  renameMembership,
   saveMembership,
   writeDisplayName,
   type GroupMembership,
 } from "@/lib/groupMemberships";
 import { clearSharing, flushPendingSharedLeaveBy, markSharing, stopSharing, syncSharedLeaveByForGroup } from "@/lib/groupSharing";
+import { forgetGroupLocalAccess } from "@/lib/groupDeparture";
 import { prepareGroupCreation, readPendingGroupCreation, finishGroupCreation, creationDefinitelyRejected } from "@/lib/pendingGroupCreation";
-import { prepareGroupJoin, readPendingGroupJoin, finishGroupJoin, joinDefinitelyRejected } from "@/lib/pendingGroupJoin";
+import { prepareReadableGroupJoin, readPendingGroupJoin, finishGroupJoin, joinDefinitelyRejected } from "@/lib/pendingGroupJoin";
 import { GroupRefreshGuard } from "@/lib/groupRefreshGuard";
 import { onGroupUpdated, startGroupUpdates } from "@/lib/groupUpdates";
 import { expoPushToken } from "@/lib/pushToken";
@@ -44,6 +46,10 @@ export type GroupEntry = {
 type GroupsValue = {
   groups: GroupEntry[];
   loading: boolean;
+  /** True if saved OS-protected group credentials cannot be accessed. */
+  credentialError: boolean;
+  /** Explicitly abandon unrecoverable local credentials, without a server leave. */
+  clearUnavailableMemberships: () => Promise<void>;
   available: boolean;
   refresh: () => Promise<void>;
   /** Refresh only this group when its detail screen is focused. */
@@ -85,6 +91,7 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
   const [memberships, setMemberships] = useState<GroupMembership[]>([]);
   const [details, setDetails] = useState<Record<string, GroupDetail>>({});
   const [loading, setLoading] = useState(true);
+  const [credentialError, setCredentialError] = useState(false);
   const available = !!apiBaseUrl;
   const membershipsRef = useRef(memberships);
   membershipsRef.current = memberships;
@@ -109,9 +116,21 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
     setDetails((current) => ({ ...current, [detail.id]: detail }));
     const known = membershipsRef.current.find((item) => item.groupId === detail.id);
     if (known && known.name !== detail.name) {
-      const next = { ...known, name: detail.name };
-      setMemberships((current) => current.map((item) => (item.groupId === detail.id ? next : item)));
-      void saveMembership(next);
+      // Do not optimistically claim a name has been saved, or leave an
+      // unhandled rejection when Keychain/AsyncStorage is unavailable.
+      // Rename only the metadata: never rewrite or downgrade a host token.
+      void renameMembership(detail.id, detail.name)
+        .then(() => {
+          setMemberships((current) => current.map((item) =>
+            item.groupId === detail.id && item.memberToken === known.memberToken
+              ? { ...item, name: detail.name }
+              : item,
+          ));
+        })
+        .catch(() => {
+          // The server's name is already in details; a later refresh retries
+          // persistence when storage is writable again.
+        });
     }
   }, []);
 
@@ -119,8 +138,13 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
     refreshGuard.current.changed(groupId);
     delete deviceRegistrations.current[groupId];
     delete sent.current[groupId];
-    await removeMembership(groupId);
-    await stopSharing(groupId);
+    // Stop queued leave-time deliveries BEFORE retiring the membership
+    // credential. If the outbox write fails, retain the credential so this
+    // departure can be retried without stranding a live background update.
+    await forgetGroupLocalAccess(
+      () => stopSharing(groupId),
+      () => removeMembership(groupId),
+    );
     setMemberships((current) => current.filter((item) => item.groupId !== groupId));
     setDetails((current) => {
       const { [groupId]: _removed, ...rest } = current;
@@ -162,8 +186,36 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
     sent.current = {};
   }, []);
 
+  const clearUnavailableMemberships = useCallback(async () => {
+    // Do not discard the only recovery proof of a partially committed
+    // group create or join. An in-flight operation must be resolved first.
+    if (await readPendingGroupCreation()) throw new Error("PENDING_GROUP_CREATION");
+    if (await readPendingGroupJoin()) throw new Error("PENDING_GROUP_JOIN");
+    // This is local recovery only: we cannot authenticate missing keys to
+    // call the group leave API. The UI must warn about server-side remnants.
+    await clearMemberships();
+    await clearSharing();
+    for (const item of membershipsRef.current) refreshGuard.current.changed(item.groupId);
+    setMemberships([]);
+    setDetails({});
+    deviceRegistrations.current = {};
+    sent.current = {};
+    setCredentialError(false);
+    setLoading(false);
+  }, []);
+
   const refresh = useCallback(async () => {
-    const list = await readMemberships();
+    let list: GroupMembership[];
+    try {
+      list = await readMemberships();
+      setCredentialError(false);
+    } catch {
+      // An Android backup may restore an index without its Keystore keys.
+      // Never show an empty group list or spin indefinitely on this failure.
+      setCredentialError(true);
+      setLoading(false);
+      return;
+    }
     setMemberships(list);
     if (!available) {
       setLoading(false);
@@ -178,8 +230,16 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
         if (refreshGuard.current.isCurrent(ticket)) apply(detail);
       } catch (error) {
         // Don't let a stale 404 delete a membership after a successful mutation.
-        if (errorStatus(error) === 404 && refreshGuard.current.isCurrent(ticket))
-          await forget(membership.groupId);
+        if (errorStatus(error) === 404 && refreshGuard.current.isCurrent(ticket)) {
+          try {
+            await forget(membership.groupId);
+          } catch {
+            // Inaccessible Keychain/Keystore cannot be interpreted as
+            // successful removal. Keep the local capability and surface
+            // recovery instead of rejecting an AppState/push callback.
+            setCredentialError(true);
+          }
+        }
       }
     }));
     setLoading(false);
@@ -189,14 +249,26 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
   const refreshGroup = useCallback(
     async (groupId: string) => {
       if (!available) return;
-      const membership = (await readMemberships()).find((item) => item.groupId === groupId);
+      let membership: GroupMembership | undefined;
+      try {
+        membership = (await readMemberships()).find((item) => item.groupId === groupId);
+      } catch {
+        setCredentialError(true);
+        return;
+      }
       if (!membership) return;
       const ticket = refreshGuard.current.begin(groupId);
       try {
         const detail = await getGroup(groupId, { headers: { "X-Member-Token": membership.memberToken } });
         if (refreshGuard.current.isCurrent(ticket)) apply(detail);
       } catch (error) {
-        if (errorStatus(error) === 404 && refreshGuard.current.isCurrent(ticket)) await forget(groupId);
+        if (errorStatus(error) === 404 && refreshGuard.current.isCurrent(ticket)) {
+          try {
+            await forget(groupId);
+          } catch {
+            setCredentialError(true);
+          }
+        }
       }
     },
     [available, apply, forget],
@@ -257,9 +329,22 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
    */
   const refreshDeviceRegistrations = useCallback(async () => {
     if (!available) return;
-    const members = await readMemberships();
+    let members: GroupMembership[];
+    try {
+      members = await readMemberships();
+    } catch {
+      setCredentialError(true);
+      return;
+    }
     if (members.length === 0) return;
-    const token = await expoPushToken();
+    let token: string | null;
+    try {
+      token = await expoPushToken();
+    } catch {
+      // A failed APNs/FCM lookup isn't evidence notifications were revoked.
+      // Retry on the next app activation without unregistering valid devices.
+      return;
+    }
     const locale = language ?? "ja";
     const signature = JSON.stringify([locale, token]);
     await Promise.all(members.map(async (membership) => {
@@ -381,12 +466,17 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
 
   const join = useCallback(
     async (input: { inviteToken?: string; joinCode?: string; displayName: string }) => {
-      const pending = await prepareGroupJoin({ ...input, language: language ?? "ja" });
-      const knownMemberTokens = (await readMemberships()).map((item) => item.memberToken).slice(0, 50);
+      const { pending, knownMemberTokens } = await prepareReadableGroupJoin(
+        { ...input, language: language ?? "ja" },
+        async () => (await readMemberships()).map((item) => item.memberToken),
+      );
       let session: Awaited<ReturnType<typeof joinGroup>>;
       try {
         session = await joinGroup({
-          ...input, language: pending.language, knownMemberTokens,
+          ...(pending.inviteToken ? { inviteToken: pending.inviteToken } : { joinCode: pending.joinCode }),
+          displayName: pending.displayName,
+          language: pending.language,
+          knownMemberTokens,
         }, { headers: { "X-Group-Join-Key": pending.joinKey } });
       } catch (error) {
         if (joinDefinitelyRejected(errorStatus(error))) await finishGroupJoin(pending.joinKey);
@@ -402,7 +492,7 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
         await refreshGroup(session.group.id);
         return { group: details[session.group.id] ?? session.group, alreadyMember: true };
       }
-      await remember(session.memberToken, session.group, input.displayName);
+      await remember(session.memberToken, session.group, pending.displayName);
       await finishGroupJoin(pending.joinKey);
       return { group: session.group, alreadyMember: Boolean(session.alreadyMember || existing) };
     },
@@ -493,8 +583,8 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
   );
 
   const value = useMemo(
-    () => ({ groups, loading, available, refresh, refreshGroup, memberOptions, apply, forget, leaveAll, create, join, tonightGroup, tonightOpenGroup, sharingTonight, stopSharingTonight }),
-    [groups, loading, available, refresh, refreshGroup, memberOptions, apply, forget, leaveAll, create, join, tonightGroup, tonightOpenGroup, sharingTonight, stopSharingTonight],
+    () => ({ groups, loading, credentialError, clearUnavailableMemberships, available, refresh, refreshGroup, memberOptions, apply, forget, leaveAll, create, join, tonightGroup, tonightOpenGroup, sharingTonight, stopSharingTonight }),
+    [groups, loading, credentialError, clearUnavailableMemberships, available, refresh, refreshGroup, memberOptions, apply, forget, leaveAll, create, join, tonightGroup, tonightOpenGroup, sharingTonight, stopSharingTonight],
   );
   return <GroupsContext.Provider value={value}>{children}</GroupsContext.Provider>;
 }

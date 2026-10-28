@@ -301,7 +301,7 @@ describe('reminder delivery', () => {
       const calls = mocks.notificationSchedule.mock.calls as unknown as Array<[{ content: { title: string }; trigger: unknown }]>;
       expect(calls[1][0].content.title).toBe('LastRide — 出発駅が変わりました');
       expect(calls[1][0].trigger).toBeNull();
-      expect(calls[2][0].content.title).toBe('LastRide — 出る時間です');
+      expect(calls[2][0].content.title).toBe('LastRide — 出発の時間です');
       expect(calls[2][0].trigger).not.toBeNull();
     } finally {
       vi.useRealTimers();
@@ -325,7 +325,7 @@ describe('reminder delivery', () => {
       const notice = (mocks.notificationSchedule.mock.calls as unknown as Array<[{ content: { title: string; body: string } }]>)
         .map(([request]) => request.content)
         .find((content) => content.title === 'LastRide — 出発駅が変わりました');
-      expect(notice?.body).toBe('新宿三丁目から1本前（23:31発）。23:22に出る。2本前は出る時刻を過ぎていたため、1本前にしています。');
+      expect(notice?.body).toBe('新宿三丁目から1本前（23:31発）。23:22に出る。2本前は出発時刻を過ぎていたため、1本前にしています。');
     } finally {
       vi.useRealTimers();
     }
@@ -347,12 +347,12 @@ describe('reminder delivery', () => {
       vi.setSystemTime(start + 70_000);
       await scheduleReminders(at(start + 3_000_000), text, undefined, info(start + 3_000_000));
       const titles = (mocks.notificationSchedule.mock.calls as unknown as Array<[{ content: { title: string } }]>).map(([request]) => request.content.title);
-      expect(titles).not.toContain('LastRide — 出る時刻が変わりました');
+      expect(titles).not.toContain('LastRide — 出発時刻が変更されました');
       // Long after the change, once 30分前 has gone out at the new time, a real move is told again.
       vi.setSystemTime(start + 1_300_000);
       await scheduleReminders(at(start + 3_600_000), text, undefined, info(start + 3_600_000));
       const later = (mocks.notificationSchedule.mock.calls as unknown as Array<[{ content: { title: string } }]>).map(([request]) => request.content.title);
-      expect(later).toContain('LastRide — 出る時刻が変わりました');
+      expect(later).toContain('LastRide — 出発時刻が変更されました');
     } finally {
       vi.useRealTimers();
     }

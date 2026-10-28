@@ -46,6 +46,17 @@ describe("distinctStations", () => {
     expect(stations[0].station.nameJa).toBe('渋谷');
   });
 
+  it("keeps geographically distant namesakes instead of collapsing their routes", () => {
+    const origin = { latitude: 35.658, longitude: 139.701 };
+    const nearby = place('本町駅', 35.658, 139.701);
+    const duplicate = place('本町駅 (地下鉄)', 35.6582, 139.7012);
+    const far = { ...place('本町駅', 34.6826, 135.498), locality: '大阪市', administrativeArea: '大阪府' };
+    const results = distinctStations(origin, [nearby, duplicate, far], 3);
+    expect(results).toHaveLength(2);
+    expect(results[0].station.latitude).toBe(35.658);
+    expect(results[1].station.latitude).toBe(34.6826);
+  });
+
   it("keeps one entry per station, nearest first", () => {
     const origin = { latitude: 35.6595, longitude: 139.7005 };
     const stations = distinctStations(

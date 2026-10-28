@@ -36,10 +36,10 @@ export default function OnboardingNotificationsScreen() {
     >
       <OnboardingHeading
         kicker={ja ? '通知' : 'NOTIFICATIONS'}
-        title={ja ? '出発の時間を\nお知らせします' : 'We’ll tell you\nwhen to go'}
+        title={ja ? '出発時刻を\n通知でお知らせ' : 'We’ll tell you\nwhen to go'}
         lead={
           ja
-            ? '夜のトラッキング中だけ、出る前のリマインダーと「出る時間です」を通知します。'
+            ? '夜間の案内中に、出発前のリマインダーと出発時刻のお知らせを送ります。'
             : 'Only while night tracking is on: reminders before you need to leave, and a “leave now”.'
         }
       />
@@ -49,9 +49,9 @@ export default function OnboardingNotificationsScreen() {
           <Text style={[styles.appIconText, { color: colors.primaryForeground }]}>帰</Text>
         </View>
         <View style={styles.previewText}>
-          <Text style={[styles.previewTitle, { color: colors.foreground }]}>{ja ? 'LastRide — あと15分' : 'LastRide — 15 min'}</Text>
+          <Text style={[styles.previewTitle, { color: colors.foreground }]}>{ja ? 'LastRide — 出発まであと15分' : 'LastRide — 15 min'}</Text>
           <Text style={[styles.previewBody, { color: colors.mutedForeground }]}>
-            {ja ? '23:41に渋谷駅へ出発。そろそろ支度を。' : 'Leave for Shibuya at 23:41. Time to wrap up.'}
+            {ja ? '23:41に渋谷駅へ向かう予定です。出発の準備をしましょう。' : 'Leave for Shibuya at 23:41. Time to wrap up.'}
           </Text>
         </View>
         <Text style={[styles.previewTime, { color: colors.mutedForeground }]}>{ja ? '今' : 'now'}</Text>
@@ -59,7 +59,7 @@ export default function OnboardingNotificationsScreen() {
 
       <View style={styles.section}>
         <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-          {ja ? '出発の何分前に知らせる？' : 'How early should we remind you?'}
+          {ja ? '出発の何分前に通知しますか？' : 'How early should we remind you?'}
           <Text style={[styles.sectionHint, { color: colors.mutedForeground }]}>{ja ? '（複数選択可）' : '  (pick any)'}</Text>
         </Text>
         <View style={styles.chips}>
@@ -98,7 +98,7 @@ export default function OnboardingNotificationsScreen() {
       </Card>
 
       <Text style={[styles.footnote, { color: colors.mutedForeground }]}>
-        {ja ? 'あとから設定で変更できます。' : 'You can change these later in Settings.'}
+        {ja ? '通知のタイミングは、あとから設定で変更できます。' : 'You can change these later in Settings.'}
       </Text>
     </OnboardingFrame>
   );

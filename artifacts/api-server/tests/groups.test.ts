@@ -969,7 +969,8 @@ describe("groups HTTP routes", () => {
     // Reset this file's rate-limit windows so reruns within a minute pass.
     const keys = ["127.0.0.1", "::ffff:127.0.0.1", "::1"].flatMap((ip) => [
       `groups-create:${ip}`,
-      `groups-join:${ip}`,
+      "groups-join-ip:" + ip,
+      "groups-join-legacy:" + ip,
     ]);
     await getDb()
       .delete(apiRateLimitsTable)
@@ -1288,7 +1289,7 @@ describe("groups HTTP routes", () => {
     const visible = pushes.filter((push) => push.body);
     expect(visible.map((push) => push.body).sort()).toEqual(
       [
-        "金曜会: ホストが今夜の会を始めました",
+        "金曜会: ホストが今夜の共有を開始しました",
         "金曜会: The host started tonight's meetup",
       ].sort(),
     );

@@ -10,7 +10,7 @@ import {
 } from "@workspace/api-zod";
 import { findPartwayTrainTaxi } from "../lib/partway";
 import { searchTrain, TimetableUnavailableError } from "../lib/timetableEngine";
-import { trainDisruptionsForLines } from "../lib/trainInformation";
+import { trainDisruptionsForLines, TrainInformationUnavailableError } from "../lib/trainInformation";
 
 const router: IRouter = Router();
 
@@ -120,10 +120,16 @@ router.get("/trains/disruptions", async (req, res) => {
     .map((line) => line.trim())
     .filter(Boolean)
     .slice(0, 12);
-  // ODPT odpt:TrainInformation for the engine's operators. Never fails: no
-  // key or an ODPT outage gives [] so planning is unaffected.
-  const incidents = await trainDisruptionsForLines(lines);
-  res.json(GetTrainDisruptionsResponse.parse(incidents));
+  // An empty incident list only means no matching incidents if EVERY
+  // configured operator answered. Do not present an outage as normal service.
+  try {
+    const incidents = await trainDisruptionsForLines(lines);
+    res.json(GetTrainDisruptionsResponse.parse(incidents));
+  } catch (error) {
+    if (!(error instanceof TrainInformationUnavailableError) &&
+        !(error instanceof TimetableUnavailableError)) throw error;
+    res.status(503).json({ error: "Live train disruption information unavailable" });
+  }
 });
 
 export default router;

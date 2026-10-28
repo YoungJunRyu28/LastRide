@@ -21,7 +21,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 function runningVersion(ja: boolean): string {
   const build = Constants.nativeBuildVersion ?? '?';
   const head = ja ? `ビルド ${build}` : `Build ${build}`;
-  if (Updates.isEmbeddedLaunch || !Updates.updateId || !Updates.createdAt) return `${head} · ${ja ? 'アップデートなし（ビルドのまま）' : 'no update (as built)'}`;
+  if (Updates.isEmbeddedLaunch || !Updates.updateId || !Updates.createdAt) return `${head} · ${ja ? '追加アップデートなし' : 'no update (as built)'}`;
   const when = Updates.createdAt.toLocaleString(ja ? 'ja-JP' : 'en-GB', { timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
   const id = Updates.updateId.slice(0, 6);
   return ja ? `${head} · アップデート ${when}（${id}）` : `${head} · update ${when} (${id})`;
@@ -59,9 +59,9 @@ export default function SettingsScreen() {
         <Card style={styles.premiumBanner}>
           <Feather name="star" size={18} color={colors.primary} />
           <View style={styles.premiumText}>
-            <Text style={[styles.premiumTitle, { color: colors.foreground }]}>{ja ? 'プレミアム利用中' : 'Premium is on'}</Text>
+            <Text style={[styles.premiumTitle, { color: colors.foreground }]}>{ja ? 'プレミアムをご利用中' : 'Premium is on'}</Text>
             <Text style={[styles.premiumBody, { color: colors.mutedForeground }]}>
-              {ja ? '解約は端末のサブスクリプション設定から行えます。' : 'Manage or cancel in your device’s subscription settings.'}
+              {ja ? 'プランの変更・解約は、端末のサブスクリプション設定から行えます。' : 'Manage or cancel in your device’s subscription settings.'}
             </Text>
           </View>
         </Card>
@@ -76,7 +76,7 @@ export default function SettingsScreen() {
           <View style={styles.premiumText}>
             <Text style={[styles.premiumTitle, { color: colors.foreground }]}>{ja ? 'プレミアムにアップグレード' : 'Upgrade to Premium'}</Text>
             <Text style={[styles.premiumBody, { color: colors.mutedForeground }]}>
-              {ja ? 'グループ作成・ロック画面・ウィジェットなど' : 'Hosting groups, lock screen, widgets and more'}
+              {ja ? 'グループ作成、ロック画面表示、ウィジェットなど' : 'Hosting groups, lock screen, widgets and more'}
             </Text>
           </View>
           <Feather name="chevron-right" size={18} color={colors.mutedForeground} />
@@ -87,7 +87,7 @@ export default function SettingsScreen() {
         <Row
           testID="edit-home-station"
           icon="map-pin"
-          title={ja ? '帰り先' : 'Destinations'}
+          title={ja ? '帰る場所' : 'Destinations'}
           value={destination || (ja ? '未設定' : 'Not set')}
           onPress={() => router.push('/destinations')}
         />
@@ -113,7 +113,7 @@ export default function SettingsScreen() {
         <Row
           testID="open-margin"
           icon="clock"
-          title={ja ? '早めに出る時間' : 'Leave early by'}
+          title={ja ? '出発までの余裕時間' : 'Leave early by'}
           value={marginLabel(leaveMargin, ja)}
           onPress={() => router.push('/settings/margin')}
         />
@@ -123,7 +123,7 @@ export default function SettingsScreen() {
             <Row
               testID="open-widget-theme"
               icon="droplet"
-              title={ja ? 'ウィジェットの色' : 'Widget colours'}
+              title={ja ? 'ウィジェットのデザイン' : 'Widget colours'}
               value={(() => {
                 const theme = WIDGET_THEMES.find((entry) => entry.id === widgetTheme);
                 return theme ? (ja ? theme.ja : theme.en) : undefined;
@@ -182,14 +182,14 @@ export default function SettingsScreen() {
           label={__DEV__ ? (ja ? 'デモモード（開発用）' : 'DEMO MODE (DEV ONLY)') : ja ? 'テスト用（TestFlightのみ）' : 'TESTING (TESTFLIGHT ONLY)'}
           footer={
             ja
-              ? 'デモ中は1分＝1秒で進みます（「実時間」で普通の速さ）。通知は夜のトラッキング中のみ届きます。App Store版には表示されません。'
+              ? 'デモ中は1分＝1秒で進みます（「実時間」で普通の速さ）。通知は夜間の案内中のみ届きます。App Store版には表示されません。'
               : 'While the demo clock runs, 1 minute = 1 second (or real time). Notifications need tracking on. Not shown in the App Store version.'
           }
         >
           {/* Which code is running: the build, and the over-the-air update on top of it (if any). */}
           <Row
             testID="running-version"
-            title={ja ? '動作中のバージョン' : 'Running version'}
+            title={ja ? 'アプリのバージョン' : 'Running version'}
             subtitle={runningVersion(ja)}
           />
           <Divider />

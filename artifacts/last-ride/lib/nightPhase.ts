@@ -110,7 +110,7 @@ export function stopState(stop: RailStop, phase: NightPhase | null, nowMs: numbe
  */
 export function phaseLabel(phase: NightPhase, ja: boolean): { label: string; island: string } {
   const time = formatJstTime(phase.countdownTo);
-  if (phase.kind === 'leave') return ja ? { label: 'ここを出るまで', island: '出るまで' } : { label: 'Leave in', island: 'Leave in' };
+  if (phase.kind === 'leave') return ja ? { label: '出発まで', island: '出るまで' } : { label: 'Leave in', island: 'Leave in' };
   if (phase.last) return ja ? { label: `終電 ${time}発まで`, island: '終電' } : { label: `Last train ${time} in`, island: 'Last train' };
   return ja ? { label: `${time}発まで`, island: `${time}発` } : { label: `${time} train in`, island: 'Train in' };
 }

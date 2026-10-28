@@ -51,13 +51,13 @@ export default function ReminderSettingsScreen() {
         icon={trackingMode ? 'check-circle' : 'moon'}
         title={
           trackingMode
-            ? ja ? '今夜のトラッキング中です' : 'Night-out tracking is on'
-            : ja ? '夜のトラッキング中に届きます' : 'Sent during night-out tracking'
+            ? ja ? '今夜の案内が開始されています' : 'Night-out tracking is on'
+            : ja ? '夜間の案内中に通知します' : 'Sent during night-out tracking'
         }
         body={
           trackingMode
-            ? ja ? '下で選んだ時刻に届きます。' : 'Reminders arrive at the times below.'
-            : ja ? '帰る時間の画面で「開始」を押すと、下で選んだ時刻に届きます。' : 'Tap Start on the Leave screen and they arrive at the times below.'
+            ? ja ? '設定したタイミングで通知します。' : 'Reminders arrive at the times below.'
+            : ja ? 'ホーム画面で「案内を開始」を押すと、設定した時刻に通知します。' : 'Tap Start on the Leave screen and they arrive at the times below.'
         }
       />
 
@@ -65,7 +65,7 @@ export default function ReminderSettingsScreen() {
         <Section>
           <Row
             title={ja ? '通知が許可されていません' : 'Notifications are off'}
-            subtitle={ja ? 'タップしてiPhoneの設定で許可してください' : 'Tap to allow them in iPhone Settings'}
+            subtitle={ja ? 'タップしてiPhoneの設定から通知を許可してください' : 'Tap to allow them in iPhone Settings'}
             onPress={() => void Linking.openSettings()}
             destructive
           />
@@ -109,7 +109,7 @@ export default function ReminderSettingsScreen() {
             alarmsEnabled ? (
               <Text style={[styles.footer, { color: colors.mutedForeground }]}>
                 {ja
-                  ? '同じ時刻は、通知かアラームのどちらか一方です。アラームの時刻には、内容を残すための音なしの通知も届きます。'
+                  ? '同じ時刻には、通知またはアラームのいずれかでお知らせします。アラームを設定した場合は、内容を確認できる音なしの通知も表示されます。'
                   : 'Each time is either a notification or an alarm. Alarm times also leave a silent notification with the details.'}
               </Text>
             ) : null
@@ -185,8 +185,8 @@ export default function ReminderSettingsScreen() {
         )}
         <Row
           testID="toggle-missed-check-in"
-          title={ja ? '終電後の案内' : 'After the last train'}
-          subtitle={ja ? '乗り遅れたときの選択肢を通知' : 'A check-in with other ways home'}
+          title={ja ? '終電を逃したときの案内' : 'After the last train'}
+          subtitle={ja ? '始発やタクシーなどの帰宅手段をお知らせします' : 'A check-in with other ways home'}
           switchValue={missedCheckIn}
           onSwitch={setMissedCheckIn}
         />

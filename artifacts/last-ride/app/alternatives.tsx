@@ -513,7 +513,7 @@ export default function AlternativesScreen() {
   }, [selected, partway, isLoadingPartway]);
 
   const station = ja ? stationNameJa : stationName;
-  const homeLabel = destination || (ja ? "帰り先" : "your destination");
+  const homeLabel = destination || (ja ? "帰る場所" : "your destination");
   const trainFare = firstTrainRoute?.fareYen ?? null;
   const homeByTrain = firstTrainRoute?.arrivesAt ?? null;
   const homeByTaxi = taxi ? nowMs + taxi.durationMinutes * MINUTE_MS : null;
@@ -550,7 +550,7 @@ export default function AlternativesScreen() {
     {
       key: "train",
       icon: "sunrise",
-      label: ja ? "始発を待つ" : "Wait for the first train",
+      label: ja ? "始発まで待つ" : "Wait for the first train",
       detail:
         firstTrainRoute?.approximate && minutesUntilFirstTrain !== null
           ? ja
@@ -558,7 +558,7 @@ export default function AlternativesScreen() {
             : `${formatDuration(minutesUntilFirstTrain, false)} wait (approx.)`
           : minutesUntilFirstTrain === null
           ? ja
-            ? "始発を確認中"
+            ? "始発の時刻を確認中"
             : "checking"
           : ja
             ? `待ち${formatDuration(minutesUntilFirstTrain, true)}`
@@ -571,7 +571,7 @@ export default function AlternativesScreen() {
           {
             key: "partway" as const,
             icon: "shuffle" as const,
-            label: ja ? "途中まで電車＋タクシー" : "Train partway + taxi",
+            label: ja ? "電車＋タクシー" : "Train partway + taxi",
             detail: ja
               ? `${partway.taxiFrom.nameJa}まで電車 · タクシー約${partway.taxi.minutes}分`
               : `train to ${partway.taxiFrom.name} · ~${partway.taxi.minutes} min taxi`,
@@ -585,7 +585,7 @@ export default function AlternativesScreen() {
           {
             key: "stay" as const,
             icon: "moon" as const,
-            label: ja ? "近くで待つ＋始発" : "Wait somewhere + first train",
+            label: ja ? "近くで始発を待つ" : "Wait somewhere + first train",
             detail: ja
               ? `${stays?.length ?? 0}軒が徒歩圏内`
               : `${stays?.length ?? 0} places nearby`,
@@ -613,7 +613,7 @@ export default function AlternativesScreen() {
           {
             key: "walk" as const,
             icon: "navigation" as const,
-            label: ja ? "歩いて向かう" : "Walk there",
+            label: ja ? "徒歩で向かう" : "Walk there",
             detail: ja
               ? `徒歩${walkHome.walkingMinutes}分 · ${(walkHome.distanceMeters / 1000).toFixed(1)} km`
               : `${walkHome.walkingMinutes} min · ${(walkHome.distanceMeters / 1000).toFixed(1)} km`,
@@ -724,7 +724,7 @@ export default function AlternativesScreen() {
                 ? `終電 ${lastTrain} は発車しました`
                 : `THE ${lastTrain} LAST TRAIN HAS LEFT`
               : ja
-                ? "乗れなかったときは"
+                ? "終電を逃した場合"
                 : "IF YOU MISS IT"}
           </Text>
           <Text style={[styles.title, { color: colors.foreground }]}>
@@ -1214,7 +1214,7 @@ export default function AlternativesScreen() {
                   style={[styles.note, { color: colors.secondaryForeground }]}
                 >
                   {ja
-                    ? "周辺検索が混み合っています。タップして再試行"
+                    ? "周辺施設を検索できませんでした。タップして再試行してください"
                     : "Nearby search was busy. Tap to retry"}
                 </Text>
               </Pressable>
@@ -1318,7 +1318,7 @@ export default function AlternativesScreen() {
                           >
                             {chain
                               ? ja
-                                ? "  店舗目安"
+                                ? "  店舗の参考料金"
                                 : "  chain rate"
                               : ja
                                 ? "  目安"
@@ -1376,14 +1376,14 @@ export default function AlternativesScreen() {
                 )}
                 <Text style={[styles.note, { color: colors.mutedForeground }]}>
                   {ja
-                    ? "料金はチェーン店の一般的な深夜料金の目安です。実際の料金は店舗にご確認ください。タップで地図を開きます。"
+                    ? "料金は一般的な深夜料金から算出した概算です。実際の料金は店舗にご確認ください。タップすると地図アプリが開きます。"
                     : "Prices are typical late-night rates for that chain — check with the venue. Tap a name for Maps."}
                 </Text>
               </>
             ) : (
               <Text style={[styles.note, { color: colors.mutedForeground }]}>
                 {ja
-                  ? "徒歩圏内に見つかりませんでした。タクシーか始発待ちをご検討ください。"
+                  ? "徒歩圏内に見つかりませんでした。タクシーの利用や始発までの待機もご検討ください。"
                   : "Nothing within walking distance. A taxi or waiting for the first train may be your options."}
               </Text>
             )}
@@ -1487,7 +1487,7 @@ export default function AlternativesScreen() {
                 <Text style={[styles.note, { color: colors.mutedForeground }]}>
                   {isLoadingTaxi
                     ? ja
-                      ? "概算を計算中…"
+                      ? "料金の目安を計算中…"
                       : "Calculating estimate…"
                     : taxi
                       ? [
@@ -1508,7 +1508,7 @@ export default function AlternativesScreen() {
                           .filter(Boolean)
                           .join(" · ")
                       : ja
-                        ? "現在地と帰り先が必要です。"
+                        ? "現在地と帰る場所を設定してください。"
                         : "Needs your location and destination."}
                 </Text>
               </View>
@@ -1529,7 +1529,7 @@ export default function AlternativesScreen() {
                 >
                   <Feather name="map" color={colors.primaryForeground} size={16} />
                   <Text style={[styles.actionText, { color: colors.primaryForeground }]}>
-                    {ja ? "地図でルート" : "Driving route"}
+                    {ja ? "地図で経路を見る" : "Driving route"}
                   </Text>
                 </Pressable>
                 {/* Japanese speakers can just tell the driver; this is for everyone else. */}

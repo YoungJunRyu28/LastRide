@@ -4,6 +4,7 @@ import { Platform } from 'react-native';
 import type { ReminderPlan } from '@/lib/planner';
 import { planDelivery, type DeliveryContext, type ReminderLedger } from '@/lib/reminderLedger';
 import { isNativeReminderScheduleIntact, type ScheduledLocalNotification } from '@/lib/notificationScheduleHealth';
+import { createSerialOperations } from '@/lib/serialOperations';
 import { BOARDED_ACTION, BOARDED_CATEGORY, boardedButtons, boardedFollowUp, boardedNotificationId, boardedQuestion, NOT_BOARDED_ACTION, type HeldTrain } from '@/lib/boarding';
 import { REMINDER_SOUNDS, STORAGE_KEYS, type ReminderDelivery, type ReminderSound } from '@/lib/settings';
 import { alarmKit, alarmKitAvailable, type AlarmAuthorization } from '../modules/last-ride-alarm/src';
@@ -108,23 +109,13 @@ async function nativeSchedulePresent(plans: ReminderPlan[], hasHeld: boolean): P
   }
 }
 
-// Serializes all schedule/cancel operations so an older reschedule can never
-// cancel or overwrite a newer one. Each gets a time limit: one that never
-// finishes (iOS not answering) must not hold every later reschedule back.
-const OPERATION_LIMIT_MS = 20_000;
-let queue: Promise<void> = Promise.resolve();
-function enqueue(operation: () => Promise<void>): Promise<void> {
-  const limited = () =>
-    Promise.race([
-      operation(),
-      new Promise<void>((resolve) => setTimeout(() => {
-        console.warn('[LastRide] reminder scheduling timed out; moving on');
-        resolve();
-      }, OPERATION_LIMIT_MS)),
-    ]);
-  queue = queue.then(limited, limited);
-  return queue;
-}
+// Native Expo Notifications and AlarmKit calls are not abortable. Releasing
+// the queue after an arbitrary timeout allows stale work to continue and
+// cancel a newer reminder schedule. Watchdog warnings do not unlock the queue.
+const OPERATION_WARNING_MS = 20_000;
+const enqueue = createSerialOperations(OPERATION_WARNING_MS, () => {
+  console.warn('[LastRide] reminder scheduling is still running');
+});
 
 function configure() {
   if (configured || Platform.OS === 'web') return;
@@ -365,7 +356,7 @@ export function notifyLockFallback(
   markReminderChange('stationTold');
   const time = new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(plan.lastTrain.departsAt));
   const text = language === 'ja'
-    ? { title: 'LastRide — 出発駅を自動に戻しました', body: `固定した${locked.nameJa}駅からは帰れなくなったため、${plan.station.nameJa}駅（${time}発）にしています。` }
+    ? { title: 'LastRide — 出発駅を自動に戻しました', body: `${locked.nameJa}駅からの帰宅ルートが見つからなかったため、${plan.station.nameJa}駅（${time}発）に切り替えました。` }
     : { title: 'LastRide — back to automatic', body: `${locked.name} can’t get you home any more, so you’re now leaving from ${plan.station.name} (${time} train).` };
   return enqueue(async () => present(text.title, text.body, null, '/ride', true, null, (await AsyncStorage.getItem(STORAGE_KEYS.throughFocus).catch(() => null)) !== 'false'));
 }
@@ -385,7 +376,7 @@ function stationNotice(text: ReminderText, info: DeliveryInfo) {
       title: 'LastRide — 出発駅が変わりました',
       body:
         `${text.station}から${info.trainLabel}（${info.trainDeparts}発）。${text.leaveBy}に出る。` +
-        (info.movedFrom ? `${info.movedFrom}は出る時刻を過ぎていたため、${info.trainLabel}にしています。` : ''),
+        (info.movedFrom ? `${info.movedFrom}は出発時刻を過ぎていたため、${info.trainLabel}にしています。` : ''),
     };
   }
   return {
@@ -398,7 +389,7 @@ function stationNotice(text: ReminderText, info: DeliveryInfo) {
 
 function timeNotice(text: ReminderText, info: DeliveryInfo) {
   return text.language === 'ja'
-    ? { title: 'LastRide — 出る時刻が変わりました', body: `${text.leaveBy}に出て${text.station}へ（${info.trainDeparts}発）。` }
+    ? { title: 'LastRide — 出発時刻が変更されました', body: `${text.leaveBy}に出て${text.station}へ（${info.trainDeparts}発）。` }
     : { title: 'LastRide — new leave time', body: `Leave for ${text.station} at ${text.leaveBy} (${info.trainDeparts} train).` };
 }
 
@@ -416,22 +407,22 @@ function reminderText({ leaveBy, station, language, held }: ReminderText, { minu
   }
   if (missedCheckIn) {
     return language === 'ja'
-      ? { title: 'LastRide — 終電に間に合いませんでしたか？', body: 'タップして始発・タクシー・近くで朝まで過ごせる場所を確認。' }
+      ? { title: 'LastRide — 終電を逃しましたか？', body: 'タップして始発・タクシー・周辺の施設を確認できます。' }
       : { title: 'LastRide — missed the last train?', body: 'Tap to see the first train, a taxi estimate, and places to wait nearby.' };
   }
   if (minutesBefore === 0) {
     // Only the next train's departure: its leave time depends on where the user will be.
     if (held) {
       return language === 'ja'
-        ? { title: 'LastRide — 出る時間です', body: `${station}へ歩き始めましょう。乗り遅れても、${held.next}は${held.nextDeparts}発です。` }
+        ? { title: 'LastRide — 出発の時間です', body: `${station}へ歩き始めましょう。乗り遅れても、${held.next}は${held.nextDeparts}発です。` }
         : { title: 'LastRide — leave now', body: `Start walking to ${station}. If you miss this train, ${held.next} leaves at ${held.nextDeparts}.` };
     }
     return language === 'ja'
-      ? { title: 'LastRide — 出る時間です', body: `${station}へ歩き始めましょう。終電に間に合う最後のタイミングです。` }
+      ? { title: 'LastRide — 出発の時間です', body: `${station}へ歩き始めましょう。終電に向かう出発時刻です。徒歩時間は目安のため、余裕をもって移動してください。` }
       : { title: 'LastRide — leave now', body: `Start walking to ${station} now to make the last train.` };
   }
   return language === 'ja'
-    ? { title: `LastRide — あと${minutesBefore}分`, body: `${leaveBy}に出て${station}へ。そろそろ支度を。` }
+    ? { title: `LastRide — 出発まであと${minutesBefore}分`, body: `${leaveBy}に出て${station}へ。出発の準備をしましょう。` }
     : { title: `LastRide — ${minutesBefore} min to go`, body: `Leave for ${station} by ${leaveBy}. Time to wrap up.` };
 }
 
@@ -525,7 +516,7 @@ export function scheduleReminders(
 ): Promise<void> {
   // Leave-reminder notifications go SCREEN_OFF_DELAY_MS early on iOS. Shifted here,
   // before the record decides, so "sent" means sent: a re-plan in those seconds
-  // mustn't think 出る時間です is still to come and send it again. Alarms (exact
+  // mustn't think 出発の時間です is still to come and send it again. Alarms (exact
   // with AlarmKit), the 乗れましたか？ question and the missed-train check-in keep their time.
   if (Platform.OS === 'ios')
     plans = plans.map((plan) => (plan.alarm || plan.missedCheckIn || plan.boardedCheck ? plan : { ...plan, fireAt: plan.fireAt - SCREEN_OFF_DELAY_MS }));

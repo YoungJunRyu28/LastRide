@@ -49,7 +49,7 @@ export default function DestinationsScreen() {
       if (typeof window !== "undefined" && window.confirm(ja ? `「${label}」を削除しますか？` : `Delete “${label}”?`)) perform();
       return;
     }
-    Alert.alert(ja ? "帰り先を削除" : "Delete destination", ja ? `「${label}」を削除しますか？` : `Delete “${label}”?`, [
+    Alert.alert(ja ? "帰る場所を削除" : "Delete destination", ja ? `「${label}」を削除しますか？` : `Delete “${label}”?`, [
       { text: ja ? "キャンセル" : "Cancel", style: "cancel" },
       { text: ja ? "削除" : "Delete", style: "destructive", onPress: perform },
     ]);
@@ -70,9 +70,9 @@ export default function DestinationsScreen() {
           />
         </View>
         <View style={styles.heading}>
-          <Text style={[styles.kicker, { color: colors.primary }]}>{ja ? "帰り先" : "DESTINATIONS"}</Text>
+          <Text style={[styles.kicker, { color: colors.primary }]}>{ja ? "帰る場所" : "DESTINATIONS"}</Text>
           <Text accessibilityRole="header" style={[styles.title, { color: colors.foreground }]}>
-            {ja ? "今夜はどこへ？" : "Where are you heading?"}
+            {ja ? "今夜はどこに帰りますか？" : "Where are you heading?"}
           </Text>
         </View>
 
@@ -99,7 +99,7 @@ export default function DestinationsScreen() {
                     <Text style={[styles.rowTitle, { color: colors.foreground }]}>{destination.label}</Text>
                     <Text style={[styles.rowMeta, { color: colors.mutedForeground }]} numberOfLines={1}>
                       {station}
-                      {destination.address ? (ja ? " · 住所あり" : " · with address") : ""}
+                      {destination.address ? (ja ? " · 住所登録済み" : " · with address") : ""}
                     </Text>
                   </View>
                 </Pressable>
@@ -170,7 +170,7 @@ export default function DestinationsScreen() {
                   <Feather name="moon" size={16} color={colors.primary} />
                 </View>
                 <View style={styles.copy}>
-                  <Text style={[styles.rowTitle, { color: colors.foreground }]}>{ja ? "今夜だけ別の場所へ" : "Somewhere else tonight"}</Text>
+                  <Text style={[styles.rowTitle, { color: colors.foreground }]}>{ja ? "今夜は別の場所へ" : "Somewhere else tonight"}</Text>
                   <Text style={[styles.rowMeta, { color: colors.mutedForeground }]}>
                     {ja ? `保存せずに今夜だけ使います。明日は${usualLabel}に戻ります。` : `Not saved. Tomorrow you’re back to ${usualLabel}.`}
                   </Text>
@@ -183,19 +183,19 @@ export default function DestinationsScreen() {
 
         {canAdd ? (
           <SecondaryButton
-            label={ja ? "帰り先を保存して追加" : "Save another destination"}
+            label={ja ? "帰る場所を追加" : "Save another destination"}
             onPress={() => router.push({ pathname: "/home-station", params: { new: "1" } })}
             testID="add-destination"
           />
         ) : (
           <Card highlighted style={styles.premium}>
             <View style={styles.premiumHead}>
-              <Text style={[styles.rowTitle, { color: colors.foreground }]}>{ja ? "帰り先を保存して追加" : "Save more destinations"}</Text>
+              <Text style={[styles.rowTitle, { color: colors.foreground }]}>{ja ? "帰る場所を追加" : "Save more destinations"}</Text>
               <PremiumTag label={ja ? "プレミアム" : "Premium"} />
             </View>
             <Text style={[styles.rowMeta, { color: colors.mutedForeground }]}>
               {ja
-                ? "パートナーの家、実家、会社など、何件でも保存してワンタップで切り替え。無料プランは1件まで。"
+                ? "実家や職場など、帰る場所を複数登録してすぐに切り替えられます。無料プランでは1件まで登録できます。"
                 : "Save a partner’s place, your parents’, work — as many as you like, one tap to switch. The free plan keeps one."}
             </Text>
             <SecondaryButton tone="accent" label={ja ? "プレミアムを見る" : "See Premium"} onPress={() => router.push("/paywall")} testID="destinations-premium" />
@@ -203,7 +203,7 @@ export default function DestinationsScreen() {
         )}
 
         <Text style={[styles.footnote, { color: colors.mutedForeground }]}>
-          {ja ? "帰り先はこの端末にだけ保存されます。" : "Destinations are stored only on this device."}
+          {ja ? "登録した帰る場所は、この端末にのみ保存されます。" : "Destinations are stored only on this device."}
         </Text>
       </ScrollView>
       <BottomNav language={language} />

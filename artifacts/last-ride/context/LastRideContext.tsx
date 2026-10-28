@@ -114,6 +114,9 @@ import {
   stopBackgroundTracking,
 } from "@/lib/tracking";
 
+import { beginForegroundLocationWatch } from "@/lib/foregroundLocationWatch";
+import { releaseOwnedWatch } from "@/lib/locationWatchOwnership";
+
 export type { HomeAddress, Language, SavedDestination } from "@/lib/settings";
 export type { StationOption } from "@/lib/stations";
 export { REMINDER_CHOICES } from "@/lib/settings";
@@ -147,7 +150,7 @@ async function chooseNightTrackingLocation(
     const ja = language === 'ja';
     return new Promise((resolve) => {
       Alert.alert(
-        ja ? '閉じても更新するには' : 'To update when closed',
+        ja ? 'アプリを閉じても更新するには' : 'To update when closed',
         ja
           ? 'iPhoneの設定で、LastRideの位置情報を「常に」にしてください（夜のトラッキング中だけ使います）。今夜はアプリを開いている間だけ更新することもできます。'
           : 'In iPhone Settings, set LastRide’s location access to “Always” (used only during night tracking). Or track tonight while the app is open.',
@@ -251,14 +254,14 @@ type RideContextValue = {
   setMissedCheckIn: (enabled: boolean) => void;
   /** Night tracking's location choice; "ask" shows the disclosure next time. */
   nightLocationMode: NightLocationMode;
-  /** pendingAlways: chosen 閉じても更新 but iOS hasn't confirmed "Always" yet; switches by itself once it does. */
+  /** pendingAlways: chosen アプリを閉じても更新 but iOS hasn't confirmed "Always" yet; switches by itself once it does. */
   setNightLocationMode: (mode: NightLocationMode, options?: { pendingAlways?: boolean }) => void;
   /** Whether iOS allows location while the app is closed ("Always"); null until known. */
   backgroundAllowed: boolean | null;
   /** Asks iOS for "Always" if it still can; resolves to whether it's allowed now. */
   requestBackgroundLocation: () => Promise<boolean>;
   /**
-   * Tracking only while open → also while closed: sets 閉じても更新, asks iOS for
+   * Tracking only while open → also while closed: sets アプリを閉じても更新, asks iOS for
    * "Always" and starts background updates. False when iOS didn't allow it.
    */
   switchTrackingToBackground: () => Promise<boolean>;
@@ -778,9 +781,13 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
   nightEndRef.current = nightEnd;
 
   // Persisted so the app can open offline later in the night and still know tonight's plan.
+  // A previously committed effect can still flush while a full reset is in
+  // progress. Fence it with the session captured DURING render, and serialize
+  // persistence with explicit deletes in savedPlan.ts.
+  const savedPlanSession = sessionRef.current;
   useEffect(() => {
-    void writeSavedPlan(basePlan);
-  }, [basePlan]);
+    if (savedPlanSession === sessionRef.current) void writeSavedPlan(basePlan);
+  }, [basePlan, savedPlanSession]);
 
   // Apple's trains before the last one are looked up for the chosen station only:
   // fill them in when the station changes (a pin) or a saved plan comes back without them.
@@ -1168,19 +1175,19 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
   const setNightLocationMode = useCallback((mode: NightLocationMode, { pendingAlways = false }: { pendingAlways?: boolean } = {}) => {
     setNightLocationModeState(mode);
     void AsyncStorage.setItem(STORAGE_KEYS.nightLocationMode, mode);
-    // A choice made now replaces a 閉じても更新 still waiting for iOS (see refreshBackgroundAllowed).
+    // A choice made now replaces a アプリを閉じても更新 still waiting for iOS (see refreshBackgroundAllowed).
     if (pendingAlways) void AsyncStorage.setItem(STORAGE_KEYS.wantsBackground, 'true');
     else void AsyncStorage.removeItem(STORAGE_KEYS.wantsBackground);
   }, []);
 
-  // The app's 閉じても更新 only works if iOS allows "Always"; keep track so the UI
+  // The app's アプリを閉じても更新 only works if iOS allows "Always"; keep track so the UI
   // can say when it doesn't (rechecked when returning from the Settings app).
   const [backgroundAllowed, setBackgroundAllowed] = useState<boolean | null>(null);
   const refreshBackgroundAllowed = useCallback(async () => {
     if (Platform.OS === "web") return false;
     const { granted } = await backgroundLocationState();
     setBackgroundAllowed(granted);
-    // Setup chose 閉じても更新 before iOS had confirmed "Always" (its prompt came late,
+    // Setup chose アプリを閉じても更新 before iOS had confirmed "Always" (its prompt came late,
     // or the user allowed it in Settings afterwards): now it's allowed, so use it.
     if (granted && (await AsyncStorage.getItem(STORAGE_KEYS.wantsBackground).catch(() => null)) === 'true') {
       setNightLocationModeState('background');
@@ -1413,6 +1420,38 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     await clearTrackingSnapshot();
   }, [removeWatches]);
 
+  // A return from iOS/Android Settings can revoke location while tracking
+  // was already active. Do not leave "tracking in background" on the screen
+  // after the OS has blocked the foreground permission entirely.
+  useEffect(() => {
+    if (locationError !== 'permission' || trackingMode === null) return;
+    void stopTracking().catch(() => undefined);
+  }, [locationError, trackingMode, stopTracking]);
+
+  // Background permission can be revoked independently of foreground access:
+  // downgrade honestly to app-open tracking, preserving the foreground watch.
+  useEffect(() => {
+    if (Platform.OS === 'web' || trackingMode !== 'background' || backgroundAllowed !== false) return;
+    let cancelled = false;
+    const operation = trackingOp.current;
+    void backgroundLocationState()
+      .then(async ({ granted }) => {
+        if (cancelled || operation !== trackingOp.current) return;
+        if (granted) {
+          // The cached value may be older than an iOS permission prompt that
+          // just completed; never stop freshly granted background tracking.
+          setBackgroundAllowed(true);
+          return;
+        }
+        await stopBackgroundTracking();
+        if (!cancelled && operation === trackingOp.current) {
+          setTrackingMode((current) => current === 'background' ? 'foreground' : current);
+        }
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [trackingMode, backgroundAllowed]);
+
   const answerBoarding = useCallback(
     async (onBoard: boolean, departsAt?: number) => {
       const at = departsAt ?? boardingQuestionRef.current?.departsAt;
@@ -1466,12 +1505,18 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       const startedAt =
         (resume ? await readTrackingStartedAt() : null) ?? getNow();
       if (op !== trackingOp.current) return;
-      if (!resume) {
-        void markTrackingStarted(startedAt);
-        // A new night of tracking starts from a clean slate, not an old night's snapshot.
-        void clearTrackingSnapshot();
-      }
-      setTrackingStartedAt(startedAt);
+      // Do not publish a session start or erase the previous night snapshot
+      // until a foreground watch actually exists. Users can deny permission,
+      // and iOS/Android can reject watch registration after granting it.
+      const recordSuccessfulStart = async () => {
+        if (op !== trackingOp.current) return;
+        if (!resume) {
+          await markTrackingStarted(startedAt);
+          // The new session must not adopt an old night's background snapshot.
+          await clearTrackingSnapshot();
+        }
+        if (op === trackingOp.current) setTrackingStartedAt(startedAt);
+      };
       const handleCoordinates = (coordinates: Coordinates) => {
         if (op !== trackingOp.current || replanInFlight.current) return;
         if (!shouldReplan(planRef.current, coordinates, getNow())) return;
@@ -1497,41 +1542,53 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
           setLocationError("unsupported");
           return;
         }
-        webWatchId.current = navigator.geolocation.watchPosition(
-          ({ coords }) =>
-            handleCoordinates({
-              latitude: coords.latitude,
-              longitude: coords.longitude,
-            }),
-          () => setLocationError("permission"),
-          { enableHighAccuracy: true },
-        );
+        try {
+          webWatchId.current = navigator.geolocation.watchPosition(
+            ({ coords }) =>
+              handleCoordinates({
+                latitude: coords.latitude,
+                longitude: coords.longitude,
+              }),
+            () => setLocationError("permission"),
+            { enableHighAccuracy: true },
+          );
+        } catch {
+          setLocationError("unavailable");
+          return;
+        }
+        const installedWebWatch = webWatchId.current;
+        await recordSuccessfulStart();
+        if (op !== trackingOp.current) {
+          if (installedWebWatch !== null && webWatchId.current === installedWebWatch) {
+            navigator.geolocation.clearWatch(installedWebWatch);
+            webWatchId.current = null;
+          }
+          return;
+        }
         setTrackingMode("foreground");
         return;
       }
-      const permission = await Location.requestForegroundPermissionsAsync();
-      if (op !== trackingOp.current) return;
-      if (!permission.granted) {
-        setLocationError("permission");
-        return;
-      }
-      const watch = await Location.watchPositionAsync(
-        {
-          accuracy: Location.Accuracy.Balanced,
-          distanceInterval: 150,
-          timeInterval: 120000,
-        },
-        (position) =>
-          handleCoordinates({
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-          }),
+      const watchResult = await beginForegroundLocationWatch((position) =>
+        handleCoordinates({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        }),
       );
       if (op !== trackingOp.current) {
-        watch.remove(); // a stop/reset happened while we were awaiting — tear down
+        if (watchResult.status === 'started') watchResult.subscription.remove();
+        return; // a stop/reset happened while awaiting — tear down
+      }
+      if (watchResult.status !== 'started') {
+        setLocationError(watchResult.status === 'denied' ? 'permission' : 'unavailable');
+        setTrackingMode(null);
+        setTrackingStartedAt(null);
+        // A resumed native background task may still be registered even if
+        // foreground permission was revoked while this app was closed.
+        await stopBackgroundTracking().catch(() => undefined);
         return;
       }
-      foregroundWatch.current = watch;
+      foregroundWatch.current = watchResult.subscription;
+      setLocationError(null);
       // Background updates keep it fresh while the app is closed (dev/production builds).
       const backgroundActive = locationMode === 'background'
         ? await startBackgroundTracking(locationProfile(effectivePlanRef.current, getNow()))
@@ -1540,17 +1597,23 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
         if (backgroundActive) await stopBackgroundTracking(); // compensate a stale start
         return;
       }
+      await recordSuccessfulStart();
+      if (op !== trackingOp.current) {
+        releaseOwnedWatch(foregroundWatch, watchResult.subscription);
+        if (backgroundActive) await stopBackgroundTracking();
+        return;
+      }
       setTrackingMode(backgroundActive ? "background" : "foreground");
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       if (locationMode === "background" && !backgroundActive) {
-        // Chosen 閉じても更新, but iOS isn't set to "Always": say so rather than
+        // Chosen アプリを閉じても更新, but iOS isn't set to "Always": say so rather than
         // quietly tracking only while the app is open.
         void refreshBackgroundAllowed();
         const ja = language === "ja";
         Alert.alert(
           ja ? "アプリを閉じている間は更新されません" : "Won’t update while closed",
           ja
-            ? "iPhoneの設定で、LastRideの位置情報が「常に」になっていません。今夜はアプリを開いている間だけ更新します。閉じても更新するには、設定で「常に」を選んでください。"
+            ? "iPhoneの設定で、LastRideの位置情報が「常に」になっていません。今夜はアプリを開いている間だけ更新します。アプリを閉じても更新するには、設定で「常に」を選んでください。"
             : "LastRide’s location access in iPhone Settings isn’t “Always”, so tonight it updates only while the app is open. Choose “Always” in Settings to update when closed.",
           [
             { text: "OK", style: "cancel" },
@@ -1641,8 +1704,8 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
   const profileMinute = trackingMode === "background" ? Math.floor(nowMs / 60_000) : 0;
   useEffect(() => {
     if (trackingMode !== "background") return;
-    void applyLocationProfile(locationProfile(plan, getNow()));
-  }, [trackingMode, plan, profileMinute, getNow]);
+    void applyLocationProfile(locationProfile(plan, getNow()), language);
+  }, [trackingMode, plan, profileMinute, getNow, language]);
 
   // Permissions change in iPhone Settings while the app is in the background.
   // Re-check them on launch and whenever the app comes back: show when
@@ -1749,6 +1812,10 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
   /** Clears every saved preference and returns the app to first-launch state. */
   const resetAll = useCallback(async () => {
     sessionRef.current += 1;
+    // Hide the old trip immediately. Pending old-render effects are fenced by
+    // savedPlanSession above; any already-started writes finish before the
+    // queued clearSavedPlan() at the end of reset.
+    setPlan(null);
     await clearPlaceCache();
     await stopTracking();
     await cancelAllReminders();

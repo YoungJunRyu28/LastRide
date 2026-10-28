@@ -4,8 +4,10 @@
  * serves. Railway IDs are named the same way as the route legs
  * (timetableEngine.lineLabel), so the app can match them to a route.
  *
- * Optional by design: no ODPT_KEY, an ODPT outage or a missing snapshot gives
- * an empty list, never an error, so planning never depends on it.
+ * Optional for planning, not optional for truthfulness: a missing key,
+ * malformed provider response or partial outage must not masquerade as
+ * confirmed normal service. Callers can catch the typed unavailable error
+ * and continue train planning with an explicit warning.
  */
 import { logger } from "./logger";
 import { providerTimeoutMs } from "./runtimeConfig";
@@ -14,6 +16,13 @@ import { LICENSED_OPERATORS, timetableEngine, type Railway } from "./timetableEn
 const ODPT_BASE_URL = "https://api.odpt.org/api/v4";
 /** ODPT refreshes operation information about every 5 minutes. */
 const CACHE_MS = 60_000;
+
+export class TrainInformationUnavailableError extends Error {
+  constructor() {
+    super("Live train disruption information unavailable");
+    this.name = "TrainInformationUnavailableError";
+  }
+}
 
 export type TrainDisruption = {
   line: string;
@@ -98,7 +107,10 @@ async function fetchOperator(
   // Never log the URL: it carries the key.
   if (!response.ok) throw new Error(`ODPT responded ${response.status}`);
   const body = (await response.json()) as unknown;
-  return Array.isArray(body) ? (body as OdptTrainInformation[]) : [];
+  if (!Array.isArray(body) || body.some((row) => !row || typeof row !== "object" || Array.isArray(row))) {
+    throw new TrainInformationUnavailableError();
+  }
+  return body as OdptTrainInformation[];
 }
 
 let cached: { at: number; disruptions: TrainDisruption[] } | null = null;
@@ -106,23 +118,31 @@ let inflight: Promise<TrainDisruption[]> | null = null;
 
 async function loadAll(): Promise<TrainDisruption[]> {
   const key = process.env.ODPT_KEY?.trim();
-  if (!key) return [];
+  if (!key) throw new TrainInformationUnavailableError();
   const { railways } = await timetableEngine();
   const results = await Promise.allSettled(
     LICENSED_OPERATORS.map((operator) => fetchOperator(operator, key)),
   );
   const items: OdptTrainInformation[] = [];
+  let incomplete = false;
   results.forEach((result, index) => {
     if (result.status === "fulfilled") items.push(...result.value);
-    else
-      logger.info(
+    else {
+      incomplete = true;
+      logger.warn(
         {
           operator: LICENSED_OPERATORS[index],
-          err: (result.reason as Error).message,
+          // Do not log fetch URLs, provider keys or raw response bodies.
+          reason: result.reason instanceof Error ? result.reason.name : "unknown",
         },
-        "ODPT train information unavailable",
+        "ODPT train information unavailable for operator",
       );
+    }
   });
+  // Fail closed even when a different operator succeeded. An empty filtered
+  // array must never claim every queried line is running normally when some
+  // operators were unreachable.
+  if (incomplete) throw new TrainInformationUnavailableError();
   return toDisruptions(items, railways);
 }
 
@@ -131,18 +151,19 @@ export async function trainDisruptionsForLines(
   lineNames: string[],
 ): Promise<TrainDisruption[]> {
   if (lineNames.length === 0) return [];
+  // Only operators present in the licensed snapshot have usable ODPT
+  // disruption coverage. A JR/private line outside that set must never be
+  // described as normal service merely because this provider has no entry.
+  const { railways } = await timetableEngine();
+  const supported = [...railways.values()].map((railway) => railway.nameJa);
+  if (lineNames.some((line) => !supported.some((name) => disruptionMatchesLine(name, line)))) {
+    throw new TrainInformationUnavailableError();
+  }
   let all: TrainDisruption[];
   if (cached && Date.now() - cached.at < CACHE_MS) {
     all = cached.disruptions;
   } else {
     inflight ??= loadAll()
-      .catch((err: unknown) => {
-        logger.info(
-          { err: (err as Error).message },
-          "Train disruption information unavailable",
-        );
-        return [];
-      })
       .then((disruptions) => {
         cached = { at: Date.now(), disruptions };
         return disruptions;

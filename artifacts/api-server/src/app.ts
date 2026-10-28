@@ -6,14 +6,12 @@ import cors from "cors";
 import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
+import { trustedProxySettings } from "./lib/trustedProxy";
 
 const app: Express = express();
 app.disable("x-powered-by");
 
-const trustProxyHops = Number(process.env.TRUST_PROXY_HOPS ?? "0");
-if (Number.isInteger(trustProxyHops) && trustProxyHops > 0) {
-  app.set("trust proxy", trustProxyHops);
-}
+app.set("trust proxy", trustedProxySettings(process.env));
 
 const allowedOrigins = new Set(
   (process.env.CORS_ALLOWED_ORIGINS ?? "")
@@ -52,6 +50,22 @@ app.use((req, res, next) => {
   next();
 });
 
+// Unapproved browser preflights must stop here. Otherwise they can fall
+// through to API routers (and needlessly hit shared DB/rate-limit middleware)
+// even though the browser will ultimately deny access without CORS headers.
+app.use((req, res, next) => {
+  if (
+    process.env.NODE_ENV === "production" &&
+    req.method === "OPTIONS" &&
+    req.headers.origin &&
+    !allowedOrigins.has(req.headers.origin)
+  ) {
+    res.status(403).json({ error: "Origin not allowed" });
+    return;
+  }
+  next();
+});
+
 app.use(
   cors({
     origin(origin, callback) {
@@ -70,6 +84,10 @@ app.use(
       "X-RevenueCat-App-User-Id",
       "X-Premium-Device-Secret",
       "X-Request-Id",
+      // Browser joins/creates send durable operation IDs; without these two
+      // headers CORS preflight blocks the request before the API can recover it.
+      "X-Group-Join-Key",
+      "X-Group-Create-Key",
     ],
     maxAge: 600,
   }),

@@ -42,10 +42,10 @@ export function PremiumCard({
         accessibilityLabel={
           lock
             ? ja
-              ? `プレミアム：ロック画面で残り時間を表示。${trial}で試す`
+              ? `プレミアムなら、ロック画面で出発までの時間を確認。${trial}で試す`
               : `Premium: countdown on your lock screen. Try ${trial}`
             : ja
-              ? `プレミアム：ホーム画面で出発時刻をひと目で。${trial}で試す`
+              ? `プレミアムなら、ホーム画面で出発時刻を確認。${trial}で試す`
               : `Premium: leave time on your home screen. Try ${trial}`
         }
         style={({ pressed }) => [styles.body, { opacity: pressed ? 0.85 : 1 }]}

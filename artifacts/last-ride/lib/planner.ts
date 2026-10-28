@@ -6,7 +6,7 @@
 import { getTrainDisruptions } from '@workspace/api-client-react';
 import type { HomeAddress } from '@/lib/settings';
 import { matchingDisruptionLines, recommendedLeaveTime, type LeaveMargin, recommendedSafetyMarginMinutes, walkingUncertaintyMarginMinutes } from '@/lib/reliability';
-import { distanceBetween, findNearbyStations, LocationError, walkingRoute, type Coordinates, type NearbyStation, type StationOption, type WalkingRoute, type WalkingSpeed } from '@/lib/stations';
+import { distanceBetween, findNearbyStations, LocationError, samePhysicalStation, walkingRoute, type Coordinates, type NearbyStation, type StationOption, type WalkingRoute, type WalkingSpeed } from '@/lib/stations';
 import { MINUTE_MS, serviceDayStart } from '@/lib/time';
 import { AppleLookupFailed, getLastTrain, trainsBefore, type TrainTime } from '@/lib/timetable';
 import { hasPosition, resolveAddress, resolveStation } from '@/lib/storedPlaces';
@@ -246,7 +246,7 @@ export function nextNightOf(nightOf: number, nowMs: number): number | null {
 }
 
 export function sameStation(first: StationOption, second: StationOption) {
-  return first.nameJa === second.nameJa;
+  return samePhysicalStation(first, second);
 }
 
 /**
@@ -443,7 +443,7 @@ async function evaluateCandidates(
       } catch (error) {
         // Apple's request limit or a dropped connection: keep this station's last
         // result rather than lose it (and let a far station win by default).
-        const kept = earlier.get(station.nameJa);
+        const kept = [...earlier.values()].find((option) => sameStation(option.station, station));
         if (kept) return keptResult(kept, walkHere, leaveMargin);
         // Apple-only route that failed with nothing to keep: as before, no train found.
         if (error instanceof AppleLookupFailed) return null;
@@ -484,7 +484,9 @@ function earlierResults(previous: NightPlan | null, nightOf: number, destination
     if (!destinations.some(({ station }) => sameStation(station, option.destination))) continue;
     const lookedUpAt = option.keptSince ?? previous.computedAt;
     const { station, walkingMinutes, distanceMeters, walkingSource, walkPath, lastTrain, leaveByMs, recommendedLeaveByMs, safetyMarginMinutes, disruptionLines, destination, walkHomeMinutes, arriveHomeMs } = option;
-    results.set(station.nameJa, { station, walkingMinutes, distanceMeters, walkingSource, walkPath, lastTrain, leaveByMs, recommendedLeaveByMs, safetyMarginMinutes, disruptionLines, destination, walkHomeMinutes, arriveHomeMs, keptSince: lookedUpAt });
+    // Names can collide across different physical stations: keep the full set,
+    // then reuse only by physical station identity, never by display name.
+    results.set(String(results.size), { station, walkingMinutes, distanceMeters, walkingSource, walkPath, lastTrain, leaveByMs, recommendedLeaveByMs, safetyMarginMinutes, disruptionLines, destination, walkHomeMinutes, arriveHomeMs, keptSince: lookedUpAt });
   }
   return results;
 }
@@ -553,12 +555,13 @@ export async function planNight(
   // Barely moved: the walks found last time still hold, so Apple isn't asked again.
   const knownWalks = previous && earlier.size > 0 && distanceBetween(previous.coordinates, coordinates) <= SAME_SPOT_METERS
     ? new Map(
-        [...earlier]
-          // Only Apple's own routes, with their shape: an estimate (or a walk from an
-          // older plan that didn't record its source) is looked up again, or it would
-          // be passed from plan to plan and never become a real route with a map line.
-          .filter(([, option]) => option.walkingSource === 'routed' && (option.walkPath?.length ?? 0) > 1)
-          .map(([name, option]) => [name, { walkingMinutes: option.walkingMinutes, distanceMeters: option.distanceMeters, source: 'routed' as const, path: option.walkPath }]),
+        [...earlier.values()]
+          // Apple Maps caches walks by name: reject ambiguous names, and only
+          // reuse genuine routed geometry; estimates need a fresh lookup.
+          .filter((option, _, all) => option.walkingSource === 'routed' &&
+            (option.walkPath?.length ?? 0) > 1 &&
+            all.filter((other) => other.station.nameJa === option.station.nameJa).length === 1)
+          .map((option) => [option.station.nameJa, { walkingMinutes: option.walkingMinutes, distanceMeters: option.distanceMeters, source: 'routed' as const, path: option.walkPath }]),
       )
     : undefined;
   // If Apple's station search fails, the last plan's stations stand in (lib/stations).
@@ -587,8 +590,8 @@ export async function planNight(
 
   if (shouldExpandStationSearch(options)) {
     const expanded = await findNearbyStations(coordinates, WALKING_PACE, CANDIDATE_STATIONS_EXPANDED, knownWalks, recent).catch(() => []);
-    const known = new Set(candidates.map((candidate) => candidate.station.nameJa));
-    const extra = expanded.filter((candidate) => !known.has(candidate.station.nameJa));
+    const extra = expanded.filter((candidate) =>
+      !candidates.some((known) => sameStation(known.station, candidate.station)));
     if (extra.length > 0) {
       const secondPass = await evaluateCandidates(extra, destinations, coordinates, leaveMargin, nightOf, earlier);
       lookupFailed ||= secondPass.lookupFailed;

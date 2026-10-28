@@ -9,29 +9,16 @@ import usageRouter from "./usage";
 import walkRouter from "./walk";
 import enterpriseRouter from "./enterprise";
 import groupsRouter from "./groups";
-import { rateLimitMiddleware, requestAddress } from "../lib/rateLimit";
+import { publicLookupLimiters } from "../lib/publicLookupLimiter";
 
 const router: IRouter = Router();
 
-function positiveIntEnv(name: string, fallback: number): number {
-  const raw = process.env[name]?.trim();
-  if (!raw) return fallback;
-  const parsed = Number(raw);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
-}
-
-// Per instance, in memory: lookups (bundled timetables, ODPT) must not wake the
-// database just to count requests. API Gateway throttling caps the total.
-const publicLookupLimiter = rateLimitMiddleware({
-  limit: positiveIntEnv("PUBLIC_LOOKUP_RATE_LIMIT_PER_MINUTE", 60),
-  windowMs: 60_000,
-  key: (req) => `public-lookup:${requestAddress(req)}`,
-  shared: false,
-});
-
+// Count total per-IP traffic AND each lookup family separately. A group of
+// genuine users behind one campus NAT can simultaneously request stations and
+// trains without each endpoint consuming the others' entire allowance.
 router.use(
   ["/trains", "/stations", "/taxi", "/addresses", "/places", "/walk"],
-  publicLookupLimiter,
+  ...publicLookupLimiters(),
 );
 
 router.use(healthRouter);

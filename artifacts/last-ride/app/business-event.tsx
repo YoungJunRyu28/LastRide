@@ -32,7 +32,7 @@ type InviteView = {
 };
 
 function formatLeaveTime(value: string | null, ja: boolean): string {
-  if (!value) return ja ? "計算待ち" : "Waiting";
+  if (!value) return ja ? "時刻を確認中" : "Waiting";
   return new Intl.DateTimeFormat(ja ? "ja-JP" : "en-US", {
     timeZone: "Asia/Tokyo",
     hour: "2-digit",
@@ -225,7 +225,7 @@ function BusinessEventScreen() {
         >
           <Feather name="arrow-left" size={21} color={colors.foreground} />
           <Text style={[styles.backText, { color: colors.foreground }]}>
-            {ja ? "幹事モード" : "Organizer"}
+            {ja ? "幹事向け機能" : "Organizer"}
           </Text>
         </Pressable>
 
@@ -239,7 +239,7 @@ function BusinessEventScreen() {
           <View style={styles.metaRow}>
             <Text style={[styles.meta, { color: colors.mutedForeground }]}>
               {activeParticipants.length}/{event?.participantLimit ?? 0}{" "}
-              {ja ? "人参加中" : "currently joined"}
+              {ja ? "人が参加中" : "currently joined"}
             </Text>
             <Text
               style={[
@@ -272,10 +272,10 @@ function BusinessEventScreen() {
                 <Text style={[styles.body, { color: colors.mutedForeground }]}>
                   {invite
                     ? ja
-                      ? "このコードまたはリンクを共有してください。"
+                      ? "参加者にこのコードまたはリンクを共有してください。"
                       : "Share this code or link with the group."
                     : ja
-                      ? "新しい参加コードを発行します。以前のコードは無効になります。"
+                      ? "新しい招待コードを発行します。以前のコードは無効になります。"
                       : "Generate a new join code. Any previous invite will be revoked."}
                 </Text>
               </View>
@@ -341,7 +341,7 @@ function BusinessEventScreen() {
                         { color: colors.foreground },
                       ]}
                     >
-                      {ja ? "コード更新" : "Rotate"}
+                      {ja ? "コードを再発行" : "Rotate"}
                     </Text>
                   </Pressable>
                 </View>
@@ -362,7 +362,7 @@ function BusinessEventScreen() {
                     { color: colors.primaryForeground },
                   ]}
                 >
-                  {ja ? "参加コードを発行" : "Generate join code"}
+                  {ja ? "招待コードを発行" : "Generate join code"}
                 </Text>
               </Pressable>
             )}
@@ -411,7 +411,7 @@ function BusinessEventScreen() {
           </View>
           {activeParticipants.length === 0 ? (
             <Text style={[styles.empty, { color: colors.mutedForeground }]}>
-              {ja ? "まだ参加者はいません。" : "No participants yet."}
+              {ja ? "参加者はまだいません。" : "No participants yet."}
             </Text>
           ) : (
             activeParticipants.map((participant, index) => (

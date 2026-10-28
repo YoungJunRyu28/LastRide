@@ -74,20 +74,25 @@ function distance(first: Coordinates, second: Coordinates) {
   return 6371000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-/** Railway stations, one per name, nearest first. */
+/** Merge entrances to one physical station, not all stations sharing a
+ * Japanese name across different neighborhoods. */
 export function distinctStations(origin: Coordinates, places: Place[], limit: number): Array<{ station: StationOption; straightMeters: number }> {
-  const seen = new Set<string>();
-  return places
+  const accepted: Array<{ station: StationOption; straightMeters: number }> = [];
+  const candidates = places
     .filter((place) => isValidMapCoordinate(place))
     .filter(isRailwayStation)
     .map((place) => ({ station: toStation(place), straightMeters: distance(origin, place) }))
-    .sort((first, second) => first.straightMeters - second.straightMeters)
-    .filter(({ station }) => {
-      if (!station.nameJa || seen.has(station.nameJa)) return false;
-      seen.add(station.nameJa);
-      return true;
-    })
-    .slice(0, limit);
+    .sort((first, second) => first.straightMeters - second.straightMeters);
+
+  for (const candidate of candidates) {
+    if (!candidate.station.nameJa) continue;
+    if (accepted.some((existing) =>
+      existing.station.nameJa === candidate.station.nameJa &&
+      distance(existing.station, candidate.station) <= 1500)) continue;
+    accepted.push(candidate);
+    if (accepted.length >= limit) break;
+  }
+  return accepted;
 }
 
 export async function appleWalkingRoute(
@@ -130,17 +135,16 @@ export async function appleNearbyStations(coordinates: Coordinates, walkingSpeed
 export async function appleSearchStations(query: string): Promise<StationOption[] | null> {
   if (!AppleMaps) return null;
   const places = await AppleMaps.searchStations(/駅$/.test(query) ? query : `${query}駅`);
-  const seen = new Set<string>();
-  return places
+  const result: StationOption[] = [];
+  for (const station of places
     .filter((place) => isValidMapCoordinate(place))
     .filter(isRailwayStation)
-    .map(toStation)
-    .filter((station) => {
-      const key = `${station.nameJa}|${station.regionJa ?? ''}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
+    .map(toStation)) {
+    if (result.some((seen) =>
+      seen.nameJa === station.nameJa && distance(seen, station) <= 1500)) continue;
+    result.push(station);
+  }
+  return result;
 }
 
 export async function appleSearchAddresses(query: string): Promise<Array<Coordinates & { label: string }> | null> {

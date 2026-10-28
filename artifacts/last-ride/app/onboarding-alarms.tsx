@@ -76,10 +76,10 @@ export default function OnboardingAlarmsScreen() {
     >
       <OnboardingHeading
         kicker={ja ? 'アラーム' : 'ALARMS'}
-        title={ja ? 'マナーモードでも\n鳴らせます' : 'Rings even\nin silent mode'}
+        title={ja ? 'マナーモード中も\nアラームでお知らせ' : 'Rings even\nin silent mode'}
         lead={
           ja
-            ? '時計のアラームのように、画面いっぱいに表示して音で知らせます。飲んでいて通知を見逃しそうな夜に。'
+            ? '出発時刻になると、時計アプリのアラームのように画面全体と音でお知らせします。通知に気づきにくいときにも便利です。'
             : 'Like a Clock alarm: full screen, with sound. For nights when a notification is easy to miss.'
         }
       />
@@ -116,7 +116,7 @@ export default function OnboardingAlarmsScreen() {
             <>
               <View style={styles.section}>
                 <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-                  {ja ? 'いつ鳴らす？' : 'When should it ring?'}
+                  {ja ? '出発の何分前に鳴らしますか？' : 'When should it ring?'}
                   <Text style={[styles.sectionHint, { color: colors.mutedForeground }]}>{ja ? '（複数選択可）' : '  (pick any)'}</Text>
                 </Text>
                 <View style={styles.chips}>
@@ -144,7 +144,7 @@ export default function OnboardingAlarmsScreen() {
 
           <Text style={[styles.footnote, { color: colors.mutedForeground }]}>
             {ja
-              ? '同じ時刻は、通知かアラームのどちらか一方です。アラームの時刻には、内容を残すための音なしの通知も届きます。あとから設定で変更できます。'
+              ? '同じ時刻には、通知またはアラームのいずれかでお知らせします。アラーム設定時は、内容を確認できる音なしの通知も表示されます。あとから設定で変更できます。'
               : 'Each time is either a notification or an alarm. Alarm times also leave a silent notification with the details. You can change this later in Settings.'}
           </Text>
         </>

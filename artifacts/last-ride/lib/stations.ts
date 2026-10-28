@@ -59,6 +59,29 @@ export class LocationError extends Error {
   }
 }
 
+/** Station aliases from different providers can have the same Japanese name.
+ * Their positions distinguish distant namesakes, while small centroid
+ * differences still identify the same physical station complex. */
+const SAME_STATION_MAX_METERS = 1500;
+
+export function samePhysicalStation(a: StationOption, b: StationOption): boolean {
+  if (!a.nameJa || a.nameJa !== b.nameJa) return false;
+  const positioned = (station: StationOption) =>
+    Number.isFinite(station.latitude) && Number.isFinite(station.longitude) &&
+    Math.abs(station.latitude) <= 90 && Math.abs(station.longitude) <= 180 &&
+    (station.latitude !== 0 || station.longitude !== 0);
+  if (positioned(a) && positioned(b)) {
+    return distanceBetween(a, b) <= SAME_STATION_MAX_METERS;
+  }
+  // Offline/legacy saved stations omit coordinates under MapKit licensing.
+  // Compare locality where both names have one; otherwise preserve the
+  // old name-only fallback for saved records missing all other identity.
+  const localA = a.regionJa?.trim() || a.region?.trim();
+  const localB = b.regionJa?.trim() || b.region?.trim();
+  return !localA || !localB || localA === localB ||
+    localA.startsWith(localB) || localB.startsWith(localA);
+}
+
 const SPEED_MULTIPLIER: Record<WalkingSpeed, number> = {
   relaxed: 0.8,
   normal: 1,
@@ -177,7 +200,7 @@ export async function findNearbyStations(
         pace: walkingSpeed,
         limit: limit + 2,
       });
-      const distinct = collapseByName(
+      const distinct = collapseByStation(
         stations.map(
           ({ id: _id, walkingMeters, walkingMinutes, walkingSource: _walkSource, ...station }) => ({
             station,
@@ -203,16 +226,15 @@ export async function findNearbyStations(
   return findNearbyStationsOsm(coordinates, limit);
 }
 
-/** Station complexes can appear several times (one per operator or entrance); keep the first of each name. */
-function collapseByName<T extends { station: StationOption }>(
+/** Merge near-identical platforms, but do NOT discard distant stations
+ * just because they share a Japanese name. Candidates arrive nearest first. */
+export function collapseByStation<T extends { station: StationOption }>(
   candidates: T[],
   limit: number,
 ): T[] {
-  const seen = new Set<string>();
   const distinct: T[] = [];
   for (const candidate of candidates) {
-    if (seen.has(candidate.station.nameJa)) continue;
-    seen.add(candidate.station.nameJa);
+    if (distinct.some((seen) => samePhysicalStation(seen.station, candidate.station))) continue;
     distinct.push(candidate);
     if (distinct.length >= limit) break;
   }
@@ -269,7 +291,7 @@ function distinctStations(
         candidate !== null,
     )
     .sort((first, second) => first.straightMeters - second.straightMeters);
-  return collapseByName(candidates, limit);
+  return collapseByStation(candidates, limit);
 }
 
 /**

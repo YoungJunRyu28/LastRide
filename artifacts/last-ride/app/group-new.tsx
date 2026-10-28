@@ -83,13 +83,13 @@ export default function NewGroupScreen() {
         <IconButton icon="chevron-left" label={ja ? '戻る' : 'Back'} onPress={() => (router.canGoBack() ? router.back() : router.replace('/groups'))} />
         <Text style={[styles.kicker, { color: colors.primary }]}>{ja ? 'グループを作成' : 'NEW GROUP'}</Text>
         <Text accessibilityRole="header" style={[styles.title, { color: colors.foreground }]}>
-          {ja ? 'いつものメンバーで\nグループを作る' : 'Make a group for\nthe usual crowd'}
+          {ja ? 'いつものメンバーと\nグループを作成' : 'Make a group for\nthe usual crowd'}
         </Text>
         {field(ja ? 'グループ名' : 'Group name', name, setName, ja ? '例：営業部 飲み会' : 'e.g. Sales team drinks', 80, 'group-name-input')}
         {field(ja ? 'あなたの表示名' : 'Your display name', displayName, setDisplayName, ja ? '例：田中' : 'e.g. Tanaka', 40, 'group-display-name-input')}
         <Text style={[styles.note, { color: colors.mutedForeground }]}>
           {ja
-            ? 'あなたがホストになります。グループは残るので、次の飲み会は「今夜をはじめる」だけ。'
+            ? '作成したグループでは、あなたがホストになります。次回からは同じグループで「共有を開始」を選ぶだけで使えます。'
             : 'You’ll be the host. The group stays, so next time just start tonight.'}
         </Text>
         <PrimaryButton label={ja ? '作成する' : 'Create'} onPress={() => void submit()} loading={busy} disabled={!name.trim() || !displayName.trim()} testID="create-group" />
