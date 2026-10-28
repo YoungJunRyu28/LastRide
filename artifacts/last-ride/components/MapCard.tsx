@@ -316,7 +316,10 @@ function RealOverlay({
               styles.placed,
               {
                 left: clampLeft(targetPx.x, stationWidth, frame.width),
-                top: labelTop(targetPx.y, 22, 9, frame.height),
+                // On the side away from you, so it doesn't cover the walk coming in.
+                top: youPx && youPx.y < targetPx.y
+                  ? labelBelow(targetPx.y, 22, 9, frame.height)
+                  : labelTop(targetPx.y, 22, 9, frame.height),
                 maxWidth: frame.width - 2 * EDGE,
                 backgroundColor: colors.line,
               },
@@ -332,7 +335,8 @@ function RealOverlay({
           style={[
             styles.bubble,
             {
-              left: middle ? clampLeft(middle.x, walkWidth, frame.width) : 10,
+              // Beside the line (right of it, or left near the right edge), not on it.
+              left: middle ? besideLeft(middle.x, walkWidth, frame.width) : 10,
               top: middle ? clampTop(middle.y - 10, 20, frame.height) : 10,
               maxWidth: frame.width - 2 * EDGE,
               backgroundColor: colors.background,
@@ -344,10 +348,7 @@ function RealOverlay({
           {walkLabel}
         </Text>
       ) : null}
-      {pinsToDraw(pins).map((pin, index) => {
-        if (pin.latitude === undefined || pin.longitude === undefined) return null;
-        const { x, y } = project(frame, { latitude: pin.latitude, longitude: pin.longitude });
-        const width = Math.min(labelWidth(pin.label, 11), frame.width - 2 * EDGE);
+      {placePinLabels(pinsToDraw(pins), frame, youPx).map(({ pin, x, y, width, label }, index) => {
         return (
           <React.Fragment key={`${index}-${pin.label}`}>
             {/* A small dot exactly on the place (taxi stand, somewhere to wait), its label above. */}
@@ -358,18 +359,20 @@ function RealOverlay({
                 { left: x - 5, top: y - 5, backgroundColor: pin.emphasis ? colors.primary : colors.foreground, borderColor: colors.map },
               ]}
             />
-            <Text
-              numberOfLines={1}
-              style={[
-                styles.bubble,
-                { left: clampLeft(x, width, frame.width), top: labelTop(y, 20, 7, frame.height), maxWidth: frame.width - 2 * EDGE },
-                pin.emphasis
-                  ? { backgroundColor: colors.primary, borderColor: colors.primary, color: colors.primaryForeground }
-                  : { backgroundColor: colors.background, borderColor: colors.input, color: colors.foreground },
-              ]}
-            >
-              {pin.label}
-            </Text>
+            {label ? (
+              <Text
+                numberOfLines={1}
+                style={[
+                  styles.bubble,
+                  { left: label.left, top: label.top, maxWidth: width },
+                  pin.emphasis
+                    ? { backgroundColor: colors.primary, borderColor: colors.primary, color: colors.primaryForeground }
+                    : { backgroundColor: colors.background, borderColor: colors.input, color: colors.foreground },
+                ]}
+              >
+                {pin.label}
+              </Text>
+            ) : null}
           </React.Fragment>
         );
       })}
@@ -380,6 +383,8 @@ function RealOverlay({
 
 /** Labels keep at least this far from the map's edges. */
 const EDGE = 4;
+/** The bottom strip holds the Apple Maps logo, 法的情報 and the open-in-Maps button: no labels there. */
+const BOTTOM_RESERVED = 40;
 
 /** A label's rough drawn width: full-width (Japanese) characters ~1 em, others ~0.6 em, plus padding. */
 function labelWidth(text: string, fontSize: number): number {
@@ -394,13 +399,64 @@ function clampLeft(center: number, width: number, frameWidth: number): number {
 }
 
 function clampTop(top: number, height: number, frameHeight: number): number {
-  return Math.max(EDGE, Math.min(top, frameHeight - height - EDGE));
+  return Math.max(EDGE, Math.min(top, frameHeight - height - BOTTOM_RESERVED));
+}
+
+/** Left edge for a label just right of a line at `x`, or just left of it when there's no room. */
+function besideLeft(x: number, width: number, frameWidth: number): number {
+  const right = x + 10;
+  return right + width + EDGE <= frameWidth ? right : Math.max(EDGE, x - 10 - width);
+}
+
+/** Top for a label just below a dot at `y`, or just above when there's no room below. */
+function labelBelow(y: number, height: number, gap: number, frameHeight: number): number {
+  const below = y + gap;
+  return clampTop(below + height + BOTTOM_RESERVED <= frameHeight ? below : y - gap - height, height, frameHeight);
 }
 
 /** Top for a label just above a dot at `y` (`gap` from its centre), or just below when there's no room above. */
 function labelTop(y: number, height: number, gap: number, frameHeight: number): number {
   const above = y - gap - height;
   return clampTop(above >= EDGE ? above : y + gap, height, frameHeight);
+}
+
+const PIN_LABEL_HEIGHT = 20;
+
+type PlacedPin = { pin: MapPin; x: number; y: number; width: number; label: { left: number; top: number } | null };
+
+/**
+ * Where each pin's label goes: above its dot, else below, right or left, the
+ * first spot that doesn't overlap a label already placed. The highlighted pin
+ * is placed first; one with no free spot keeps just its dot.
+ */
+function placePinLabels(pins: MapPin[], frame: Frame, you: { x: number; y: number } | null): PlacedPin[] {
+  // Your own position marker counts as taken too, so no label covers it.
+  const taken: Array<{ left: number; top: number; right: number; bottom: number }> = you
+    ? [{ left: you.x - 14, top: you.y - 14, right: you.x + 14, bottom: you.y + 14 }]
+    : [];
+  const overlaps = (box: { left: number; top: number; right: number; bottom: number }) =>
+    taken.some((other) => box.left < other.right + 2 && box.right > other.left - 2 && box.top < other.bottom + 2 && box.bottom > other.top - 2);
+  const placed = new Map<MapPin, PlacedPin>();
+  const order = [...pins.filter((pin) => pin.emphasis), ...pins.filter((pin) => !pin.emphasis)];
+  for (const pin of order) {
+    if (pin.latitude === undefined || pin.longitude === undefined) continue;
+    const { x, y } = project(frame, { latitude: pin.latitude, longitude: pin.longitude });
+    const width = Math.min(labelWidth(pin.label, 11), frame.width - 2 * EDGE);
+    const h = PIN_LABEL_HEIGHT;
+    const candidates = [
+      { left: clampLeft(x, width, frame.width), top: y - 7 - h },
+      { left: clampLeft(x, width, frame.width), top: y + 7 },
+      { left: x + 9, top: y - h / 2 },
+      { left: x - 9 - width, top: y - h / 2 },
+    ]
+      .filter(({ left, top }) => left >= EDGE && left + width <= frame.width - EDGE && top >= EDGE && top + h <= frame.height - BOTTOM_RESERVED);
+    const spot = candidates.find(({ left, top }) => !overlaps({ left, top, right: left + width, bottom: top + h }))
+      ?? (pin.emphasis ? { left: clampLeft(x, width, frame.width), top: labelTop(y, h, 7, frame.height) } : null);
+    if (spot) taken.push({ left: spot.left, top: spot.top, right: spot.left + width, bottom: spot.top + h });
+    placed.set(pin, { pin, x, y, width, label: spot });
+  }
+  // Drawn in the given order (the highlighted one last, on top).
+  return pins.map((pin) => placed.get(pin)).filter((entry): entry is PlacedPin => entry !== undefined);
 }
 
 /** The first four pins plus the highlighted one, drawn last so it's on top. */

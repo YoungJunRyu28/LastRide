@@ -75,4 +75,23 @@ describe('train lookups failing', () => {
     expect(after.walkingSource).toBe('estimated');
     expect(after.leaveByMs).toBe(jst(23, 40) - (6 + 3) * MINUTE_MS);
   });
+
+  test('from (about) the same spot, an Apple route is reused but an estimate is looked up again', async () => {
+    mocks.lastTrain.mockResolvedValue({ departsAt: jst(23, 40), arrivesAt: jst(24, 10), source: 'live' });
+    const routed = { walkingMinutes: 4, distanceMeters: 300, source: 'routed' as const, path: [here, motomachi] };
+    mocks.nearby.mockImplementation(async (_from: unknown, _speed: unknown, _limit: unknown, known?: Map<string, unknown>) =>
+      [{ station: motomachi, straightMeters: 80, walk: known?.get('元町・中華街') }]);
+    mocks.walk.mockResolvedValue(routed);
+    const first = await planNight(here, home, 4, jst(21), { nightOf: jst(21) });
+    expect(mocks.walk).toHaveBeenCalledTimes(1);
+    expect(first.walkPath).toEqual([here, motomachi]);
+    // Two minutes later from the same spot: the route (with its shape) is reused, not asked for again.
+    await planNight(here, home, 4, jst(21, 2), { nightOf: jst(21), previous: first });
+    expect(mocks.walk).toHaveBeenCalledTimes(1);
+    // A plan whose walk was only an estimate (or an older plan without a source): asked again.
+    const estimated = { ...first, walkingSource: 'estimated' as const, walkPath: undefined, alternatives: [] };
+    await planNight(here, home, 4, jst(21, 4), { nightOf: jst(21), previous: estimated });
+    expect(mocks.walk).toHaveBeenCalledTimes(2);
+  });
 });
+

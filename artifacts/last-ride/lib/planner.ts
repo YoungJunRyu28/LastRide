@@ -555,7 +555,14 @@ export async function planNight(
   const earlier = earlierResults(previous, nightOf, nowMs);
   // Barely moved: the walks found last time still hold, so Apple isn't asked again.
   const knownWalks = previous && earlier.size > 0 && distanceBetween(previous.coordinates, coordinates) <= SAME_SPOT_METERS
-    ? new Map([...earlier].map(([name, option]) => [name, { walkingMinutes: option.walkingMinutes, distanceMeters: option.distanceMeters, source: option.walkingSource ?? 'estimated', path: option.walkPath }]))
+    ? new Map(
+        [...earlier]
+          // Only Apple's own routes, with their shape: an estimate (or a walk from an
+          // older plan that didn't record its source) is looked up again, or it would
+          // be passed from plan to plan and never become a real route with a map line.
+          .filter(([, option]) => option.walkingSource === 'routed' && (option.walkPath?.length ?? 0) > 1)
+          .map(([name, option]) => [name, { walkingMinutes: option.walkingMinutes, distanceMeters: option.distanceMeters, source: 'routed' as const, path: option.walkPath }]),
+      )
     : undefined;
   // If Apple's station search fails, the last plan's stations stand in (lib/stations).
   const recent = previous && distanceBetween(previous.coordinates, coordinates) <= RECENT_STATIONS_METERS
