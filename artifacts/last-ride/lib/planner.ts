@@ -9,6 +9,7 @@ import { matchingDisruptionLines, recommendedLeaveTime, type LeaveMargin, recomm
 import { distanceBetween, findNearbyStations, LocationError, samePhysicalStation, walkingRoute, type Coordinates, type NearbyStation, type StationOption, type WalkingRoute, type WalkingSpeed } from '@/lib/stations';
 import { MINUTE_MS, serviceDayStart } from '@/lib/time';
 import { AppleLookupFailed, getLastTrain, trainsBefore, type TrainTime } from '@/lib/timetable';
+import { rememberEarlierTrains } from '@/lib/earlierTrains';
 import { hasPosition, resolveAddress, resolveStation } from '@/lib/storedPlaces';
 
 /** Time from the station entrance to the platform (gates, stairs, finding the right line). */
@@ -629,9 +630,10 @@ export async function planNight(
  * here, for the chosen station only. Never fails: no earlier trains is fine.
  */
 export async function withTrainsBefore(plan: NightPlan, nowMs: number): Promise<NightPlan> {
-  if (plan.lastTrain.before) return plan;
-  const before = await trainsBefore(plan.station, plan.destination, plan.lastTrain, nowMs).catch(() => []);
-  return { ...plan, lastTrain: { ...plan.lastTrain, before } };
+  const found = plan.lastTrain.before ?? (await trainsBefore(plan.station, plan.destination, plan.lastTrain, nowMs).catch(() => []));
+  // Found fewer than earlier tonight at this station (a flaky Apple answer): keep the ones already seen.
+  const before = await rememberEarlierTrains(plan.station.nameJa, plan.destination.nameJa, plan.lastTrain, found, nowMs);
+  return before === plan.lastTrain.before ? plan : { ...plan, lastTrain: { ...plan.lastTrain, before } };
 }
 
 /** A leave reminder (`minutesBefore` leave-by, 0 = "leave now") or the "missed it?" check-in. */

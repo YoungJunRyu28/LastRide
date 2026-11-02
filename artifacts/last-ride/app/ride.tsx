@@ -133,6 +133,7 @@ export default function RideScreen() {
     trainChoice,
     effectiveTrainChoice,
     trainChoices,
+    pinnedGainMinutes,
     setTrainChoice,
     trainChoiceOverride,
     chooseDepartureStation,
@@ -276,7 +277,10 @@ export default function RideScreen() {
 
   const freshness = plan ? planFreshness(plan.computedAt, nowMs) : null;
   const planAge = plan ? planAgeMinutes(plan.computedAt, nowMs) : null;
-  const canRefresh = !!plan && !isLocating && nowMs - plan.computedAt >= REFRESH_COOLDOWN_MS;
+  // Apple didn't find both earlier trains (1本前 / 2本前): a refresh may, so no waiting for it.
+  const missingEarlier =
+    !!plan && plan.lastTrain.source === "apple" && trainChoices.length < 3 && status !== "departed";
+  const canRefresh = !!plan && !isLocating && (missingEarlier || nowMs - plan.computedAt >= REFRESH_COOLDOWN_MS);
   const leaveAt = plan ? recommendedLeaveTime(plan) : null;
   // What the ring counts, the same as the widgets and the Live Activity: the
   // leave time, then (on the way) the train's departure.
@@ -570,11 +574,8 @@ export default function RideScreen() {
 
         {plan?.pinned &&
           (() => {
-            const gain = Math.round(
-              (recommendedLeaveTime(plan.autoPick) -
-                recommendedLeaveTime(plan)) /
-                60000,
-            );
+            // Station against station (both last trains), never 1本前 here against 終電 there.
+            const gain = pinnedGainMinutes;
             const autoName = ja
               ? plan.autoPick.station.nameJa
               : plan.autoPick.station.name;

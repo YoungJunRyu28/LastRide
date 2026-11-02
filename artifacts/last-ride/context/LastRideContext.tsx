@@ -84,7 +84,8 @@ import {
   serviceDate,
   jstDate,
 } from "@/lib/time";
-import { getFirstTrain, type TrainTime } from "@/lib/timetable";
+import { getFirstTrain, trainsBefore, type TrainTime } from "@/lib/timetable";
+import { rememberEarlierTrains } from "@/lib/earlierTrains";
 import { endLiveActivity, syncLiveActivity } from "@/lib/liveActivity";
 import { usePremium } from "@/context/PremiumContext";
 import { syncAppleLanguage } from "@/lib/applePlaces";
@@ -132,6 +133,9 @@ export type LocationErrorCode = LocationError["code"];
 /** A station change this soon after the user chose one is theirs, not automatic. */
 const USER_STATION_WINDOW_MS = 60_000;
 const AUTO_REPLAN_AFTER_MS = 5 * MINUTE_MS;
+/** Apple found fewer than two earlier trains: look again this often, a few times per station a night. */
+const EARLIER_RETRY_MS = 45_000;
+const EARLIER_RETRY_LIMIT = 3;
 
 /**
  * An explicit choice before either OS location-permission prompt. The saved
@@ -287,6 +291,12 @@ type RideContextValue = {
   /** The last train and up to two before it from tonight's station. */
   /** `catchable`: not departed yet; `late`: its leave time has passed (only made by hurrying). */
   trainChoices: Array<{ choice: TrainChoice; departsAt: number; leaveAt: number; catchable: boolean; late: boolean }>;
+  /**
+   * Locked to a station: how many minutes later the automatic station's last
+   * train would let you leave than this one's (both last trains, whichever
+   * train is chosen). 0 when the lock is on the automatic station itself.
+   */
+  pinnedGainMinutes: number;
   /** Set when the station changed and the chosen slot's leave time there had passed, so a later train is used. */
   trainChoiceOverride: TrainChoiceOverride | null;
   /** Lock tonight's plan to a station (any station; works without a location too). */
@@ -814,6 +824,41 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       cancelled = true;
     };
   }, [basePlan, getNow]);
+
+  // Apple's 1本前 / 2本前 lookup is unreliable: while fewer than two are known
+  // (and the last train is still to come), ask again a few times. What's found
+  // is remembered for the station (lib/earlierTrains.ts), so it doesn't vanish
+  // at the next search.
+  const earlierRetry = useRef<{ key: string; tries: number }>({ key: "", tries: 0 });
+  const [earlierRetryTick, setEarlierRetryTick] = useState(0);
+  useEffect(() => {
+    const before = basePlan?.lastTrain.before;
+    if (!basePlan || !before || before.length >= 2 || basePlan.lastTrain.source !== "apple") return;
+    if (basePlan.lastTrain.departsAt <= getNow()) return;
+    const key = `${serviceDate(getNow())}:${basePlan.station.nameJa}:${basePlan.destination.nameJa}`;
+    if (earlierRetry.current.key !== key) earlierRetry.current = { key, tries: 0 };
+    if (earlierRetry.current.tries >= EARLIER_RETRY_LIMIT) return;
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      earlierRetry.current.tries += 1;
+      const now = getNow();
+      void trainsBefore(basePlan.station, basePlan.destination, { ...basePlan.lastTrain, before: undefined }, now)
+        .catch(() => [] as TrainTime[])
+        .then((found) => rememberEarlierTrains(basePlan.station.nameJa, basePlan.destination.nameJa, basePlan.lastTrain, found, now))
+        .then((more) => {
+          if (cancelled) return;
+          if (more.length > before.length) {
+            setPlan((current) => (current === basePlan ? { ...basePlan, lastTrain: { ...basePlan.lastTrain, before: more } } : current));
+          } else {
+            setEarlierRetryTick((tick) => tick + 1);
+          }
+        });
+    }, EARLIER_RETRY_MS);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [basePlan, getNow, earlierRetryTick]);
 
   // Enterprise participation is deliberately privacy-minimal: only the computed
   // leave-by timestamp is synced. Location, station, destination and route stay local.
@@ -2041,6 +2086,10 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       trainChoice,
       effectiveTrainChoice: effectiveChoice,
       trainChoices,
+      pinnedGainMinutes:
+        basePlan?.pinned && !sameStation(basePlan.station, basePlan.autoPick.station)
+          ? Math.round((recommendedLeaveTime(basePlan.autoPick) - recommendedLeaveTime(basePlan)) / 60_000)
+          : 0,
       trainChoiceOverride: basePlan && activeOverride?.station === basePlan.station.nameJa ? activeOverride : null,
       chooseDepartureStation,
       lockFallback,
