@@ -152,7 +152,12 @@ export default function RideScreen() {
   // The control row's dropdowns: 終電 ▾ (which train) and the station ▾.
   const [panel, setPanel] = useState<"train" | "station" | null>(null);
   const [mapHeight, setMapHeight] = useState(MAP_HEIGHT);
+  // A dropdown or the route open for a moment: the map keeps its size and just
+  // moves down (the screen scrolls), instead of shrinking and fetching a new
+  // map image, then growing back and fetching the old one again.
+  const holdMapHeight = panel !== null || showRoute;
   const onMapSlotLayout = (event: LayoutChangeEvent) => {
+    if (holdMapHeight) return;
     // In steps of 10, so tiny layout changes don't fetch a new map image.
     const height = Math.min(MAP_MAX_HEIGHT, Math.floor(event.nativeEvent.layout.height / 10) * 10);
     if (height >= MAP_HEIGHT && height !== mapHeight) setMapHeight(height);
@@ -1419,7 +1424,7 @@ export default function RideScreen() {
             height doesn't count toward the slot, so the slot can shrink again. */}
         {plan && (
           <View
-            style={styles.mapSlot}
+            style={holdMapHeight ? [styles.mapSlot, { flexGrow: 0, height: mapHeight }] : styles.mapSlot}
             onLayout={onMapSlotLayout}
           >
           <View style={StyleSheet.absoluteFill}>

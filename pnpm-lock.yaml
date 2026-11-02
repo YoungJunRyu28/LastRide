@@ -4,30 +4,6 @@ settings:
   autoInstallPeers: false
   excludeLinksFromLockfile: false
 
-catalogs:
-  default:
-    '@tanstack/react-query':
-      specifier: ^5.105.0
-      version: 5.105.0
-    '@types/node':
-      specifier: ^25.3.3
-      version: 25.9.5
-    drizzle-orm:
-      specifier: ^0.45.4
-      version: 0.45.4
-    react-dom:
-      specifier: 19.2.3
-      version: 19.2.3
-    tsx:
-      specifier: ^4.23.15
-      version: 4.23.15
-    vite:
-      specifier: ^8.3.5
-      version: 8.3.5
-    zod:
-      specifier: ^4.6.7
-      version: 4.6.7
-
 overrides:
   '@esbuild-kit/esm-loader': npm:tsx@^4.21.0
   '@expo/ngrok-bin>@expo/ngrok-bin-darwin-arm64': '-'
@@ -132,10 +108,6 @@ patchedDependencies:
 importers:
 
   .:
-    dependencies:
-      '@replit/connectors-sdk':
-        specifier: ^0.5.0
-        version: 0.5.0
     devDependencies:
       prettier:
         specifier: ^3.9.10
@@ -1589,9 +1561,6 @@ packages:
     peerDependenciesMeta:
       '@types/react':
         optional: true
-
-  '@replit/connectors-sdk@0.5.0':
-    resolution: {integrity: sha512-SQ0AWe/CE7ZOhn0zFxAReDJceHkC+r2pwot4ktE8luSeyx3xOYES9W/L4X5RFklvJ1CD+GTTN1GyXVCjH4N7jQ==}
 
   '@revenuecat/purchases-js-hybrid-mappings@19.10.0':
     resolution: {integrity: sha512-oHS+x18B2Q6dtaZJPuicJorhR+xUaAdt/tpLE1wQQHngkHksKN6AwbZDdt3x3rHHmEDjqgircORCbe5EwLF4hA==}
@@ -6373,8 +6342,6 @@ snapshots:
       react-native: 0.86.3(@babel/core@7.29.7)(@types/react@19.2.18)(react@19.2.3)
     optionalDependencies:
       '@types/react': 19.2.18
-
-  '@replit/connectors-sdk@0.5.0': {}
 
   '@revenuecat/purchases-js-hybrid-mappings@19.10.0':
     dependencies:
