@@ -334,6 +334,8 @@ export default function RideScreen() {
   ]);
 
   // "自宅（押上）へ": the saved name plus its station, unless they're the same.
+  // The first lookup (or one about to start on its own): the location card shows it's loading.
+  const firstLoad = !isLocationReady && (isLocating || (!locationError && !!homeStationOption));
   // No station within walking reach and no plan: the far-station card takes the hero's place.
   const farMode = locationError === "no-station" && !isLocationReady && !isLocating;
   const homeStationName = homeStationOption
@@ -923,6 +925,37 @@ export default function RideScreen() {
             )}
           </View>
         )}
+        {/* Tonight's station, right under the status line (no scrolling to the train card):
+            lock this one, or choose any station by search. */}
+        {plan && !onBoard && (
+          <View style={styles.lockRow}>
+            {!plan.pinned && (
+              <Pressable
+                testID="lock-station"
+                onPress={() => void chooseDepartureStation(plan.station)}
+                accessibilityRole="button"
+                style={({ pressed }) => [styles.smallButton, styles.lockButton, { borderColor: colors.input, opacity: pressed ? 0.7 : 1 }]}
+              >
+                <Feather name="lock" size={13} color={colors.foreground} />
+                <Text style={[styles.smallButtonText, { color: colors.foreground }]}>
+                  {ja ? "この駅に固定" : "Lock this station"}
+                </Text>
+              </Pressable>
+            )}
+            <Pressable
+              testID="choose-station"
+              onPress={() => router.push("/departure-station")}
+              accessibilityRole="button"
+              style={({ pressed }) => [styles.smallButton, styles.lockButton, { borderColor: colors.input, opacity: pressed ? 0.7 : 1 }]}
+            >
+              <Feather name="search" size={13} color={colors.foreground} />
+              <Text style={[styles.smallButtonText, { color: colors.foreground }]}>
+                {ja ? "駅を選ぶ" : "Choose station"}
+              </Text>
+            </Pressable>
+          </View>
+        )}
+
         {/* Tracking only while open: a compact suggestion to update when closed
             (iOS "Always"), closable for tonight; after that just the note. */}
         {trackingMode === "foreground" && alwaysCard.show && (
@@ -1350,35 +1383,6 @@ export default function RideScreen() {
                 )}
               </>
             )}
-            {/* Lock tonight's station: this one, or any station by search */}
-            <View style={[styles.divider, { backgroundColor: colors.border }]} />
-            <View style={styles.lockRow}>
-              {!plan.pinned && (
-                <Pressable
-                  testID="lock-station"
-                  onPress={() => void chooseDepartureStation(plan.station)}
-                  accessibilityRole="button"
-                  style={({ pressed }) => [styles.smallButton, styles.lockButton, { borderColor: colors.input, opacity: pressed ? 0.7 : 1 }]}
-                >
-                  <Feather name="lock" size={13} color={colors.foreground} />
-                  <Text style={[styles.smallButtonText, { color: colors.foreground }]}>
-                    {ja ? "この駅に固定" : "Lock this station"}
-                  </Text>
-                </Pressable>
-              )}
-              <Pressable
-                testID="choose-station"
-                onPress={() => router.push("/departure-station")}
-                accessibilityRole="button"
-                style={({ pressed }) => [styles.smallButton, styles.lockButton, { borderColor: colors.input, opacity: pressed ? 0.7 : 1 }]}
-              >
-                <Feather name="search" size={13} color={colors.foreground} />
-                <Text style={[styles.smallButtonText, { color: colors.foreground }]}>
-                  {ja ? "駅を選ぶ" : "Choose station"}
-                </Text>
-              </Pressable>
-            </View>
-
           </Card>
         )}
 
@@ -1388,6 +1392,7 @@ export default function RideScreen() {
         {locationError !== "permission" && locationError !== "no-station" && !isLocationReady && (
           <Pressable
             testID="enable-location"
+            disabled={firstLoad}
             onPress={() => void requestLocation()}
             accessibilityRole="button"
             style={({ pressed }) => [
@@ -1399,10 +1404,14 @@ export default function RideScreen() {
               },
             ]}
           >
-            <Feather name={locationError === "near-home" && !isLocating ? "home" : "crosshair"} color={colors.primary} size={18} />
+            {firstLoad ? (
+              <ActivityIndicator color={colors.primary} />
+            ) : (
+              <Feather name={locationError === "near-home" ? "home" : "crosshair"} color={colors.primary} size={18} />
+            )}
             <View style={styles.flex}>
               <Text style={[styles.rowTitle, { color: colors.foreground }]}>
-                {isLocating
+                {firstLoad
                   ? ja
                     ? "近くの駅を検索しています…"
                     : "Finding your closest station…"
@@ -1415,7 +1424,11 @@ export default function RideScreen() {
                       : "Use my location"}
               </Text>
               <Text style={[styles.note, { color: colors.mutedForeground }]}>
-                {locationError
+                {firstLoad
+                  ? ja
+                    ? "現在地から終電を調べています"
+                    : "Checking tonight's last train from here"
+                  : locationError
                   ? locationErrorText(locationError, ja)
                   : ja
                     ? "近くの駅と徒歩時間を確認します"
@@ -1577,7 +1590,7 @@ const styles = StyleSheet.create({
   smallButton: { borderRadius: 12, borderWidth: 1, borderColor: "transparent", paddingHorizontal: 14, paddingVertical: 9 },
   joinButton: { borderWidth: 0 },
   smallButtonText: { fontSize: 13, fontWeight: "800" },
-  lockRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  lockRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: -6 },
   alwaysCard: { gap: 12, paddingHorizontal: 18, paddingVertical: 18 },
   alwaysStrip: { alignItems: "center", borderRadius: 16, borderWidth: 1, flexDirection: "row", gap: 10, paddingHorizontal: 14, paddingVertical: 10 },
   alwaysTitle: { fontSize: 13, fontWeight: "800" },
