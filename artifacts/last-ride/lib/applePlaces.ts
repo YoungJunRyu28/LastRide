@@ -147,6 +147,15 @@ export function stationsFromSearch(origin: Coordinates, places: Place[], radiusM
 
 /** No station this close: look this far for the nearest ones (本牧, the harbour). */
 const WIDER_RADIUS_METERS = 5000;
+/**
+ * Also searched over this small an area: in central Tokyo a 「駅」 search over
+ * the 2.5 km area answers the big-name stations a few km off first (from 渋谷:
+ * 飯田橋, 大手町, 永田町…, nothing within 2.5 km), while over 1 km it answers
+ * 渋谷, 神泉, 表参道. Apple ranks by relevance and treats the area as a hint.
+ */
+const CLOSE_RADIUS_METERS = 1000;
+
+type StationSearch = Pick<NonNullable<typeof AppleMaps>, 'searchPlaces' | 'nearbyStations'>;
 
 /**
  * Stations around `coordinates`. A 「駅」 search, not Apple's nearby
@@ -154,21 +163,28 @@ const WIDER_RADIUS_METERS = 5000;
  * residential area (near 山手 it listed only two stations, at times none, and
  * the subway-only server list then gave a 30-minute walk), and on a Japanese
  * iPhone a bus stop named after a station is called 「横浜本牧駅」 too. The
- * search answers railway stations, nearest first; none within 2.5 km, it looks
- * up to 5 km out. Only if the search itself fails, the nearby places as before
- * (never just because it found none: there they'd be bus stops).
+ * search answers railway stations; it runs over 1 km and 2.5 km together
+ * (see CLOSE_RADIUS_METERS), and with none within 2.5 km looks up to 5 km out.
+ * Only if the searches themselves fail, the nearby places as before (never
+ * just because they found none: there they'd be bus stops).
  */
-async function stationPlaces(maps: NonNullable<typeof AppleMaps>, coordinates: Coordinates): Promise<Place[]> {
-  const search = async (radius: number) => {
+export async function stationPlaces(maps: StationSearch, coordinates: Coordinates): Promise<Place[]> {
+  const search = async (radius: number, within = radius) => {
     const found = await maps.searchPlaces('駅', coordinates, radius);
-    return stationsFromSearch(coordinates, found, radius).filter(isRailwayStation);
+    return stationsFromSearch(coordinates, found, within).filter(isRailwayStation);
   };
-  let near: Place[];
-  try {
-    near = await search(NEARBY_RADIUS_METERS);
-  } catch {
+  // The close search's answers count out to 2.5 km too (it lists 恵比寿 at 1.7 km).
+  const [close, nearby] = await Promise.allSettled([
+    search(CLOSE_RADIUS_METERS, NEARBY_RADIUS_METERS),
+    search(NEARBY_RADIUS_METERS),
+  ]);
+  if (close.status === 'rejected' && nearby.status === 'rejected') {
     return maps.nearbyStations(coordinates, NEARBY_RADIUS_METERS);
   }
+  const near = [
+    ...(close.status === 'fulfilled' ? close.value : []),
+    ...(nearby.status === 'fulfilled' ? nearby.value : []),
+  ];
   return near.length > 0 ? near : search(WIDER_RADIUS_METERS);
 }
 

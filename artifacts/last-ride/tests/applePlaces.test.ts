@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { distinctStations, domesticPhone, isRailwayStation, stationBaseName, stationsFromSearch, taxiCompaniesFrom } from "@/lib/applePlaces";
+import { distinctStations, domesticPhone, isRailwayStation, stationBaseName, stationPlaces, stationsFromSearch, taxiCompaniesFrom } from "@/lib/applePlaces";
 
 const place = (name: string, latitude: number, longitude: number) => ({
   name,
@@ -150,5 +150,43 @@ describe("taxi companies to call (no stand nearby)", () => {
   it("numbers as dialled at home", () => {
     expect(domesticPhone("+81 45 623 8884")).toBe("045-623-8884");
     expect(domesticPhone("+81 120598802")).toBe("0120-598-802");
+  });
+});
+
+describe("stationPlaces", () => {
+  // Shibuya crossing. Apple's 「駅」 search over 2.5 km from here answered
+  // 飯田橋, 半蔵門, 永田町… (4–7 km); over 1 km it answered 渋谷, 神泉, 恵比寿.
+  const shibuya = { latitude: 35.6595, longitude: 139.7005 };
+  const far = [place("永田町駅", 35.6787, 139.7403), place("飯田橋駅", 35.7021, 139.7452)];
+  const local = [place("渋谷駅", 35.6580, 139.7016), place("神泉駅", 35.6573, 139.6935), place("恵比寿駅", 35.6467, 139.7101)];
+  const maps = (byRadius: Record<number, typeof local | Error>) => ({
+    searchPlaces: async (_query: string, _center: unknown, radius: number) => {
+      const answer = byRadius[radius] ?? [];
+      if (answer instanceof Error) throw answer;
+      return answer;
+    },
+    nearbyStations: async () => [place("渋谷駅 - 0番のりば", 35.6593, 139.7006)],
+  });
+
+  it("finds the stations around Shibuya even when the 2.5 km search answers only far ones", async () => {
+    const found = await stationPlaces(maps({ 1000: local, 2500: far }), shibuya);
+    expect(distinctStations(shibuya, found, 3).map((s) => s.station.nameJa)).toEqual(["渋谷", "神泉", "恵比寿"]);
+  });
+
+  it("keeps the close search's answers out to 2.5 km, and the wider one's too", async () => {
+    const yoyogi = place("代々木上原駅", 35.6690, 139.6797); // ~2.1 km
+    const found = await stationPlaces(maps({ 1000: [local[0]], 2500: [yoyogi] }), shibuya);
+    expect(found.map((p) => p.name).sort()).toEqual(["代々木上原駅", "渋谷駅"]);
+  });
+
+  it("looks out to 5 km when neither finds a station within 2.5 km", async () => {
+    const found = await stationPlaces(maps({ 1000: far, 2500: far, 5000: far }), shibuya);
+    expect(found.map((p) => p.name)).toEqual(["永田町駅"]);
+  });
+
+  it("uses one search when the other fails, and the nearby places only when both fail", async () => {
+    expect((await stationPlaces(maps({ 1000: new Error("throttled"), 2500: local }), shibuya)).length).toBe(3);
+    const fallback = await stationPlaces(maps({ 1000: new Error("x"), 2500: new Error("y") }), shibuya);
+    expect(fallback.map((p) => p.name)).toEqual(["渋谷駅 - 0番のりば"]);
   });
 });
