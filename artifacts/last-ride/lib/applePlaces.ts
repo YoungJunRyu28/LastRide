@@ -14,6 +14,7 @@ import { AppleMaps, type Place } from '@/modules/apple-maps/src';
 import type { Coordinates, NearbyStation, StationOption, WalkingRoute, WalkingSpeed } from '@/lib/stations';
 import { bilingualStationName } from '@/lib/stationNames';
 import { isValidMapCoordinate } from '@/lib/mapSnapshotGuard';
+import { isKnownStation } from '@/lib/stationIndex';
 
 const SPEED_MULTIPLIER: Record<WalkingSpeed, number> = { relaxed: 0.8, normal: 1, fast: 1.2 };
 /** How far to look for stations around the user. */
@@ -44,13 +45,28 @@ export function stationBaseName(name: string): string {
 }
 
 /**
+ * Gondolas, ropeways and cable cars: Apple files their stops as public
+ * transport named 「…駅」 too, and a route "from" one is just a walk to a real
+ * station. Matched on the whole name, operator brackets included.
+ */
+const AERIAL_LIFT = /ロープ[ウう][ェエ][イー]?|ゴンドラ|ケーブル|エアキャビン|リフト|air\s*cabin|ropeway|gondola|cable\s*car/i;
+/** Lift stops whose names look just like a station's (no lift word in Apple's name). */
+const LIFT_STOPS = new Set(['運河パーク', 'Unga Park']);
+
+/**
  * Apple's public-transport places include bus stops, taxi ranks ("渋谷駅
- * タクシー乗り場") and exits. Keep names that end in 駅 / Station once any
- * bracketed operator is removed.
+ * タクシー乗り場"), exits, and gondola stops (運河パーク駅, YOKOHAMA AIR
+ * CABIN). Keep names that end in 駅 / Station once any bracketed operator is
+ * removed, and that aren't a bus or a lift.
  */
 export function isRailwayStation(place: Pick<Place, 'name'>): boolean {
   const name = place.name.replace(/[（(][^）)]*[）)]/g, '').trim();
-  return /(駅|station)$/i.test(name) && !/バス|bus/i.test(name);
+  return (
+    /(駅|station)$/i.test(name) &&
+    !/バス|bus/i.test(name) &&
+    !AERIAL_LIFT.test(place.name) &&
+    !LIFT_STOPS.has(stationBaseName(place.name))
+  );
 }
 
 function toStation(place: Place): StationOption {
@@ -179,13 +195,28 @@ export async function stationPlaces(maps: StationSearch, coordinates: Coordinate
     search(NEARBY_RADIUS_METERS),
   ]);
   if (close.status === 'rejected' && nearby.status === 'rejected') {
-    return maps.nearbyStations(coordinates, NEARBY_RADIUS_METERS);
+    return preferKnownStations(await maps.nearbyStations(coordinates, NEARBY_RADIUS_METERS));
   }
   const near = [
     ...(close.status === 'fulfilled' ? close.value : []),
     ...(nearby.status === 'fulfilled' ? nearby.value : []),
   ];
-  return near.length > 0 ? near : search(WIDER_RADIUS_METERS);
+  // Real passenger stations first (lib/stationIndex): a bus stop or gondola stop
+  // called 「…駅」 is used only when no known station is within 5 km.
+  const knownNear = near.filter(isKnownPlace);
+  if (knownNear.length > 0) return knownNear;
+  if (near.length === 0) return preferKnownStations(await search(WIDER_RADIUS_METERS));
+  const wider = await search(WIDER_RADIUS_METERS).catch(() => [] as Place[]);
+  const knownWider = wider.filter(isKnownPlace);
+  return knownWider.length > 0 ? knownWider : near;
+}
+
+const isKnownPlace = (place: Place) => isKnownStation(toStation(place));
+
+/** The known passenger stations among `places` (lib/stationIndex) when there are any; else all of them. */
+export function preferKnownStations(places: Place[]): Place[] {
+  const known = places.filter(isKnownPlace);
+  return known.length > 0 ? known : places;
 }
 
 /** How far to look for the nearest station when none is within walking reach. */
@@ -206,7 +237,7 @@ export type FarStation = {
 export async function appleNearestStationByCar(coordinates: Coordinates): Promise<FarStation | null> {
   if (!AppleMaps) return null;
   const found = await AppleMaps.searchPlaces('駅', coordinates, FARTHEST_RADIUS_METERS);
-  const [nearest] = distinctStations(coordinates, stationsFromSearch(coordinates, found, FARTHEST_RADIUS_METERS).filter(isRailwayStation), 1);
+  const [nearest] = distinctStations(coordinates, preferKnownStations(stationsFromSearch(coordinates, found, FARTHEST_RADIUS_METERS).filter(isRailwayStation)), 1);
   if (!nearest) return null;
   const drive = await appleDrivingEta(coordinates, nearest.station).catch(() => null);
   return { ...nearest, drive };
@@ -228,9 +259,9 @@ export async function appleSearchStations(query: string): Promise<StationOption[
   if (!AppleMaps) return null;
   const places = await AppleMaps.searchStations(/駅$/.test(query) ? query : `${query}駅`);
   const result: StationOption[] = [];
-  for (const station of places
+  for (const station of preferKnownStations(places
     .filter((place) => isValidMapCoordinate(place))
-    .filter(isRailwayStation)
+    .filter(isRailwayStation))
     .map(toStation)) {
     if (result.some((seen) =>
       seen.nameJa === station.nameJa && distance(seen, station) <= 1500)) continue;

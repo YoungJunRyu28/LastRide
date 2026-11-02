@@ -8,11 +8,13 @@ import { useLastRide } from '@/context/LastRideContext';
 import { useColors } from '@/hooks/useColors';
 
 import { SUPPORT_EMAIL } from '@/lib/links';
+import { STATION_POINTS_YEAR } from '@/lib/stationPointsData';
 
 const ODPT_URL = 'https://www.odpt.org/';
 const CC_BY_URL = 'https://creativecommons.org/licenses/by/4.0/deed.ja';
 const APPLE_LEGAL_URL = 'https://gspe21-ssl.ls.apple.com/html/attribution.html';
 const OSM_COPYRIGHT_URL = 'https://www.openstreetmap.org/copyright';
+const KSJ_RAILWAY_URL = `https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-N02-${STATION_POINTS_YEAR}.html`;
 
 /**
  * Data sources and the notices their licences require. ODPT's 公共交通オープン
@@ -100,6 +102,14 @@ export default function DataSourcesScreen() {
             ? ['駅名の英語表記（日本語との対応）は、OpenStreetMapのデータを利用しています。© OpenStreetMap contributors（ODbL）。']
             : ['English station names (and their Japanese pairs) use OpenStreetMap data. © OpenStreetMap contributors, available under the Open Database Licence (ODbL).'],
           { label: '© OpenStreetMap contributors', url: OSM_COPYRIGHT_URL },
+        )}
+
+        {section(
+          ja ? '国土数値情報' : 'National Land Numerical Information',
+          ja
+            ? ['駅の一覧（近くの駅が鉄道の駅かどうかの確認）は、「国土数値情報（鉄道データ）」（国土交通省）を加工して作成しています。クリエイティブ・コモンズ 表示 4.0 国際 ライセンス（CC BY 4.0）。']
+            : ['The list of railway stations (used to check that a nearby station is a train station) is adapted from 国土数値情報（鉄道データ）, Ministry of Land, Infrastructure, Transport and Tourism, under the Creative Commons Attribution 4.0 licence (CC BY 4.0).'],
+          { label: ja ? '国土数値情報（鉄道データ）' : 'Railway data (MLIT)', url: KSJ_RAILWAY_URL },
         )}
       </ScrollView>
     </View>

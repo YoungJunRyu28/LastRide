@@ -27,6 +27,19 @@ describe("isRailwayStation", () => {
     expect(isRailwayStation({ name: "道玄坂上" })).toBe(false);
   });
 
+  it("drops gondola, ropeway and cable-car stops (運河パーク駅 is YOKOHAMA AIR CABIN)", () => {
+    expect(isRailwayStation({ name: "運河パーク駅" })).toBe(false);
+    expect(isRailwayStation({ name: "Unga Park Station" })).toBe(false);
+    expect(isRailwayStation({ name: "桜木町駅 (YOKOHAMA AIR CABIN)" })).toBe(false);
+    expect(isRailwayStation({ name: "早雲山駅（箱根ロープウェイ）" })).toBe(false);
+    expect(isRailwayStation({ name: "高尾山口駅（ケーブルカー）" })).toBe(false);
+    expect(isRailwayStation({ name: "ゴンドラ山頂駅" })).toBe(false);
+    // The real stations next to them stay.
+    expect(isRailwayStation({ name: "桜木町駅" })).toBe(true);
+    expect(isRailwayStation({ name: "みなとみらい駅" })).toBe(true);
+    expect(isRailwayStation({ name: "馬車道駅 (みなとみらい線)" })).toBe(true);
+  });
+
   it("drops taxi ranks and exits named after a station", () => {
     expect(isRailwayStation({ name: "渋谷駅 タクシー乗り場" })).toBe(false);
     expect(isRailwayStation({ name: "渋谷駅 ハチ公口" })).toBe(false);
@@ -182,6 +195,26 @@ describe("stationPlaces", () => {
   it("looks out to 5 km when neither finds a station within 2.5 km", async () => {
     const found = await stationPlaces(maps({ 1000: far, 2500: far, 5000: far }), shibuya);
     expect(found.map((p) => p.name)).toEqual(["永田町駅"]);
+  });
+
+  it("prefers a real station farther off over a 「…駅」 that isn't one (横浜本牧: bus stop by a freight terminal)", async () => {
+    const honmoku = { latitude: 35.418, longitude: 139.668 };
+    const busStop = place("横浜本牧駅", 35.4234, 139.6714);
+    const yamate = place("山手駅", 35.4272, 139.6463);
+    const found = await stationPlaces(maps({ 1000: [busStop], 2500: [busStop], 5000: [busStop, yamate] }), honmoku);
+    expect(found.map((p) => p.name)).toEqual(["山手駅"]);
+    // A gondola stop beside real stations never wins either.
+    const unga = place("運河パーク", 35.4538, 139.6339);
+    const minatomirai = place("みなとみらい駅", 35.4575, 139.6325);
+    const atUnga = { latitude: 35.4535, longitude: 139.6345 };
+    expect((await stationPlaces(maps({ 1000: [unga, minatomirai], 2500: [] }), atUnga)).map((p) => p.name)).toEqual(["みなとみらい駅"]);
+  });
+
+  it("still uses a station missing from the list (opened since) when no known one is in reach", async () => {
+    const somewhere = { latitude: 43.06, longitude: 141.95 };
+    const brandNew = place("新しい駅", 43.062, 141.951);
+    const found = await stationPlaces(maps({ 1000: [brandNew], 2500: [brandNew], 5000: [] }), somewhere);
+    expect(distinctStations(somewhere, found, 3).map((s) => s.station.nameJa)).toEqual(["新しい"]);
   });
 
   it("uses one search when the other fails, and the nearby places only when both fail", async () => {
