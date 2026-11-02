@@ -42,7 +42,7 @@ export default function NewGroupScreen() {
       else if (errorStatus(error) === 403) {
         Alert.alert(
           ja ? 'アプリの更新が必要です' : 'Update required',
-          ja ? 'グループの安全な作成には、LastRideの最新版が必要です。アプリを更新してもう一度お試しください。' : 'Creating paid groups securely requires the latest LastRide app. Update the app and try again.',
+          ja ? 'グループの安全な作成には、帰り時の最新版が必要です。アプリを更新してもう一度お試しください。' : 'Creating paid groups securely requires the latest LastRide app. Update the app and try again.',
         );
       } else if (errorStatus(error) === 401) {
         Alert.alert(

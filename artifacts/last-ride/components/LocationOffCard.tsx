@@ -20,7 +20,7 @@ export function LocationOffCard({ ja }: { ja: boolean }) {
       </View>
       <Text style={[styles.body, { color: colors.mutedForeground }]}>
         {ja
-          ? "iPhoneの設定で、帰り時の位置情報を許可してください。戻ると自動で更新します。"
+          ? "iPhoneの設定で帰り時の位置情報を許可すると、戻ったときに自動で更新します。"
           : "Allow location for LastRide in iPhone Settings. The app updates by itself when you come back."}
       </Text>
       <Text style={[styles.body, { color: colors.mutedForeground }]}>

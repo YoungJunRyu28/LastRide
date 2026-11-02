@@ -299,7 +299,7 @@ export default function FarWaysScreen() {
                   );
                 })}
                 <Text style={[styles.small, { color: colors.subtle }]}>
-                  {ja ? "料金は目安です。夜遅いと受付を閉める宿もあるので、先に電話で確かめてください。" : "Prices are estimates. Some inns close their front desk late: call ahead."}
+                  {ja ? "料金は目安。深夜は先に電話を" : "Prices are estimates. Call ahead late at night."}
                 </Text>
               </View>
             ) : (
@@ -334,7 +334,7 @@ export default function FarWaysScreen() {
             </Text>
           </View>
           <Text style={[styles.small, { color: colors.subtle }]}>
-            {ja ? "深夜割増を含む距離からの概算です（高速料金は含みません）。" : "Estimated from the distance, late-night rate included (tolls not included)."}
+            {ja ? "概算・深夜割増込み・高速代別" : "Estimate, late-night rate included, tolls extra"}
           </Text>
           {button(ja ? "自宅までの道順（車）" : "Driving directions home", "navigation", () => openDrivingRoute(taxiHome.to), true, "far-drive-home")}
           {far ? <TaxiContacts stand={far.taxiStand} companies={far.taxiCompanies} ja={ja} /> : null}

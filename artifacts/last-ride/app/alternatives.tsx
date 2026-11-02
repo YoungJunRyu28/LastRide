@@ -1008,11 +1008,6 @@ export default function AlternativesScreen() {
               </View>
             </View>
 
-            <Text style={[styles.note, { color: colors.mutedForeground }]}>
-              {ja
-                ? "終電ルート上で、今から間に合う最も先の駅まで電車で向かいます。時刻には現在地から駅までの徒歩時間も含まれます。"
-                : "Uses the farthest useful stop from the original last-train path that you can still reach, including your walk to the boarding station."}
-            </Text>
           </View>
         )}
 
@@ -1277,7 +1272,7 @@ export default function AlternativesScreen() {
                   style={[styles.note, { color: colors.secondaryForeground }]}
                 >
                   {ja
-                    ? "周辺施設を検索できませんでした。タップして再試行してください"
+                    ? "周辺の施設を検索できません　タップで再試行"
                     : "Nearby search was busy. Tap to retry"}
                 </Text>
               </Pressable>
@@ -1439,15 +1434,15 @@ export default function AlternativesScreen() {
                 )}
                 <Text style={[styles.note, { color: colors.mutedForeground }]}>
                   {ja
-                    ? "料金は一般的な深夜料金から算出した概算です。実際の料金は店舗にご確認ください。タップすると地図アプリが開きます。"
-                    : "Prices are typical late-night rates for that chain — check with the venue. Tap a name for Maps."}
+                    ? "料金は目安"
+                    : "Prices are estimates"}
                 </Text>
               </>
             ) : (
               <Text style={[styles.note, { color: colors.mutedForeground }]}>
                 {ja
-                  ? "徒歩圏内に見つかりませんでした。タクシーの利用や始発までの待機もご検討ください。"
-                  : "Nothing within walking distance. A taxi or waiting for the first train may be your options."}
+                  ? "歩いて行ける範囲にはありません"
+                  : "Nothing within walking distance"}
               </Text>
             )}
           </View>
@@ -1571,7 +1566,7 @@ export default function AlternativesScreen() {
                           .filter(Boolean)
                           .join(" · ")
                       : ja
-                        ? "現在地と帰る場所を設定してください。"
+                        ? "現在地と帰る場所が必要です"
                         : "Needs your location and destination."}
                 </Text>
               </View>

@@ -85,7 +85,7 @@ export default function DataSourcesScreen() {
           ja
             ? [
                 '地図、徒歩時間、周辺の施設、JR・私鉄などの時刻はApple Mapsのデータです。',
-                '「目安」と表示された時刻は、電車か徒歩かを確認できなかった推定です。乗換案内アプリでも確認してください。',
+                '「目安」と表示された時刻は、電車か徒歩かを確認できなかった推定です。乗換案内アプリでも確認を。',
               ]
             : [
                 'Maps, walking times, nearby places, and times for JR and private railways come from Apple Maps.',

@@ -65,7 +65,7 @@ export default function ReminderSettingsScreen() {
         <Section>
           <Row
             title={ja ? '通知が許可されていません' : 'Notifications are off'}
-            subtitle={ja ? 'タップしてiPhoneの設定から通知を許可してください' : 'Tap to allow them in iPhone Settings'}
+            subtitle={ja ? 'iPhoneの設定で許可 ↗' : 'Allow in iPhone Settings ↗'}
             onPress={() => void Linking.openSettings()}
             destructive
           />
@@ -128,7 +128,7 @@ export default function ReminderSettingsScreen() {
               <Row
                 testID="alarm-settings"
                 title={ja ? 'iPhoneの設定でアラームがオフです' : 'Alarms are off in iPhone Settings'}
-                subtitle={ja ? 'タップして許可してください' : 'Tap to allow them'}
+                subtitle={ja ? 'タップして許可' : 'Tap to allow them'}
                 onPress={() => void Linking.openSettings()}
                 destructive
               />

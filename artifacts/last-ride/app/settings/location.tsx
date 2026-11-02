@@ -48,7 +48,7 @@ export default function NightLocationScreen() {
           <Row
             testID="background-location-settings"
             title={ja ? 'iPhoneの設定が「常に」ではありません' : 'iPhone Settings isn’t “Always”'}
-            subtitle={ja ? 'このままでは閉じている間は更新されません。タップして「常に」にしてください。' : 'LastRide can’t update while closed until then. Tap to set “Always”.'}
+            subtitle={ja ? 'このままでは閉じている間は更新されません。タップして「常に」に' : 'LastRide can’t update while closed until then. Tap to set “Always”.'}
             onPress={() => void Linking.openSettings()}
             destructive
           />

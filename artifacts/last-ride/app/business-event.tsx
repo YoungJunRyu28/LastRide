@@ -158,7 +158,7 @@ function BusinessEventScreen() {
     if (!invite || !event) return;
     const link = joinLink(invite.token);
     const message = ja
-      ? `「${event.title}」にLastRideで参加してください。\n参加コード: ${invite.code}\n${link}`
+      ? `「${event.title}」に帰り時で参加してください。\n参加コード: ${invite.code}\n${link}`
       : `Join ${event.title} on LastRide.\nJoin code: ${invite.code}\n${link}`;
     await Share.share({ message });
   };

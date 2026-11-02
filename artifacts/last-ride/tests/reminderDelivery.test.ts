@@ -316,9 +316,9 @@ describe('reminder delivery', () => {
       await scheduleReminders(leaveNow(start + 300_000), text, { sound: 'default', vibrate: true }, info(start + 300_000, '新宿三丁目'));
       expect(mocks.notificationSchedule).toHaveBeenCalledTimes(3);
       const calls = mocks.notificationSchedule.mock.calls as unknown as Array<[{ content: { title: string }; trigger: unknown }]>;
-      expect(calls[1][0].content.title).toBe('LastRide — 出発駅が変わりました');
+      expect(calls[1][0].content.title).toBe('出発駅が変わりました');
       expect(calls[1][0].trigger).toBeNull();
-      expect(calls[2][0].content.title).toBe('LastRide — 出る時間です');
+      expect(calls[2][0].content.title).toBe('出る時間です');
       expect(calls[2][0].trigger).not.toBeNull();
     } finally {
       vi.useRealTimers();
@@ -341,7 +341,7 @@ describe('reminder delivery', () => {
         info('新宿三丁目', '1本前', '23:31', '2本前'));
       const notice = (mocks.notificationSchedule.mock.calls as unknown as Array<[{ content: { title: string; body: string } }]>)
         .map(([request]) => request.content)
-        .find((content) => content.title === 'LastRide — 出発駅が変わりました');
+        .find((content) => content.title === '出発駅が変わりました');
       expect(notice?.body).toBe('新宿三丁目から1本前（23:31発）。23:22に出る。2本前は出る時刻を過ぎていたため、1本前にしています。');
     } finally {
       vi.useRealTimers();
@@ -364,12 +364,12 @@ describe('reminder delivery', () => {
       vi.setSystemTime(start + 70_000);
       await scheduleReminders(at(start + 3_000_000), text, undefined, info(start + 3_000_000));
       const titles = (mocks.notificationSchedule.mock.calls as unknown as Array<[{ content: { title: string } }]>).map(([request]) => request.content.title);
-      expect(titles).not.toContain('LastRide — 出発時刻が変更されました');
+      expect(titles).not.toContain('出る時刻が変わりました');
       // Long after the change, once 30分前 has gone out at the new time, a real move is told again.
       vi.setSystemTime(start + 1_300_000);
       await scheduleReminders(at(start + 3_600_000), text, undefined, info(start + 3_600_000));
       const later = (mocks.notificationSchedule.mock.calls as unknown as Array<[{ content: { title: string } }]>).map(([request]) => request.content.title);
-      expect(later).toContain('LastRide — 出発時刻が変更されました');
+      expect(later).toContain('出る時刻が変わりました');
     } finally {
       vi.useRealTimers();
     }

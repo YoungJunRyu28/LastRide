@@ -90,11 +90,11 @@ export function heldTrain(
 export function boardedQuestion(held: HeldTrain, language: 'ja' | 'en') {
   return language === 'ja'
     ? {
-        title: `LastRide — ${held.label}に乗れましたか？`,
-        body: `乗り遅れた場合：${held.next}は${held.nextDeparts}発。アプリを開くと、現在地からの出発時刻を再計算します。`,
+        title: `${held.label}に乗れましたか？`,
+        body: `乗れなかったら：${held.next}は${held.nextDeparts}発。開くと今いる場所から出る時刻を計算します。`,
       }
     : {
-        title: `LastRide — did you make the ${held.label.toLowerCase()} train?`,
+        title: `Did you make the ${held.label.toLowerCase()} train?`,
         body: `If not: ${held.next} leaves at ${held.nextDeparts}. Open the app for your leave time from where you are.`,
       };
 }
@@ -119,15 +119,15 @@ export function boardedFollowUp(
 ) {
   if (language === 'ja') {
     return {
-      title: `LastRide — ${info.goneLabel}に乗れなかったなら`,
+      title: `${info.goneLabel}に乗れなかったなら`,
       body: info.leavePassed
-        ? `${info.station}から${info.nextLabel} ${info.nextDeparts}発。今すぐ駅へ向かってください。`
-        : `${info.station}から${info.nextLabel} ${info.nextDeparts}発。${info.leaveBy}に出てください。`,
+        ? `${info.station}から${info.nextLabel} ${info.nextDeparts}発。今すぐ駅へ。`
+        : `${info.station}から${info.nextLabel} ${info.nextDeparts}発。${info.leaveBy}に出る。`,
     };
   }
   const next = info.nextLabel;
   return {
-    title: `LastRide — if you missed the ${info.goneLabel.toLowerCase()} train`,
+    title: `If you missed the ${info.goneLabel.toLowerCase()} train`,
     body: info.leavePassed
       ? `${next} from ${info.station} leaves at ${info.nextDeparts}. Head to the station now.`
       : `${next} from ${info.station} leaves at ${info.nextDeparts}. Leave at ${info.leaveBy}.`,

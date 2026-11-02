@@ -7,7 +7,7 @@ import {
 describe('Android ongoing location notification', () => {
   it('uses natural Japanese and discloses location access', () => {
     expect(backgroundTrackingNotification('ja')).toEqual({
-      notificationTitle: 'LastRide：位置情報を使用中',
+      notificationTitle: '帰り時：位置情報を使用中',
       notificationBody: '帰宅案内のため、近くの駅と出発時刻を確認しています。',
     });
   });

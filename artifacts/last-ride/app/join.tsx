@@ -185,7 +185,7 @@ function JoinBusinessEventScreen() {
                     ? "出発時刻が更新されると、幹事の画面にも反映されます。"
                     : "When LastRide recalculates your leave time, the organizer’s roster updates automatically."
                   : ja
-                    ? "LastRideで現在地から出発時刻を計算すると、幹事にも共有されます。"
+                    ? "帰り時で現在地から出発時刻を計算すると、幹事にも共有されます。"
                     : "Calculate your normal LastRide plan and the leave time will sync automatically."}
               </Text>
             </View>

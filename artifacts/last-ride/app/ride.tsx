@@ -33,7 +33,6 @@ import {
   type SuggestionLog,
 } from "@/lib/stationSuggestion";
 import { phaseAt, phaseLabel } from "@/lib/nightPhase";
-import { TimelineRail } from "@/components/TimelineRail";
 import { boardedButtons } from "@/lib/boarding";
 import { PlaceholderBlock } from "@/components/Placeholder";
 import { Feather } from "@expo/vector-icons";
@@ -90,9 +89,11 @@ function useAlwaysCard(active: boolean) {
 }
 
 /** The countdown ring, and the start button that stands in for it until tonight is started. */
-const HERO_SIZE = 140;
+const HERO_SIZE = 144;
+const MAP_HEIGHT = 150;
+/** On a tall, quiet screen the map grows into the free space, up to this. */
+const MAP_MAX_HEIGHT = 340;
 
-/** "1:05" above an hour (h:mm), "13:42" below it (mm:ss). */
 /** A plan can be refreshed by hand this soon after it was made. */
 const REFRESH_COOLDOWN_MS = 30_000;
 
@@ -145,8 +146,10 @@ export default function RideScreen() {
   const station = ja ? stationNameJa : stationName;
   const [disruptions, setDisruptions] = useState<TrainDisruption[]>([]);
   const [disruptionFeedUnavailable, setDisruptionFeedUnavailable] = useState(false);
-  const [showOtherStations, setShowOtherStations] = useState(false);
   const [showRoute, setShowRoute] = useState(false);
+  // The control row's dropdowns: 終電 ▾ (which train) and the station ▾.
+  const [panel, setPanel] = useState<"train" | "station" | null>(null);
+  const [mapHeight, setMapHeight] = useState(MAP_HEIGHT);
   const clockMs = useSecondClock(nowMs, demoActive);
   // A farther station that gets you home later: suggested, never switched to (lib/stationSuggestion.ts).
   const suggestion = plan && !demoActive ? stationSuggestion(plan, nowMs) : null;
@@ -216,6 +219,7 @@ export default function RideScreen() {
   // Premium's lock-screen countdown needs Live Activities allowed for the app.
   // Only looked at while tracking, the one time the countdown would be shown.
   const [liveActivitiesOff, setLiveActivitiesOff] = useState(false);
+  const [showAllNotices, setShowAllNotices] = useState(false);
   useEffect(() => {
     if (!liveActivityEnabled || !isPremium || trackingMode === null) {
       setLiveActivitiesOff(false);
@@ -248,8 +252,8 @@ export default function RideScreen() {
     Alert.alert(
       ja ? "グループへの共有も止めますか？" : "Stop sharing with your group too?",
       ja
-        ? `${names}に今夜の出発時刻を共有しています。位置情報の更新を停止すると、共有中の出発時刻も更新されなくなります。`
-        : `You’re sharing tonight’s leave time with ${names}. Once tracking stops, it won’t be updated.`,
+        ? `${names}に共有中の時刻も更新されなくなります`
+        : `The time shared with ${names} stops updating too`,
       [
         { text: ja ? "共有は続ける" : "Keep sharing", onPress: () => void stopTracking() },
         {
@@ -397,9 +401,60 @@ export default function RideScreen() {
           : "Now"
         : formatCountdown(msLeft);
 
-  const firstLeg = plan?.lastTrain.legs?.[0];
   const arrivalMs = plan?.arriveHomeMs ?? plan?.lastTrain.arrivesAt;
   const otherStations = plan?.alternatives ?? [];
+  const showTrainChip = !!plan && !departed && !onBoard && trainChoices.length > 1;
+
+  // 「元町・中華街 00:19発 → 菊名 00:39」: the trip under the leave time.
+  const tripLine = (() => {
+    if (!plan) return null;
+    const from = ja ? `${station} ${lastTrain}発` : `${station} ${lastTrain}`;
+    // Apple's arrival can be at the station's map point (a walk out past the
+    // gates) when the station place wasn't found: only "around" then.
+    const roughArrival = plan.lastTrain.source === "apple" && !plan.lastTrain.arrivesAtStation && !plan.walkHomeMinutes;
+    const to = arrivalMs
+      ? roughArrival
+        ? ja
+          ? `${destination} ${formatJstTime(arrivalMs)}ごろ`
+          : `${destination} ~${formatJstTime(arrivalMs)}`
+        : `${destination} ${formatJstTime(arrivalMs)}`
+      : destination;
+    const marks =
+      (lastTrainSource === "sample" ? (ja ? "（仮）" : " (sample)") : "") +
+      (plan.lastTrain.approximate ? (ja ? "（目安）" : " (approx.)") : "");
+    return `${from} → ${to}${marks}`;
+  })();
+
+  // The route behind the trip line: changes, lines and fare (tap it for each leg).
+  const routeLegs = plan?.lastTrain.legs ?? [];
+  const routeSummary = (() => {
+    if (!plan) return null;
+    const firstLeg = routeLegs[0];
+    const lines = routeLegs.length > 1
+      ? routeLegs.map((leg) => (ja ? shortLineName(leg.line) : leg.lineEn ?? shortLineName(leg.line))).join(" → ")
+      : firstLeg
+        ? ja
+          ? `${shortLineName(firstLeg.line)} ${firstLeg.to}方面`
+          : `${firstLeg.lineEn ?? shortLineName(firstLeg.line)} to ${firstLeg.toEn ?? firstLeg.to}`
+        : null;
+    const summary = [
+      // Apple doesn't say how many changes a route has, or the line.
+      plan.lastTrain.source === "apple"
+        ? null
+        : plan.lastTrain.transfers
+          ? ja
+            ? `乗換${plan.lastTrain.transfers}回`
+            : `${plan.lastTrain.transfers} transfer${plan.lastTrain.transfers > 1 ? "s" : ""}`
+          : ja
+            ? "乗換なし"
+            : "Direct",
+      lines,
+      plan.lastTrain.fareYen ? `¥${plan.lastTrain.fareYen.toLocaleString("en-US")}` : null,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    return summary || null;
+  })();
   // Tonight's group takes the card slot; the premium card only shows without one.
   const premiumCard = tonightGroup || tonightOpenGroup
     ? null
@@ -417,6 +472,7 @@ export default function RideScreen() {
         contentContainerStyle={[
           styles.content,
           {
+            flexGrow: 1,
             paddingTop: insets.top + (Platform.OS === "web" ? 24 : 8),
             paddingBottom: 28,
           },
@@ -612,12 +668,12 @@ export default function RideScreen() {
             <Feather name="bell-off" color={colors.destructive} size={18} />
             <View style={styles.flex}>
               <Text style={[styles.rowTitle, { color: colors.foreground }]}>
-                {ja ? "通知が許可されていません" : "Notifications are off"}
+                {ja ? "通知がオフです" : "Notifications are off"}
               </Text>
               <Text style={[styles.note, { color: colors.mutedForeground }]}>
                 {ja
-                  ? "出発時刻のお知らせが届きません。タップして設定で許可してください。"
-                  : "You won’t be told when to leave. Tap to allow them in Settings."}
+                  ? "出る時刻のお知らせが届きません　設定 ↗"
+                  : "You won’t be told when to leave · Settings ↗"}
               </Text>
             </View>
             <Feather name="chevron-right" color={colors.mutedForeground} size={18} />
@@ -687,78 +743,6 @@ export default function RideScreen() {
           </Card>
         )}
 
-        {plan && !departed && !onBoard && trainChoices.length > 1 && (
-          <View>
-            <View
-              accessibilityRole="radiogroup"
-              style={[styles.trainSwitch, { backgroundColor: colors.card, borderColor: colors.border }]}
-            >
-              {trainChoices.map((option) => {
-                const selected = option.choice === effectiveTrainChoice;
-                const label = trainChoiceLabel(option.choice, ja);
-                return (
-                  <Pressable
-                    key={option.choice}
-                    testID={`train-choice-${option.choice}`}
-                    disabled={!option.catchable}
-                    onPress={() => setTrainChoice(option.choice)}
-                    accessibilityRole="radio"
-                    accessibilityState={{ checked: selected, disabled: !option.catchable }}
-                    accessibilityLabel={
-                      !option.catchable
-                        ? ja
-                          ? `${label}は発車しました`
-                          : `${label}: gone`
-                        : option.late && !selected
-                          ? ja
-                            ? `${label} ${formatJstTime(option.departsAt)}発、急げば間に合います`
-                            : `${label}, ${formatJstTime(option.departsAt)}, only if you hurry`
-                          : ja
-                            ? `${label} ${formatJstTime(option.departsAt)}発`
-                            : `${label}, ${formatJstTime(option.departsAt)}`
-                    }
-                    style={({ pressed }) => [
-                      styles.trainSegment,
-                      selected && { backgroundColor: colors.primary },
-                      { opacity: !option.catchable ? 0.4 : pressed ? 0.75 : 1 },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.trainSegmentLabel,
-                        { color: selected ? colors.primaryForeground : colors.mutedForeground },
-                      ]}
-                    >
-                      {label}
-                    </Text>
-                    <Text
-                      style={[
-                        styles.trainSegmentTime,
-                        { color: selected ? colors.primaryForeground : option.late && option.catchable ? colors.destructive : colors.subtle },
-                      ]}
-                    >
-                      {option.catchable ? formatJstTime(option.departsAt) : ja ? "発車済" : "Gone"}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-            {trainChoiceOverride && leaveAt !== null ? (
-              <Text style={[styles.note, styles.switchNote, { color: colors.mutedForeground }]}>
-                {ja
-                  ? `駅が${station}駅に変わり、${trainChoiceLabel(trainChoice, true)}の出る時刻を過ぎていたため、${trainChoiceLabel(effectiveTrainChoice, true)}（${formatJstTime(leaveAt)}に出る）にしています`
-                  : `Your station changed to ${station} and it was too late for the ${trainChoiceLabel(trainChoice, false).toLowerCase()} train there, so this is the ${trainChoiceLabel(effectiveTrainChoice, false).toLowerCase()} (leave at ${formatJstTime(leaveAt)})`}
-              </Text>
-            ) : trainChoice > effectiveTrainChoice && !boardingQuestion && (
-              <Text style={[styles.note, styles.switchNote, { color: colors.mutedForeground }]}>
-                {ja
-                  ? `${trainChoiceLabel(trainChoice, true)}は発車したため、${trainChoiceLabel(effectiveTrainChoice, true)}にしています`
-                  : `${trainChoiceLabel(trainChoice, false)} has left, so this is the ${effectiveTrainChoice ? trainChoiceLabel(effectiveTrainChoice, false).toLowerCase() : "last train"}`}
-              </Text>
-            )}
-          </View>
-        )}
-
         {/* No station within walking reach: the nearest one, its last train and how to get there, in the hero's place. */}
         {farMode ? (
           <FarStationCard
@@ -770,8 +754,106 @@ export default function RideScreen() {
             onWays={() => router.push("/far-ways")}
             onRetry={() => void requestLocation()}
           />
-        ) : (
+        ) : plan ? (
+        // Tonight in one sentence, centred: 「今夜は 23:56 に出る」, the trip under it, then the button (or the ring).
         <View style={styles.hero}>
+          <View style={styles.heroCopy}>
+            <Text style={[styles.heroLabel, { color: colors.mutedForeground }]}>
+              {onBoard
+                ? ja
+                  ? "着く時刻（目安）"
+                  : "Arriving around"
+                : departed
+                ? ja
+                  ? "終電は発車しました"
+                  : "The last train has left"
+                : ja
+                  ? "今夜は"
+                  : "Leave at"}
+            </Text>
+            <View style={styles.leaveRow}>
+              <Text
+                testID="leave-time"
+                maxFontSizeMultiplier={1.1}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                style={[
+                  styles.leaveTime,
+                  { color: departed || onBoard ? colors.mutedForeground : colors.primary },
+                ]}
+              >
+                {onBoard
+                  ? boarded.arrivesAt
+                    ? formatJstTime(boarded.arrivesAt)
+                    : "--:--"
+                  : leaveAt !== null
+                    ? formatJstTime(leaveAt)
+                    : "--:--"}
+              </Text>
+              {ja && !departed && !onBoard && (
+                <Text maxFontSizeMultiplier={1.2} style={[styles.leaveSuffix, { color: colors.foreground }]}>に出る</Text>
+              )}
+            </View>
+            {!onBoard && tripLine && (
+              <Pressable
+                testID="toggle-route"
+                disabled={!routeSummary}
+                onPress={() => setShowRoute((value) => !value)}
+                accessibilityRole={routeSummary ? "button" : undefined}
+                accessibilityState={routeSummary ? { expanded: showRoute } : undefined}
+                accessibilityHint={routeSummary ? (ja ? "タップで経路を表示" : "Tap for the route") : undefined}
+                hitSlop={6}
+                style={({ pressed }) => [styles.tripRow, { opacity: pressed ? 0.7 : 1 }]}
+              >
+                <Text style={[styles.tripLine, { color: colors.foreground }]}>{tripLine}</Text>
+                {routeSummary ? (
+                  <Feather name={showRoute ? "chevron-up" : "chevron-down"} size={15} color={colors.mutedForeground} />
+                ) : null}
+              </Pressable>
+            )}
+            {/* Heading for an earlier train: the last train is the fallback. */}
+            {!onBoard && !departed && plan.nightLastTrain && (
+              <Text style={[styles.note, styles.centred, { color: colors.mutedForeground }]}>
+                {ja
+                  ? `乗れなければ終電 ${formatJstTime(plan.nightLastTrain.departsAt)}`
+                  : `If you miss it, last train ${formatJstTime(plan.nightLastTrain.departsAt)}`}
+              </Text>
+            )}
+            {!onBoard && !departed && trainChoiceOverride && leaveAt !== null ? (
+              <Text style={[styles.note, styles.centred, { color: colors.mutedForeground }]}>
+                {ja
+                  ? `駅が${station}駅に変わり、${trainChoiceLabel(trainChoice, true)}の出る時刻を過ぎていたため、${trainChoiceLabel(effectiveTrainChoice, true)}にしています`
+                  : `Your station changed to ${station} and it was too late for the ${trainChoiceLabel(trainChoice, false).toLowerCase()} train there, so this is the ${trainChoiceLabel(effectiveTrainChoice, false).toLowerCase()}`}
+              </Text>
+            ) : !onBoard && !departed && trainChoice > effectiveTrainChoice && !boardingQuestion ? (
+              <Text style={[styles.note, styles.centred, { color: colors.mutedForeground }]}>
+                {ja
+                  ? `${trainChoiceLabel(trainChoice, true)}は発車したため、${trainChoiceLabel(effectiveTrainChoice, true)}にしています`
+                  : `${trainChoiceLabel(trainChoice, false)} has left, so this is the ${effectiveTrainChoice ? trainChoiceLabel(effectiveTrainChoice, false).toLowerCase() : "last train"}`}
+              </Text>
+            ) : null}
+          </View>
+
+          {/* The route, unfolded from the trip line: changes, lines and fare, then each leg */}
+          {!onBoard && showRoute && routeSummary && (
+            <Card style={styles.routeCard}>
+              <Text style={[styles.note, { color: colors.mutedForeground }]}>{routeSummary}</Text>
+              {routeLegs.length > 1 &&
+                routeLegs.map((leg) => (
+                  <View key={`${leg.line}-${leg.departsAt}`} style={styles.leg}>
+                    <Text style={[styles.legTime, { color: colors.subtle }]}>
+                      {formatJstTime(leg.departsAt)}
+                    </Text>
+                    <Text style={[styles.note, styles.flex, { color: colors.mutedForeground }]}>
+                      {ja
+                        ? `${leg.from} → ${leg.to} · ${shortLineName(leg.line)}`
+                        : `${leg.fromEn ?? leg.from} → ${leg.toEn ?? leg.to} · ${leg.lineEn ?? shortLineName(leg.line)}`}
+                    </Text>
+                  </View>
+                ))}
+            </Card>
+          )}
+
           {isLocationReady && !departed && !onBoard && trackingMode === null ? (
             <Pressable
               testID="start-tracking"
@@ -800,159 +882,340 @@ export default function RideScreen() {
               tone={ringTone}
             />
           )}
-          <View style={styles.heroCopy}>
-            <Text style={[styles.heroLabel, { color: colors.mutedForeground }]}>
-              {onBoard
-                ? ja
-                  ? "着く時刻（目安）"
-                  : "Arriving ~"
-                : departed
-                ? ja
-                  ? "終電は発車しました"
-                  : "The last train has left"
-                : ja
-                  ? "ここを出る時刻"
-                  : "Leave at"}
-            </Text>
-            <Text
-              testID="leave-time"
-              maxFontSizeMultiplier={1.3}
-              // One line: at 66pt it fits beside the circle even on an iPhone SE (375pt wide).
-              numberOfLines={1}
-              style={[
-                styles.leaveTime,
-                { color: departed || onBoard ? colors.mutedForeground : colors.primary },
-              ]}
-            >
-              {onBoard
-                ? boarded.arrivesAt
-                  ? formatJstTime(boarded.arrivesAt)
-                  : "--:--"
-                : leaveAt !== null
-                  ? formatJstTime(leaveAt)
-                  : "--:--"}
-            </Text>
-            {plan && !onBoard && (
-              <Text style={[styles.heroMeta, { color: colors.subtle }]}>
-                {ja ? `遅くとも ${formatJstTime(plan.leaveByMs)}` : `Latest ${formatJstTime(plan.leaveByMs)}`}
-                {lastTrainSource === "sample" ? (ja ? "（仮）" : "*") : ""}
-                {plan.lastTrain.approximate ? (ja ? "（目安）" : " (approx.)") : ""}
-              </Text>
-            )}
-          </View>
         </View>
+        ) : null}
+
+        {locationError !== "permission" && locationError !== "no-station" && !isLocationReady && (
+          <Pressable
+            testID="enable-location"
+            disabled={firstLoad}
+            onPress={() => void requestLocation()}
+            accessibilityRole="button"
+            style={({ pressed }) => [
+              styles.trackRow,
+              {
+                backgroundColor: colors.card,
+                borderColor: colors.primary,
+                opacity: pressed ? 0.7 : 1,
+              },
+            ]}
+          >
+            {firstLoad ? (
+              <ActivityIndicator color={colors.primary} />
+            ) : (
+              <Feather name={locationError === "near-home" ? "home" : "crosshair"} color={colors.primary} size={18} />
+            )}
+            <View style={styles.flex}>
+              <Text style={[styles.rowTitle, { color: colors.foreground }]}>
+                {firstLoad
+                  ? ja
+                    ? "近くの駅を検索しています…"
+                    : "Finding your closest station…"
+                  : locationError === "near-home"
+                    ? ja
+                      ? "帰る場所の近くにいます"
+                      : "You're near home"
+                    : ja
+                      ? "位置情報を使う"
+                      : "Use my location"}
+              </Text>
+              <Text style={[styles.note, { color: colors.mutedForeground }]}>
+                {firstLoad
+                  ? ja
+                    ? "現在地から終電を調べています"
+                    : "Checking tonight's last train from here"
+                  : locationError
+                  ? locationErrorText(locationError, ja)
+                  : ja
+                    ? "近くの駅と徒歩時間を確認します"
+                    : "Find your closest station and walking time."}
+              </Text>
+            </View>
+          </Pressable>
         )}
 
-        {/* Tonight on one line, then what the app is doing: tracking (with 停止) or when it last checked (with 更新) */}
-        {plan && !departed && !onBoard && <TimelineRail plan={plan} nowMs={clockMs} ja={ja} />}
-        {/* Also after the last train: moving may reach a station with a later one, so 更新 stays. */}
-        {plan && freshness && !onBoard && (
-          <View style={styles.statusLine}>
-            <Pressable
-              testID="plan-freshness"
-              // Refresh any time, except straight after a lookup (no hammering Apple Maps).
-              disabled={!canRefresh}
-              onPress={() => void requestLocation()}
-              accessibilityRole={canRefresh ? "button" : undefined}
-              accessibilityHint={canRefresh ? (ja ? "タップで更新" : "Tap to refresh") : undefined}
-              hitSlop={8}
-              style={[styles.flex, styles.freshness]}
-            >
-              {trackingMode !== null && <View style={[styles.liveDot, { backgroundColor: colors.primary }]} />}
-              <Text
-                numberOfLines={1}
-                style={[styles.note, { color: freshness === "stale" ? colors.destructive : colors.mutedForeground }]}
-              >
-                {trackingMode !== null ? (
-                  <>
-                    <Text style={[styles.statusStrong, { color: colors.foreground }]}>{ja ? "案内中" : "Tracking"}</Text>
-                    {isSearching
-                      ? ja
-                        ? " · 確認中…"
-                        : " · checking…"
-                      : planAge === 0
-                        ? ja
-                          ? " · たった今確認"
-                          : " · checked just now"
-                        : ja
-                          ? ` · ${planAge}分前に確認`
-                          : ` · checked ${planAge} min ago`}
-                  </>
-                ) : ja ? (
-                  `${formatJstTime(plan.computedAt)}に確認`
-                ) : (
-                  `Checked ${formatJstTime(plan.computedAt)}`
-                )}
-              </Text>
-              {/* Looking for stations and trains: a small spinner, so it's clear something is happening. */}
-              {trackingMode !== null && isSearching && <ActivityIndicator size="small" color={colors.mutedForeground} style={styles.searching} />}
-              {trackingMode !== null && canRefresh && !isSearching && (
-                <Feather
-                  name={freshness === "stale" ? "alert-triangle" : "refresh-cw"}
-                  size={12}
-                  color={freshness === "stale" ? colors.destructive : colors.mutedForeground}
-                />
-              )}
-            </Pressable>
-            {trackingMode !== null ? (
+        {/* What the app is doing (案内中, last check), then the controls: train ▾, station ▾, and 更新 or 停止 */}
+        {plan && !onBoard && (
+          <View style={styles.controlsBlock}>
+            {trackingMode !== null && (
               <Pressable
-                testID="stop-tracking"
-                onPress={confirmStop}
-                accessibilityRole="button"
-                style={({ pressed }) => [styles.smallButton, { borderColor: colors.input, opacity: pressed ? 0.7 : 1 }]}
-              >
-                <Text style={[styles.smallButtonText, { color: colors.foreground }]}>{ja ? "停止" : "Stop"}</Text>
-              </Pressable>
-            ) : (
-              <Pressable
-                testID="refresh-plan"
+                testID="plan-freshness"
+                // Refresh any time, except straight after a lookup (no hammering Apple Maps).
                 disabled={!canRefresh}
                 onPress={() => void requestLocation()}
-                accessibilityRole="button"
-                style={({ pressed }) => [
-                  styles.smallButton,
-                  styles.lockButton,
-                  { borderColor: colors.input, opacity: isSearching ? 1 : !canRefresh ? 0.4 : pressed ? 0.7 : 1 },
-                ]}
+                accessibilityRole={canRefresh ? "button" : undefined}
+                accessibilityHint={canRefresh ? (ja ? "タップで更新" : "Tap to refresh") : undefined}
+                hitSlop={8}
+                style={styles.freshness}
               >
-                {isSearching ? (
-                  <ActivityIndicator size="small" color={colors.foreground} style={styles.searching} />
-                ) : (
-                  <Feather name="refresh-cw" size={13} color={colors.foreground} />
-                )}
-                <Text style={[styles.smallButtonText, { color: colors.foreground }]}>{isSearching ? (ja ? "確認中" : "Checking") : ja ? "更新" : "Refresh"}</Text>
-              </Pressable>
-            )}
-          </View>
-        )}
-        {/* Tonight's station, right under the status line (no scrolling to the train card):
-            lock this one, or choose any station by search. */}
-        {plan && !onBoard && (
-          <View style={styles.lockRow}>
-            {!plan.pinned && (
-              <Pressable
-                testID="lock-station"
-                onPress={() => void chooseDepartureStation(plan.station)}
-                accessibilityRole="button"
-                style={({ pressed }) => [styles.smallButton, styles.lockButton, { borderColor: colors.input, opacity: pressed ? 0.7 : 1 }]}
-              >
-                <Feather name="lock" size={13} color={colors.foreground} />
-                <Text style={[styles.smallButtonText, { color: colors.foreground }]}>
-                  {ja ? "この駅に固定" : "Lock this station"}
+                <View style={[styles.liveDot, { backgroundColor: colors.primary }]} />
+                <Text
+                  numberOfLines={1}
+                  style={[styles.note, { color: freshness === "stale" ? colors.destructive : colors.mutedForeground }]}
+                >
+                  <Text style={[styles.statusStrong, { color: colors.foreground }]}>{ja ? "案内中" : "Tracking"}</Text>
+                  {isSearching
+                    ? ja
+                      ? " · 確認中…"
+                      : " · checking…"
+                    : planAge === 0
+                      ? ja
+                        ? " · たった今確認"
+                        : " · checked just now"
+                      : ja
+                        ? ` · ${planAge}分前に確認`
+                        : ` · checked ${planAge} min ago`}
                 </Text>
+                {/* Looking for stations and trains: a small spinner, so it's clear something is happening. */}
+                {isSearching && <ActivityIndicator size="small" color={colors.mutedForeground} style={styles.searching} />}
+                {canRefresh && !isSearching && (
+                  <Feather
+                    name={freshness === "stale" ? "alert-triangle" : "refresh-cw"}
+                    size={12}
+                    color={freshness === "stale" ? colors.destructive : colors.mutedForeground}
+                  />
+                )}
               </Pressable>
             )}
-            <Pressable
-              testID="choose-station"
-              onPress={() => router.push("/departure-station")}
-              accessibilityRole="button"
-              style={({ pressed }) => [styles.smallButton, styles.lockButton, { borderColor: colors.input, opacity: pressed ? 0.7 : 1 }]}
-            >
-              <Feather name="search" size={13} color={colors.foreground} />
-              <Text style={[styles.smallButtonText, { color: colors.foreground }]}>
-                {ja ? "駅を選ぶ" : "Choose station"}
-              </Text>
-            </Pressable>
+            <View style={styles.controls}>
+              {showTrainChip && (
+                <ControlChip
+                  testID="train-chip"
+                  label={trainChoiceLabel(effectiveTrainChoice, ja)}
+                  open={panel === "train"}
+                  onPress={() => setPanel((open) => (open === "train" ? null : "train"))}
+                  accessibilityLabel={
+                    ja
+                      ? `乗る電車：${trainChoiceLabel(effectiveTrainChoice, true)}。変更`
+                      : `Train: ${trainChoiceLabel(effectiveTrainChoice, false)}. Change`
+                  }
+                />
+              )}
+              <ControlChip
+                testID="station-chip"
+                icon={plan.pinned ? "lock" : undefined}
+                label={station}
+                open={panel === "station"}
+                onPress={() => setPanel((open) => (open === "station" ? null : "station"))}
+                accessibilityLabel={
+                  ja
+                    ? `出発駅：${station}駅${plan.pinned ? "（固定中）" : ""}。変更`
+                    : `Station: ${station}${plan.pinned ? " (locked)" : ""}. Change`
+                }
+              />
+              {trackingMode !== null ? (
+                <Pressable
+                  testID="stop-tracking"
+                  onPress={confirmStop}
+                  accessibilityRole="button"
+                  style={({ pressed }) => [styles.smallButton, styles.chip, { borderColor: colors.input, opacity: pressed ? 0.7 : 1 }]}
+                >
+                  <Text style={[styles.smallButtonText, { color: colors.foreground }]}>{ja ? "停止" : "Stop"}</Text>
+                </Pressable>
+              ) : (
+                // Also after the last train: moving may reach a station with a later one, so 更新 stays.
+                <Pressable
+                  testID="refresh-plan"
+                  disabled={!canRefresh}
+                  onPress={() => void requestLocation()}
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    ja
+                      ? `${formatJstTime(plan.computedAt)}に確認。更新`
+                      : `Checked ${formatJstTime(plan.computedAt)}. Refresh`
+                  }
+                  hitSlop={6}
+                  style={({ pressed }) => [
+                    styles.refreshChip,
+                    { opacity: isSearching ? 1 : !canRefresh ? 0.5 : pressed ? 0.7 : 1 },
+                  ]}
+                >
+                  <Text style={[styles.smallButtonText, { color: freshness === "stale" ? colors.destructive : colors.mutedForeground }]}>
+                    {isSearching ? (ja ? "確認中" : "Checking") : formatJstTime(plan.computedAt)}
+                  </Text>
+                  {isSearching ? (
+                    <ActivityIndicator size="small" color={colors.mutedForeground} style={styles.searching} />
+                  ) : (
+                    <Feather
+                      name={freshness === "stale" ? "alert-triangle" : "refresh-cw"}
+                      size={13}
+                      color={freshness === "stale" ? colors.destructive : colors.mutedForeground}
+                    />
+                  )}
+                </Pressable>
+              )}
+            </View>
+
+            {/* 終電 ▾: 終電 / 1本前 / 2本前, kept for tonight; a train is greyed out once it has departed */}
+            {panel === "train" && showTrainChip && (
+              <View
+                accessibilityRole="radiogroup"
+                style={[styles.trainSwitch, { backgroundColor: colors.card, borderColor: colors.border }]}
+              >
+                {trainChoices.map((option) => {
+                  const selected = option.choice === effectiveTrainChoice;
+                  const label = trainChoiceLabel(option.choice, ja);
+                  return (
+                    <Pressable
+                      key={option.choice}
+                      testID={`train-choice-${option.choice}`}
+                      disabled={!option.catchable}
+                      onPress={() => {
+                        setTrainChoice(option.choice);
+                        setPanel(null);
+                      }}
+                      accessibilityRole="radio"
+                      accessibilityState={{ checked: selected, disabled: !option.catchable }}
+                      accessibilityLabel={
+                        !option.catchable
+                          ? ja
+                            ? `${label}は発車しました`
+                            : `${label}: gone`
+                          : option.late && !selected
+                            ? ja
+                              ? `${label} ${formatJstTime(option.departsAt)}発、急げば間に合います`
+                              : `${label}, ${formatJstTime(option.departsAt)}, only if you hurry`
+                            : ja
+                              ? `${label} ${formatJstTime(option.departsAt)}発`
+                              : `${label}, ${formatJstTime(option.departsAt)}`
+                      }
+                      style={({ pressed }) => [
+                        styles.trainSegment,
+                        selected && { backgroundColor: colors.primary },
+                        { opacity: !option.catchable ? 0.4 : pressed ? 0.75 : 1 },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.trainSegmentLabel,
+                          { color: selected ? colors.primaryForeground : colors.mutedForeground },
+                        ]}
+                      >
+                        {label}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.trainSegmentTime,
+                          { color: selected ? colors.primaryForeground : option.late && option.catchable ? colors.destructive : colors.subtle },
+                        ]}
+                      >
+                        {option.catchable ? formatJstTime(option.departsAt) : ja ? "発車済" : "Gone"}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            )}
+
+            {/* Station ▾: lock this one (or back to auto), search any station, or switch to a nearby one */}
+            {panel === "station" && (
+              <Card style={styles.stationPanel}>
+                <View style={styles.panelButtons}>
+                  {plan.pinned ? (
+                    <Pressable
+                      testID="panel-back-to-auto"
+                      onPress={() => {
+                        setPinnedStation(null);
+                        setPanel(null);
+                      }}
+                      accessibilityRole="button"
+                      style={({ pressed }) => [styles.smallButton, styles.lockButton, { borderColor: colors.input, opacity: pressed ? 0.7 : 1 }]}
+                    >
+                      <Feather name="unlock" size={13} color={colors.foreground} />
+                      <Text style={[styles.smallButtonText, { color: colors.foreground }]}>
+                        {ja ? "自動に戻す" : "Back to auto"}
+                      </Text>
+                    </Pressable>
+                  ) : (
+                    <Pressable
+                      testID="lock-station"
+                      onPress={() => {
+                        void chooseDepartureStation(plan.station);
+                        setPanel(null);
+                      }}
+                      accessibilityRole="button"
+                      style={({ pressed }) => [styles.smallButton, styles.lockButton, { borderColor: colors.input, opacity: pressed ? 0.7 : 1 }]}
+                    >
+                      <Feather name="lock" size={13} color={colors.foreground} />
+                      <Text style={[styles.smallButtonText, { color: colors.foreground }]}>
+                        {ja ? "この駅に固定" : "Lock this station"}
+                      </Text>
+                    </Pressable>
+                  )}
+                  <Pressable
+                    testID="choose-station"
+                    onPress={() => {
+                      setPanel(null);
+                      router.push("/departure-station");
+                    }}
+                    accessibilityRole="button"
+                    style={({ pressed }) => [styles.smallButton, styles.lockButton, { borderColor: colors.input, opacity: pressed ? 0.7 : 1 }]}
+                  >
+                    <Feather name="search" size={13} color={colors.foreground} />
+                    <Text style={[styles.smallButtonText, { color: colors.foreground }]}>
+                      {ja ? "駅を検索" : "Search stations"}
+                    </Text>
+                  </Pressable>
+                </View>
+                {otherStations.length > 0 && (
+                  <>
+                    <View style={[styles.divider, { backgroundColor: colors.border }]} />
+                    <Text style={[styles.otherLabel, { color: colors.mutedForeground }]}>
+                      {ja ? "別の駅から帰る" : "Other stations"}
+                    </Text>
+                    {otherStations.map((option) => {
+                      const isAutoPick =
+                        plan.pinned &&
+                        option.station.nameJa === plan.autoPick.station.nameJa;
+                      const name = ja ? option.station.nameJa : option.station.name;
+                      return (
+                        <Pressable
+                          key={option.station.nameJa}
+                          testID={`use-station-${option.station.nameJa}`}
+                          onPress={() => {
+                            setPinnedStation(isAutoPick ? null : option.station);
+                            setPanel(null);
+                          }}
+                          accessibilityRole="button"
+                          accessibilityLabel={
+                            ja ? `${name}から帰る` : `Leave from ${name} instead`
+                          }
+                          style={({ pressed }) => [
+                            styles.leg,
+                            { opacity: pressed ? 0.6 : 1 },
+                          ]}
+                        >
+                          <Text style={[styles.legTime, { color: colors.foreground }]}>
+                            {formatJstTime(recommendedLeaveTime(option))}
+                          </Text>
+                          <View style={styles.flex}>
+                            <Text style={[styles.rowTitle, { color: colors.foreground }]}>
+                              {name}
+                              {isAutoPick ? (
+                                <Text style={[styles.note, { color: colors.primary }]}>
+                                  {ja ? "  おすすめの駅" : "  Automatic pick"}
+                                </Text>
+                              ) : null}
+                            </Text>
+                            <Text style={[styles.note, { color: colors.mutedForeground }]}>
+                              {ja
+                                ? `徒歩${option.walkingMinutes}分${option.walkingSource === 'routed' ? '' : '（推定）'} · 終電 ${formatJstTime(option.lastTrain.departsAt)}`
+                                : `${option.walkingMinutes} min walk${option.walkingSource === 'routed' ? '' : ' (estimate)'} · last train ${formatJstTime(option.lastTrain.departsAt)}`}
+                              {(option.disruptionLines?.length ?? 0) > 0
+                                ? ja
+                                  ? " · 運行情報あり"
+                                  : " · service issue"
+                                : ""}
+                            </Text>
+                          </View>
+                          <Feather name="repeat" color={colors.mutedForeground} size={16} />
+                        </Pressable>
+                      );
+                    })}
+                  </>
+                )}
+              </Card>
+            )}
           </View>
         )}
 
@@ -1035,15 +1298,6 @@ export default function RideScreen() {
           </Pressable>
         )}
 
-        {disruptionFeedUnavailable && (
-          <Notice
-            icon="alert-triangle"
-            title={ja ? "最新の運行情報を取得できません" : "Service alerts unavailable"}
-            body={ja
-              ? "運転見合わせ・遅延の最新情報を取得できません。表示中の終電時刻は、実際の運行状況を反映していない可能性があります。鉄道会社の公式情報をご確認ください。"
-              : "Live delays and suspensions could not be checked. Your last-train estimate does not confirm that trains are running. Verify with your railway operator."}
-          />
-        )}
         {disruptions.map((incident) => (
           <Notice
             key={`${incident.lineCode ?? incident.line}-${incident.title}`}
@@ -1112,17 +1366,29 @@ export default function RideScreen() {
             );
           })()}
 
-        {/* Still finding tonight's route: hold the places of the map and the train card */}
+        {/* Still finding tonight's route: hold the places of the controls and the map */}
         {!plan && isLocating && (
           <>
-            <PlaceholderBlock height={140} />
-            <PlaceholderBlock height={120} />
+            <PlaceholderBlock height={40} />
+            <PlaceholderBlock height={MAP_HEIGHT} />
           </>
         )}
 
+        {/* The map takes the room left over (150 at least, so it never gets cramped):
+            no empty band at the bottom when nothing else is showing. Its own
+            height doesn't count toward the slot, so the slot can shrink again. */}
         {plan && (
+          <View
+            style={styles.mapSlot}
+            onLayout={(event) => {
+              // In steps of 10, so tiny layout changes don't fetch a new map image.
+              const height = Math.min(MAP_MAX_HEIGHT, Math.floor(event.nativeEvent.layout.height / 10) * 10);
+              if (height >= MAP_HEIGHT && height !== mapHeight) setMapHeight(height);
+            }}
+          >
+          <View style={StyleSheet.absoluteFill}>
           <MapCard
-            height={140}
+            height={mapHeight}
             // The plan's own position until fresh GPS arrives (e.g. right after relaunch).
             you={userCoordinates ?? plan.coordinates}
             target={plan.station}
@@ -1146,6 +1412,8 @@ export default function RideScreen() {
             openLabel={ja ? "経路を地図アプリで開く" : "Open route in Maps"}
             legalLabel={ja ? "法的情報" : "Legal"}
           />
+          </View>
+          </View>
         )}
 
         {plan && plan.walkingSource !== 'routed' && (
@@ -1158,299 +1426,44 @@ export default function RideScreen() {
           >
             <Text style={[styles.note, { color: colors.mutedForeground }]}>
               {ja
-                ? '徒歩時間は直線距離からの概算です。迂回路・駅の出入口を地図で確認してください。安全のため出発時刻を早めています。 徒歩経路を開く ↗'
-                : 'Walking time is an estimate, not a verified path. Allow for detours and station entrances. Departure is moved earlier as a precaution. Open walking directions ↗'}
+                ? '徒歩時間は推定です（余裕を多めに）　経路を見る ↗'
+                : 'Walking time is estimated (extra margin added) · View route ↗'}
             </Text>
           </Pressable>
         )}
 
-        {plan && (
-          <Card style={styles.trainCard}>
-            <View style={styles.trainRow}>
-              <View style={[styles.lineBadge, { backgroundColor: colors.line }]}>
-                <Feather name="navigation-2" size={14} color="#FFFFFF" />
-              </View>
-              <View style={styles.flex}>
-                {/* The train's time is the one to make in the end: shown large. */}
-                <View style={styles.trainTimeRow}>
-                  <Text style={[styles.trainTime, { color: colors.foreground }]}>{lastTrain}</Text>
-                  <Text style={[styles.trainTimeUnit, { color: colors.foreground }]}>{ja ? "発" : "dep."}</Text>
-                  <Text style={[styles.trainStation, { color: colors.foreground }]} numberOfLines={1}>
-                    {ja ? `${station}駅` : station}
-                  </Text>
-                  {effectiveTrainChoice > 0 ? (
-                    <Text style={[styles.trainChoiceTag, { color: colors.primary, borderColor: colors.primary }]}>
-                      {trainChoiceLabel(effectiveTrainChoice, ja)}
-                    </Text>
-                  ) : null}
-                </View>
-                <Text style={[styles.heroMeta, { color: colors.mutedForeground }]}>
-                  {[
-                    arrivalMs
-                      ? // Apple's arrival can be at the station's map point (a walk out
-                        // past the gates) when the station place wasn't found: say so.
-                        plan.lastTrain.source === "apple" && !plan.lastTrain.arrivesAtStation && !plan.walkHomeMinutes
-                        ? ja
-                          ? `${formatJstTime(arrivalMs)}ごろ ${destination}（駅を出る時刻）`
-                          : `${destination} ~${formatJstTime(arrivalMs)} (out of the station)`
-                        : ja
-                          ? `${formatJstTime(arrivalMs)} ${destination}着`
-                          : `${destination} ${formatJstTime(arrivalMs)}`
-                      : null,
-                    // Heading for an earlier train: the last train is the fallback.
-                    plan.nightLastTrain
-                      ? ja
-                        ? `乗れなければ終電 ${formatJstTime(plan.nightLastTrain.departsAt)}`
-                        : `else last train ${formatJstTime(plan.nightLastTrain.departsAt)}`
-                      : null,
-                  ]
-                    .filter(Boolean)
-                    .join(" · ")}
-                </Text>
-              </View>
-            </View>
-
-            {/* The route, folded: changes, lines and fare; tap for each leg */}
-            {(() => {
-              const legs = plan.lastTrain.legs ?? [];
-              const lines = legs.length > 1
-                ? legs.map((leg) => (ja ? shortLineName(leg.line) : leg.lineEn ?? shortLineName(leg.line))).join(" → ")
-                : firstLeg
-                  ? ja
-                    ? `${shortLineName(firstLeg.line)} ${firstLeg.to}方面`
-                    : `${firstLeg.lineEn ?? shortLineName(firstLeg.line)} to ${firstLeg.toEn ?? firstLeg.to}`
-                  : null;
-              const summary = [
-                // Apple doesn't say how many changes a route has, or the line.
-                plan.lastTrain.source === "apple"
-                  ? null
-                  : plan.lastTrain.transfers
-                    ? ja
-                      ? `乗換${plan.lastTrain.transfers}回`
-                      : `${plan.lastTrain.transfers} transfer${plan.lastTrain.transfers > 1 ? "s" : ""}`
-                    : ja
-                      ? "乗換なし"
-                      : "Direct",
-                lines,
-                plan.lastTrain.fareYen ? `¥${plan.lastTrain.fareYen.toLocaleString("en-US")}` : null,
-              ]
-                .filter(Boolean)
-                .join(" · ");
-              if (!summary) return null;
-              const foldable = legs.length > 1;
-              return (
-                <>
-                  <Pressable
-                    testID="toggle-route"
-                    disabled={!foldable}
-                    onPress={() => setShowRoute((value) => !value)}
-                    accessibilityRole={foldable ? "button" : undefined}
-                    accessibilityState={foldable ? { expanded: showRoute } : undefined}
-                    style={({ pressed }) => [styles.routeToggle, { opacity: pressed ? 0.7 : 1 }]}
-                  >
-                    <Text numberOfLines={showRoute ? undefined : 1} style={[styles.note, styles.flex, { color: colors.subtle }]}>
-                      {summary}
-                    </Text>
-                    {foldable && (
-                      <Feather name={showRoute ? "chevron-up" : "chevron-down"} size={16} color={colors.mutedForeground} />
-                    )}
-                  </Pressable>
-                  {showRoute &&
-                    legs.map((leg) => (
-                      <View key={`${leg.line}-${leg.departsAt}`} style={styles.leg}>
-                        <Text style={[styles.legTime, { color: colors.subtle }]}>
-                          {formatJstTime(leg.departsAt)}
-                        </Text>
-                        <Text style={[styles.note, styles.flex, { color: colors.mutedForeground }]}>
-                          {ja
-                            ? `${leg.from} → ${leg.to} · ${shortLineName(leg.line)}`
-                            : `${leg.fromEn ?? leg.from} → ${leg.toEn ?? leg.to} · ${leg.lineEn ?? shortLineName(leg.line)}`}
-                        </Text>
-                      </View>
-                    ))}
-                </>
-              );
-            })()}
-
-            {plan.lastTrain.source === "live" && (
-              <Pressable
-                testID="odpt-credit"
-                onPress={() => router.push("/data-sources")}
-                accessibilityRole="link"
-                hitSlop={6}
-              >
-                <Text style={[styles.credit, { color: colors.mutedForeground }]}>
-                  {ja
-                    ? "時刻データ：公共交通オープンデータセンター（正確性は保証されません）"
-                    : "Timetable: Public Transportation Open Data Center (accuracy not guaranteed)"}
-                </Text>
-              </Pressable>
-            )}
-
-            {otherStations.length > 0 && (
-              <>
-                <View style={[styles.divider, { backgroundColor: colors.border }]} />
-                <Pressable
-                  testID="toggle-other-stations"
-                  onPress={() => setShowOtherStations((value) => !value)}
-                  accessibilityRole="button"
-                  accessibilityState={{ expanded: showOtherStations }}
-                  style={({ pressed }) => [
-                    styles.otherHead,
-                    { opacity: pressed ? 0.7 : 1 },
-                  ]}
-                >
-                  <View style={styles.flex}>
-                    <Text style={[styles.otherLabel, { color: colors.mutedForeground }]}>
-                      {ja ? "別の駅から帰る" : "Other stations"}
-                    </Text>
-                    {!showOtherStations && (
-                      <Text
-                        numberOfLines={1}
-                        style={[styles.note, { color: colors.subtle }]}
-                      >
-                        {(() => {
-                          const first = otherStations[0];
-                          const name = ja ? first.station.nameJa : first.station.name;
-                          return ja
-                            ? `${name} · 徒歩${first.walkingMinutes}分${first.walkingSource === 'routed' ? '' : '（推定）'} · 終電 ${formatJstTime(first.lastTrain.departsAt)}`
-                            : `${name} · ${first.walkingMinutes} min walk${first.walkingSource === 'routed' ? '' : ' (estimate)'} · last ${formatJstTime(first.lastTrain.departsAt)}`;
-                        })()}
-                      </Text>
-                    )}
-                  </View>
-                  <Feather
-                    name={showOtherStations ? "chevron-up" : "chevron-down"}
-                    size={18}
-                    color={colors.mutedForeground}
-                  />
-                </Pressable>
-                {showOtherStations &&
-                  otherStations.map((option) => {
-                    const isAutoPick =
-                      plan.pinned &&
-                      option.station.nameJa === plan.autoPick.station.nameJa;
-                    const name = ja ? option.station.nameJa : option.station.name;
-                    return (
-                      <Pressable
-                        key={option.station.nameJa}
-                        testID={`use-station-${option.station.nameJa}`}
-                        onPress={() =>
-                          setPinnedStation(isAutoPick ? null : option.station)
-                        }
-                        accessibilityRole="button"
-                        accessibilityLabel={
-                          ja ? `${name}から帰る` : `Leave from ${name} instead`
-                        }
-                        style={({ pressed }) => [
-                          styles.leg,
-                          { opacity: pressed ? 0.6 : 1 },
-                        ]}
-                      >
-                        <Text style={[styles.legTime, { color: colors.foreground }]}>
-                          {formatJstTime(recommendedLeaveTime(option))}
-                        </Text>
-                        <View style={styles.flex}>
-                          <Text style={[styles.rowTitle, { color: colors.foreground }]}>
-                            {name}
-                            {isAutoPick ? (
-                              <Text style={[styles.note, { color: colors.primary }]}>
-                                {ja ? "  おすすめの駅" : "  Automatic pick"}
-                              </Text>
-                            ) : null}
-                          </Text>
-                          <Text style={[styles.note, { color: colors.mutedForeground }]}>
-                            {ja
-                              ? `徒歩${option.walkingMinutes}分${option.walkingSource === 'routed' ? '' : '（推定）'} · 終電 ${formatJstTime(option.lastTrain.departsAt)}`
-                              : `${option.walkingMinutes} min walk${option.walkingSource === 'routed' ? '' : ' (estimate)'} · last train ${formatJstTime(option.lastTrain.departsAt)}`}
-                            {(option.disruptionLines?.length ?? 0) > 0
-                              ? ja
-                                ? " · 運行情報あり"
-                                : " · service issue"
-                              : ""}
-                          </Text>
-                        </View>
-                        <Feather name="repeat" color={colors.mutedForeground} size={16} />
-                      </Pressable>
-                    );
-                  })}
-                {showOtherStations && (
-                  <Text style={[styles.note, { color: colors.mutedForeground }]}>
-                    {ja
-                      ? "タップでその駅に切り替えます。自動では一番近い駅を使い、遠い駅で10分以上遅く出られるときは上でお知らせします。"
-                      : "Tap to switch. On automatic, the closest station is used; a farther one that gives you 10+ more minutes is suggested above."}
-                  </Text>
-                )}
-              </>
-            )}
-          </Card>
-        )}
 
 
 
 
-        {locationError !== "permission" && locationError !== "no-station" && !isLocationReady && (
-          <Pressable
-            testID="enable-location"
-            disabled={firstLoad}
-            onPress={() => void requestLocation()}
-            accessibilityRole="button"
-            style={({ pressed }) => [
-              styles.trackRow,
-              {
-                backgroundColor: colors.card,
-                borderColor: colors.primary,
-                opacity: pressed ? 0.7 : 1,
-              },
-            ]}
-          >
-            {firstLoad ? (
-              <ActivityIndicator color={colors.primary} />
-            ) : (
-              <Feather name={locationError === "near-home" ? "home" : "crosshair"} color={colors.primary} size={18} />
-            )}
-            <View style={styles.flex}>
-              <Text style={[styles.rowTitle, { color: colors.foreground }]}>
-                {firstLoad
-                  ? ja
-                    ? "近くの駅を検索しています…"
-                    : "Finding your closest station…"
-                  : locationError === "near-home"
-                    ? ja
-                      ? "帰る場所の近くにいます"
-                      : "You're near home"
-                    : ja
-                      ? "位置情報を使う"
-                      : "Use my location"}
-              </Text>
-              <Text style={[styles.note, { color: colors.mutedForeground }]}>
-                {firstLoad
-                  ? ja
-                    ? "現在地から終電を調べています"
-                    : "Checking tonight's last train from here"
-                  : locationError
-                  ? locationErrorText(locationError, ja)
-                  : ja
-                    ? "近くの駅と徒歩時間を確認します"
-                    : "Find your closest station and walking time."}
-              </Text>
-            </View>
-          </Pressable>
-        )}
 
-        {plan?.lastTrain.approximate && (
+
+
+
+        {/* Secondary notices: the most important one shows; the rest fold away. */}
+        {(() => {
+          const notices: Array<{ key: string; node: React.ReactNode }> = [];
+          if (disruptionFeedUnavailable) notices.push({ key: "feed", node: (
+          <Notice
+            icon="alert-triangle"
+            title={ja ? "運行情報を取得できません" : "Service alerts unavailable"}
+            body={ja
+              ? "遅れや運転見合わせは鉄道会社の情報で確認を"
+              : "Check delays and suspensions with the railway"}
+          />
+          ) });
+          if (plan?.lastTrain.approximate) notices.push({ key: "approx", node: (
           <Notice
             icon="info"
-            title={ja ? "終電時刻は推定値です" : "The last train time is approximate"}
+            title={ja ? "推定の時刻です" : "Estimated train time"}
             body={
               ja
-                ? "この区間はApple Mapsの推定で、電車か徒歩かを確認できませんでした。乗換案内アプリでも確認してください。"
-                : "This route uses an Apple Maps estimate that couldn’t be confirmed as a train. Please double-check in a route app."
+                ? "乗換案内でも確認を"
+                : "Double-check in a route app"
             }
           />
-        )}
-
-        {approximateLocation && (
+          ) });
+          if (approximateLocation) notices.push({ key: "precise", node: (
           <Pressable
             testID="precise-location"
             onPress={() => void Linking.openSettings()}
@@ -1463,44 +1476,29 @@ export default function RideScreen() {
             <Feather name="crosshair" color={colors.primary} size={18} />
             <View style={styles.flex}>
               <Text style={[styles.rowTitle, { color: colors.foreground }]}>
-                {ja ? "正確な位置情報がオフです" : "Precise Location is off"}
+                {ja ? "「正確な位置情報」がオフです" : "Precise Location is off"}
               </Text>
               <Text style={[styles.note, { color: colors.mutedForeground }]}>
                 {ja
-                  ? "おおよその位置しか分からないため、最寄り駅や徒歩時間がずれることがあります。設定で「正確な位置情報」をオンにしてください。"
-                  : "LastRide only knows your rough area, so the nearest station and walking time may be off. Turn on Precise Location in Settings."}
+                  ? "駅や徒歩時間がずれることがあります　設定 ↗"
+                  : "Your station and walk may be off · Settings ↗"}
               </Text>
             </View>
             <Feather name="chevron-right" color={colors.mutedForeground} size={18} />
           </Pressable>
-        )}
-
-        {lastTrainSource === "sample" && (
+          ) });
+          if (lastTrainSource === "sample") notices.push({ key: "sample", node: (
           <Notice
             icon="info"
-            title={ja ? "サンプルデータを表示しています" : "Sample train times"}
+            title={ja ? "時刻表を取得できません" : "Timetables unavailable"}
             body={
               ja
-                ? "時刻表データを取得できていません。表示中の終電時刻はサンプル値であり、実際の運行時刻ではありません。"
-                : "Live timetables aren’t connected yet. The last train shown is a placeholder, not a real schedule."
+                ? "表示は仮の時刻です"
+                : "The times shown are placeholders"
             }
           />
-        )}
-
-        {/* Premium last: below everything for tonight (only shown without Premium) */}
-        {premiumCard && leaveAt !== null && (
-          <PremiumCard
-            variant={premiumCard}
-            ja={ja}
-            leaveAt={formatJstTime(leaveAt)}
-            countdown={ringValue}
-            station={station}
-            destination={destination}
-            onDismiss={leaveCard.dismiss}
-          />
-        )}
-
-        {liveActivitiesOff && !departed && (
+          ) });
+          if (liveActivitiesOff && !departed) notices.push({ key: "lao", node: (
           <Pressable
             testID="live-activities-off"
             onPress={() => void Linking.openSettings()}
@@ -1517,30 +1515,124 @@ export default function RideScreen() {
               </Text>
               <Text style={[styles.note, { color: colors.mutedForeground }]}>
                 {ja
-                  ? "タップして設定で「ライブアクティビティ」をオンにしてください。戻ると自動で表示されます。"
-                  : "Tap and turn on Live Activities in Settings. It appears by itself when you come back."}
+                  ? "ライブアクティビティをオンに　設定 ↗"
+                  : "Turn on Live Activities · Settings ↗"}
               </Text>
             </View>
             <Feather name="chevron-right" color={colors.mutedForeground} size={18} />
           </Pressable>
+          ) });
+          if (notices.length === 0) return null;
+          return (
+            <View style={styles.noticeGroup}>
+              {notices.slice(0, showAllNotices ? undefined : 1).map((notice) => (
+                <React.Fragment key={notice.key}>{notice.node}</React.Fragment>
+              ))}
+              {notices.length > 1 ? (
+                <Pressable
+                  testID="more-notices"
+                  onPress={() => setShowAllNotices((open) => !open)}
+                  accessibilityRole="button"
+                  accessibilityState={{ expanded: showAllNotices }}
+                  hitSlop={6}
+                  style={styles.moreNotices}
+                >
+                  <Text style={[styles.note, { color: colors.mutedForeground }]}>
+                    {showAllNotices
+                      ? ja ? "閉じる" : "Show fewer"
+                      : ja ? `ほかのお知らせ ${notices.length - 1}件` : `${notices.length - 1} more notice${notices.length > 2 ? "s" : ""}`}
+                  </Text>
+                  <Feather name={showAllNotices ? "chevron-up" : "chevron-down"} size={16} color={colors.mutedForeground} />
+                </Pressable>
+              ) : null}
+            </View>
+          );
+        })()}
+
+        {/* Premium last: below everything for tonight (only shown without Premium, and not while 案内 runs) */}
+        {premiumCard && leaveAt !== null && trackingMode === null && (
+          <PremiumCard
+            variant={premiumCard}
+            ja={ja}
+            leaveAt={formatJstTime(leaveAt)}
+            countdown={ringValue}
+            station={station}
+            destination={destination}
+            onDismiss={leaveCard.dismiss}
+          />
         )}
+
+        {plan?.lastTrain.source === "live" && (
+          <Pressable
+            testID="odpt-credit"
+            onPress={() => router.push("/data-sources")}
+            accessibilityRole="link"
+            hitSlop={6}
+          >
+            <Text style={[styles.credit, { color: colors.mutedForeground }]}>
+              {ja
+                ? "時刻データ：公共交通オープンデータセンター（正確性は保証されません）"
+                : "Timetable: Public Transportation Open Data Center (accuracy not guaranteed)"}
+            </Text>
+          </Pressable>
+        )}
+
       </ScrollView>
       <BottomNav language={language} />
     </View>
   );
 }
 
+/** A control-row dropdown button: 「終電 ▾」, 「元町・中華街 ▾」. */
+function ControlChip({
+  testID,
+  icon,
+  label,
+  open,
+  onPress,
+  accessibilityLabel,
+}: {
+  testID: string;
+  icon?: React.ComponentProps<typeof Feather>["name"];
+  label: string;
+  open: boolean;
+  onPress: () => void;
+  accessibilityLabel: string;
+}) {
+  const colors = useColors();
+  return (
+    <Pressable
+      testID={testID}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityState={{ expanded: open }}
+      style={({ pressed }) => [
+        styles.smallButton,
+        styles.chip,
+        { borderColor: open ? colors.primary : colors.input, opacity: pressed ? 0.7 : 1 },
+      ]}
+    >
+      {icon ? <Feather name={icon} size={13} color={colors.foreground} /> : null}
+      <Text numberOfLines={1} style={[styles.smallButtonText, styles.chipText, { color: colors.foreground }]}>
+        {label}
+      </Text>
+      <Feather name={open ? "chevron-up" : "chevron-down"} size={14} color={colors.mutedForeground} />
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
   searching: { transform: [{ scale: 0.75 }] },
   screen: { flex: 1 },
-  content: { gap: 14, paddingHorizontal: 20 },
+  content: { gap: 18, paddingHorizontal: 20 },
   flex: { flex: 1, gap: 2 },
   topbar: { alignItems: "flex-start", flexDirection: "row", gap: 12 },
   destination: { alignItems: "center", alignSelf: "flex-start", flexDirection: "row", gap: 4, marginTop: 2 },
   destinationText: { flexShrink: 1, fontSize: 22, fontWeight: "800" },
   banner: { alignItems: "center", flexDirection: "row", gap: 12, padding: 14 },
   suggestion: { alignItems: "center", flex: 1, flexDirection: "row", gap: 12 },
-  hero: { alignItems: "center", flexDirection: "row", gap: 16, marginVertical: 4 },
+  hero: { alignItems: "center", gap: 20, marginTop: 8 },
   startCircle: {
     alignItems: "center",
     borderRadius: HERO_SIZE / 2,
@@ -1559,26 +1651,21 @@ const styles = StyleSheet.create({
   trainSegment: { alignItems: "center", borderRadius: 10, flex: 1, justifyContent: "center", minHeight: 46, paddingVertical: 4 },
   trainSegmentLabel: { fontSize: 11, fontWeight: "800" },
   trainSegmentTime: { fontFamily: DIGITS, fontSize: 15 },
-  switchNote: { marginTop: 6, paddingHorizontal: 4 },
-  heroCopy: { flex: 1, gap: 2 },
-  heroLabel: { fontSize: 12, fontWeight: "700" },
-  leaveTime: { fontFamily: DIGITS, fontSize: 66, letterSpacing: -1.5, lineHeight: 70 },
-  heroMeta: { fontSize: 13, fontWeight: "600" },
-  freshness: { alignItems: "center", flexDirection: "row", gap: 5, marginTop: 4 },
+  heroCopy: { alignItems: "center", alignSelf: "stretch", gap: 4 },
+  heroLabel: { fontSize: 14, fontWeight: "700" },
+  leaveRow: { alignItems: "baseline", flexDirection: "row", gap: 8, justifyContent: "center", maxWidth: "100%" },
+  leaveTime: { flexShrink: 1, fontFamily: DIGITS, fontSize: 80, letterSpacing: -2, lineHeight: 86 },
+  leaveSuffix: { fontSize: 20, fontWeight: "800" },
+  tripRow: { alignItems: "center", flexDirection: "row", gap: 4, justifyContent: "center", maxWidth: "100%" },
+  tripLine: { flexShrink: 1, fontSize: 15, fontWeight: "600", lineHeight: 21, textAlign: "center" },
+  centred: { textAlign: "center" },
+  routeCard: { alignSelf: "stretch", borderWidth: 1, gap: 10, padding: 14 },
+  freshness: { alignItems: "center", alignSelf: "center", flexDirection: "row", gap: 5 },
   promptRow: { alignItems: "center", borderRadius: 18, flexDirection: "row", gap: 12, padding: 15 },
-  trainCard: { borderWidth: 1, gap: 12, padding: 16 },
-  trainRow: { alignItems: "center", flexDirection: "row", gap: 12 },
-  lineBadge: { alignItems: "center", borderRadius: 8, height: 30, justifyContent: "center", width: 30 },
   digits: { fontFamily: DIGITS },
-  trainTimeRow: { alignItems: "baseline", flexDirection: "row", gap: 4 },
-  trainTime: { fontFamily: DIGITS, fontSize: 34, fontWeight: "800", letterSpacing: -0.5 },
-  trainTimeUnit: { fontSize: 15, fontWeight: "700" },
-  trainChoiceTag: { borderRadius: 6, borderWidth: 1, fontSize: 11, fontWeight: "800", marginLeft: 6, overflow: "hidden", paddingHorizontal: 6, paddingVertical: 1 },
-  trainStation: { flexShrink: 1, fontSize: 15, fontWeight: "700", marginLeft: 8 },
   leg: { alignItems: "center", flexDirection: "row", gap: 12 },
   legTime: { flexShrink: 0, fontFamily: DIGITS, fontSize: 15, width: 48 },
   divider: { height: 1 },
-  otherHead: { alignItems: "center", flexDirection: "row", gap: 10 },
   otherLabel: { fontSize: 12, fontWeight: "700" },
   rowTitle: { fontSize: 15, fontWeight: "700" },
   note: { fontSize: 12, lineHeight: 17 },
@@ -1590,15 +1677,22 @@ const styles = StyleSheet.create({
   smallButton: { borderRadius: 12, borderWidth: 1, borderColor: "transparent", paddingHorizontal: 14, paddingVertical: 9 },
   joinButton: { borderWidth: 0 },
   smallButtonText: { fontSize: 13, fontWeight: "800" },
-  lockRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: -6 },
+  controlsBlock: { gap: 12 },
+  controls: { alignItems: "center", flexDirection: "row", flexWrap: "wrap", gap: 8, justifyContent: "center" },
+  chip: { alignItems: "center", flexDirection: "row", gap: 6, maxWidth: 220 },
+  chipText: { flexShrink: 1 },
+  refreshChip: { alignItems: "center", flexDirection: "row", gap: 5, paddingHorizontal: 6, paddingVertical: 9 },
+  stationPanel: { borderWidth: 1, gap: 12, padding: 14 },
+  panelButtons: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  noticeGroup: { gap: 8 },
+  mapSlot: { flexGrow: 1, maxHeight: MAP_MAX_HEIGHT, minHeight: MAP_HEIGHT },
+  moreNotices: { alignItems: "center", alignSelf: "flex-start", flexDirection: "row", gap: 4, paddingVertical: 2 },
   alwaysCard: { gap: 12, paddingHorizontal: 18, paddingVertical: 18 },
   alwaysStrip: { alignItems: "center", borderRadius: 16, borderWidth: 1, flexDirection: "row", gap: 10, paddingHorizontal: 14, paddingVertical: 10 },
   alwaysTitle: { fontSize: 13, fontWeight: "800" },
   promptButtons: { flexDirection: "row", gap: 10, marginTop: 2 },
   promptButton: { alignItems: "center", flex: 1, justifyContent: "center", minHeight: 46, paddingHorizontal: 12 },
   promptButtonText: { textAlign: "center" },
-  routeToggle: { alignItems: "center", flexDirection: "row", gap: 6 },
-  statusLine: { alignItems: "center", flexDirection: "row", gap: 10, marginTop: -4 },
   statusStrong: { fontWeight: "700" },
   lockButton: { alignItems: "center", flexDirection: "row", gap: 6 },
 });

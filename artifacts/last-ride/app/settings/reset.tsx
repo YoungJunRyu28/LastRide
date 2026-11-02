@@ -62,7 +62,7 @@ export default function ResetScreen() {
     <SettingsPage title={ja ? 'データを消去' : 'Erase data'} backLabel={ja ? '設定' : 'Settings'}>
       <Text style={[styles.lead, { color: colors.foreground }]}>
         {ja
-          ? 'この端末のLastRideのデータをすべて消去して、最初の設定からやり直します。'
+          ? 'この端末の帰り時のデータをすべて消去して、最初の設定からやり直します。'
           : 'Erases LastRide data on this device and starts again from setup.'}
       </Text>
 

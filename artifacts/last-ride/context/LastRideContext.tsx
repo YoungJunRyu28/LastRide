@@ -155,7 +155,7 @@ async function chooseNightTrackingLocation(
       Alert.alert(
         ja ? 'アプリを閉じても更新するには' : 'To update when closed',
         ja
-          ? 'iPhoneの設定で、LastRideの位置情報を「常に」にしてください（夜間の案内中だけ使います）。今夜はアプリを開いている間だけ更新することもできます。'
+          ? 'iPhoneの設定で、帰り時の位置情報を「常に」に（夜の案内中だけ使います）。今夜はアプリを開いている間だけ更新することもできます。'
           : 'In iPhone Settings, set LastRide’s location access to “Always” (used only during night tracking). Or track tonight while the app is open.',
         [
           { text: ja ? 'キャンセル' : 'Cancel', style: 'cancel', onPress: () => resolve(null) },
@@ -2159,7 +2159,7 @@ export function locationErrorText(
   switch (code) {
     case "permission":
       return ja
-        ? "位置情報がオフです。タップしてiPhoneの設定で許可してください。戻ると自動で更新します。"
+        ? "位置情報がオフです。iPhoneの設定で許可すると、戻ったときに自動で更新します。"
         : "Location is off. Tap to allow it in iPhone Settings; the app updates when you come back.";
     case "unsupported":
       return ja
@@ -2179,7 +2179,7 @@ export function locationErrorText(
         : "No train needed from here. Once you're further from home, your last train and leave time will show.";
     case "unavailable":
       return ja
-        ? "駅の検索に失敗しました。通信状況を確認して再試行してください。"
+        ? "駅を検索できませんでした。通信を確認して、もう一度お試しください。"
         : "Couldn’t reach the station search. Check your connection and try again.";
   }
 }

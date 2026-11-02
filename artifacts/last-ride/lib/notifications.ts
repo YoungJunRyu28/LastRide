@@ -360,8 +360,8 @@ export function notifyLockFallback(
   markReminderChange('stationTold');
   const time = new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(plan.lastTrain.departsAt));
   const text = language === 'ja'
-    ? { title: 'LastRide — 出発駅を自動に戻しました', body: `${locked.nameJa}駅からの帰宅ルートが見つからなかったため、${plan.station.nameJa}駅（${time}発）に切り替えました。` }
-    : { title: 'LastRide — back to automatic', body: `${locked.name} can’t get you home any more, so you’re now leaving from ${plan.station.name} (${time} train).` };
+    ? { title: '出発駅を自動に戻しました', body: `${locked.nameJa}駅からは帰れなくなったため、${plan.station.nameJa}駅（${time}発）に切り替えました。` }
+    : { title: 'Back to automatic', body: `${locked.name} can’t get you home any more, so you’re now leaving from ${plan.station.name} (${time} train).` };
   return enqueue(async () => present(text.title, text.body, null, '/ride', true, null, (await AsyncStorage.getItem(STORAGE_KEYS.throughFocus).catch(() => null)) !== 'false'));
 }
 
@@ -371,20 +371,20 @@ export function notifyLockFallback(
  * Sensitive, so Focus holds it like any other notification.
  */
 export function notifyStationSuggestion(text: { title: string; body: string }): Promise<void> {
-  return enqueue(async () => present(`LastRide — ${text.title}`, text.body, null, '/ride', false));
+  return enqueue(async () => present(text.title, text.body, null, '/ride', false));
 }
 
 function stationNotice(text: ReminderText, info: DeliveryInfo) {
   if (text.language === 'ja') {
     return {
-      title: 'LastRide — 出発駅が変わりました',
+      title: '出発駅が変わりました',
       body:
         `${text.station}から${info.trainLabel}（${info.trainDeparts}発）。${text.leaveBy}に出る。` +
         (info.movedFrom ? `${info.movedFrom}は出る時刻を過ぎていたため、${info.trainLabel}にしています。` : ''),
     };
   }
   return {
-    title: 'LastRide — your station changed',
+    title: 'Your station changed',
     body:
       `Now from ${text.station}: ${info.trainLabel}, ${info.trainDeparts}. Leave at ${text.leaveBy}.` +
       (info.movedFrom ? ` Too late for the ${info.movedFrom.toLowerCase()} train from there, so it’s the ${info.trainLabel.toLowerCase()}.` : ''),
@@ -393,8 +393,8 @@ function stationNotice(text: ReminderText, info: DeliveryInfo) {
 
 function timeNotice(text: ReminderText, info: DeliveryInfo) {
   return text.language === 'ja'
-    ? { title: 'LastRide — 出発時刻が変更されました', body: `${text.leaveBy}に出て${text.station}へ（${info.trainDeparts}発）。` }
-    : { title: 'LastRide — new leave time', body: `Leave for ${text.station} at ${text.leaveBy} (${info.trainDeparts} train).` };
+    ? { title: '出る時刻が変わりました', body: `${text.leaveBy}に出て${text.station}へ（${info.trainDeparts}発）。` }
+    : { title: 'New leave time', body: `Leave for ${text.station} at ${text.leaveBy} (${info.trainDeparts} train).` };
 }
 
 export type ReminderText = {
@@ -411,23 +411,23 @@ function reminderText({ leaveBy, station, language, held }: ReminderText, { minu
   }
   if (missedCheckIn) {
     return language === 'ja'
-      ? { title: 'LastRide — 終電を逃しましたか？', body: 'タップして始発・タクシー・周辺の施設を確認できます。' }
-      : { title: 'LastRide — missed the last train?', body: 'Tap to see the first train, a taxi estimate, and places to wait nearby.' };
+      ? { title: '終電を逃しましたか？', body: '始発・タクシー・朝まで過ごせる場所を見る' }
+      : { title: 'Missed the last train?', body: 'See the first train, a taxi and places to wait nearby.' };
   }
   if (minutesBefore === 0) {
     // Only the next train's departure: its leave time depends on where the user will be.
     if (held) {
       return language === 'ja'
-        ? { title: 'LastRide — 出る時間です', body: `${station}へ歩き始めましょう。乗り遅れても、${held.next}は${held.nextDeparts}発です。` }
-        : { title: 'LastRide — leave now', body: `Start walking to ${station}. If you miss this train, ${held.next} leaves at ${held.nextDeparts}.` };
+        ? { title: '出る時間です', body: `${station}へ歩き始めましょう。乗り遅れても、${held.next}は${held.nextDeparts}発です。` }
+        : { title: 'Leave now', body: `Start walking to ${station}. If you miss this train, ${held.next} leaves at ${held.nextDeparts}.` };
     }
     return language === 'ja'
-      ? { title: 'LastRide — 出る時間です', body: `${station}へ歩き始めましょう。終電に間に合うよう、余裕をもって向かってください。` }
-      : { title: 'LastRide — leave now', body: `Start walking to ${station} now for the last train. Walking times are estimates.` };
+      ? { title: '出る時間です', body: `${station}へ歩き始めましょう。` }
+      : { title: 'Leave now', body: `Start walking to ${station} for the last train.` };
   }
   return language === 'ja'
-    ? { title: `LastRide — 出るまであと${minutesBefore}分`, body: `${leaveBy}に出て${station}へ。そろそろ支度を。` }
-    : { title: `LastRide — ${minutesBefore} min to go`, body: `Leave for ${station} by ${leaveBy}. Time to wrap up.` };
+    ? { title: `あと${minutesBefore}分で出発`, body: `${leaveBy}に出て${station}へ。そろそろ支度を。` }
+    : { title: `${minutesBefore} min to go`, body: `Leave for ${station} by ${leaveBy}. Time to wrap up.` };
 }
 
 function newAlarmId(): string {
@@ -709,7 +709,7 @@ export const TEST_ALARM_DELAY_MS = 5000;
 export async function sendTestAlarm(language: 'ja' | 'en'): Promise<boolean> {
   if (!alarmKitAvailable || (await alarmKit.status()) !== 'authorized') return false;
   await alarmKit.schedule(newAlarmId(), Date.now() + TEST_ALARM_DELAY_MS,
-    language === 'ja' ? 'LastRide — アラームのテスト' : 'LastRide — alarm test', 'default', stopLabel(language));
+    language === 'ja' ? 'アラームのテスト' : 'Alarm test', 'default', stopLabel(language));
   return true;
 }
 
