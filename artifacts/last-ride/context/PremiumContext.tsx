@@ -13,7 +13,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import { Platform } from 'react-native';
 import Purchases, { type CustomerInfo, type PurchasesPackage } from 'react-native-purchases';
 import { GALAXY_BILLING_MODE } from 'react-native-purchases-store-galaxy';
-import { writePremiumCache } from '@/lib/premiumCache';
+import { readPremiumCache, writePremiumCache } from '@/lib/premiumCache';
 import { getOrCreatePremiumDeviceIdentity, readPremiumMigrationStatus, writePremiumMigrationStatus } from '@/lib/premiumDeviceIdentity';
 import { migrateRevenueCatIdentity } from '@/lib/revenueCatMigration';
 import { isTestFlightBuild } from '@/modules/last-ride-alarm/src';
@@ -139,6 +139,8 @@ type PremiumValue = {
   ready: boolean;
   /** Premium was actually determined (RevenueCat answered, test mode, or the TestFlight switch); false after a failed check. */
   known: boolean;
+  /** The launch value is in place (the cached answer, or a real one): the splash can go. */
+  loaded: boolean;
   live: boolean;
   plans: PlanChoice[];
   purchase: (plan: PlanChoice) => Promise<PurchaseResult>;
@@ -187,11 +189,25 @@ export function PremiumProvider({ children }: { children: React.ReactNode }) {
   // TestFlight only: a local on/off over the real entitlement.
   const [override, setOverride] = useState<boolean | null>(null);
   const isPremium = override ?? entitled;
+  // The last known answer, read from disk at launch: shown until RevenueCat
+  // answers, so a Premium user doesn't see the free screen for a moment.
+  // Never written back from here (only a real answer is: see `determined`).
+  const answered = React.useRef(false);
+  const [cacheRead, setCacheRead] = useState(false);
+  const [overrideRead, setOverrideRead] = useState(!(isTestFlightBuild && premiumLive));
+  useEffect(() => {
+    void readPremiumCache()
+      .then((cached) => {
+        if (!answered.current) setIsPremium(cached);
+      })
+      .finally(() => setCacheRead(true));
+  }, []);
   useEffect(() => {
     if (!isTestFlightBuild || !premiumLive) return;
     void AsyncStorage.getItem(TESTFLIGHT_PREMIUM_KEY)
       .then((value) => setOverride(value === 'true' ? true : value === 'false' ? false : null))
-      .catch(() => undefined);
+      .catch(() => undefined)
+      .finally(() => setOverrideRead(true));
   }, []);
   const [ready, setReady] = useState(false);
   const [migrationNeedsRestore, setMigrationNeedsRestore] = useState(false);
@@ -205,6 +221,7 @@ export function PremiumProvider({ children }: { children: React.ReactNode }) {
     if (!premiumLive || !apiKey) {
       void AsyncStorage.getItem(TEST_PREMIUM_KEY)
         .then((value) => {
+          answered.current = true;
           setIsPremium(value === 'true');
           setKnown(true);
         })
@@ -215,6 +232,7 @@ export function PremiumProvider({ children }: { children: React.ReactNode }) {
     let active = true;
     const listener = (info: CustomerInfo) => {
       if (!active) return;
+      answered.current = true;
       setIsPremium(hasEntitlement(info));
       setKnown(true);
     };
@@ -238,7 +256,10 @@ export function PremiumProvider({ children }: { children: React.ReactNode }) {
     }).catch(() => {
       // A failure to access secure storage must NOT silently configure an
       // unbound RevenueCat customer or show a paid entitlement as active.
-      if (active) setIsPremium(false);
+      if (active) {
+        answered.current = true;
+        setIsPremium(false);
+      }
     }).finally(() => { if (active) setReady(true); });
     return () => {
       active = false;
@@ -343,8 +364,8 @@ export function PremiumProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ isPremium, ready, known: determined, live: premiumLive, plans, purchase, restore, setTestPremium, testOverride: override !== null, appUserId, groupCreationHeaders, migrationNeedsRestore, storeInfo }),
-    [isPremium, ready, determined, plans, purchase, restore, setTestPremium, override, appUserId, groupCreationHeaders, migrationNeedsRestore, storeInfo],
+    () => ({ isPremium, ready, known: determined, loaded: (cacheRead && overrideRead) || determined, live: premiumLive, plans, purchase, restore, setTestPremium, testOverride: override !== null, appUserId, groupCreationHeaders, migrationNeedsRestore, storeInfo }),
+    [isPremium, ready, determined, cacheRead, overrideRead, plans, purchase, restore, setTestPremium, override, appUserId, groupCreationHeaders, migrationNeedsRestore, storeInfo],
   );
   return <PremiumContext.Provider value={value}>{children}</PremiumContext.Provider>;
 }

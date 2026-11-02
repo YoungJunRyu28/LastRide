@@ -50,6 +50,7 @@ import {
   AppState,
   Linking,
   Platform,
+  type LayoutChangeEvent,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -150,6 +151,11 @@ export default function RideScreen() {
   // The control row's dropdowns: 終電 ▾ (which train) and the station ▾.
   const [panel, setPanel] = useState<"train" | "station" | null>(null);
   const [mapHeight, setMapHeight] = useState(MAP_HEIGHT);
+  const onMapSlotLayout = (event: LayoutChangeEvent) => {
+    // In steps of 10, so tiny layout changes don't fetch a new map image.
+    const height = Math.min(MAP_MAX_HEIGHT, Math.floor(event.nativeEvent.layout.height / 10) * 10);
+    if (height >= MAP_HEIGHT && height !== mapHeight) setMapHeight(height);
+  };
   const clockMs = useSecondClock(nowMs, demoActive);
   // A farther station that gets you home later: suggested, never switched to (lib/stationSuggestion.ts).
   const suggestion = plan && !demoActive ? stationSuggestion(plan, nowMs) : null;
@@ -885,9 +891,35 @@ export default function RideScreen() {
             />
           )}
         </View>
+        ) : firstLoad ? (
+        // The first lookup: the same layout as tonight's plan, with a spinner where the button goes.
+        <View
+          testID="first-load"
+          style={styles.hero}
+          accessible
+          accessibilityLabel={ja ? "近くの駅と終電を検索しています" : "Finding your closest station and last train"}
+        >
+          <View style={styles.heroCopy}>
+            <Text style={[styles.heroLabel, { color: colors.mutedForeground }]}>{ja ? "今夜は" : "Leave at"}</Text>
+            <View style={[styles.leaveRow, styles.loadingFaint]}>
+              <Text maxFontSizeMultiplier={1.1} numberOfLines={1} style={[styles.leaveTime, { color: colors.mutedForeground }]}>--:--</Text>
+              {ja && <Text maxFontSizeMultiplier={1.2} style={[styles.leaveSuffix, { color: colors.mutedForeground }]}>に出る</Text>}
+            </View>
+            <Text style={[styles.tripLine, { color: colors.mutedForeground }]}>
+              {ja ? "近くの駅を検索中…" : "Finding your closest station…"}
+            </Text>
+          </View>
+          <View style={[styles.loadingCircle, { borderColor: colors.secondary }]}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text maxFontSizeMultiplier={1.2} style={[styles.loadingNote, { color: colors.mutedForeground }]}>
+              {ja ? "終電を確認中" : "Checking trains"}
+            </Text>
+          </View>
+        </View>
         ) : null}
 
-        {locationError !== "permission" && locationError !== "no-station" && !isLocationReady && (
+        {/* (During the first lookup without a plan, the loading hero above says it instead.) */}
+        {locationError !== "permission" && locationError !== "no-station" && !isLocationReady && !(firstLoad && !plan) && (
           <Pressable
             testID="enable-location"
             disabled={firstLoad}
@@ -1369,10 +1401,15 @@ export default function RideScreen() {
           })()}
 
         {/* Still finding tonight's route: hold the places of the controls and the map */}
-        {!plan && isLocating && (
+        {!plan && !farMode && (isLocating || firstLoad) && (
           <>
-            <PlaceholderBlock height={40} />
-            <PlaceholderBlock height={MAP_HEIGHT} />
+            <View style={styles.controls}>
+              <PlaceholderBlock height={38} width={86} radius={12} />
+              <PlaceholderBlock height={38} width={110} radius={12} />
+            </View>
+            <View style={styles.mapSlot} onLayout={onMapSlotLayout}>
+              <PlaceholderBlock height={mapHeight} />
+            </View>
           </>
         )}
 
@@ -1382,11 +1419,7 @@ export default function RideScreen() {
         {plan && (
           <View
             style={styles.mapSlot}
-            onLayout={(event) => {
-              // In steps of 10, so tiny layout changes don't fetch a new map image.
-              const height = Math.min(MAP_MAX_HEIGHT, Math.floor(event.nativeEvent.layout.height / 10) * 10);
-              if (height >= MAP_HEIGHT && height !== mapHeight) setMapHeight(height);
-            }}
+            onLayout={onMapSlotLayout}
           >
           <View style={StyleSheet.absoluteFill}>
           <MapCard
@@ -1687,6 +1720,9 @@ const styles = StyleSheet.create({
   stationPanel: { borderWidth: 1, gap: 12, padding: 14 },
   panelButtons: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   noticeGroup: { gap: 8 },
+  loadingFaint: { opacity: 0.35 },
+  loadingCircle: { alignItems: "center", borderRadius: HERO_SIZE / 2, borderWidth: 9, gap: 8, height: HERO_SIZE, justifyContent: "center", width: HERO_SIZE },
+  loadingNote: { fontSize: 11, fontWeight: "700" },
   mapSlot: { flexGrow: 1, maxHeight: MAP_MAX_HEIGHT, minHeight: MAP_HEIGHT },
   moreNotices: { alignItems: "center", alignSelf: "flex-start", flexDirection: "row", gap: 4, paddingVertical: 2 },
   alwaysCard: { gap: 12, paddingHorizontal: 18, paddingVertical: 18 },

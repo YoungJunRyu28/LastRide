@@ -16,6 +16,10 @@ export default function WelcomeScreen() {
     else if (language) router.replace('/home-station');
   }, [homeStation, isHydrated, language]);
 
+  // Set up already (or still loading): a plain background under the splash
+  // while the start route swaps in; the welcome is only for a first launch.
+  if (!isHydrated || language) return <View style={[styles.screen, { backgroundColor: colors.background }]} />;
+
   const chooseLanguage = (language: 'ja' | 'en') => {
     setLanguage(language);
     router.replace({ pathname: '/home-station', params: { setup: '1' } });

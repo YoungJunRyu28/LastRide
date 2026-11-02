@@ -9,8 +9,8 @@ import { NotificationRouter } from '@/components/NotificationRouter';
 import { SpaceGrotesk_500Medium, SpaceGrotesk_700Bold, useFonts } from '@expo-google-fonts/space-grotesk';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { LastRideProvider } from '@/context/LastRideContext';
-import { PremiumProvider } from '@/context/PremiumContext';
+import { LastRideProvider, useLastRide } from '@/context/LastRideContext';
+import { PremiumProvider, usePremium } from '@/context/PremiumContext';
 import { GroupsProvider } from '@/context/GroupsContext';
 import { initCrashReporting, reportError } from '@/lib/crashReporting';
 import { debugEvent } from '@/lib/debugEvents';
@@ -58,6 +58,29 @@ function RootLayoutNav() {
   );
 }
 
+/**
+ * The splash stays until the saved settings and the last known Premium state
+ * are loaded and the start route has swapped in underneath (welcome → home),
+ * so a relaunch never flashes the setup screen or the free version.
+ */
+const SPLASH_SETTLE_MS = 120;
+const SPLASH_MAX_MS = 4000;
+function SplashGate() {
+  const { isHydrated } = useLastRide();
+  const { loaded } = usePremium();
+  useEffect(() => {
+    // Never stuck behind the splash, whatever fails to load.
+    const timer = setTimeout(() => void SplashScreen.hideAsync().catch(() => undefined), SPLASH_MAX_MS);
+    return () => clearTimeout(timer);
+  }, []);
+  useEffect(() => {
+    if (!isHydrated || !loaded) return;
+    const timer = setTimeout(() => void SplashScreen.hideAsync().catch(() => undefined), SPLASH_SETTLE_MS);
+    return () => clearTimeout(timer);
+  }, [isHydrated, loaded]);
+  return null;
+}
+
 // A new app process (cold launch, or relaunched in the background by location): see lib/debugEvents.
 void debugEvent('app process started');
 
@@ -66,12 +89,6 @@ export default function RootLayout() {
     SpaceGrotesk_500Medium,
     SpaceGrotesk_700Bold,
   });
-
-  useEffect(() => {
-    if (fontsLoaded || fontError) {
-      SplashScreen.hideAsync();
-    }
-  }, [fontsLoaded, fontError]);
 
   if (!fontsLoaded && !fontError) return null;
 
@@ -85,6 +102,7 @@ export default function RootLayout() {
                 <LastRideProvider>
                   <GroupsProvider>
                     <RootLayoutNav />
+                    <SplashGate />
                     {Platform.OS !== 'web' && <NotificationRouter />}
                   </GroupsProvider>
                 </LastRideProvider>
