@@ -133,9 +133,13 @@ export type LocationErrorCode = LocationError["code"];
 /** A station change this soon after the user chose one is theirs, not automatic. */
 const USER_STATION_WINDOW_MS = 60_000;
 const AUTO_REPLAN_AFTER_MS = 5 * MINUTE_MS;
-/** Apple found fewer than two earlier trains: look again this often, a few times per station a night. */
-const EARLIER_RETRY_MS = 45_000;
-const EARLIER_RETRY_LIMIT = 3;
+/**
+ * Apple found fewer than two earlier trains: look again almost at once (usually
+ * just a missed answer), then a little later, then twice more, per station a
+ * night. Not more often: MapKit throttles an app that asks too much, and that
+ * would hold up the station search itself.
+ */
+const EARLIER_RETRY_DELAYS_MS = [3_000, 15_000, 45_000, 90_000];
 
 /**
  * An explicit choice before either OS location-permission prompt. The saved
@@ -837,7 +841,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     if (basePlan.lastTrain.departsAt <= getNow()) return;
     const key = `${serviceDate(getNow())}:${basePlan.station.nameJa}:${basePlan.destination.nameJa}`;
     if (earlierRetry.current.key !== key) earlierRetry.current = { key, tries: 0 };
-    if (earlierRetry.current.tries >= EARLIER_RETRY_LIMIT) return;
+    if (earlierRetry.current.tries >= EARLIER_RETRY_DELAYS_MS.length) return;
     let cancelled = false;
     const timer = setTimeout(() => {
       earlierRetry.current.tries += 1;
@@ -853,7 +857,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
             setEarlierRetryTick((tick) => tick + 1);
           }
         });
-    }, EARLIER_RETRY_MS);
+    }, EARLIER_RETRY_DELAYS_MS[earlierRetry.current.tries]);
     return () => {
       cancelled = true;
       clearTimeout(timer);
