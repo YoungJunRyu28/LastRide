@@ -478,6 +478,8 @@ export default function RideScreen() {
           },
         ]}
         showsVerticalScrollIndicator={false}
+        // Fits on one screen most nights: only scrolls (and bounces) when something overflows.
+        alwaysBounceVertical={false}
       >
         <View style={styles.topbar}>
           <View style={styles.flex}>
