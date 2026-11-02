@@ -15,6 +15,9 @@ concurrency:
 
 jobs:
   sync:
+    # Dependabot's runs don't get repository secrets (MIRROR_TOKEN), so the
+    # mirror always failed on its branches; those branches needn't be mirrored.
+    if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
       - name: Mirror repository
