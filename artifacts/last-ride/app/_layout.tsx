@@ -7,7 +7,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { NotificationRouter } from '@/components/NotificationRouter';
 import { SpaceGrotesk_500Medium, SpaceGrotesk_700Bold, useFonts } from '@expo-google-fonts/space-grotesk';
-import { Stack } from 'expo-router';
+import { DarkTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import * as SystemUI from 'expo-system-ui';
 import colors from '@/constants/colors';
@@ -28,8 +28,16 @@ const queryClient = new QueryClient();
 // background, not the default white (the app is always dark, constants/colors).
 void SystemUI.setBackgroundColorAsync(colors.dark.background).catch(() => undefined);
 
+// React Navigation's own theme defaults to light, painting its container and
+// cards white: that's what showed at the edges during a swipe back.
+const navigationTheme = {
+  ...DarkTheme,
+  colors: { ...DarkTheme.colors, background: colors.dark.background, card: colors.dark.background },
+};
+
 function RootLayoutNav() {
   return (
+    <ThemeProvider value={navigationTheme}>
     <Stack screenOptions={{ headerShown: false, animation: 'none', contentStyle: { backgroundColor: colors.dark.background } }}>
       <Stack.Screen name="index" />
       <Stack.Screen name="ride" />
@@ -64,6 +72,7 @@ function RootLayoutNav() {
       <Stack.Screen name="privacy" />
       <Stack.Screen name="data-sources" />
     </Stack>
+    </ThemeProvider>
   );
 }
 
