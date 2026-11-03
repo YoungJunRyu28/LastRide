@@ -10,13 +10,14 @@
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import Purchases, { type CustomerInfo, type PurchasesPackage } from 'react-native-purchases';
 import { GALAXY_BILLING_MODE } from 'react-native-purchases-store-galaxy';
 import { readPremiumCache, writePremiumCache } from '@/lib/premiumCache';
 import { getOrCreatePremiumDeviceIdentity, readPremiumMigrationStatus, writePremiumMigrationStatus } from '@/lib/premiumDeviceIdentity';
 import { migrateRevenueCatIdentity } from '@/lib/revenueCatMigration';
 import { isTestFlightBuild } from '@/modules/last-ride-alarm/src';
+import { loadTestToolsUnlock, testToolsUnlocked } from '@/lib/testTools';
 
 export const PREMIUM_ENTITLEMENT = 'premium';
 /** Saved destinations the free plan allows (tonight-only trips are always free). */
@@ -195,6 +196,8 @@ export function PremiumProvider({ children }: { children: React.ReactNode }) {
   const answered = React.useRef(false);
   const [cacheRead, setCacheRead] = useState(false);
   const [overrideRead, setOverrideRead] = useState(!(isTestFlightBuild && premiumLive));
+  // The TestFlight Premium switch only counts while the testing tools are
+  // unlocked (lib/testTools): an App Review install never has it on.
   useEffect(() => {
     void readPremiumCache()
       .then((cached) => {
@@ -204,7 +207,8 @@ export function PremiumProvider({ children }: { children: React.ReactNode }) {
   }, []);
   useEffect(() => {
     if (!isTestFlightBuild || !premiumLive) return;
-    void AsyncStorage.getItem(TESTFLIGHT_PREMIUM_KEY)
+    void loadTestToolsUnlock()
+      .then((on) => (on ? AsyncStorage.getItem(TESTFLIGHT_PREMIUM_KEY) : null))
       .then((value) => setOverride(value === 'true' ? true : value === 'false' ? false : null))
       .catch(() => undefined)
       .finally(() => setOverrideRead(true));
@@ -237,32 +241,56 @@ export function PremiumProvider({ children }: { children: React.ReactNode }) {
       setKnown(true);
     };
     let registered = false;
+    let setUpDone = false;
+    let settingUp = false;
+    const setUp = () => {
+      if (setUpDone || settingUp) return;
+      settingUp = true;
     void ensurePurchasesConfigured().then(async ({ restoreRequired }) => {
       if (!active) return;
+      setUpDone = true;
       setMigrationNeedsRestore(restoreRequired);
-      Purchases.addCustomerInfoUpdateListener(listener);
+      if (!registered) Purchases.addCustomerInfoUpdateListener(listener);
       registered = true;
       // Product-catalogue outages must not revoke a verified purchase. Fetch
       // offerings independently; only customer info determines entitlement.
-      void Purchases.getOfferings().then((offerings) => {
+      void Purchases.getOfferings().then(async (offerings) => {
         const current = offerings.current;
         if (!active || !current) return;
         const choices: PlanChoice[] = [];
         if (current.annual) choices.push({ id: 'annual', price: current.annual.product.priceString, perMonth: current.annual.product.pricePerMonthString, trialDays: trialDays(current.annual), pkg: current.annual });
         if (current.monthly) choices.push({ id: 'monthly', price: current.monthly.product.priceString, trialDays: trialDays(current.monthly), pkg: current.monthly });
-        setPlans(choices);
+        // The store lists the free trial even to someone who has already had it
+        // (they'd be charged at once): on iOS, offer it only where Apple says
+        // this Apple ID is still eligible. Unknown counts as not eligible.
+        if (Platform.OS === 'ios' && choices.some((choice) => choice.trialDays)) {
+          const ids = choices.map((choice) => choice.pkg!.product.identifier);
+          const eligibility = await Purchases.checkTrialOrIntroductoryPriceEligibility(ids).catch(() => null);
+          for (const choice of choices) {
+            const status = eligibility?.[choice.pkg!.product.identifier]?.status;
+            if (status !== Purchases.INTRO_ELIGIBILITY_STATUS.INTRO_ELIGIBILITY_STATUS_ELIGIBLE) choice.trialDays = null;
+          }
+        }
+        if (active) setPlans(choices);
       }).catch(() => undefined);
       await Purchases.getCustomerInfo().then(listener);
     }).catch(() => {
-      // A failure to access secure storage must NOT silently configure an
-      // unbound RevenueCat customer or show a paid entitlement as active.
-      if (active) {
-        answered.current = true;
-        setIsPremium(false);
-      }
-    }).finally(() => { if (active) setReady(true); });
+      // Set-up failed (often just no connection, e.g. the first launch after an
+      // update on the subway). Purchases stay unconfigured, so nothing unbound is
+      // ever created; what shows meanwhile is the last known answer (the cache),
+      // never saved back as an answer. Tried again when the app comes back.
+    }).finally(() => {
+      settingUp = false;
+      if (active) setReady(true);
+    });
+    };
+    setUp();
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') setUp();
+    });
     return () => {
       active = false;
+      subscription.remove();
       if (registered) Purchases.removeCustomerInfoUpdateListener(listener);
     };
   }, []);
@@ -275,7 +303,7 @@ export function PremiumProvider({ children }: { children: React.ReactNode }) {
 
   const setTestPremium = useCallback((enabled: boolean | null) => {
     if (premiumLive) {
-      if (!isTestFlightBuild) return;
+      if (!isTestFlightBuild || !testToolsUnlocked()) return;
       setOverride(enabled);
       void (enabled === null
         ? AsyncStorage.removeItem(TESTFLIGHT_PREMIUM_KEY)
@@ -299,7 +327,10 @@ export function PremiumProvider({ children }: { children: React.ReactNode }) {
         await ensurePurchasesConfigured();
         const { customerInfo } = await Purchases.purchasePackage(plan.pkg);
         const entitled = hasEntitlement(customerInfo);
+        // A real answer from the store: saved, so widgets and the Live Activity follow it.
+        answered.current = true;
         setIsPremium(entitled);
+        setKnown(true);
         if (entitled) {
           await markMigrationVerified();
           setMigrationNeedsRestore(false);
@@ -317,7 +348,9 @@ export function PremiumProvider({ children }: { children: React.ReactNode }) {
     try {
       await ensurePurchasesConfigured();
       const entitled = hasEntitlement(await Purchases.restorePurchases());
+      answered.current = true;
       setIsPremium(entitled);
+      setKnown(true);
       if (entitled) {
         await markMigrationVerified();
         setMigrationNeedsRestore(false);
@@ -383,8 +416,12 @@ export function trialLabel(days: number | null, ja: boolean): string | null {
   return ja ? `${days}日間無料` : `${days} days free`;
 }
 
-/** The trial length on offer (the store's introductory offer; 14 days planned). */
-export function useTrialDays(): number {
+/**
+ * The free trial this user can actually get, in days (the store's introductory
+ * offer, 14 days), or null: already used, not confirmed, or prices not loaded.
+ * Never promise a trial that isn't there.
+ */
+export function useTrialDays(): number | null {
   const { plans } = usePremium();
-  return plans.find((plan) => plan.trialDays)?.trialDays ?? 14;
+  return plans.find((plan) => plan.trialDays)?.trialDays ?? null;
 }

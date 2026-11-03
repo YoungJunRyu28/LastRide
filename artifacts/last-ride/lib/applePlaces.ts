@@ -14,7 +14,7 @@ import { AppleMaps, type Place } from '@/modules/apple-maps/src';
 import type { Coordinates, NearbyStation, StationOption, WalkingRoute, WalkingSpeed } from '@/lib/stations';
 import { bilingualStationName } from '@/lib/stationNames';
 import { isValidMapCoordinate } from '@/lib/mapSnapshotGuard';
-import { isKnownStation } from '@/lib/stationIndex';
+import { isKnownStation, knownStationsNear } from '@/lib/stationIndex';
 
 const SPEED_MULTIPLIER: Record<WalkingSpeed, number> = { relaxed: 0.8, normal: 1, fast: 1.2 };
 /** How far to look for stations around the user. */
@@ -205,13 +205,32 @@ export async function stationPlaces(maps: StationSearch, coordinates: Coordinate
   // called 「…駅」 is used only when no known station is within 5 km.
   const knownNear = near.filter(isKnownPlace);
   if (knownNear.length > 0) return knownNear;
-  if (near.length === 0) return preferKnownStations(await search(WIDER_RADIUS_METERS));
+  if (near.length === 0) {
+    const wider = preferKnownStations(await search(WIDER_RADIUS_METERS));
+    // Apple answered with no stations at all: the bundled list's (lib/stationIndex).
+    return wider.length > 0 ? wider : listedStationPlaces(coordinates);
+  }
   const wider = await search(WIDER_RADIUS_METERS).catch(() => [] as Place[]);
   const knownWider = wider.filter(isKnownPlace);
   return knownWider.length > 0 ? knownWider : near;
 }
 
 const isKnownPlace = (place: Place) => isKnownStation(toStation(place));
+
+/** The bundled passenger stations near here, as places (2.5 km, else 5 km). */
+function listedStationPlaces(coordinates: Coordinates): Place[] {
+  const near = knownStationsNear(coordinates, NEARBY_RADIUS_METERS);
+  const points = near.length > 0 ? near : knownStationsNear(coordinates, WIDER_RADIUS_METERS);
+  return points.map((point) => ({
+    name: `${point.nameJa}駅`,
+    latitude: point.latitude,
+    longitude: point.longitude,
+    phone: null,
+    category: PUBLIC_TRANSPORT,
+    locality: null,
+    administrativeArea: null,
+  }));
+}
 
 /** The known passenger stations among `places` (lib/stationIndex) when there are any; else all of them. */
 export function preferKnownStations(places: Place[]): Place[] {

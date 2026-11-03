@@ -513,6 +513,8 @@ export default function RideScreen() {
             >
               <Text
                 numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.7}
                 maxFontSizeMultiplier={1.4}
                 style={[styles.destinationText, { color: colors.foreground }]}
               >
@@ -835,11 +837,17 @@ export default function RideScreen() {
             )}
             {!onBoard && !departed && trainChoiceOverride && leaveAt !== null ? (
               <Text style={[styles.note, styles.centred, { color: colors.mutedForeground }]}>
-                {ja
-                  ? `駅が${station}駅に変わり、${trainChoiceLabel(trainChoice, true)}の出る時刻を過ぎていたため、${trainChoiceLabel(effectiveTrainChoice, true)}にしています`
-                  : `Your station changed to ${station} and it was too late for the ${trainChoiceLabel(trainChoice, false).toLowerCase()} train there, so this is the ${trainChoiceLabel(effectiveTrainChoice, false).toLowerCase()}`}
+                {trainChoiceOverride.fromStation === trainChoiceOverride.station
+                  ? ja
+                    ? `${trainChoiceLabel(trainChoice, true)}は出る時刻を過ぎていたため、${trainChoiceLabel(effectiveTrainChoice, true)}にしています`
+                    : `It was too late to leave for the ${trainChoiceLabel(trainChoice, false).toLowerCase()} train, so this is the ${trainChoiceLabel(effectiveTrainChoice, false).toLowerCase()}`
+                  : ja
+                    ? `駅が${station}駅に変わり、${trainChoiceLabel(trainChoice, true)}の出る時刻を過ぎていたため、${trainChoiceLabel(effectiveTrainChoice, true)}にしています`
+                    : `Your station changed to ${station} and it was too late for the ${trainChoiceLabel(trainChoice, false).toLowerCase()} train there, so this is the ${trainChoiceLabel(effectiveTrainChoice, false).toLowerCase()}`}
               </Text>
-            ) : !onBoard && !departed && trainChoice > effectiveTrainChoice && !boardingQuestion ? (
+            ) : !onBoard && !departed && trainChoice > effectiveTrainChoice && !boardingQuestion &&
+              // Only when that train was found and has left (not when it was never found).
+              trainChoices.some((option) => option.choice === trainChoice && !option.catchable) ? (
               <Text style={[styles.note, styles.centred, { color: colors.mutedForeground }]}>
                 {ja
                   ? `${trainChoiceLabel(trainChoice, true)}は発車したため、${trainChoiceLabel(effectiveTrainChoice, true)}にしています`
@@ -971,6 +979,20 @@ export default function RideScreen() {
                     : "Find your closest station and walking time."}
               </Text>
             </View>
+          </Pressable>
+        )}
+        {/* No plan because the search failed or found no route: the way on is to pick a
+            station (it works from anywhere, e.g. planning ahead, or outside Japan). */}
+        {!plan && !farMode && !firstLoad && locationError !== null && locationError !== "permission" && locationError !== "near-home" && (
+          <Pressable
+            testID="error-choose-station"
+            onPress={() => router.push("/departure-station")}
+            accessibilityRole="button"
+            hitSlop={8}
+            style={({ pressed }) => [styles.errorChoose, { opacity: pressed ? 0.7 : 1 }]}
+          >
+            <Feather name="search" size={14} color={colors.primary} />
+            <Text style={[styles.smallButtonText, { color: colors.primary }]}>{ja ? "駅を選んで調べる" : "Choose a station"}</Text>
           </Pressable>
         )}
 
@@ -1262,16 +1284,26 @@ export default function RideScreen() {
         {/* Tracking only while open: a compact suggestion to update when closed
             (iOS "Always"), closable for tonight; after that just the note. */}
         {trackingMode === "foreground" && alwaysCard.show && (
+          // Stacked, never cut off: title and ✕, the sentence in full, then the button.
           <View style={[styles.alwaysStrip, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Feather name="moon" color={colors.primary} size={16} />
-            <View style={styles.flex}>
-              <Text numberOfLines={1} style={[styles.alwaysTitle, { color: colors.foreground }]}>
+            <View style={styles.alwaysHead}>
+              <Feather name="moon" color={colors.primary} size={16} />
+              <Text style={[styles.alwaysTitle, styles.flex, { color: colors.foreground }]}>
                 {ja ? "アプリの使用中のみ更新" : "Updating only while open"}
               </Text>
-              <Text numberOfLines={2} style={[styles.note, { color: colors.mutedForeground }]}>
-                {ja ? "アプリを閉じると、駅や出発時刻は更新されません" : "Your station and times won’t update while closed"}
-              </Text>
+              <Pressable
+                testID="always-card-close"
+                onPress={alwaysCard.dismissTonight}
+                accessibilityRole="button"
+                accessibilityLabel={ja ? "今夜は閉じる" : "Close for tonight"}
+                hitSlop={10}
+              >
+                <Feather name="x" size={18} color={colors.mutedForeground} />
+              </Pressable>
             </View>
+            <Text style={[styles.note, { color: colors.mutedForeground }]}>
+              {ja ? "アプリを閉じると、駅や出発時刻は更新されません。" : "Your station and times won’t update while the app is closed."}
+            </Text>
             <Pressable
               testID="always-card-enable"
               onPress={() =>
@@ -1280,18 +1312,9 @@ export default function RideScreen() {
                 })
               }
               accessibilityRole="button"
-              style={({ pressed }) => [styles.smallButton, { backgroundColor: colors.primary, borderColor: colors.primary, opacity: pressed ? 0.85 : 1 }]}
+              style={({ pressed }) => [styles.smallButton, styles.alwaysButton, { backgroundColor: colors.primary, borderColor: colors.primary, opacity: pressed ? 0.85 : 1 }]}
             >
-              <Text style={[styles.smallButtonText, { color: colors.primaryForeground }]}>{ja ? "アプリを閉じても更新" : "Keep updating"}</Text>
-            </Pressable>
-            <Pressable
-              testID="always-card-close"
-              onPress={alwaysCard.dismissTonight}
-              accessibilityRole="button"
-              accessibilityLabel={ja ? "今夜は閉じる" : "Close for tonight"}
-              hitSlop={10}
-            >
-              <Feather name="x" size={18} color={colors.mutedForeground} />
+              <Text style={[styles.smallButtonText, { color: colors.primaryForeground }]}>{ja ? "アプリを閉じても更新" : "Keep updating when closed"}</Text>
             </Pressable>
           </View>
         )}
@@ -1371,7 +1394,7 @@ export default function RideScreen() {
                   <Text numberOfLines={1} style={[styles.rowTitle, { color: colors.foreground }]}>
                     {group.name}
                   </Text>
-                  <Text numberOfLines={1} style={[styles.note, { color: joined ? colors.primary : colors.mutedForeground }]}>
+                  <Text numberOfLines={2} style={[styles.note, { color: joined ? colors.primary : colors.mutedForeground }]}>
                     {joined
                       ? ja
                         ? `● 出発時刻を共有中 · 今夜${count}人${nextInGroup?.leaveBy ? ` · 次は${nextInGroup.displayName}さん ${formatJstTime(Date.parse(nextInGroup.leaveBy))}` : ""}`
@@ -1726,13 +1749,16 @@ const styles = StyleSheet.create({
   stationPanel: { borderWidth: 1, gap: 12, padding: 14 },
   panelButtons: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   noticeGroup: { gap: 8 },
+  errorChoose: { alignItems: "center", alignSelf: "center", flexDirection: "row", gap: 6, paddingVertical: 4 },
   loadingFaint: { opacity: 0.35 },
   loadingCircle: { alignItems: "center", borderRadius: HERO_SIZE / 2, borderWidth: 9, gap: 8, height: HERO_SIZE, justifyContent: "center", width: HERO_SIZE },
   loadingNote: { fontSize: 11, fontWeight: "700" },
   mapSlot: { flexGrow: 1, maxHeight: MAP_MAX_HEIGHT, minHeight: MAP_HEIGHT },
   moreNotices: { alignItems: "center", alignSelf: "flex-start", flexDirection: "row", gap: 4, paddingVertical: 2 },
   alwaysCard: { gap: 12, paddingHorizontal: 18, paddingVertical: 18 },
-  alwaysStrip: { alignItems: "center", borderRadius: 16, borderWidth: 1, flexDirection: "row", gap: 10, paddingHorizontal: 14, paddingVertical: 10 },
+  alwaysStrip: { borderRadius: 16, borderWidth: 1, gap: 8, paddingHorizontal: 14, paddingVertical: 12 },
+  alwaysHead: { alignItems: "center", flexDirection: "row", gap: 8 },
+  alwaysButton: { alignSelf: "flex-start" },
   alwaysTitle: { fontSize: 13, fontWeight: "800" },
   promptButtons: { flexDirection: "row", gap: 10, marginTop: 2 },
   promptButton: { alignItems: "center", flex: 1, justifyContent: "center", minHeight: 46, paddingHorizontal: 12 },

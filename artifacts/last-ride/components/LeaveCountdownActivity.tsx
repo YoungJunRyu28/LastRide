@@ -38,6 +38,9 @@ const LeaveCountdown = (sent: LeaveCountdownProps, environment: LiveActivityEnvi
   // you're standing still): iOS marks the activity stale at that moment, and it
   // carries on with the next countdown, until the train leaves.
   const props = environment.isStale && sent.next ? { ...sent, ...sent.next, shownAt: sent.countdownTo, next: null } : sent;
+  // Nothing follows and its time has passed (stale after the last train) with the
+  // app not woken to end it: say so, instead of a countdown sitting at 0:00.
+  const gone = environment.isStale && !sent.next && sent.gone ? sent.gone : null;
   const c = props.colors;
   // The Dynamic Island is always black: white themes use the default colours there.
   const ic = c.dark ? c : { ...c, background: "#000000", text: "#ffffff", muted: "#c9d4de", faint: "#5f708a", leave: "#f5a93b", train: "#b9adff" };
@@ -90,26 +93,29 @@ const LeaveCountdown = (sent: LeaveCountdownProps, environment: LiveActivityEnvi
       ])}
     </HStack>
   );
-  const timer = (size: number, color: string) => (
-    <Text
-      timerInterval={range}
-      countsDown
-      modifiers={[font({ weight: "heavy", design: "rounded", size }), monospacedDigit(), foregroundStyle(color), lineLimit(1), minimumScaleFactor(0.6)]}
-    />
-  );
+  const timer = (size: number, color: string) =>
+    gone ? (
+      <Text modifiers={[font({ weight: "heavy", size: size * 0.6 }), foregroundStyle(c.muted), lineLimit(1), minimumScaleFactor(0.6)]}>{gone.value}</Text>
+    ) : (
+      <Text
+        timerInterval={range}
+        countsDown
+        modifiers={[font({ weight: "heavy", design: "rounded", size }), monospacedDigit(), foregroundStyle(color), lineLimit(1), minimumScaleFactor(0.6)]}
+      />
+    );
 
   return {
     banner: (
       <VStack alignment="leading" spacing={10} modifiers={[padding({ all: 16 }), activityBackgroundTint(c.background)]}>
         <HStack alignment="top">
           <VStack alignment="leading" spacing={1}>
-            <Text modifiers={[font({ weight: "bold", size: 12 }), foregroundStyle(toneColor), lineLimit(1)]}>{props.label}</Text>
+            <Text modifiers={[font({ weight: "bold", size: 12 }), foregroundStyle(gone ? c.muted : toneColor), lineLimit(1)]}>{gone ? gone.label : props.label}</Text>
             {timer(34, toneColor)}
           </VStack>
           <Spacer />
           <VStack alignment="trailing" spacing={2}>
             <Text modifiers={[font({ weight: "bold", size: 13 }), foregroundStyle(c.text), lineLimit(1), minimumScaleFactor(0.7)]}>{props.from}</Text>
-            <Text modifiers={[font({ size: 11 }), foregroundStyle(c.muted), lineLimit(1)]}>{props.choice}</Text>
+            <Text modifiers={[font({ size: 11 }), foregroundStyle(c.muted), lineLimit(1), minimumScaleFactor(0.8)]}>{props.to}</Text>
             {/* How fresh the times are; with app-only tracking, that they need the app. */}
             <Text modifiers={[font({ size: 11 }), foregroundStyle(c.muted), lineLimit(1), minimumScaleFactor(0.8)]}>{props.checked}</Text>
           </VStack>
@@ -121,9 +127,11 @@ const LeaveCountdown = (sent: LeaveCountdownProps, environment: LiveActivityEnvi
     // kept off the island's rounded ends. "1:12" over an hour, "12:34" under,
     // so it stays clear of the battery.
     compactLeading: (
-      <Text modifiers={[font({ weight: "bold", size: 12 }), foregroundStyle(islandTone), lineLimit(1), minimumScaleFactor(0.7), padding({ leading: 6 })]}>{props.island}</Text>
+      <Text modifiers={[font({ weight: "bold", size: 12 }), foregroundStyle(islandTone), lineLimit(1), minimumScaleFactor(0.7), padding({ leading: 6 })]}>{gone ? gone.island : props.island}</Text>
     ),
-    compactTrailing: (
+    compactTrailing: gone ? (
+      <Text modifiers={[font({ weight: "bold", size: 12 }), foregroundStyle(ic.muted), lineLimit(1), minimumScaleFactor(0.6), padding({ trailing: 6 })]}>{gone.short}</Text>
+    ) : (
       <Text
         timerInterval={range}
         countsDown
@@ -142,23 +150,27 @@ const LeaveCountdown = (sent: LeaveCountdownProps, environment: LiveActivityEnvi
     ),
     minimal: <Image systemName="tram.fill" modifiers={[foregroundStyle(islandTone)]} />,
     expandedLeading: (
-      <Text modifiers={[font({ weight: "bold", size: 13 }), foregroundStyle(islandTone), lineLimit(1), minimumScaleFactor(0.7), padding({ leading: 8 })]}>{props.label}</Text>
+      <Text modifiers={[font({ weight: "bold", size: 13 }), foregroundStyle(islandTone), lineLimit(1), minimumScaleFactor(0.7), padding({ leading: 8 })]}>{gone ? gone.label : props.label}</Text>
     ),
     expandedTrailing: (
       <VStack alignment="trailing" spacing={2} modifiers={[padding({ trailing: 8 })]}>
         <Text modifiers={[font({ weight: "bold", size: 13 }), lineLimit(1), minimumScaleFactor(0.7)]}>{props.from}</Text>
-        <Text modifiers={[font({ size: 11 }), foregroundStyle(ic.muted), lineLimit(1), minimumScaleFactor(0.8)]}>{props.choice}</Text>
+        <Text modifiers={[font({ size: 11 }), foregroundStyle(ic.muted), lineLimit(1), minimumScaleFactor(0.8)]}>{props.to}</Text>
       </VStack>
     ),
     // The countdown gets the full width here, above the rail, instead of a corner.
     expandedBottom: (
       <VStack alignment="leading" spacing={8} modifiers={[padding({ horizontal: 8, bottom: 4 })]}>
-        <Text
-          timerInterval={range}
-          countsDown
-          dropsSeconds={overAnHour}
-          modifiers={[font({ weight: "heavy", design: "rounded", size: 32 }), monospacedDigit(), foregroundStyle(islandTone), lineLimit(1), minimumScaleFactor(0.6)]}
-        />
+        {gone ? (
+          <Text modifiers={[font({ weight: "heavy", size: 22 }), foregroundStyle(ic.muted), lineLimit(1), minimumScaleFactor(0.6)]}>{gone.value}</Text>
+        ) : (
+          <Text
+            timerInterval={range}
+            countsDown
+            dropsSeconds={overAnHour}
+            modifiers={[font({ weight: "heavy", design: "rounded", size: 32 }), monospacedDigit(), foregroundStyle(islandTone), lineLimit(1), minimumScaleFactor(0.6)]}
+          />
+        )}
         {rail(ic)}
       </VStack>
     ),

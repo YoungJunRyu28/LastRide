@@ -178,11 +178,11 @@ export function PremiumOffer({
               : `Charged to your ${store}; renews for the same period until cancelled. Cancel at least 24 hours before the period ends to stop the next charge.`}
           {Platform.OS === 'ios'
             ? ja
-              ? '解約はiPhoneの「設定」→ 自分の名前 →「サブスクリプション」から。アプリを削除しても解約されません。'
-              : ' Cancel in iPhone Settings → your name → Subscriptions. Deleting the app doesn’t cancel.'
+              ? '解約はiPhoneの「設定」→ 自分の名前 →「サブスクリプション」から。アプリを削除しても解約されません。購入後すぐに使えます。期間途中の解約による返金はありません。'
+              : ' Cancel in iPhone Settings → your name → Subscriptions. Deleting the app doesn’t cancel. Premium starts right after purchase; there’s no refund for the rest of a period after cancelling.'
             : ja
-              ? '解約はGoogle Playの「定期購入」から。アプリを削除しても解約されません。'
-              : ' Cancel in Google Play → Subscriptions. Deleting the app doesn’t cancel.'}
+              ? '解約はGoogle Playの「定期購入」から。アプリを削除しても解約されません。購入後すぐに使えます。期間途中の解約による返金はありません。'
+              : ' Cancel in Google Play → Subscriptions. Deleting the app doesn’t cancel. Premium starts right after purchase; there’s no refund for the rest of a period after cancelling.'}
         </Text>
         <View style={styles.links}>
           <TextButton label={ja ? '購入を復元' : 'Restore purchases'} onPress={() => void restorePurchases()} testID="restore-purchases" />

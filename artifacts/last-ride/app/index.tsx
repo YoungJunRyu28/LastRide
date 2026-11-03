@@ -59,14 +59,14 @@ export default function WelcomeScreen() {
             <Text accessibilityRole="link" testID="welcome-terms-ja" onPress={() => void WebBrowser.openBrowserAsync(siteLink(TERMS_URL, true))} style={[styles.legalLink, { color: colors.foreground }]}>利用規約</Text>
             と
             <Text accessibilityRole="link" testID="welcome-privacy-ja" onPress={() => void WebBrowser.openBrowserAsync(siteLink(PRIVACY_URL, true))} style={[styles.legalLink, { color: colors.foreground }]}>プライバシーポリシー</Text>
-            に同意したことになります。
+            （米国・シンガポールの事業者への送信を含む）に同意したことになります。
           </Text>
           <Text maxFontSizeMultiplier={1.4} style={[styles.legalText, { color: colors.mutedForeground }]}>
             By continuing, you agree to the{' '}
             <Text accessibilityRole="link" testID="welcome-terms-en" onPress={() => void WebBrowser.openBrowserAsync(siteLink(TERMS_URL, false))} style={[styles.legalLink, { color: colors.foreground }]}>Terms</Text>
             {' '}and{' '}
             <Text accessibilityRole="link" testID="welcome-privacy-en" onPress={() => void WebBrowser.openBrowserAsync(siteLink(PRIVACY_URL, false))} style={[styles.legalLink, { color: colors.foreground }]}>Privacy Policy</Text>
-            .
+            , including data sent to providers in the US and Singapore.
           </Text>
         </View>
       </View>

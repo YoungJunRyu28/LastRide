@@ -115,10 +115,24 @@ export function buildGroupUpdatedMessages(
  * (a leave time, who's in tonight, a member joining or leaving, a name).
  * Never throws. The database is already awake for the change itself.
  */
+/**
+ * Silent "refresh this group" pushes: at most UPDATED_PUSHES_PER_MINUTE per
+ * group per server instance. Normal use (joining, then sharing a leave time)
+ * stays well under it; a member renaming themselves in a loop can't flood
+ * everyone's phones, and each push is a DB read. Apps also refresh when opened.
+ */
+const UPDATED_PUSHES_PER_MINUTE = 6;
+const recentUpdatedPushes = new Map<string, number[]>();
+
 export async function notifyGroupUpdated(
   groupId: string,
   exceptMemberId: string | null,
 ): Promise<number> {
+  const now = Date.now();
+  const recent = (recentUpdatedPushes.get(groupId) ?? []).filter((at) => now - at < 60_000);
+  if (recent.length >= UPDATED_PUSHES_PER_MINUTE) return 0;
+  recentUpdatedPushes.set(groupId, [...recent, now]);
+  if (recentUpdatedPushes.size > 5000) recentUpdatedPushes.clear();
   try {
     const rows = await getDb()
       .select({ token: groupMembersTable.expoPushToken })

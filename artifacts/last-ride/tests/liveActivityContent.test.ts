@@ -20,6 +20,7 @@ const plan = {
   lastTrain: { departsAt: LAST_TRAIN, source: "live" as const },
   walkingMinutes: 8,
   station: shibuya,
+  destination: { name: "Kikuna", nameJa: "菊名", latitude: 35.5098, longitude: 139.6304 } as StationOption,
   computedAt: jst(22, 41),
 };
 
@@ -39,7 +40,8 @@ describe("liveActivityContent", () => {
       label: "ここを出るまで",
       island: "出るまで",
       from: "渋谷駅から",
-      choice: "帰り時 · 終電",
+      to: "菊名へ",
+      checked: "22:41 確認",
     });
   });
 
@@ -99,5 +101,15 @@ describe("nextLiveActivityPhase (shown by itself once iOS marks the activity sta
       const props = { ...content, shownAt: jst(23, 0), next: nextLiveActivityPhase(plan, language, content) };
       expect(new TextEncoder().encode(JSON.stringify(props)).length).toBeLessThan(3000);
     }
+  });
+});
+
+describe("top right: the same three lines as the medium widget", () => {
+  test("where to and the arrival, with the saved place's name", () => {
+    const withArrival = { ...plan, lastTrain: { ...plan.lastTrain, arrivesAt: jst(24, 39) } };
+    const content = liveActivityContent(withArrival, "ja", jst(23, 0), undefined, false, "自宅")!;
+    expect(content.from).toBe("渋谷駅から");
+    expect(content.to).toBe("自宅へ · 00:39 着");
+    expect(content.checked).toBe("22:41 確認");
   });
 });

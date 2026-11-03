@@ -1,4 +1,5 @@
-import { Router, type IRouter, type Request, type Response } from "express";
+import { serviceDateFor } from "../lib/groupNight";
+import { Router, type IRouter, type NextFunction, type Request, type Response } from "express";
 import { isDatabaseConfigured } from "@workspace/db";
 import { scheduleNextLeaveAlert } from "../lib/leaveAlertSchedule";
 import {
@@ -26,6 +27,7 @@ import {
   endGroupTonightRecord,
   getGroupDetailRecord,
   groupMemberIdForToken,
+  groupMemberRoleForToken,
   joinGroupRecord,
   recoverJoinedGroupRecord,
   leaveGroupRecord,
@@ -73,7 +75,7 @@ const joinLimiter = rateLimitMiddleware({
   key: (req) => groupJoinAttemptRateKey(requestAddress(req), req.header("x-group-join-key")),
 });
 
-const memberLimiter = rateLimitMiddleware({
+const memberTokenLimiter = rateLimitMiddleware({
   limit: 120,
   windowMs: 60_000,
   key: (req) => {
@@ -83,6 +85,38 @@ const memberLimiter = rateLimitMiddleware({
       : `groups-member-missing:${requestAddress(req)}`;
   },
 });
+
+/**
+ * In memory, before anything touches Postgres: a per-address ceiling, so
+ * requests with invented tokens (each a fresh bucket in the shared limiter)
+ * can't keep the scale-to-zero database awake or burn its compute.
+ */
+const memberIpGuard = rateLimitMiddleware({
+  limit: 300,
+  windowMs: 60_000,
+  key: (req) => `groups-member-ip:${requestAddress(req)}`,
+  shared: false,
+});
+
+/** A request that can't be valid (bad group id, no or malformed token) is refused without the database. */
+function memberShape(req: Request, res: Response, next: NextFunction) {
+  const groupId = String(req.params.groupId ?? "");
+  const token = req.header("x-member-token") ?? "";
+  if (!UUID_RE.test(groupId)) {
+    res.status(400).json({ error: "Invalid group id" });
+    return;
+  }
+  if (token.length < MIN_TOKEN || token.length > MAX_TOKEN || !/^[A-Za-z0-9_-]+$/.test(token)) {
+    res.status(401).json({ error: "Member token required" });
+    return;
+  }
+  next();
+}
+
+const memberLimiter = [memberIpGuard, memberShape, memberTokenLimiter];
+
+const tonightStartedPushed = new Map<string, string>();
+const jstNight = () => serviceDateFor(new Date());
 
 /**
  * Validates the group id and member token. Responds and returns null when the
@@ -117,6 +151,40 @@ function forbidden(res: Response) {
 
 function sendDetail(res: Response, group: GroupDetail, status = 200) {
   res.status(status).json(GetGroupResponse.parse(group));
+}
+
+/**
+ * Hosting needs Premium every time tonight is started, not just when the group
+ * was created: a host whose trial ended or who cancelled keeps the group (and
+ * members keep sharing), but can't start new nights until they subscribe again.
+ * The same proof as group creation: the device capability behind the RevenueCat
+ * ID, then RevenueCat's answer. Responds and returns false when it can't go on.
+ * RevenueCat unreachable doesn't block a night out (fails open, logged).
+ */
+async function requireHostPremium(req: Request, res: Response): Promise<boolean> {
+  const appUserId = req.header("x-revenuecat-app-user-id");
+  if (!appUserId) {
+    res.status(402).json({ code: "PREMIUM_REQUIRED", error: "Premium is required to start tonight" });
+    return false;
+  }
+  if (premiumDeviceProofRequired()) {
+    const deviceSecret = req.header("x-premium-device-secret");
+    if (!deviceSecret) {
+      res.status(403).json({ code: "PREMIUM_CLIENT_UPGRADE_REQUIRED", error: "Update LastRide to host tonight" });
+      return false;
+    }
+    if (!verifiedPremiumDeviceIdentity(appUserId, deviceSecret)) {
+      res.status(401).json({ code: "INVALID_PREMIUM_DEVICE_PROOF", error: "Verified premium device identity required" });
+      return false;
+    }
+  }
+  const entitlement = await checkPremiumEntitlement(appUserId);
+  if (entitlement === "inactive") {
+    res.status(402).json({ code: "PREMIUM_REQUIRED", error: "Premium is required to start tonight" });
+    return false;
+  }
+  if (entitlement === "unavailable") req.log.warn("Subscription check unavailable; starting tonight anyway");
+  return true;
 }
 
 router.post("/groups", createLimiter, async (req, res) => {
@@ -243,7 +311,7 @@ router.post("/groups/join", joinIpGuard, joinLimiter, async (req, res) => {
   );
 });
 
-router.get("/groups/:groupId", memberLimiter, async (req, res) => {
+router.get("/groups/:groupId", ...memberLimiter, async (req, res) => {
   const auth = memberRequest(req, res);
   if (!auth) return;
   const group = await getGroupDetailRecord(auth.groupId, auth.token);
@@ -251,7 +319,7 @@ router.get("/groups/:groupId", memberLimiter, async (req, res) => {
   sendDetail(res, group);
 });
 
-router.patch("/groups/:groupId", memberLimiter, async (req, res) => {
+router.patch("/groups/:groupId", ...memberLimiter, async (req, res) => {
   const auth = memberRequest(req, res);
   if (!auth) return;
   const body = UpdateGroupBody.safeParse(req.body);
@@ -270,7 +338,7 @@ router.patch("/groups/:groupId", memberLimiter, async (req, res) => {
   sendDetail(res, result.group);
 });
 
-router.delete("/groups/:groupId", memberLimiter, async (req, res) => {
+router.delete("/groups/:groupId", ...memberLimiter, async (req, res) => {
   const auth = memberRequest(req, res);
   if (!auth) return;
   const result = await disbandGroupRecord(auth.groupId, auth.token);
@@ -279,7 +347,7 @@ router.delete("/groups/:groupId", memberLimiter, async (req, res) => {
   res.status(204).end();
 });
 
-router.post("/groups/:groupId/invite", memberLimiter, async (req, res) => {
+router.post("/groups/:groupId/invite", ...memberLimiter, async (req, res) => {
   const auth = memberRequest(req, res);
   if (!auth) return;
   const result = await rotateGroupInviteRecord(auth.groupId, auth.token);
@@ -292,7 +360,7 @@ router.post("/groups/:groupId/invite", memberLimiter, async (req, res) => {
 
 router.delete(
   "/groups/:groupId/members/:memberId",
-  memberLimiter,
+  ...memberLimiter,
   async (req, res) => {
     const auth = memberRequest(req, res);
     if (!auth) return;
@@ -323,7 +391,7 @@ router.delete(
   },
 );
 
-router.patch("/groups/:groupId/me", memberLimiter, async (req, res) => {
+router.patch("/groups/:groupId/me", ...memberLimiter, async (req, res) => {
   const auth = memberRequest(req, res);
   if (!auth) return;
   const body = UpdateMyGroupMembershipBody.safeParse(req.body);
@@ -350,7 +418,7 @@ router.patch("/groups/:groupId/me", memberLimiter, async (req, res) => {
   sendDetail(res, result.group);
 });
 
-router.delete("/groups/:groupId/me", memberLimiter, async (req, res) => {
+router.delete("/groups/:groupId/me", ...memberLimiter, async (req, res) => {
   const auth = memberRequest(req, res);
   if (!auth) return;
   const leaving = await groupMemberIdForToken(auth.groupId, auth.token);
@@ -367,7 +435,7 @@ router.delete("/groups/:groupId/me", memberLimiter, async (req, res) => {
 });
 
 // "Reset & start over": leave even as host (a host's group is disbanded).
-router.post("/groups/:groupId/me/reset", memberLimiter, async (req, res) => {
+router.post("/groups/:groupId/me/reset", ...memberLimiter, async (req, res) => {
   const auth = memberRequest(req, res);
   if (!auth) return;
   const leaving = await groupMemberIdForToken(auth.groupId, auth.token);
@@ -378,13 +446,22 @@ router.post("/groups/:groupId/me/reset", memberLimiter, async (req, res) => {
   res.status(204).end();
 });
 
-router.post("/groups/:groupId/tonight", memberLimiter, async (req, res) => {
+router.post("/groups/:groupId/tonight", ...memberLimiter, async (req, res) => {
   const auth = memberRequest(req, res);
   if (!auth) return;
+  // Who's asking first (a member gets "host only", not a Premium prompt), then Premium.
+  const role = await groupMemberRoleForToken(auth.groupId, auth.token);
+  if (role === null) return notFound(res);
+  if (role !== "host") return forbidden(res);
+  if (!(await requireHostPremium(req, res))) return;
   const result = await startGroupTonightRecord(auth.groupId, auth.token);
   if (result.kind === "not-found") return notFound(res);
   if (result.kind === "forbidden") return forbidden(res);
-  if (result.started) {
+  // The visible 「今夜の共有が始まりました」 at most once per group a night (per
+  // server instance): a host ending and restarting tonight in a loop can't spam it.
+  if (result.started && tonightStartedPushed.get(auth.groupId) !== jstNight()) {
+    tonightStartedPushed.set(auth.groupId, jstNight());
+    if (tonightStartedPushed.size > 5000) tonightStartedPushed.clear();
     await sendGroupPush(
       auth.groupId,
       { kind: "tonight_started", groupName: result.groupName },
@@ -396,7 +473,7 @@ router.post("/groups/:groupId/tonight", memberLimiter, async (req, res) => {
   sendDetail(res, result.group, result.started ? 201 : 200);
 });
 
-router.delete("/groups/:groupId/tonight", memberLimiter, async (req, res) => {
+router.delete("/groups/:groupId/tonight", ...memberLimiter, async (req, res) => {
   const auth = memberRequest(req, res);
   if (!auth) return;
   const result = await endGroupTonightRecord(auth.groupId, auth.token);
@@ -406,7 +483,7 @@ router.delete("/groups/:groupId/tonight", memberLimiter, async (req, res) => {
   sendDetail(res, result.group);
 });
 
-router.put("/groups/:groupId/tonight/me", memberLimiter, async (req, res) => {
+router.put("/groups/:groupId/tonight/me", ...memberLimiter, async (req, res) => {
   const auth = memberRequest(req, res);
   if (!auth) return;
   const body = JoinGroupTonightBody.safeParse(req.body ?? {});
@@ -452,7 +529,7 @@ router.put("/groups/:groupId/tonight/me", memberLimiter, async (req, res) => {
 
 router.delete(
   "/groups/:groupId/tonight/me",
-  memberLimiter,
+  ...memberLimiter,
   async (req, res) => {
     const auth = memberRequest(req, res);
     if (!auth) return;

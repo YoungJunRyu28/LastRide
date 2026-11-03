@@ -13,10 +13,13 @@ vi.mock("@react-native-async-storage/async-storage", () => ({
 import { rememberEarlierTrains, resetEarlierTrainsMemory } from "@/lib/earlierTrains";
 import type { TrainTime } from "@/lib/timetable";
 
-// 23:00 JST, 2026-11-02 (service night 20261102).
-const NOW = Date.parse("2026-11-02T14:00:00Z");
-const at = (hhmm: string) => Date.parse(`2026-11-02T${hhmm}:00+09:00`);
-const train = (hhmm: string): TrainTime => ({ departsAt: at(hhmm), source: "apple" });
+const DAY = 24 * 60 * 60 * 1000;
+// Night of 2026-11-02 (JST); "24:05" is 00:05 the next morning, still that night.
+const at = (hhmm: string, night = 0) => {
+  const [h, m] = hhmm.split(":").map(Number);
+  return Date.parse(`2026-11-02T00:00:00+09:00`) + night * DAY + (h * 60 + m) * 60_000;
+};
+const train = (hhmm: string, night = 0): TrainTime => ({ departsAt: at(hhmm, night), source: "apple" });
 const LAST = train("23:56");
 
 describe("rememberEarlierTrains", () => {
@@ -25,45 +28,54 @@ describe("rememberEarlierTrains", () => {
     resetEarlierTrainsMemory();
   });
 
-  it("keeps 1本前 / 2本前 found earlier when a later search of the same station finds none", async () => {
-    const first = await rememberEarlierTrains("山手", "菊名", LAST, [train("23:46"), train("23:36")], NOW);
-    expect(first.map((t) => t.departsAt)).toEqual([at("23:46"), at("23:36")]);
-    const again = await rememberEarlierTrains("山手", "菊名", LAST, [], NOW + 60_000);
+  it("keeps 1本前 / 2本前 found earlier when a later search of the same last train finds none", async () => {
+    await rememberEarlierTrains("山手", "菊名", LAST, [train("23:46"), train("23:36")]);
+    const again = await rememberEarlierTrains("山手", "菊名", LAST, []);
     expect(again.map((t) => t.departsAt)).toEqual([at("23:46"), at("23:36")]);
   });
 
-  it("also when it finds only one of them", async () => {
-    await rememberEarlierTrains("山手", "菊名", LAST, [train("23:46"), train("23:36")], NOW);
-    const again = await rememberEarlierTrains("山手", "菊名", LAST, [train("23:46")], NOW);
-    expect(again).toHaveLength(2);
+  it("fills in the one this search missed", async () => {
+    await rememberEarlierTrains("山手", "菊名", LAST, [train("23:46"), train("23:36")]);
+    const again = await rememberEarlierTrains("山手", "菊名", LAST, [train("23:46")]);
+    expect(again.map((t) => t.departsAt)).toEqual([at("23:46"), at("23:36")]);
   });
 
-  it("takes a new list as long as the remembered one (a changed timetable comes through)", async () => {
-    await rememberEarlierTrains("山手", "菊名", LAST, [train("23:46"), train("23:36")], NOW);
-    const again = await rememberEarlierTrains("山手", "菊名", LAST, [train("23:47"), train("23:37")], NOW);
-    expect(again.map((t) => t.departsAt)).toEqual([at("23:47"), at("23:37")]);
+  it("merges by departure: the same train a minute apart counts once, the newest answer wins", async () => {
+    await rememberEarlierTrains("山手", "菊名", LAST, [train("23:46"), train("23:36")]);
+    const again = await rememberEarlierTrains("山手", "菊名", LAST, [train("23:47")]);
+    expect(again.map((t) => t.departsAt)).toEqual([at("23:47"), at("23:36")]);
   });
 
   it("is per station and destination", async () => {
-    await rememberEarlierTrains("山手", "菊名", LAST, [train("23:46")], NOW);
-    expect(await rememberEarlierTrains("石川町", "菊名", LAST, [], NOW)).toEqual([]);
-    expect(await rememberEarlierTrains("山手", "渋谷", LAST, [], NOW)).toEqual([]);
+    await rememberEarlierTrains("山手", "菊名", LAST, [train("23:46")]);
+    expect(await rememberEarlierTrains("石川町", "菊名", LAST, [])).toEqual([]);
+    expect(await rememberEarlierTrains("山手", "渋谷", LAST, [])).toEqual([]);
   });
 
-  it("drops remembered trains that aren't before tonight's last train", async () => {
-    await rememberEarlierTrains("山手", "菊名", LAST, [train("23:46"), train("23:36")], NOW);
-    const earlierLast = train("23:40");
-    const again = await rememberEarlierTrains("山手", "菊名", earlierLast, [], NOW);
-    expect(again.map((t) => t.departsAt)).toEqual([at("23:36")]);
+  it("never lends trains to a different last train (a later one found since)", async () => {
+    const server = train("24:08");
+    await rememberEarlierTrains("渋谷", "菊名", server, [train("23:55"), train("23:40")]);
+    const later = train("24:33");
+    const again = await rememberEarlierTrains("渋谷", "菊名", later, [train("24:20")]);
+    expect(again.map((t) => t.departsAt)).toEqual([at("24:20")]);
   });
 
-  it("survives a relaunch (on disk), and is forgotten the next night", async () => {
-    await rememberEarlierTrains("山手", "菊名", LAST, [train("23:46")], NOW);
+  it("never brings back last night's trains, whatever the time of the call", async () => {
+    // Stored while still on last night's plan (e.g. a re-plan at 04:30).
+    await rememberEarlierTrains("山手", "菊名", LAST, [train("23:46"), train("23:36")]);
+    // Tonight's last train, same station: Apple found only one.
+    const tonight = await rememberEarlierTrains("山手", "菊名", train("23:56", 1), [train("23:46", 1)]);
+    expect(tonight.map((t) => t.departsAt)).toEqual([at("23:46", 1)]);
+  });
+
+  it("survives a relaunch (on disk)", async () => {
+    await rememberEarlierTrains("山手", "菊名", LAST, [train("23:46")]);
     resetEarlierTrainsMemory();
-    expect(await rememberEarlierTrains("山手", "菊名", LAST, [], NOW)).toHaveLength(1);
-    resetEarlierTrainsMemory();
-    const nextNight = NOW + 24 * 60 * 60 * 1000;
-    const nextLast = { ...LAST, departsAt: LAST.departsAt + 24 * 60 * 60 * 1000 };
-    expect(await rememberEarlierTrains("山手", "菊名", nextLast, [], nextNight)).toEqual([]);
+    expect(await rememberEarlierTrains("山手", "菊名", LAST, [])).toHaveLength(1);
+  });
+
+  it("only keeps trains within two hours before the last train", async () => {
+    const kept = await rememberEarlierTrains("山手", "菊名", LAST, [train("23:46"), train("21:30")]);
+    expect(kept.map((t) => t.departsAt)).toEqual([at("23:46")]);
   });
 });

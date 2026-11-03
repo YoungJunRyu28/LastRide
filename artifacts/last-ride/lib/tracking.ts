@@ -136,6 +136,13 @@ async function recomputeFromLocation(roughCoordinates: Coordinates, accuracyMete
     await writePinnedStation(null);
     await notifyLockFallback(settings.pinnedStation, basePlan, settings.language ?? 'en').catch(() => undefined);
   }
+  // The app may have made a newer plan while this one was computed (you changed the
+  // station, margin or destination): that one stands; don't put the old one back.
+  const latest = await readTrackingSnapshot();
+  if (latest && latest.computedAt > basePlan.computedAt) {
+    void debugEvent('bg: dropped (a newer plan arrived meanwhile)');
+    return;
+  }
   // The snapshot keeps the plan as found; the app applies tonight's train choice itself.
   await AsyncStorage.setItem(SNAPSHOT_KEY, JSON.stringify(basePlan));
   // 終電 / 1本前 / 2本前, falling back to a later train once the chosen one can't be made.
@@ -150,6 +157,14 @@ async function recomputeFromLocation(roughCoordinates: Coordinates, accuracyMete
       ? null
       : { station: basePlan.station.nameJa, fromStation: previous.station.nameJa, choice, until: trainChoiceUntil(basePlan.lastTrain.departsAt) };
     await writeTrainChoiceOverride(override);
+  } else if (previous && settings.trainChoice > 0 && sameStation(previous.station, basePlan.station) && override?.station !== basePlan.station.nameJa && before.length <= slotThere && optionsThere.length > slotThere) {
+    // Same station, its earlier trains only found now: the chosen slot unless its
+    // leave time has passed, never a jump back to a train already too late to leave for.
+    const choice = slotAtNewStation(optionsThere, slotThere);
+    if (choice !== slotThere) {
+      override = { station: basePlan.station.nameJa, fromStation: basePlan.station.nameJa, choice, until: trainChoiceUntil(basePlan.lastTrain.departsAt) };
+      await writeTrainChoiceOverride(override);
+    }
   }
   const options = trainOptions(basePlan, settings.leaveMargin, now);
   const preferred = choiceAt(settings.trainChoice, override, basePlan.station.nameJa);
@@ -182,9 +197,18 @@ async function recomputeFromLocation(roughCoordinates: Coordinates, accuracyMete
     followUpFor,
     followUpLabel: gone ? trainChoiceLabel(gone.choice, language === 'ja') : undefined,
   });
-  if (!(await isTrackingFlagOn())) return;
+  // 停止 or 〔乗った〕 landed while the reminders were being set: take them back off.
+  if (!(await isTrackingFlagOn())) {
+    await cancelAllReminders().catch(() => undefined);
+    return;
+  }
   await suggestStation(basePlan, recommendedLeaveTime(plan), language, now).catch(() => undefined);
   await syncLiveActivity(plan, language, now).catch(() => undefined);
+  // The same for the Live Activity: stopped meanwhile, so it mustn't stay up.
+  if (!(await isTrackingFlagOn())) {
+    await endLiveActivity('stopped while the background update ran').catch(() => undefined);
+    return;
+  }
   const destinationLabel = settings.tonightDestination
     ? language === 'ja' ? settings.tonightDestination.nameJa : settings.tonightDestination.name
     : settings.destinations.find((destination) => destination.id === settings.activeDestinationId)?.label ?? (language === 'ja' ? plan.destination.nameJa : plan.destination.name);

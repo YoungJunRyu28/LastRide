@@ -8,11 +8,16 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { serviceDate } from '@/lib/time';
 import type { TrainTime } from '@/lib/timetable';
+import { EARLIER_TRAIN_COUNT, EARLIER_TRAINS_WINDOW_MS } from '@/lib/appleTransit';
 
 const STORAGE_KEY = 'lastride-earlier-trains';
 
-type Store = { night: string; entries: Record<string, TrainTime[]> };
+type Entry = { last: number; trains: TrainTime[] };
+type Store = { night: string; entries: Record<string, Entry> };
 let memory: Store | null = null;
+
+const sameTrains = (a: TrainTime[], b: TrainTime[]) =>
+  a.length === b.length && a.every((train, index) => train.departsAt === b[index].departsAt);
 
 async function load(night: string): Promise<Store> {
   if (memory?.night === night) return memory;
@@ -25,31 +30,43 @@ async function load(night: string): Promise<Store> {
   return memory;
 }
 
-const sameTrains = (a: TrainTime[], b: TrainTime[]) =>
-  a.length === b.length && a.every((train, index) => train.departsAt === b[index].departsAt);
+/** The same train from two answers (server and Apple can differ by a minute). */
+const SAME_TRAIN_MS = 90_000;
 
 /**
- * The fuller list of the two: `found` by this search, or what was found for
- * this station and destination earlier tonight (only trains before `last`).
- * A list as long as the remembered one wins, so a changed timetable still comes
- * through. Remembers the answer.
+ * Tonight's earlier trains for this station and destination: what this search
+ * found, plus anything found before for the same last train (the same night,
+ * the same departure), latest first, at most EARLIER_TRAIN_COUNT. A different
+ * last train (another night, or a later one found since) starts afresh, so
+ * a list is never shown for a train it doesn't belong to. Remembers the answer.
  */
 export async function rememberEarlierTrains(
   fromNameJa: string,
   toNameJa: string,
   last: TrainTime,
   found: TrainTime[],
-  nowMs: number,
 ): Promise<TrainTime[]> {
-  const store = await load(serviceDate(nowMs));
+  // The night the last train belongs to (00:10 is still the night before), not the
+  // time of the call: a re-plan at 04:30 or 22:00 can't mix up two nights.
+  const store = await load(serviceDate(last.departsAt));
   const key = `${fromNameJa}→${toNameJa}`;
-  const known = (store.entries[key] ?? []).filter((train) => train.departsAt < last.departsAt);
-  const best = found.length >= known.length ? found : known;
-  if (!sameTrains(best, store.entries[key] ?? [])) {
-    store.entries[key] = best;
+  const saved = store.entries[key];
+  const known = saved && saved.last === last.departsAt ? saved.trains : [];
+  const earliest = last.departsAt - EARLIER_TRAINS_WINDOW_MS;
+  // This search's answers first (a remembered copy of the same train is dropped), then by time.
+  const merged: TrainTime[] = [];
+  for (const train of [...found, ...known]) {
+    if (train.departsAt >= last.departsAt || train.departsAt < earliest) continue;
+    if (merged.some((kept) => Math.abs(kept.departsAt - train.departsAt) < SAME_TRAIN_MS)) continue;
+    merged.push(train);
+  }
+  const best = merged.sort((a, b) => b.departsAt - a.departsAt).slice(0, EARLIER_TRAIN_COUNT);
+  const sameAsFound = best.length === found.length && best.every((train, index) => train === found[index]);
+  if (!saved || saved.last !== last.departsAt || !sameTrains(best, saved.trains)) {
+    store.entries[key] = { last: last.departsAt, trains: best };
     await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(store)).catch(() => undefined);
   }
-  return best;
+  return sameAsFound ? found : best;
 }
 
 /** Tests only. */

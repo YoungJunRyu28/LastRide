@@ -127,6 +127,13 @@ export default function OnboardingLocationScreen() {
           {ja ? 'あとから「設定」→「夜間の位置情報」で変更できます。' : 'Change it any time in Settings › Night location.'}
         </Text>
       </View>
+      {/* Guideline 1.4: hurrying for a train is when people look at their phone while walking. */}
+      <View style={styles.footnoteRow}>
+        <Feather name="alert-circle" size={13} color={colors.mutedForeground} />
+        <Text style={[styles.footnote, { color: colors.mutedForeground }]}>
+          {ja ? '歩きながら・走りながらの操作はやめましょう。通知とアラームでお知らせします。' : 'Don’t use your phone while walking or running: reminders and alarms will tell you.'}
+        </Text>
+      </View>
     </OnboardingFrame>
   );
 }

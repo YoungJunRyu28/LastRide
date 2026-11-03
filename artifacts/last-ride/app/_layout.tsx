@@ -65,17 +65,16 @@ function RootLayoutNav() {
  */
 const SPLASH_SETTLE_MS = 120;
 const SPLASH_MAX_MS = 4000;
+const hideSplash = () => void SplashScreen.hideAsync().catch(() => undefined);
+// Never stuck behind the splash, whatever fails: started here, outside React, so
+// neither fonts that never load nor a crash that swaps the tree out can cancel it.
+setTimeout(hideSplash, SPLASH_MAX_MS);
 function SplashGate() {
   const { isHydrated } = useLastRide();
   const { loaded } = usePremium();
   useEffect(() => {
-    // Never stuck behind the splash, whatever fails to load.
-    const timer = setTimeout(() => void SplashScreen.hideAsync().catch(() => undefined), SPLASH_MAX_MS);
-    return () => clearTimeout(timer);
-  }, []);
-  useEffect(() => {
     if (!isHydrated || !loaded) return;
-    const timer = setTimeout(() => void SplashScreen.hideAsync().catch(() => undefined), SPLASH_SETTLE_MS);
+    const timer = setTimeout(hideSplash, SPLASH_SETTLE_MS);
     return () => clearTimeout(timer);
   }, [isHydrated, loaded]);
   return null;
@@ -94,7 +93,8 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      <ErrorBoundary onError={reportError}>
+      {/* A crash at start shows the error screen at once, not the splash for 4 s. */}
+      <ErrorBoundary onError={(error) => { hideSplash(); reportError(error); }}>
         <QueryClientProvider client={queryClient}>
           <GestureHandlerRootView style={{ flex: 1 }}>
             <KeyboardProvider>

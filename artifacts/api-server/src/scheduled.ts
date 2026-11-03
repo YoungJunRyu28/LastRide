@@ -27,6 +27,8 @@ import { purgeEndedGroupNights, purgeInactiveGroupMembers } from "./lib/groupSto
 import { dispatchGroupLeaveAlerts } from "./lib/groupNotifications";
 import { reconcileGroupPushReceipts } from "./lib/groupAlertOutbox";
 import { scheduleNextLeaveAlert, watchdogRunning } from "./lib/leaveAlertSchedule";
+import { scrubErrorInPlace } from "./lib/logSafety";
+import { businessEnabled } from "./lib/business";
 import { logger } from "./lib/logger";
 
 export type ScheduledTask = "cleanup" | "departureAlerts" | "pushReceipts";
@@ -37,7 +39,20 @@ type ScheduledEvent = {
   backstop?: boolean;
 };
 
+/**
+ * EventBridge entry point. A failure is rethrown (so EventBridge retries), but
+ * as a plain error: the Lambda runtime prints whatever escapes, and a Drizzle
+ * error would print every bound value with it (lib/logSafety).
+ */
 export async function handler(event: ScheduledEvent) {
+  try {
+    return await runScheduledTask(event);
+  } catch (error) {
+    throw scrubErrorInPlace(error);
+  }
+}
+
+async function runScheduledTask(event: ScheduledEvent) {
   if (!isDatabaseConfigured()) {
     logger.warn(
       { task: event.task },
@@ -82,8 +97,9 @@ export async function handler(event: ScheduledEvent) {
       // The backstop only matters when nothing else is watching: while the watchdog
       // runs (every 5 minutes) it checks the same things, so don't wake the database.
       if (event.backstop && (await watchdogRunning())) return;
+      // Business off: its alert job doesn't touch the database (lib/business).
       const [enterprise, groups] = await Promise.allSettled([
-        dispatchEnterpriseDepartureAlerts(),
+        businessEnabled() ? dispatchEnterpriseDepartureAlerts() : Promise.resolve(0),
         dispatchGroupLeaveAlerts(),
       ]);
       // Push receipts due ~15 minutes after a send (and expired tickets) come in on
@@ -107,7 +123,8 @@ export async function handler(event: ScheduledEvent) {
     }
     case "pushReceipts": {
       const [enterprise, group] = await Promise.allSettled([
-        reconcileEnterprisePushReceipts(), reconcileGroupPushReceipts(),
+        businessEnabled() ? reconcileEnterprisePushReceipts() : Promise.resolve({ checked: 0 } as Awaited<ReturnType<typeof reconcileEnterprisePushReceipts>>),
+        reconcileGroupPushReceipts(),
       ]);
       if (enterprise.status === "fulfilled" && enterprise.value.checked > 0)
         logger.info(enterprise.value, "Checked enterprise push receipts");

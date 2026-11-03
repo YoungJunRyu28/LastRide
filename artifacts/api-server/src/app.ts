@@ -4,6 +4,7 @@ import express, {
 } from "express";
 import cors from "cors";
 import pinoHttp from "pino-http";
+import { safeErr } from "./lib/logSafety";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { trustedProxySettings } from "./lib/trustedProxy";
@@ -24,6 +25,7 @@ app.use(
   pinoHttp({
     logger,
     serializers: {
+      err: safeErr,
       req(req) {
         return {
           id: req.id,

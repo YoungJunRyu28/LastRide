@@ -5,6 +5,7 @@
  * compared (bus, taxi, car, waiting: /far-ways) one tap away. lib/farStation finds it.
  */
 import { Feather } from "@expo/vector-icons";
+import { router } from "expo-router";
 import React from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { MapCard, openDrivingRoute } from "@/components/MapCard";
@@ -96,7 +97,7 @@ export function FarStationCard({
                   <Text style={[styles.trainTime, { color: trainGone ? colors.mutedForeground : colors.foreground }]}>{formatJstTime(far.lastTrain.departsAt)}</Text>
                   <Text style={[styles.trainUnit, { color: trainGone ? colors.mutedForeground : colors.foreground }]}>{ja ? "発" : "dep."}</Text>
                   {far.lastTrain.arrivesAt !== undefined ? (
-                    <Text style={[styles.arrive, { color: colors.mutedForeground }]} numberOfLines={1}>
+                    <Text style={[styles.arrive, { color: colors.mutedForeground }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
                       {ja ? `→ ${homeStation}着 ${formatJstTime(far.lastTrain.arrivesAt)}` : `→ ${homeStation} ${formatJstTime(far.lastTrain.arrivesAt)}`}
                     </Text>
                   ) : null}
@@ -136,7 +137,7 @@ export function FarStationCard({
               style={({ pressed }) => [styles.button, { backgroundColor: colors.primary, opacity: pressed ? 0.85 : 1 }]}
             >
               <Feather name="truck" size={16} color={colors.primaryForeground} />
-              <Text style={[styles.buttonText, { color: colors.primaryForeground }]} numberOfLines={1}>
+              <Text style={[styles.buttonText, { color: colors.primaryForeground }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
                 {ja ? "タクシー・車で駅へ" : "Taxi or car to the station"}
                 {far.taxiFareYen !== null ? (ja ? `  約${formatYen(far.taxiFareYen)}` : `  ~${formatYen(far.taxiFareYen)}`) : ""}
               </Text>
@@ -148,7 +149,7 @@ export function FarStationCard({
               style={({ pressed }) => [styles.button, { borderColor: colors.input, borderWidth: 1, opacity: pressed ? 0.7 : 1 }]}
             >
               <Feather name="list" size={16} color={colors.foreground} />
-              <Text style={[styles.buttonText, { color: colors.foreground }]} numberOfLines={1}>
+              <Text style={[styles.buttonText, { color: colors.foreground }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
                 {ja ? "バス・タクシーなど帰り方を比べる" : "Compare bus, taxi and more"}
               </Text>
             </Pressable>
@@ -173,6 +174,11 @@ export function FarStationCard({
       <View style={[styles.footer, { borderColor: colors.border }]}>
         <Pressable testID="retry-location" onPress={onRetry} accessibilityRole="button" hitSlop={8}>
           <Text style={[styles.link, { color: colors.primary }]}>{ja ? "現在地でもう一度探す" : "Search again from here"}</Text>
+        </Pressable>
+        {/* Or start from a station of your choosing (going there by car or bus first,
+            or planning ahead from elsewhere): tonight's last train from it, no walk. */}
+        <Pressable testID="far-choose-station" onPress={() => router.push("/departure-station")} accessibilityRole="button" hitSlop={8}>
+          <Text style={[styles.link, { color: colors.primary }]}>{ja ? "駅を選んで調べる" : "Choose a station"}</Text>
         </Pressable>
       </View>
     </View>

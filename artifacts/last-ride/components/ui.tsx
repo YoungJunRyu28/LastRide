@@ -240,6 +240,8 @@ export function Segmented<T extends string>({
           >
             <Text
               numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.75}
               style={[
                 styles.segmentText,
                 { color: selected ? colors.primaryForeground : colors.mutedForeground, fontWeight: selected ? '900' : '700' },
@@ -310,7 +312,7 @@ export function Row({
       <View style={styles.rowTrailing}>
         {warning ? <Feather name="alert-circle" size={16} color={colors.destructive} /> : null}
         {value ? (
-          <Text numberOfLines={1} style={[styles.rowValue, { color: colors.mutedForeground }]}>
+          <Text numberOfLines={2} style={[styles.rowValue, { color: colors.mutedForeground }]}>
             {value}
           </Text>
         ) : null}
@@ -484,7 +486,7 @@ const styles = StyleSheet.create({
   rowText: { flex: 1, gap: 2 },
   rowIcon: { alignItems: 'center', borderRadius: 8, height: 30, justifyContent: 'center', width: 30 },
   rowTrailing: { alignItems: 'center', flexDirection: 'row', flexShrink: 1, gap: 6, maxWidth: '55%' },
-  rowValue: { flexShrink: 1, fontSize: 14 },
+  rowValue: { flexShrink: 1, fontSize: 14, textAlign: 'right' },
   rowCheckSpace: { width: 20 },
   rowTitle: { fontSize: 15, fontWeight: '700' },
   rowSubtitle: { fontSize: 12, lineHeight: 17 },

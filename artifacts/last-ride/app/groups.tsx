@@ -200,7 +200,7 @@ export default function GroupsScreen() {
               </Card>
             </View>
             <PrimaryButton
-              label={isPremium ? (ja ? 'グループを作る' : 'Create a group') : ja ? `${trialLabel(trialDays, true)}でグループを作る` : `Create a group — ${trialLabel(trialDays, false)}`}
+              label={isPremium ? (ja ? 'グループを作る' : 'Create a group') : trialDays ? (ja ? `${trialLabel(trialDays, true)}でグループを作る` : `Create a group — ${trialLabel(trialDays, false)}`) : ja ? 'プレミアムでグループを作る' : 'Create a group with Premium'}
               onPress={() => goCreateGroup(isPremium)}
               testID="groups-create"
             />

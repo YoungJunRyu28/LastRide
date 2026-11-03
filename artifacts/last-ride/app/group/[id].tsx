@@ -20,7 +20,8 @@ import {
 } from '@workspace/api-client-react';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import React, { useState } from 'react';
-import { Alert, Modal, Platform, Pressable, KeyboardAvoidingView, RefreshControl, ScrollView, Share, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { Alert, Linking, Modal, Platform, Pressable, KeyboardAvoidingView, RefreshControl, ScrollView, Share, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { SUPPORT_EMAIL } from '@/lib/links';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomNav } from '@/components/BottomNav';
 import { Card, IconButton, PrimaryButton, SecondaryButton, TextButton } from '@/components/ui';
@@ -80,7 +81,7 @@ export default function GroupScreen() {
     setRefreshing(true);
     try { await refreshGroup(id); } finally { setRefreshing(false); }
   }, [id, refreshGroup]);
-  const { isPremium } = usePremium();
+  const { isPremium, groupCreationHeaders } = usePremium();
   const ja = language !== 'en';
   const [sheet, setSheet] = useState<Sheet>(null);
   const [draft, setDraft] = useState('');
@@ -164,10 +165,31 @@ export default function GroupScreen() {
   const joinTonight = () =>
     run(() => joinGroupTonight(detail.id, { leaveBy: plan ? new Date(recommendedLeaveTime(plan)).toISOString() : null }, options));
 
-  /** The host starting tonight is going too: start, and share their own time. */
+  /**
+   * The host starting tonight is going too: start, and share their own time.
+   * Hosting needs Premium each night (the server checks): after a trial or a
+   * cancellation, say so and offer Premium, instead of a generic failure.
+   */
   const startTonight = () =>
     run(async () => {
-      await startGroupTonight(detail.id, options);
+      const premiumHeaders = await groupCreationHeaders().catch(() => ({} as Record<string, string>));
+      const withPremium = { ...options, headers: { ...(options.headers as Record<string, string> | undefined), ...premiumHeaders } };
+      try {
+        await startGroupTonight(detail.id, withPremium);
+      } catch (error) {
+        if (errorStatus(error) !== 402) throw error;
+        Alert.alert(
+          ja ? '今夜の開始にはプレミアムが必要です' : 'Starting tonight needs Premium',
+          ja
+            ? 'グループのホストとして今夜を始めるには、プレミアムが必要です。メンバーは今まで通り参加できます。'
+            : 'Hosting a night needs Premium. Members can still join as before.',
+          [
+            { text: ja ? 'キャンセル' : 'Cancel', style: 'cancel' },
+            { text: ja ? 'プレミアムを見る' : 'See Premium', onPress: () => router.push('/paywall') },
+          ],
+        );
+        return;
+      }
       return joinGroupTonight(detail.id, { leaveBy: plan ? new Date(recommendedLeaveTime(plan)).toISOString() : null }, options);
     });
 
@@ -257,6 +279,22 @@ export default function GroupScreen() {
     return { text: ja ? `あと${formatCountdown(msLeft)}` : `in ${formatCountdown(msLeft)}`, tone };
   };
 
+  // Group and display names are written by users: a way to report one (Guideline 1.2).
+  const reportItem = () => detail
+    ? menuItem(
+        'report',
+        ja ? '不適切な名前を報告' : 'Report an inappropriate name',
+        ja ? 'サポートにメールで知らせます' : 'Emails our support',
+        () =>
+          void Linking.openURL(
+            `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(ja ? '不適切な名前の報告' : 'Inappropriate name report')}&body=${encodeURIComponent(
+              ja
+                ? `グループID：${detail.id}\n問題のある名前（グループ名・表示名）：\n`
+                : `Group ID: ${detail.id}\nThe name (group or display name):\n`,
+            )}`,
+          ).catch(() => undefined),
+      )
+    : null;
   const menuItem = (key: string, title: string, subtitle: string | null, onPress: () => void, destructive = false, trailing?: React.ReactNode) => (
     <Pressable
       key={key}
@@ -359,6 +397,7 @@ export default function GroupScreen() {
                 void leaveGone(() => disbandGroup(detail.id, options)),
               ),
             true)}
+            {reportItem()}
             <Text style={[styles.note, { color: colors.mutedForeground }]}>
               {ja ? 'ホストはグループを解散すると退出できます。' : 'As host, you leave by disbanding the group.'}
             </Text>
@@ -375,6 +414,7 @@ export default function GroupScreen() {
                 void leaveGone(() => leaveGroup(detail.id, options)),
               ),
             true)}
+            {reportItem()}
           </View>
         );
     }
@@ -527,7 +567,7 @@ export default function GroupScreen() {
               // A status line, not a button: you're sharing; stopping is the small link at the end.
               <View style={styles.sharingRow}>
                 <View style={[styles.sharingDot, { backgroundColor: colors.primary }]} />
-                <Text style={[styles.sharingText, { color: colors.mutedForeground }]} numberOfLines={1}>
+                <Text style={[styles.sharingText, { color: colors.mutedForeground }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
                   {ja ? 'あなたの出発時刻を共有中' : 'Sharing your leave time'}
                 </Text>
                 <Pressable

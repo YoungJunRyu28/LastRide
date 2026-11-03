@@ -8,7 +8,7 @@ import { phaseAt, phaseLabel, railStops, stopLabel, stopState, type PhasePlan } 
 import { recommendedLeaveTime } from "@/lib/reliability";
 import { trainChoiceLabel } from "@/lib/trainChoice";
 import { formatJstTime, MINUTE_MS } from "@/lib/time";
-import type { WidgetBar, WidgetStop } from "@/lib/widgetContent";
+import { arrivalText, checkedLine, toLine, type WidgetBar, type WidgetStop } from "@/lib/widgetContent";
 import { widgetPalette, type WidgetPalette, type WidgetThemeId } from "@/lib/widgetThemes";
 
 export type LiveActivityContent = {
@@ -24,25 +24,33 @@ export type LiveActivityContent = {
   tone: "leave" | "train";
   /** "渋谷駅から" */
   from: string;
-  /** "帰り時 · 1本前" */
-  choice: string;
+  /** 「自宅へ · 00:39 着」: where to, and when you get there (as on the medium widget). */
+  to: string;
   /** When the plan was last checked: "22:41 確認", or "22:41 確認 · 開くと更新" when it only updates with the app open. */
   checked: string;
   stops: WidgetStop[];
   bars: WidgetBar[];
   colors: WidgetPalette;
+  /**
+   * Shown instead of a countdown stuck at 0:00 once the night's last countdown
+   * has run out and the app hasn't been woken to end the activity (iOS marks
+   * it stale then): 「終電は発車しました」 / 「開いて確認」.
+   */
+  gone: { label: string; value: string; island: string; short: string };
 };
 
 type Language = "ja" | "en";
 
 /** Null once the last train has gone: the activity should end. */
 export function liveActivityContent(
-  plan: PhasePlan & Pick<NightPlan, "station" | "computedAt">,
+  plan: PhasePlan & Pick<NightPlan, "station" | "computedAt" | "destination">,
   language: Language,
   nowMs: number,
   theme?: WidgetThemeId,
   /** Tracking only while the app is open: the times are from the last visit. */
   whileOpenOnly = false,
+  /** The saved place's name (「自宅」), as on the widgets; the station's name if not given. */
+  destinationLabel?: string,
 ): LiveActivityContent | null {
   const phase = phaseAt(plan, nowMs);
   if (!phase) return null;
@@ -75,10 +83,11 @@ export function liveActivityContent(
     island,
     tone: phase.kind,
     from: ja ? `${station}駅から` : `From ${station}`,
-    choice: ja ? `帰り時 · ${trainName}` : `LastRide · ${phase.plan.trainChoice ? trainName.toLowerCase() : "last train"}`,
-    checked: ja
-      ? `${formatJstTime(plan.computedAt)} 確認${whileOpenOnly ? " · 開くと更新" : ""}`
-      : `Checked ${formatJstTime(plan.computedAt)}${whileOpenOnly ? " · open to update" : ""}`,
+    to: toLine(
+      ja ? `${destinationLabel ?? plan.destination.nameJa}へ` : `To ${destinationLabel ?? plan.destination.name}`,
+      arrivalText(phase.plan, ja),
+    ),
+    checked: checkedLine(plan.computedAt, ja, whileOpenOnly),
     stops: stops.map((stop, index) => ({ time: formatJstTime(stop.at), ...stopLabel(stop, states[index], ja), state: states[index] })),
     bars: stops.map((stop, index) => ({
       state: nowMs >= stop.at ? "full" : nowMs >= starts[index] ? "live" : "empty",
@@ -86,11 +95,14 @@ export function liveActivityContent(
       to: stop.at,
     })),
     colors: widgetPalette(theme),
+    gone: ja
+      ? { label: "終電は発車しました", value: "開いて確認", island: "終電", short: "発車済" }
+      : { label: "The last train has left", value: "Open the app", island: "Last", short: "Gone" },
   };
 }
 
 /** The parts of the content that change from one countdown to the next. */
-export type LiveActivityNext = Pick<LiveActivityContent, "countdownTo" | "label" | "island" | "tone" | "choice" | "stops" | "bars">;
+export type LiveActivityNext = Pick<LiveActivityContent, "countdownTo" | "label" | "island" | "tone" | "to" | "stops" | "bars">;
 
 /**
  * What the activity shows once the current countdown ends (leave time → the
@@ -106,11 +118,12 @@ export function nextLiveActivityPhase(
   content: LiveActivityContent,
   theme?: WidgetThemeId,
   whileOpenOnly = false,
+  destinationLabel?: string,
 ): LiveActivityNext | null {
-  const after = liveActivityContent(plan, language, content.countdownTo + 1, theme, whileOpenOnly);
+  const after = liveActivityContent(plan, language, content.countdownTo + 1, theme, whileOpenOnly, destinationLabel);
   if (!after || after.countdownTo <= content.countdownTo) return null;
-  const { countdownTo, label, island, tone, choice, stops, bars } = after;
-  return { countdownTo, label, island, tone, choice, stops, bars };
+  const { countdownTo, label, island, tone, to, stops, bars } = after;
+  return { countdownTo, label, island, tone, to, stops, bars };
 }
 
 /** Identifies what is on screen, so unchanged content isn't re-sent. */

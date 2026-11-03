@@ -73,6 +73,7 @@ import {
   trackingDisclosure,
 } from "@/lib/trackingDisclosure";
 import {
+  distanceBetween,
   LocationError,
   type Coordinates,
   type StationOption,
@@ -361,14 +362,29 @@ async function getCurrentCoordinates(): Promise<Coordinates> {
 
   const permission = await Location.requestForegroundPermissionsAsync();
   if (!permission.granted) throw new LocationError("permission");
-  const position = await Location.getCurrentPositionAsync({
-    accuracy: Location.Accuracy.Balanced,
+  // A fix can take forever underground; without a limit every later 更新 and
+  // check would wait behind it. After FIX_TIMEOUT_MS: the last known position if
+  // it's recent, else "unavailable" (the plan on screen stays, the next check retries).
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timedOut = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), FIX_TIMEOUT_MS);
   });
+  const position = await Promise.race([
+    Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }),
+    timedOut,
+  ]).finally(() => clearTimeout(timer));
+  const fix = position ?? (await Location.getLastKnownPositionAsync({ maxAge: LAST_KNOWN_MAX_AGE_MS }).catch(() => null));
+  if (!fix) throw new LocationError("unavailable");
   return {
-    latitude: position.coords.latitude,
-    longitude: position.coords.longitude,
+    latitude: fix.coords.latitude,
+    longitude: fix.coords.longitude,
   };
 }
+
+const FIX_TIMEOUT_MS = 15_000;
+/** Farther than this from a chosen station, the plan starts at the station (no walk). */
+const PINNED_WALKABLE_METERS = 5_000;
+const LAST_KNOWN_MAX_AGE_MS = 10 * 60_000;
 
 function errorCode(error: unknown): LocationErrorCode {
   return error instanceof LocationError ? error.code : "unavailable";
@@ -544,10 +560,28 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
    * Also holds back the lock fallback until the plan for a newly pinned station arrives.
    */
   const userStationAt = useRef<number>(-Infinity);
+  // The plan as found (before the train choice) at the previous render, for the rule below.
+  const lastBaseRef = useRef<NightPlan | null>(null);
   const newOverride = useMemo((): TrainChoiceOverride | null | undefined => {
     const previous = lastPlanRef.current;
     if (!basePlan || !previous || trainChoice === 0) return undefined;
-    if (sameStation(previous.station, basePlan.station)) return undefined;
+    if (sameStation(previous.station, basePlan.station)) {
+      // Same station, but its earlier trains only just arrived (a retry, the next
+      // re-plan): the chosen 1本前 / 2本前 was set aside for lack of it, and
+      // might be one whose leave time has passed by now. The same rule as after a
+      // station change: that slot unless it's too late, then the next later train.
+      const previousBase = lastBaseRef.current;
+      if (!previousBase || !sameStation(previousBase.station, basePlan.station)) return undefined;
+      if (choiceOverride?.station === basePlan.station.nameJa) return undefined;
+      const slot = choiceAt(trainChoice, choiceOverride, basePlan.station.nameJa);
+      const before = trainOptions(previousBase, leaveMargin, nowMs);
+      const after = trainOptions(basePlan, leaveMargin, nowMs);
+      if (before.length > slot || after.length <= slot) return undefined;
+      const choice = slotAtNewStation(after, slot);
+      return choice === slot
+        ? undefined
+        : { station: basePlan.station.nameJa, fromStation: basePlan.station.nameJa, choice, until: trainChoiceUntil(basePlan.lastTrain.departsAt) };
+    }
     if (choiceOverride?.station === basePlan.station.nameJa) return undefined;
     if (nowMs - userStationAt.current < USER_STATION_WINDOW_MS) return undefined;
     const slot = choiceAt(trainChoice, choiceOverride, previous.station.nameJa);
@@ -590,6 +624,9 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
   useEffect(() => {
     lastPlanRef.current = plan;
   }, [plan]);
+  useEffect(() => {
+    lastBaseRef.current = basePlan;
+  }, [basePlan]);
   // Background tracking may have switched the train after a station change.
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (state) => {
@@ -627,12 +664,14 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     return () => subscription.remove();
   }, []);
   const boardingQuestion = useMemo(() => {
-    if (!trackingMode || boarded || trainChoice <= effectiveChoice) return null;
+    // The slot in force (a station change may have set it later than the user's
+    // own choice), not the raw preference: never ask about a train not headed for.
+    if (!trackingMode || boarded || preferredChoice <= effectiveChoice) return null;
     // The train just before the one in force: it departed while being headed for.
     const gone = trainChoices.find((option) => option.choice === effectiveChoice + 1 && !option.catchable);
     if (!gone || gone.departsAt === answeredDeparture) return null;
     return { choice: gone.choice, departsAt: gone.departsAt };
-  }, [trackingMode, boarded, trainChoice, effectiveChoice, trainChoices, answeredDeparture]);
+  }, [trackingMode, boarded, preferredChoice, effectiveChoice, trainChoices, answeredDeparture]);
   const boardingQuestionRef = useRef(boardingQuestion);
   boardingQuestionRef.current = boardingQuestion;
 
@@ -723,6 +762,8 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
   // The lock-screen countdown follows night-out tracking. Re-synced when the plan
   // changes and when the night moves on (leave-by passes, the last train goes).
   const liveStatus = plan && !demoActive ? rideStatus(plan, nowMs) : null;
+  // Where to, named as on the widgets (set further down, where that name is worked out).
+  const widgetDestinationRef = useRef<string | null>(null);
   useEffect(() => {
     if (!trackingRestored) return;
     if (!trackingMode || !plan || demoActive || (premiumKnown && !isPremium)) {
@@ -732,7 +773,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     // Premium not known yet (just opened, or RevenueCat unreachable): the saved
     // flag decides, and a running activity is never ended for it.
     const sync = () =>
-      void syncLiveActivity(plan, language ?? "en", Date.now(), premiumKnown ? true : undefined, widgetTheme, trackingMode === "foreground").catch(
+      void syncLiveActivity(plan, language ?? "en", Date.now(), premiumKnown ? true : undefined, widgetTheme, trackingMode === "foreground", widgetDestinationRef.current ?? undefined).catch(
         () => undefined,
       );
     sync();
@@ -833,22 +874,23 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
   // (and the last train is still to come), ask again a few times. What's found
   // is remembered for the station (lib/earlierTrains.ts), so it doesn't vanish
   // at the next search.
-  const earlierRetry = useRef<{ key: string; tries: number }>({ key: "", tries: 0 });
+  // Tries per station, destination and last train for the night (A → B → A doesn't start over).
+  const earlierRetries = useRef(new Map<string, number>());
   const [earlierRetryTick, setEarlierRetryTick] = useState(0);
   useEffect(() => {
     const before = basePlan?.lastTrain.before;
     if (!basePlan || !before || before.length >= 2 || basePlan.lastTrain.source !== "apple") return;
     if (basePlan.lastTrain.departsAt <= getNow()) return;
-    const key = `${serviceDate(getNow())}:${basePlan.station.nameJa}:${basePlan.destination.nameJa}`;
-    if (earlierRetry.current.key !== key) earlierRetry.current = { key, tries: 0 };
-    if (earlierRetry.current.tries >= EARLIER_RETRY_DELAYS_MS.length) return;
+    const key = `${basePlan.station.nameJa}:${basePlan.destination.nameJa}:${basePlan.lastTrain.departsAt}`;
+    const tries = earlierRetries.current.get(key) ?? 0;
+    if (tries >= EARLIER_RETRY_DELAYS_MS.length) return;
     let cancelled = false;
     const timer = setTimeout(() => {
-      earlierRetry.current.tries += 1;
+      earlierRetries.current.set(key, tries + 1);
       const now = getNow();
       void trainsBefore(basePlan.station, basePlan.destination, { ...basePlan.lastTrain, before: undefined }, now)
         .catch(() => [] as TrainTime[])
-        .then((found) => rememberEarlierTrains(basePlan.station.nameJa, basePlan.destination.nameJa, basePlan.lastTrain, found, now))
+        .then((found) => rememberEarlierTrains(basePlan.station.nameJa, basePlan.destination.nameJa, basePlan.lastTrain, found))
         .then((more) => {
           if (cancelled) return;
           if (more.length > before.length) {
@@ -857,7 +899,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
             setEarlierRetryTick((tick) => tick + 1);
           }
         });
-    }, EARLIER_RETRY_DELAYS_MS[earlierRetry.current.tries]);
+    }, EARLIER_RETRY_DELAYS_MS[tries]);
     return () => {
       cancelled = true;
       clearTimeout(timer);
@@ -873,7 +915,14 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     );
   }, [plan?.leaveByMs, plan?.recommendedLeaveByMs]);
 
+  /**
+   * Bumped whenever the plan is cleared (a destination or 今夜だけ change, among
+   * others): a search already under way for the old destination finishes, but
+   * its plan is from before, so it's dropped instead of shown and scheduled.
+   */
+  const planGeneration = useRef(0);
   const clearPlan = useCallback(() => {
+    planGeneration.current += 1;
     setPlan(null);
     setLocationError(null);
   }, []);
@@ -1379,7 +1428,12 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       const effective = effectivePlanRef.current;
       if (!pin && !dropPin && trackingModeRef.current !== null && current && effective && holdOnTheWay(current, effective, now))
         return keepOnTheWay(current, coordinates, now, effective.lastTrain.departsAt);
-      return planNight(coordinates, home, margin, now, {
+      // A station chosen beyond walking reach (planning from far away, or going
+      // there by car or bus first): plan from the station itself, as when location
+      // is off. From here there'd be no station at all, and the choice would be lost.
+      const pinnedFar = !dropPin && pinnedStation && distanceBetween(coordinates, pinnedStation) > PINNED_WALKABLE_METERS;
+      const from = pinnedFar ? { latitude: pinnedStation.latitude, longitude: pinnedStation.longitude } : coordinates;
+      return planNight(from, home, margin, now, {
         pinned: dropPin ? null : pinnedStation,
         nightOf,
         homeAddress: settingsRef.current.homeAddress,
@@ -1392,6 +1446,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
   const requestLocation = useCallback(async () => {
     if (isLocating) return;
     const session = sessionRef.current;
+    const generation = planGeneration.current;
     setIsLocating(true);
     setLocationError(null);
     try {
@@ -1399,17 +1454,22 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       if (session !== sessionRef.current) return;
       setUserCoordinates(coordinates);
       const next = await planFrom(coordinates);
-      if (session !== sessionRef.current || !next) return;
+      if (session !== sessionRef.current || generation !== planGeneration.current || !next) return;
       setPlan(next);
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (error) {
-      if (session !== sessionRef.current) return;
+      if (session !== sessionRef.current || generation !== planGeneration.current) return;
       const code = errorCode(error);
       // A lookup that failed for now (Apple's request limit, no connection) with a
       // plan on screen: keep it; its 確認 time shows its age and the next check retries.
       // While tracking, keep it for any lookup answer too: an empty plan would cancel
       // every reminder, and nothing reschedules them until the phone moves.
-      if (planRef.current && (code === "unavailable" || (trackingModeRef.current !== null && code !== "permission"))) return;
+      // Location turned off mid-night too: the reminders and alarms already set from
+      // the last plan still go off (it says so on screen); only the error shows.
+      if (planRef.current && (code === "unavailable" || trackingModeRef.current !== null)) {
+        if (code === "permission") setLocationError(code);
+        return;
+      }
       setLocationError(code);
       setPlan(null);
       // A definite answer from here (no station within reach, no route, at home): the
@@ -1447,10 +1507,11 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       }
       const from = current?.coordinates ?? { latitude: station.latitude, longitude: station.longitude };
       const session = sessionRef.current;
+      const generation = planGeneration.current;
       setIsLocating(true);
       try {
         const next = await planFrom(from, { pin: station });
-        if (session !== sessionRef.current) return; // reset meanwhile
+        if (session !== sessionRef.current || generation !== planGeneration.current) return; // reset or destination changed meanwhile
         if (next) {
           setLocationError((error) => (error === "permission" ? error : null));
           applyPlan(next);
@@ -1593,9 +1654,10 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
         if (op !== trackingOp.current || replanInFlight.current) return;
         if (!shouldReplan(planRef.current, coordinates, getNow())) return;
         replanInFlight.current = true;
+        const generation = planGeneration.current;
         void planFrom(coordinates)
           .then((next) => {
-            if (next && op === trackingOp.current) applyPlan(next);
+            if (next && op === trackingOp.current && generation === planGeneration.current) applyPlan(next);
           })
           .catch(() => undefined) // transient failure: keep the last plan, the next update retries
           .finally(() => {
@@ -1715,11 +1777,12 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     const coordinates = planRef.current?.coordinates;
     if (!coordinates) return;
     const session = sessionRef.current;
+    const generation = planGeneration.current;
     setPinnedStationState(null);
     void writePinnedStation(null);
     planFrom(coordinates, { dropPin: true })
       .then((next) => {
-        if (next && session === sessionRef.current) setPlan(next);
+        if (next && session === sessionRef.current && generation === planGeneration.current) setPlan(next);
       })
       .catch(() => {
         if (session === sessionRef.current) clearPlan(); // the Leave screen asks for a fresh location
@@ -1998,6 +2061,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       ? tonightDestination.nameJa
       : tonightDestination.name
     : (activeDestination?.label ?? homeStation);
+  widgetDestinationRef.current = widgetDestination;
   useEffect(() => {
     if (demoActive || !isHydrated) return;
     void syncWidgets(

@@ -32,7 +32,10 @@ export function NotificationRouter() {
       target, pathname, hasHomeStation: Boolean(homeStation), businessEnabled,
     })) return;
 
-    const id = response.notification.request.identifier;
+    // The same identifier can come back with a different notification behind it:
+    // the 乗れましたか？ follow-up replaces the question under its id. Delivery
+    // time and the button pressed tell them apart, so its 〔乗った〕 still counts.
+    const id = `${response.notification.request.identifier}|${response.notification.date}|${response.actionIdentifier}`;
     if (handled.current === id) return;
     handled.current = id;
     void Notifications.clearLastNotificationResponseAsync();

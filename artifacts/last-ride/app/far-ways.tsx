@@ -134,7 +134,7 @@ export default function FarWaysScreen() {
       ]}
     >
       <Feather name={icon} size={15} color={primary ? colors.primaryForeground : colors.foreground} />
-      <Text style={[styles.buttonText, { color: primary ? colors.primaryForeground : colors.foreground }]} numberOfLines={1}>{label}</Text>
+      <Text style={[styles.buttonText, { color: primary ? colors.primaryForeground : colors.foreground }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>{label}</Text>
     </Pressable>
   );
 
@@ -334,7 +334,7 @@ export default function FarWaysScreen() {
             </Text>
           </View>
           <Text style={[styles.small, { color: colors.subtle }]}>
-            {ja ? "概算・深夜割増込み・高速代別" : "Estimate, late-night rate included, tolls extra"}
+            {ja ? "東京23区の運賃で概算・深夜割増込み・迎車料金と高速代は別" : "Estimated with Tokyo 23-ward rates, late-night included; pick-up fee and tolls extra"}
           </Text>
           {button(ja ? "自宅までの道順（車）" : "Driving directions home", "navigation", () => openDrivingRoute(taxiHome.to), true, "far-drive-home")}
           {far ? <TaxiContacts stand={far.taxiStand} companies={far.taxiCompanies} ja={ja} /> : null}

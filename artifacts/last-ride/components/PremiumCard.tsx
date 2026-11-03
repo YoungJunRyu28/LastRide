@@ -32,7 +32,7 @@ export function PremiumCard({
 }) {
   const colors = useColors();
   const lock = variant === 'lock';
-  const trial = trialLabel(useTrialDays(), ja) ?? '';
+  const trial = trialLabel(useTrialDays(), ja);
   return (
     <View style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
       <Pressable
@@ -42,11 +42,11 @@ export function PremiumCard({
         accessibilityLabel={
           lock
             ? ja
-              ? `プレミアムなら、ロック画面で出発までの時間を確認。${trial}で試す`
-              : `Premium: countdown on your lock screen. Try ${trial}`
+              ? `プレミアムなら、ロック画面で出発までの時間を確認。${trial ? `${trial}で試す` : '詳しく見る'}`
+              : `Premium: countdown on your lock screen. ${trial ? `Try ${trial}` : 'See Premium'}`
             : ja
-              ? `プレミアムなら、ホーム画面で出発時刻を確認。${trial}で試す`
-              : `Premium: leave time on your home screen. Try ${trial}`
+              ? `プレミアムなら、ホーム画面で出発時刻を確認。${trial ? `${trial}で試す` : '詳しく見る'}`
+              : `Premium: leave time on your home screen. ${trial ? `Try ${trial}` : 'See Premium'}`
         }
         style={({ pressed }) => [styles.body, { opacity: pressed ? 0.85 : 1 }]}
       >
@@ -79,7 +79,7 @@ export function PremiumCard({
                 ? 'ホーム画面で出発時刻をひと目で'
                 : 'Your leave time on the home screen'}
           </Text>
-          <Text style={[styles.cta, { color: colors.primary }]}>{ja ? `${trial}で試す ›` : `Try ${trial} ›`}</Text>
+          <Text style={[styles.cta, { color: colors.primary }]}>{trial ? (ja ? `${trial}で試す ›` : `Try ${trial} ›`) : ja ? '詳しく見る ›' : 'See Premium ›'}</Text>
         </View>
       </Pressable>
       <Pressable

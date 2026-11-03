@@ -21,6 +21,8 @@ vi.mock('../src/lib/logger', () => ({ logger: { warn: mocks.warnings, info: mock
 import { handler } from '../src/scheduled';
 
 beforeEach(() => {
+  // These cover Business alongside groups: Business is switched on here (lib/business).
+  process.env.SUPABASE_URL = 'https://auth.example';
   Object.values(mocks).forEach(mock => mock.mockReset());
   mocks.enterpriseAlerts.mockResolvedValue(0);
   mocks.groupAlerts.mockResolvedValue(0);
@@ -107,3 +109,12 @@ describe('scheduled group-alert failover', () => {
   });
 });
 
+
+describe('Business off', () => {
+  it('runs only the group jobs, never the Business ones', async () => {
+    delete process.env.SUPABASE_URL;
+    await handler({ task: 'departureAlerts' } as never);
+    expect(mocks.groupAlerts).toHaveBeenCalled();
+    expect(mocks.enterpriseAlerts).not.toHaveBeenCalled();
+  });
+});

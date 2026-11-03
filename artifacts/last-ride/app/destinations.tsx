@@ -97,7 +97,7 @@ export default function DestinationsScreen() {
                   </View>
                   <View style={styles.copy}>
                     <Text style={[styles.rowTitle, { color: colors.foreground }]}>{destination.label}</Text>
-                    <Text style={[styles.rowMeta, { color: colors.mutedForeground }]} numberOfLines={1}>
+                    <Text style={[styles.rowMeta, { color: colors.mutedForeground }]} numberOfLines={2}>
                       {station}
                       {destination.address ? (ja ? " · 住所登録済み" : " · with address") : ""}
                     </Text>

@@ -45,19 +45,22 @@
   <p>Used to find nearby stations and walking times and to work out when to leave. Only if you choose “When closed” for night location is location used while the app is closed; tracking stops by itself after the last train (by 4:00 AM at the latest). You can switch to app-only at any time or revoke location access in iPhone Settings.</p>
 
   <h2>Maps and timetables</h2>
-  <p>On iPhone, nearby stations, walking times, addresses, nearby places, taxi times, and JR and private-railway times come from Apple Maps, so your location and searches are sent to Apple under Apple’s privacy policy. Subway times are calculated by our server from Public Transportation Open Data Center data, so the departure and arrival stations (names and positions) are sent to our server. On Android your location is also sent to our server to find nearby stations. These are used for the calculation only and are not stored against you.</p>
+  <p>On iPhone, nearby stations, walking times, addresses, nearby places, taxi times, and JR and private-railway times come from Apple Maps, so your location and searches are sent to Apple under Apple’s privacy policy. Subway times are calculated by our server from Public Transportation Open Data Center data, so the departure and arrival stations (names and positions) are sent to our server. On Android, and on iPhone whenever Apple Maps doesn’t answer, your current location and searches (station names, addresses) are sent to our server instead. They are used only to answer that request, are not stored, and are never linked to you.</p>
 
   <h2>Groups</h2>
   <p>When you join a group, our server stores the group name, the display name you choose for it, whether you are the host or a member, your notification language and on/off setting, a push token, a random membership token (stored one-way), and when your app last contacted the group. On nights you choose “Join tonight”, only your leave-by time is sent; members see your display name and leave-by time. Your location, home, station and route are never shared. Leave-by times are deleted at 8:00 AM Japan time the next morning or when the host ends tonight. Leaving deletes your membership at once; disbanding a group deletes everything in it.</p>
 
   <h2>Premium</h2>
-  <p>Purchases, billing and refunds are handled by Apple’s App Store; we never receive your card details. Subscription status is managed with RevenueCat under an anonymous user ID, not your name or email. When you create a group, our server checks your subscription with that ID but does not store it.</p>
+  <p>Purchases, billing and refunds are handled by Apple’s App Store; we never receive your card details. Subscription status is managed with RevenueCat under an anonymous user ID, not your name or email (RevenueCat also receives your device’s IP address when the app contacts it). When you create a group, our server checks your subscription with that ID but does not store it.</p>
 
   <h2>Notifications, alarms and widgets</h2>
   <p>Reminders and alarms are scheduled on your phone. Widgets and the lock-screen countdown (Live Activity) show tonight’s leave time from your phone only. Group notifications are delivered through Expo’s push service and Apple’s notification service. Notifications never contain advertising.</p>
 
   <h2>Crash reports</h2>
-  <p>To fix bugs, the app may send the error, app version and device/OS model to Sentry (Functional Software, Inc.). Reports never include your location, destinations, stations, searches or display name, and are deleted after 90 days.</p>
+  <p>To fix bugs, the app may send the error, app version, device/OS model and a random ID that tells installs apart to Sentry (Functional Software, Inc.). Reports never include your location, destinations, stations, searches or display name (they’re removed on the phone before sending), IP addresses are set not to be stored, and reports are deleted after 90 days.</p>
+
+  <h2>App updates</h2>
+  <p>When you open the app, it asks Expo’s servers (650 Industries, Inc.) whether a fix or update is available, sending the app version and a random ID for this install. No location or other personal data is included.</p>
 
   <h2>Our server, logs and providers</h2>
   <p>Train-time, station and estimate requests are answered from our own data and not stored. Server logs record the endpoint and result, not query parameters containing locations or searches. The server runs on Amazon Web Services (Tokyo); group data is stored with Neon (Singapore).</p>
@@ -66,10 +69,10 @@
   <p>Except where required by law, we do not share personal data with third parties without consent. For the app and this website to work, these providers receive only what each feature needs:</p>
   <ul>
     <li><b>Apple Inc. (United States)</b>: your location and searches (nearby stations, walking times, addresses, nearby places, JR and private-railway times), and notification delivery</li>
-    <li><b>RevenueCat, Inc. (United States)</b>: an anonymous user ID and your subscription status (to manage Premium)</li>
-    <li><b>650 Industries, Inc. (Expo, United States)</b>: push tokens and notification content (to deliver group notifications)</li>
-    <li><b>Functional Software, Inc. (Sentry, United States)</b>: the error, app version and device/OS model (to fix bugs)</li>
-    <li><b>Amazon Web Services (Japan, Tokyo region)</b>: requests to our server (train times, stations, groups)</li>
+    <li><b>RevenueCat, Inc. (United States)</b>: an anonymous user ID, your subscription status and IP address (to manage Premium)</li>
+    <li><b>650 Industries, Inc. (Expo, United States)</b>: push tokens and notification content (to deliver group notifications), and the app version and a per-install ID (to check for updates)</li>
+    <li><b>Functional Software, Inc. (Sentry, United States)</b>: the error, app version, device/OS model and a random per-install ID (to fix bugs)</li>
+    <li><b>Amazon Web Services (Japan, Tokyo region)</b>: requests to our server (train times, stations, your location and searches when Apple Maps can’t answer, groups)</li>
     <li><b>Neon, Inc. (data stored in Singapore)</b>: group data (database)</li>
     <li><b>Cloudflare, Inc. (United States)</b>: serving this website and keeping spam out of the contact form</li>
   </ul>

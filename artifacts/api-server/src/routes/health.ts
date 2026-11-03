@@ -3,6 +3,9 @@ import { HealthCheckResponse } from "@workspace/api-zod";
 import { getPool } from "@workspace/db";
 import { timetableEngine } from "../lib/timetableEngine";
 
+const READY_CACHE_MS = 60_000;
+let lastDatabaseOk = -Infinity;
+
 const router: IRouter = Router();
 
 router.get("/healthz", (_req, res) => {
@@ -28,8 +31,15 @@ router.get("/readyz", async (req, res) => {
     return;
   }
 
+  // Public and unauthenticated: a good answer is reused for a minute, so polling
+  // it can't keep the scale-to-zero database awake (deploy hooks need one check).
+  if (Date.now() - lastDatabaseOk < READY_CACHE_MS) {
+    res.json(HealthCheckResponse.parse({ status: "ready" }));
+    return;
+  }
   try {
     await getPool().query("select 1");
+    lastDatabaseOk = Date.now();
     res.json(HealthCheckResponse.parse({ status: "ready" }));
   } catch (err) {
     req.log.error({ err }, "Readiness database check failed");

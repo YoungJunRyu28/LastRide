@@ -1376,8 +1376,8 @@ export default function AlternativesScreen() {
                           >
                             {chain
                               ? ja
-                                ? "  店舗の参考料金"
-                                : "  chain rate"
+                                ? "  チェーンの一般的な料金（当方調べ）"
+                                : "  usual chain rate (our research)"
                               : ja
                                 ? "  目安"
                                 : "  typical"}
@@ -1552,11 +1552,14 @@ export default function AlternativesScreen() {
                           ja
                             ? `約${taxi.durationMinutes}分 · ${taxi.distanceKm.toFixed(1)} km`
                             : `~${taxi.durationMinutes} min · ${taxi.distanceKm.toFixed(1)} km`,
+                          // The meter formula is Tokyo 23-ku's everywhere (lib/taxiFare): say so.
                           taxi.lateNight
                             ? ja
-                              ? "深夜料金込み"
-                              : "incl. late-night rate"
-                            : null,
+                              ? "東京23区の運賃で概算・深夜割増込み・迎車料金別"
+                              : "Tokyo 23-ward rates, late-night included, pick-up fee extra"
+                            : ja
+                              ? "東京23区の運賃で概算・迎車料金別"
+                              : "Tokyo 23-ward rates, pick-up fee extra",
                           homeByTaxi
                             ? ja
                               ? `${formatJstTime(homeByTaxi)}着`

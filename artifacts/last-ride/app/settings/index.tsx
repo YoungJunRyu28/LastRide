@@ -6,7 +6,7 @@ import { useColors } from '@/hooks/useColors';
 import { SUPPORT_URL, TERMS_URL, TOKUSHOHO_URL, siteLink } from '@/lib/links';
 import { alarmKitAvailable, scheduledNotificationLines, sendTestNotifications } from '@/lib/notifications';
 import { formatJstTime, MINUTE_MS } from '@/lib/time';
-import { isTestFlightBuild } from '@/modules/last-ride-alarm/src';
+import { tapVersion, useTestTools } from '@/lib/testTools';
 import { clearDebugEvents, readDebugEvents } from '@/lib/debugEvents';
 import { recommendedLeaveTime } from '@/lib/reliability';
 import { WIDGET_THEMES } from '@/lib/widgetThemes';
@@ -39,8 +39,9 @@ export default function SettingsScreen() {
   } = useLastRide();
   const { isPremium, live: premiumLive, setTestPremium, testOverride, storeInfo } = usePremium();
   const [store, setStore] = React.useState<string | null>(null);
-  // Test tools: dev builds, and TestFlight installs (detected at run time; never App Store).
-  const testTools = __DEV__ || isTestFlightBuild;
+  // Test tools: dev builds, and TestFlight installs once unlocked (7 taps on the
+  // version line, lib/testTools), so App Review never sees them; never App Store.
+  const testTools = useTestTools();
   const [alarmStatus] = useAlarmStatus(alarmsEnabled);
   const ja = language === 'ja';
   const [testSetFor, setTestSetFor] = React.useState<number | null>(null);
@@ -179,6 +180,18 @@ export default function SettingsScreen() {
         <Row testID="open-reset" icon="trash-2" title={ja ? 'データを消去' : 'Erase data'} onPress={() => router.push('/settings/reset')} />
       </Section>
 
+      {/* The version, for support; on TestFlight, 7 taps here show or hide the testing tools. */}
+      <Pressable
+        testID="app-version"
+        onPress={() => tapVersion()}
+        accessibilityRole="text"
+        style={styles.versionLine}
+      >
+        <Text style={[styles.versionText, { color: colors.mutedForeground }]}>
+          {ja ? `帰り時 ${Constants.expoConfig?.version ?? ''}（${Constants.nativeBuildVersion ?? '?'}）` : `LastRide ${Constants.expoConfig?.version ?? ''} (${Constants.nativeBuildVersion ?? '?'})`}
+        </Text>
+      </Pressable>
+
       {testTools && (
         <Section
           label={__DEV__ ? (ja ? 'デモモード（開発用）' : 'DEMO MODE (DEV ONLY)') : ja ? 'テスト用（TestFlightのみ）' : 'TESTING (TESTFLIGHT ONLY)'}
@@ -236,7 +249,7 @@ export default function SettingsScreen() {
             onPress={() => void storeInfo().then(setStore)}
           />
           <Divider />
-          {premiumLive && isTestFlightBuild && (
+          {premiumLive && !__DEV__ && (
             <>
               <Row
                 testID="toggle-testflight-premium"
@@ -313,4 +326,6 @@ const styles = StyleSheet.create({
   premiumTitle: { fontSize: 15, fontWeight: '800' },
   premiumBody: { fontSize: 12, lineHeight: 17 },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingHorizontal: 16, paddingVertical: 14 },
+  versionLine: { alignSelf: 'center', paddingHorizontal: 16, paddingVertical: 10 },
+  versionText: { fontSize: 12 },
 });

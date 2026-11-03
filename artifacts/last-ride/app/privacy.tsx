@@ -1,4 +1,5 @@
-import { IconButton } from "@/components/ui";
+import { IconButton, TextButton } from "@/components/ui";
+import * as WebBrowser from "expo-web-browser";
 import { useLastRide } from "@/context/LastRideContext";
 import { useColors } from "@/hooks/useColors";
 import { router } from "expo-router";
@@ -6,7 +7,7 @@ import React from "react";
 import { Platform, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { SUPPORT_EMAIL } from "@/lib/links";
+import { PRIVACY_URL, siteLink, SUPPORT_EMAIL } from "@/lib/links";
 
 /** The short version users see; the full policy is site/privacy/index.html and site/en/privacy/index.html (lastride.jp/privacy). Keep them in step. */
 function copy(ja: boolean) {
@@ -27,7 +28,7 @@ function copy(ja: boolean) {
           },
           {
             heading: "地図と時刻のデータ",
-            body: "iPhoneでは、近くの駅・徒歩時間・住所・周辺の施設・タクシーの所要時間、JRや私鉄の時刻をApple Mapsで調べるため、位置情報と検索内容がApple（Appleのプライバシーポリシーに従う）へ送信されます。地下鉄などの時刻は当社サーバーが公共交通オープンデータセンターのデータで計算するため、出発駅と到着駅（名前と位置）が当社サーバーへ送信されます。これらは計算に使うだけで、アカウントや個人に結びつけて保存しません。",
+            body: "iPhoneでは、近くの駅・徒歩時間・住所・周辺の施設・タクシーの所要時間、JRや私鉄の時刻をApple Mapsで調べるため、位置情報と検索内容がApple（Appleのプライバシーポリシーに従う）へ送信されます。地下鉄などの時刻は当社サーバーが公共交通オープンデータセンターのデータで計算するため、出発駅と到着駅（名前と位置）が当社サーバーへ送信されます。Apple Mapsが応答しないときは、代わりに現在地や検索内容が当社サーバーへ送信されます。これらは回答に使うだけで、保存せず、個人に結びつけることもありません。",
           },
           {
             heading: "グループ",
@@ -46,12 +47,12 @@ function copy(ja: boolean) {
             body: "出発のリマインダーは端末の中で予約されます。グループの通知（今夜の開始、メンバーの出発時刻）は、Expoのプッシュ配信とAppleの通知サービスを通じて届きます。通知に広告は含まれません。",
           },
           {
-            heading: "法人向けイベント",
-            body: "法人向けイベントに招待リンクから参加した場合も、共有されるのは表示名と出発時刻だけで、イベント終了時（通常は翌朝8時）に削除されます。",
+            heading: "クラッシュレポート",
+            body: "アプリの不具合を直すため、エラー内容・アプリのバージョン・端末とOSの機種と、インストールごとのランダムなIDをSentryに送信することがあります。位置情報、帰る場所、駅、検索内容、表示名、招待リンクは含まれず（送信前に端末で取り除きます）、90日後に削除されます。",
           },
           {
-            heading: "クラッシュレポート",
-            body: "アプリの不具合を直すため、エラー内容・アプリのバージョン・端末とOSの機種をSentryに送信することがあります。位置情報、帰る場所、駅、検索内容、表示名、招待リンクは含まれず、90日後に削除されます。",
+            heading: "アプリのアップデート",
+            body: "アプリを開くと、更新があるかをExpoのサーバーに確認します。アプリのバージョンとインストールごとのランダムなIDが送られ、位置情報などは含まれません。",
           },
           {
             heading: "削除とお問い合わせ",
@@ -59,7 +60,7 @@ function copy(ja: boolean) {
           },
           {
             heading: "送信先と所在国",
-            body: "機能に必要な範囲でのみ、次の事業者に情報が送られます：Apple（米国）、RevenueCat（米国）、Expo（米国）、Sentry（米国）、Amazon Web Services（日本・東京）、Neon（シンガポール）、Cloudflare（米国・サイトのみ）。法令に基づく場合を除き、本人の同意なく第三者に提供することはありません。各国の制度と、それぞれ送る内容は、サイトのプライバシーポリシー（lastride.jp/privacy）に記載しています。",
+            body: "機能に必要な範囲でのみ、次の事業者に情報が送られます：Apple（米国）、RevenueCat（米国）、Expo（米国）、Sentry（米国）、Amazon Web Services（日本・東京）、Neon（シンガポール）、Cloudflare（米国・サイトのみ）。RevenueCatとSentryには通信の際にIPアドレスも届きます。法令に基づく場合を除き、本人の同意なく第三者に提供することはありません。各国の制度と、それぞれ送る内容は、下のリンクの全文に記載しています。",
           },
           {
             heading: "安全管理と運営者",
@@ -83,7 +84,7 @@ function copy(ja: boolean) {
           },
           {
             heading: "Map and timetable data",
-            body: "On iPhone, nearby stations, walking times, addresses, nearby places, taxi times, and JR and private-railway times come from Apple Maps, so your location and searches are sent to Apple (under Apple’s privacy policy). Subway times are calculated by our server from Public Transportation Open Data Center data, so the departure and arrival stations (names and positions) are sent to our server. These are used for the calculation only and are not stored against you.",
+            body: "On iPhone, nearby stations, walking times, addresses, nearby places, taxi times, and JR and private-railway times come from Apple Maps, so your location and searches are sent to Apple (under Apple’s privacy policy). Subway times are calculated by our server from Public Transportation Open Data Center data, so the departure and arrival stations (names and positions) are sent to our server. When Apple Maps doesn’t answer, your current location and searches are sent to our server instead. They are used only for the answer, not stored, and never linked to you.",
           },
           {
             heading: "Groups",
@@ -102,12 +103,12 @@ function copy(ja: boolean) {
             body: "Leave reminders are scheduled on your phone. Group notifications (tonight started, a member’s leave time) are delivered through Expo’s push service and Apple’s notification service. Notifications never contain advertising.",
           },
           {
-            heading: "Business events",
-            body: "If you join a business event from an invite link, only your display name and leave-by time are shared, and they are deleted when the event ends (normally 8:00 AM the next morning).",
+            heading: "Crash reports",
+            body: "To fix bugs, the app may send the error, app version, device/OS model and a random per-install ID to Sentry. Reports never include your location, destinations, stations, searches, display name or invite links (removed on the phone before sending), and are deleted after 90 days.",
           },
           {
-            heading: "Crash reports",
-            body: "To fix bugs, the app may send the error, app version and device/OS model to Sentry. Reports never include your location, destinations, stations, searches, display name or invite links, and are deleted after 90 days.",
+            heading: "App updates",
+            body: "When you open the app, it checks Expo’s servers for an update, sending the app version and a random per-install ID. No location or other personal data is included.",
           },
           {
             heading: "Deleting your data and contact",
@@ -115,7 +116,7 @@ function copy(ja: boolean) {
           },
           {
             heading: "Where data goes",
-            body: "Only what each feature needs is sent to: Apple (US), RevenueCat (US), Expo (US), Sentry (US), Amazon Web Services (Japan, Tokyo), Neon (Singapore) and Cloudflare (US, website only). Except where required by law, nothing is shared with third parties without your consent. What each receives, and those countries’ systems, are in the full policy at lastride.jp/en/privacy.",
+            body: "Only what each feature needs is sent to: Apple (US), RevenueCat (US), Expo (US), Sentry (US), Amazon Web Services (Japan, Tokyo), Neon (Singapore) and Cloudflare (US, website only). RevenueCat and Sentry also receive your IP address when the app contacts them. Except where required by law, nothing is shared with third parties without your consent. What each receives, and those countries’ systems, are in the full policy (link below).",
           },
           {
             heading: "Security and operator",
@@ -163,6 +164,12 @@ export default function PrivacyScreen() {
             <Text style={[styles.body, { color: colors.subtle }]}>{section.body}</Text>
           </View>
         ))}
+        {/* The full policy (every recipient and country, 外部送信): one tap away. */}
+        <TextButton
+          testID="privacy-full"
+          label={ja ? 'プライバシーポリシー全文（lastride.jp） ↗' : 'Full privacy policy (lastride.jp) ↗'}
+          onPress={() => void WebBrowser.openBrowserAsync(siteLink(PRIVACY_URL, ja))}
+        />
         <Text style={[styles.updated, { color: colors.mutedForeground }]}>{text.updated}</Text>
       </ScrollView>
     </View>

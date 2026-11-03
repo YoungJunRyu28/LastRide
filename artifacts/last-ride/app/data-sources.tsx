@@ -14,6 +14,7 @@ const ODPT_URL = 'https://www.odpt.org/';
 const CC_BY_URL = 'https://creativecommons.org/licenses/by/4.0/deed.ja';
 const APPLE_LEGAL_URL = 'https://gspe21-ssl.ls.apple.com/html/attribution.html';
 const OSM_COPYRIGHT_URL = 'https://www.openstreetmap.org/copyright';
+const STATION_NAMES_SOURCE_URL = 'https://github.com/nicknr100/LastRide/tree/main/artifacts/last-ride/scripts';
 const KSJ_RAILWAY_URL = `https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-N02-${STATION_POINTS_YEAR}.html`;
 
 /**
@@ -102,6 +103,15 @@ export default function DataSourcesScreen() {
             ? ['駅名の英語表記（日本語との対応）は、OpenStreetMapのデータを利用しています。© OpenStreetMap contributors（ODbL）。']
             : ['English station names (and their Japanese pairs) use OpenStreetMap data. © OpenStreetMap contributors, available under the Open Database Licence (ODbL).'],
           { label: '© OpenStreetMap contributors', url: OSM_COPYRIGHT_URL },
+        )}
+
+        {/* ODbL 4.6: the database made from OSM (the station-name list in the app) is offered under the ODbL too. */}
+        {section(
+          ja ? 'OpenStreetMapから作成した駅名データ' : 'Station-name data made from OpenStreetMap',
+          ja
+            ? ['アプリに含まれる駅名の対応表（OpenStreetMapから作成）と、その作成手順（スクリプト）は、Open Database License（ODbL）のもとで公開しています。']
+            : ['The station-name table in the app (made from OpenStreetMap) and the script that builds it are available under the Open Database Licence (ODbL).'],
+          { label: ja ? 'データと作成手順（GitHub）' : 'Data and build script (GitHub)', url: STATION_NAMES_SOURCE_URL },
         )}
 
         {section(

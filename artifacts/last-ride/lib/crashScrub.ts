@@ -10,6 +10,9 @@ export function stripQuery(url: string): string {
   return cut === -1 ? url : url.slice(0, cut);
 }
 
+/** Keys the native SDK puts the query string and fragment under (sentry-cocoa network breadcrumbs). */
+const QUERY_KEYS = ["http.query", "http.fragment", "query", "fragment"];
+
 export function scrubBreadcrumb(breadcrumb: Breadcrumb): Breadcrumb | null {
   if (breadcrumb.category === "console") return null;
   const data = breadcrumb.data ? { ...breadcrumb.data } : undefined;
@@ -17,6 +20,7 @@ export function scrubBreadcrumb(breadcrumb: Breadcrumb): Breadcrumb | null {
     for (const key of ["url", "from", "to"]) {
       if (typeof data[key] === "string") data[key] = stripQuery(data[key]);
     }
+    for (const key of QUERY_KEYS) delete data[key];
   }
   return {
     ...breadcrumb,
@@ -25,5 +29,20 @@ export function scrubBreadcrumb(breadcrumb: Breadcrumb): Breadcrumb | null {
       breadcrumb.message && /https?:\/\/|[?&]\w+=/.test(breadcrumb.message)
         ? stripQuery(breadcrumb.message)
         : breadcrumb.message,
+  };
+}
+
+/**
+ * The same for the breadcrumbs carried inside an event: native breadcrumbs (the
+ * iOS SDK records network requests with their query strings) join JS events
+ * without passing through beforeBreadcrumb.
+ */
+export function scrubEventBreadcrumbs<T extends { breadcrumbs?: Breadcrumb[] }>(event: T): T {
+  if (!event.breadcrumbs) return event;
+  return {
+    ...event,
+    breadcrumbs: event.breadcrumbs
+      .map((breadcrumb) => scrubBreadcrumb(breadcrumb))
+      .filter((breadcrumb): breadcrumb is Breadcrumb => breadcrumb !== null),
   };
 }

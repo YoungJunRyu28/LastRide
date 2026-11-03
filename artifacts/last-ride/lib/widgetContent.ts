@@ -168,7 +168,21 @@ export type WidgetOptions = {
   theme?: WidgetThemeId;
 };
 
-function arrivalText(plan: WidgetPlan, ja: boolean): string {
+/**
+ * The top-right of the medium widget and of the Live Activity, the same in
+ * both: 「渋谷駅から」, then 「自宅へ · 00:39 着」, then 「22:41 確認」.
+ */
+export function toLine(to: string, arrival: string): string {
+  return arrival ? `${to} · ${arrival}` : to;
+}
+
+export function checkedLine(computedAt: number, ja: boolean, whileOpenOnly = false): string {
+  return ja
+    ? `${formatJstTime(computedAt)} 確認${whileOpenOnly ? " · 開くと更新" : ""}`
+    : `Checked ${formatJstTime(computedAt)}${whileOpenOnly ? " · open to update" : ""}`;
+}
+
+export function arrivalText(plan: Pick<WidgetPlan, "arriveHomeMs" | "lastTrain" | "walkHomeMinutes">, ja: boolean): string {
   const arriveMs = plan.arriveHomeMs ?? plan.lastTrain.arrivesAt;
   if (!arriveMs) return "";
   const time = formatJstTime(arriveMs);
@@ -221,6 +235,7 @@ function liveProps(
           : `${time} dep.`,
     from: ja ? `${station}駅から` : `From ${station}`,
     arrival: arrivalText(phase.plan, ja),
+    checked: checkedLine(plan.computedAt, ja),
     stops: stops.map((stop, index) => ({ time: formatJstTime(stop.at), ...stopLabel(stop, states[index], ja), state: states[index] })),
     bars: stops.map((stop, index) => ({
       state: atMs >= stop.at ? "full" : atMs >= starts[index] ? "live" : "empty",

@@ -45,14 +45,21 @@
         }
       ],
       "expo-font",
-      "expo-secure-store",
+      [
+        "expo-secure-store",
+        {
+          "faceIDPermission": false
+        }
+      ],
       [
         "expo-location",
         {
           "locationWhenInUsePermission": "LastRide uses your location to find the nearest station and calculate walking time home.",
           "locationAlwaysAndWhenInUsePermission": "LastRide uses your location in the background during a night out to keep your nearest station, walking time, and leave-by reminders accurate.",
           "isAndroidBackgroundLocationEnabled": true,
-          "isAndroidForegroundServiceEnabled": true
+          "isAndroidForegroundServiceEnabled": true,
+          "locationAlwaysPermission": "LastRide uses your location in the background during a night out to keep your nearest station, walking time, and leave-by reminders accurate.",
+          "motionUsagePermission": false
         }
       ],
       "expo-web-browser"

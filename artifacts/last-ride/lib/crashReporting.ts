@@ -11,7 +11,7 @@
 import * as Sentry from "@sentry/react-native";
 import { Platform } from "react-native";
 import { isDevelopment } from "@/lib/api";
-import { scrubBreadcrumb, stripQuery } from "@/lib/crashScrub";
+import { scrubBreadcrumb, scrubEventBreadcrumbs, stripQuery } from "@/lib/crashScrub";
 
 const dsn = process.env.EXPO_PUBLIC_SENTRY_DSN?.trim();
 
@@ -33,8 +33,12 @@ export function initCrashReporting(): void {
         event.request = { url: stripQuery(event.request.url) };
       }
       delete event.user;
-      return event;
+      return scrubEventBreadcrumbs(event);
     },
+    // The iOS SDK's own network breadcrumbs keep each request's query string
+    // (coordinates, searches) and its native crash reports skip beforeSend: don't
+    // record them at all. Passed through to sentry-cocoa's options.
+    ...({ enableNetworkBreadcrumbs: false } as object),
   });
 }
 

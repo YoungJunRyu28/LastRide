@@ -20,7 +20,7 @@ import {
 } from "@/lib/liveActivityContent";
 import type { NightPlan } from "@/lib/planner";
 import { readPremiumCache } from "@/lib/premiumCache";
-import { readWidgetTheme } from "@/lib/settings";
+import { readSettings, readWidgetTheme } from "@/lib/settings";
 import type { WidgetThemeId } from "@/lib/widgetThemes";
 import {
   countdownNotificationAvailable,
@@ -44,6 +44,17 @@ function factory() {
 /** What is on screen now, so a re-plan that changes nothing isn't re-sent. */
 let shownSignature: string | null = null;
 
+/** The name the widgets use for where you're going tonight (background task: from settings). */
+async function savedDestinationLabel(language: "ja" | "en"): Promise<string | undefined> {
+  try {
+    const settings = await readSettings();
+    if (settings.tonightDestination) return language === "ja" ? settings.tonightDestination.nameJa : settings.tonightDestination.name;
+    return settings.destinations.find((destination) => destination.id === settings.activeDestinationId)?.label;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Shows the current plan, starting the activity if none is running. */
 export async function syncLiveActivity(
   plan: NightPlan,
@@ -55,10 +66,13 @@ export async function syncLiveActivity(
   theme?: WidgetThemeId,
   /** Tracking only while the app is open (says so under the check time). */
   whileOpenOnly = false,
+  /** The saved place's name (「自宅」), as on the widgets; read from settings when omitted. */
+  destinationLabel?: string,
 ): Promise<void> {
   if (!liveActivityEnabled && !countdownNotificationAvailable) return;
   const widgetTheme = theme ?? (await readWidgetTheme());
-  const content = liveActivityContent(plan, language, nowMs, widgetTheme, whileOpenOnly);
+  const toName = destinationLabel ?? (await savedDestinationLabel(language));
+  const content = liveActivityContent(plan, language, nowMs, widgetTheme, whileOpenOnly, toName);
   if (!content) {
     await endLiveActivity(`no content (${plan.station.nameJa} ${plan.trainChoice ?? 0} ${new Date(plan.lastTrain.departsAt).toISOString()})`);
     return;
@@ -101,11 +115,12 @@ export async function syncLiveActivity(
 
   // The next countdown rides along: at the end of this one (the stale date) the
   // activity switches to it by itself, even if the app isn't woken then.
-  const next = nextLiveActivityPhase(plan, language, content, widgetTheme, whileOpenOnly);
+  const next = nextLiveActivityPhase(plan, language, content, widgetTheme, whileOpenOnly, toName);
   const props = { ...content, shownAt: nowMs, next };
-  // Nothing follows: stale shortly after the night's real last train (with
-  // 1本前 / 2本前 the plan's own train goes first, and the later ones still show).
-  const staleDate = next ? new Date(content.countdownTo) : new Date((plan.nightLastTrain ?? plan.lastTrain).departsAt + 5 * MINUTE_MS);
+  // Nothing follows (this is the night's last train): stale a minute after it
+  // leaves, when the activity says 「終電は発車しました」 by itself
+  // (components/LeaveCountdownActivity) if the app hasn't ended it.
+  const staleDate = next ? new Date(content.countdownTo) : new Date(content.countdownTo + MINUTE_MS);
   debugEvent(`${running ? "update" : "start"}: ${content.label} ${content.countdownTo > nowMs ? Math.round((content.countdownTo - nowMs) / 1000) + "s" : "past"}`);
   if (running) {
     await running.update(props, staleDate).catch(async (error: unknown) => {

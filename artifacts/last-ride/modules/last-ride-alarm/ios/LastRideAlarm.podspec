@@ -13,7 +13,9 @@ Pod::Spec.new do |s|
   s.source = { git: '' }
   s.static_framework = true
   s.dependency 'ExpoModulesCore'
-  s.frameworks = 'AlarmKit', 'ActivityKit', 'AVFoundation', 'AudioToolbox'
+  # AlarmKit is iOS 26+: linked weakly so the app still launches on iOS 16.4–18.
+  s.frameworks = 'ActivityKit', 'AVFoundation', 'AudioToolbox'
+  s.weak_frameworks = 'AlarmKit'
   s.source_files = "**/*.{h,m,swift}"
   s.resources = 'sounds/*.caf'
   s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES' }

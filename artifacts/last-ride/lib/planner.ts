@@ -576,7 +576,13 @@ export async function planNight(
   const recent = previous && distanceBetween(previous.coordinates, coordinates) <= RECENT_STATIONS_METERS
     ? [previous, ...previous.alternatives].map((option) => option.station)
     : [];
-  let candidates = await findNearbyStations(coordinates, WALKING_PACE, CANDIDATE_STATIONS_INITIAL, knownWalks, recent);
+  // A station chosen by the user is always looked at, even with none found near
+  // here (planning from the station itself, or from far away): only the search
+  // finding nothing mustn't lose it.
+  let candidates = await findNearbyStations(coordinates, WALKING_PACE, CANDIDATE_STATIONS_INITIAL, knownWalks, recent).catch((error: unknown) => {
+    if (pinned && error instanceof LocationError && error.code === 'no-station') return [] as NearbyStation[];
+    throw error;
+  });
   // Apple's search answers vary: the station in use, missing although it is
   // nearer than one that was found, is looked at too (or a farther one would win).
   if (stay && candidates.length > 0 && !candidates.some((candidate) => sameStation(candidate.station, stay))) {
@@ -632,7 +638,7 @@ export async function planNight(
 export async function withTrainsBefore(plan: NightPlan, nowMs: number): Promise<NightPlan> {
   const found = plan.lastTrain.before ?? (await trainsBefore(plan.station, plan.destination, plan.lastTrain, nowMs).catch(() => []));
   // Found fewer than earlier tonight at this station (a flaky Apple answer): keep the ones already seen.
-  const before = await rememberEarlierTrains(plan.station.nameJa, plan.destination.nameJa, plan.lastTrain, found, nowMs);
+  const before = await rememberEarlierTrains(plan.station.nameJa, plan.destination.nameJa, plan.lastTrain, found);
   return before === plan.lastTrain.before ? plan : { ...plan, lastTrain: { ...plan.lastTrain, before } };
 }
 

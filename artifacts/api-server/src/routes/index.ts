@@ -10,6 +10,7 @@ import walkRouter from "./walk";
 import enterpriseRouter from "./enterprise";
 import groupsRouter from "./groups";
 import { publicLookupLimiters } from "../lib/publicLookupLimiter";
+import { businessEnabled } from "../lib/business";
 
 const router: IRouter = Router();
 
@@ -29,7 +30,8 @@ router.use(addressesRouter);
 router.use(placesRouter);
 router.use(usageRouter);
 router.use(walkRouter);
-router.use(enterpriseRouter);
+// Business (events) only when it is switched on: otherwise those paths are 404s.
+router.use((req, res, next) => (businessEnabled() ? enterpriseRouter(req, res, next) : next()));
 router.use(groupsRouter);
 
 export default router;

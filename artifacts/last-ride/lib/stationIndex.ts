@@ -83,3 +83,19 @@ export function isKnownStation(place: { nameJa: string; latitude: number; longit
     return distance <= RIGHT_THERE_METERS || (point.name === name && distance <= SAME_NAME_METERS);
   });
 }
+
+/**
+ * The passenger stations within `radiusMeters` of a spot, nearest first: the
+ * stand-in when Apple's search answers with nothing (it can, especially on a
+ * phone set to another country, or when MapKit is having a bad moment).
+ */
+export function knownStationsNear(
+  spot: { latitude: number; longitude: number },
+  radiusMeters: number,
+): Array<{ nameJa: string; latitude: number; longitude: number; meters: number }> {
+  if (!Number.isFinite(spot.latitude) || !Number.isFinite(spot.longitude)) return [];
+  return around(spot.latitude, spot.longitude)
+    .map((point) => ({ nameJa: point.name, latitude: point.latitude, longitude: point.longitude, meters: meters(spot, point) }))
+    .filter((point) => point.meters <= radiusMeters)
+    .sort((a, b) => a.meters - b.meters);
+}

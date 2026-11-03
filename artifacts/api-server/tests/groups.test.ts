@@ -1026,6 +1026,8 @@ describe("groups HTTP routes", () => {
       headers: {
         "Content-Type": "application/json",
         ...(options.token ? { "X-Member-Token": options.token } : {}),
+        // The app sends its Premium identity when the host starts tonight.
+        ...(method === "POST" && /\/tonight$/.test(path) ? { "X-RevenueCat-App-User-Id": "paid-user" } : {}),
         ...options.headers,
       },
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
@@ -1033,6 +1035,26 @@ describe("groups HTTP routes", () => {
   }
 
   const createBody = { name: "金曜会", displayName: "Ann", language: "ja" };
+
+  it("starting tonight needs the host's Premium each time (a lapsed host keeps the group)", async () => {
+    const created = await call("POST", "/groups", {
+      body: createBody,
+      headers: { "X-RevenueCat-App-User-Id": "paid-user" },
+    });
+    const host = (await created.json()) as { memberToken: string; group: { id: string } };
+    const groupId = host.group.id;
+    // Trial over / cancelled.
+    premium = false;
+    clearEntitlementCache();
+    const lapsed = await call("POST", `/groups/${groupId}/tonight`, { token: host.memberToken });
+    expect(lapsed.status).toBe(402);
+    // The group itself is still there.
+    expect((await call("GET", `/groups/${groupId}`, { token: host.memberToken })).status).toBe(200);
+    // Subscribed again.
+    premium = true;
+    clearEntitlementCache();
+    expect((await call("POST", `/groups/${groupId}/tonight`, { token: host.memberToken })).status).toBe(201);
+  });
 
   it("creating a group requires the premium entitlement", async () => {
     const missing = await call("POST", "/groups", { body: createBody });

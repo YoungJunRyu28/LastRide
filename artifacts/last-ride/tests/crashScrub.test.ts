@@ -4,7 +4,7 @@
  * navigation URLs can carry Business join tokens.
  */
 import { describe, expect, test } from "vitest";
-import { scrubBreadcrumb, stripQuery } from "@/lib/crashScrub";
+import { scrubBreadcrumb, scrubEventBreadcrumbs, stripQuery } from "@/lib/crashScrub";
 
 describe("stripQuery", () => {
   test("drops the query string and fragment", () => {
@@ -63,5 +63,18 @@ describe("scrubBreadcrumb", () => {
     expect(scrubBreadcrumb({ message: "Tracking started" })?.message).toBe(
       "Tracking started",
     );
+  });
+});
+
+describe("scrubEventBreadcrumbs (native breadcrumbs inside an event)", () => {
+  test("removes the query the iOS SDK records for network requests", () => {
+    const event = scrubEventBreadcrumbs({
+      breadcrumbs: [
+        { category: "http", data: { url: "https://api.lastride.jp/api/trains/last", "http.query": "fromLat=35.65&fromLon=139.70", method: "GET" } },
+        { category: "console", message: "log" },
+      ],
+    });
+    expect(event.breadcrumbs).toHaveLength(1);
+    expect(event.breadcrumbs?.[0].data).toEqual({ url: "https://api.lastride.jp/api/trains/last", method: "GET" });
   });
 });

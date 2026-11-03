@@ -73,9 +73,22 @@ export type GroupDetail = {
   };
 };
 
+/**
+ * Names are written by users and shown to others (and in push notifications):
+ * control characters, line breaks and bidi overrides (which can make a name
+ * read like another one, or like system text) are removed.
+ */
 function cleanName(value: string): string | null {
-  const trimmed = value.trim();
+  const trimmed = value
+    .replace(/[\u0000-\u001f\u007f-\u009f\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, "")
+    .trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+/** An Expo push token ("ExponentPushToken[…]"); anything else is not stored. */
+function cleanPushToken(value: string | null | undefined): string | null {
+  const trimmed = value?.trim() ?? "";
+  return /^Expo(nent)?PushToken\[[A-Za-z0-9_-]{10,200}\]$/.test(trimmed) ? trimmed : null;
 }
 
 function isUniqueViolation(err: unknown): boolean {
@@ -695,7 +708,7 @@ export async function updateGroupMembershipRecord(
     updates.notifications = patch.notifications;
   }
   if (patch.expoPushToken !== undefined) {
-    updates.expoPushToken = patch.expoPushToken?.trim() || null;
+    updates.expoPushToken = cleanPushToken(patch.expoPushToken);
     // A fresh token means the app is installed and reachable again.
     if (updates.expoPushToken) updates.pushTokenInvalidAt = null;
   }
@@ -915,6 +928,24 @@ export type ClaimedGroupLeaveAlert = {
  * The conditional UPDATE makes concurrent scheduled runs collapse to one.
  */
 /** The member id behind a member token, or null (e.g. before they leave the group). */
+/** The member's role in the group for this token, or null (no such member). */
+export async function groupMemberRoleForToken(
+  groupId: string,
+  memberToken: string,
+): Promise<"host" | "member" | null> {
+  const [row] = await getDb()
+    .select({ role: groupMembersTable.role })
+    .from(groupMembersTable)
+    .where(
+      and(
+        eq(groupMembersTable.groupId, groupId),
+        eq(groupMembersTable.memberTokenHash, hashCapability(memberToken)),
+      ),
+    )
+    .limit(1);
+  return row ? (row.role === "host" ? "host" : "member") : null;
+}
+
 export async function groupMemberIdForToken(
   groupId: string,
   memberToken: string,
