@@ -5,9 +5,7 @@ import { confirmAction, useGroupActions } from '@/lib/groupActions';
 import QRCode from 'react-native-qrcode-svg';
 import {
   getGroup,
-  joinGroupTonight,
   leaveGroupTonight,
-  startGroupTonight,
   type GroupDetail,
 } from '@workspace/api-client-react';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
@@ -17,11 +15,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomNav } from '@/components/BottomNav';
 import { Card, IconButton, PrimaryButton } from '@/components/ui';
 import { DIGITS } from '@/constants/type';
-import { errorStatus, useGroups } from '@/context/GroupsContext';
+import { useGroups } from '@/context/GroupsContext';
 import { useLastRide } from '@/context/LastRideContext';
 import { usePremium } from '@/context/PremiumContext';
 import { useColors } from '@/hooks/useColors';
-import { recommendedLeaveTime } from '@/lib/reliability';
 import { formatJstTime, MINUTE_MS } from '@/lib/time';
 import { formatCountdown } from '@/lib/countdown';
 import { useSecondClock } from '@/hooks/useSecondClock';
@@ -46,7 +43,7 @@ export default function GroupScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { language, plan, nowMs, demoActive } = useLastRide();
+  const { language, nowMs, demoActive } = useLastRide();
   const clockMs = useSecondClock(nowMs, demoActive);
   const { groups, apply, forget, refreshGroup, memberOptions, credentialError, loading } = useGroups();
   const [refreshing, setRefreshing] = useState(false);
@@ -60,9 +57,9 @@ export default function GroupScreen() {
     setRefreshing(true);
     try { await refreshGroup(id); } finally { setRefreshing(false); }
   }, [id, refreshGroup]);
-  const { isPremium, groupCreationHeaders } = usePremium();
+  const { isPremium } = usePremium();
   const ja = language !== 'en';
-  const { busy, run, leaveGone } = useGroupActions(id, ja);
+  const { busy, run, joinTonight, startTonight } = useGroupActions(id, ja);
   const [showQr, setShowQr] = useState(false);
   const detail = groups.find((entry) => entry.membership.groupId === id)?.detail ?? null;
   const back = () => (router.canGoBack() ? router.back() : router.replace('/groups'));
@@ -94,42 +91,6 @@ export default function GroupScreen() {
   const hostName = detail.members.find((member) => member.role === 'host')?.displayName ?? '';
   const options = memberOptions(detail.id);
 
-
-  /**
-   * Shares your current leave time. Separate from night tracking: with tracking
-   * on it keeps updating as you move; without it, it stays as shared (it is
-   * refreshed only when the app re-plans, e.g. when you open it).
-   */
-  const joinTonight = () =>
-    run(() => joinGroupTonight(detail.id, { leaveBy: plan ? new Date(recommendedLeaveTime(plan)).toISOString() : null }, options));
-
-  /**
-   * The host starting tonight is going too: start, and share their own time.
-   * Hosting needs Premium each night (the server checks): after a trial or a
-   * cancellation, say so and offer Premium, instead of a generic failure.
-   */
-  const startTonight = () =>
-    run(async () => {
-      const premiumHeaders = await groupCreationHeaders().catch(() => ({} as Record<string, string>));
-      const withPremium = { ...options, headers: { ...(options.headers as Record<string, string> | undefined), ...premiumHeaders } };
-      try {
-        await startGroupTonight(detail.id, withPremium);
-      } catch (error) {
-        if (errorStatus(error) !== 402) throw error;
-        Alert.alert(
-          ja ? '今夜の開始にはプレミアムが必要です' : 'Starting tonight needs Premium',
-          ja
-            ? 'グループのホストとして今夜を始めるには、プレミアムが必要です。メンバーは今まで通り参加できます。'
-            : 'Hosting a night needs Premium. Members can still join as before.',
-          [
-            { text: ja ? 'キャンセル' : 'Cancel', style: 'cancel' },
-            { text: ja ? 'プレミアムを見る' : 'See Premium', onPress: () => router.push('/paywall') },
-          ],
-        );
-        return;
-      }
-      return joinGroupTonight(detail.id, { leaveBy: plan ? new Date(recommendedLeaveTime(plan)).toISOString() : null }, options);
-    });
 
   const stopSharingTonight = () =>
     confirm(
