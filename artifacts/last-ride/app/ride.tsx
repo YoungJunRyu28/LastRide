@@ -18,6 +18,9 @@ import {
   recommendedLeaveTime,
 } from "@/lib/reliability";
 import { leaveCardFor, useLeaveCardOpening } from "@/lib/premiumPrompts";
+import { useTermsNotice } from "@/lib/termsNotice";
+import { PRIVACY_URL, siteLink, TERMS_URL } from "@/lib/links";
+import * as WebBrowser from "expo-web-browser";
 import { formatJstTime, serviceDate } from "@/lib/time";
 import { formatCountdown } from "@/lib/countdown";
 import { useSecondClock } from "@/hooks/useSecondClock";
@@ -217,6 +220,7 @@ export default function RideScreen() {
     }
   };
   const leaveCard = useLeaveCardOpening();
+  const termsNotice = useTermsNotice();
   // Precise Location off (iOS): positions are only approximate. Rechecked on return from Settings.
   const [approximateLocation, setApproximateLocation] = useState(false);
   useEffect(() => {
@@ -558,6 +562,32 @@ export default function RideScreen() {
             testID="open-settings"
           />
         </View>
+
+        {/* A change to the terms or privacy policy, told once before it takes effect (lib/termsNotice). */}
+        {termsNotice.notice && (
+          <Card style={styles.banner}>
+            <Feather name="file-text" color={colors.primary} size={18} />
+            <Pressable
+              testID="terms-notice"
+              onPress={() => {
+                const notice = termsNotice.notice!;
+                termsNotice.dismiss();
+                void WebBrowser.openBrowserAsync(siteLink(notice.page === 'terms' ? TERMS_URL : PRIVACY_URL, ja));
+              }}
+              accessibilityRole="button"
+              style={({ pressed }) => [styles.flex, { opacity: pressed ? 0.7 : 1 }]}
+            >
+              <Text style={[styles.rowTitle, { color: colors.foreground }]}>{(ja ? termsNotice.notice.ja : termsNotice.notice.en).title}</Text>
+              <Text style={[styles.note, { color: colors.mutedForeground }]}>
+                {(ja ? termsNotice.notice.ja : termsNotice.notice.en).body}
+                {ja ? " · 内容を見る ↗" : " · Read it ↗"}
+              </Text>
+            </Pressable>
+            <Pressable testID="dismiss-terms-notice" onPress={termsNotice.dismiss} accessibilityRole="button" accessibilityLabel={ja ? "閉じる" : "Dismiss"} hitSlop={10}>
+              <Feather name="x" size={18} color={colors.mutedForeground} />
+            </Pressable>
+          </Card>
+        )}
 
         {lockFallback && (
           <Card style={styles.banner}>

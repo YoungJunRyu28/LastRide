@@ -3,6 +3,7 @@ import { useColors } from '@/hooks/useColors';
 import { router } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 import { PRIVACY_URL, siteLink, TERMS_URL } from '@/lib/links';
+import { markTermsCurrent } from '@/lib/termsNotice';
 import React, { useEffect } from 'react';
 import { Image, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -23,6 +24,8 @@ export default function WelcomeScreen() {
   if (!isHydrated || language) return <View style={[styles.screen, { backgroundColor: colors.background }]} />;
 
   const chooseLanguage = (language: 'ja' | 'en') => {
+    // Agreeing to today's terms here: only notices of later changes are shown (lib/termsNotice).
+    void markTermsCurrent();
     setLanguage(language);
     router.replace({ pathname: '/home-station', params: { setup: '1' } });
   };
