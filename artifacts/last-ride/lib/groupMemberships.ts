@@ -18,11 +18,21 @@ const DISPLAY_NAME_KEY = "lastride-group-display-name";
 const PENDING_CLEAR_KEY = "lastride-group-memberships-clear-pending-v1";
 const RETIRED_TOKENS_KEY = "lastride-group-memberships-retired-v1";
 const SECURE_PREFIX = "lastride-group-member-v2-";
+/**
+ * A copy of the group list in the Keychain, next to the access keys. The app's
+ * own storage goes when the app is deleted, the Keychain doesn't (and moves to
+ * a new iPhone with an encrypted backup): a reinstall finds its groups again,
+ * so a host doesn't leave their group with no host. 「データを消去」 removes it.
+ */
+const INDEX_MIRROR_KEY = "lastride-group-index-mirror-v1";
+/** How many groups came back on this launch, for the one-time note (cleared once shown). */
+export const RESTORED_COUNT_KEY = "lastride-groups-restored-v1";
 const OPTIONS: SecureStore.SecureStoreOptions = {
   keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK,
 };
 
 let mutationTail: Promise<void> = Promise.resolve();
+let mirrorChecked = false;
 
 function serializeMutation<T>(work: () => Promise<T>): Promise<T> {
   const result = mutationTail.then(work);
@@ -132,9 +142,41 @@ async function finishPendingClear(): Promise<void> {
   await AsyncStorage.removeItem(PENDING_CLEAR_KEY);
 }
 
+/**
+ * After a reinstall: the list is gone from the app's storage but its Keychain
+ * copy is there. Adopt the entries whose key is still in the Keychain (the
+ * server then confirms each group, and drops those that no longer exist).
+ */
+async function restoreFromMirror(): Promise<string | null> {
+  const mirrorRaw = await SecureStore.getItemAsync(INDEX_MIRROR_KEY, OPTIONS).catch(() => null);
+  if (!mirrorRaw) return null;
+  let mirror: GroupIndex[];
+  try {
+    mirror = parseList(mirrorRaw, validIndex);
+  } catch {
+    return null;
+  }
+  const usable: GroupIndex[] = [];
+  for (const entry of mirror) {
+    const token = await SecureStore.getItemAsync(secureKey(entry.tokenRef), OPTIONS).catch(() => null);
+    if (token && (await secureReference(entry.groupId, token)) === entry.tokenRef) usable.push(entry);
+  }
+  if (usable.length === 0) return null;
+  const raw = JSON.stringify(usable);
+  await AsyncStorage.setItem(INDEX_KEY, raw);
+  await AsyncStorage.setItem(RESTORED_COUNT_KEY, String(usable.length)).catch(() => undefined);
+  return raw;
+}
+
+/** Written as a list (an empty one when there are no groups), never deleted: no failure here can touch the keys. */
+async function writeMirror(index: GroupIndex[]): Promise<void> {
+  await SecureStore.setItemAsync(INDEX_MIRROR_KEY, JSON.stringify(index), OPTIONS);
+}
+
 async function loadNative(): Promise<GroupMembership[]> {
   await finishPendingClear();
   let indexRaw = await AsyncStorage.getItem(INDEX_KEY);
+  if (indexRaw === null) indexRaw = await restoreFromMirror();
   if (indexRaw === null) {
     const oldRaw = await AsyncStorage.getItem(LEGACY_KEY);
     if (oldRaw === null) return [];
@@ -169,6 +211,12 @@ async function loadNative(): Promise<GroupMembership[]> {
     await AsyncStorage.removeItem(LEGACY_KEY);
   // Credential cleanup is best effort: it must not strand valid groups.
   await retireUnusedTokens(index).catch(() => undefined);
+  // Installs from before the Keychain copy existed get one now (not only on the next change).
+  if (index.length > 0 && !mirrorChecked) {
+    mirrorChecked = true;
+    const mirror = await SecureStore.getItemAsync(INDEX_MIRROR_KEY, OPTIONS).catch(() => null);
+    if (mirror !== JSON.stringify(index)) await writeMirror(index).catch(() => undefined);
+  }
   return memberships;
 }
 
@@ -217,6 +265,8 @@ async function write(memberships: GroupMembership[]): Promise<void> {
     await AsyncStorage.setItem(RETIRED_TOKENS_KEY, JSON.stringify([...new Set([...pending, ...retired])]));
   }
   await AsyncStorage.setItem(INDEX_KEY, JSON.stringify(nextIndex));
+  // Best effort: the list itself is committed; the copy is only for a reinstall.
+  await writeMirror(nextIndex).catch(() => undefined);
   await retireUnusedTokens(nextIndex).catch(() => undefined);
 }
 
@@ -258,6 +308,9 @@ export function clearMemberships(): Promise<void> {
         keys.add(await secureReference(entry.groupId, entry.memberToken));
       // Persist the intent before any secret is deleted, including zero keys.
       await AsyncStorage.setItem(PENDING_CLEAR_KEY, JSON.stringify([...keys]));
+      // Erasing means no groups come back on a reinstall either. (If this fails, the
+      // groups were already left on the server: a reinstall would find them gone.)
+      await writeMirror([]).catch(() => undefined);
       await finishPendingClear();
       return;
     }

@@ -4,6 +4,7 @@
  * only for groups where you chose 今夜参加する. Location, station, route and
  * destination never leave the device.
  */
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
   createGroup,
   getGroup,
@@ -22,6 +23,7 @@ import { apiBaseUrl } from "@/lib/api";
 import {
   clearMemberships,
   readMemberships,
+  RESTORED_COUNT_KEY,
   removeMembership,
   renameMembership,
   saveMembership,
@@ -60,6 +62,9 @@ type GroupsValue = {
   apply: (detail: GroupDetail) => void;
   /** Forgets a group locally (left, removed, disbanded). */
   forget: (groupId: string) => Promise<void>;
+  /** Groups brought back after a reinstall (and confirmed by the server), for a one-time note; 0 otherwise. */
+  restoredGroups: number;
+  dismissRestoredGroups: () => void;
   /**
    * "Reset & start over": leaves every group on the server (a host's group is
    * disbanded), then forgets them on this phone.
@@ -254,6 +259,7 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
       setLoading(false);
       return;
     }
+    const gone = new Set<string>();
     await Promise.all(list.map(async (membership) => {
       const ticket = refreshGuard.current.begin(membership.groupId);
       try {
@@ -264,6 +270,7 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
       } catch (error) {
         // Don't let a stale 404 delete a membership after a successful mutation.
         if (errorStatus(error) === 404 && refreshGuard.current.isCurrent(ticket)) {
+          gone.add(membership.groupId);
           try {
             await forget(membership.groupId);
           } catch {
@@ -276,7 +283,20 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
       }
     }));
     setLoading(false);
+    // Just restored from the Keychain after a reinstall: say so once, counting only
+    // the groups the server still knows.
+    const restored = await AsyncStorage.getItem(RESTORED_COUNT_KEY).catch(() => null);
+    if (restored !== null) {
+      const kept = list.filter((membership) => !gone.has(membership.groupId)).length;
+      if (kept > 0) setRestoredGroups(kept);
+      else void AsyncStorage.removeItem(RESTORED_COUNT_KEY).catch(() => undefined);
+    }
   }, [available, apply, forget]);
+  const [restoredGroups, setRestoredGroups] = useState(0);
+  const dismissRestoredGroups = useCallback(() => {
+    setRestoredGroups(0);
+    void AsyncStorage.removeItem(RESTORED_COUNT_KEY).catch(() => undefined);
+  }, []);
 
   /** Reloads one group (after a silent "group updated" push). */
   const refreshGroup = useCallback(
@@ -621,8 +641,8 @@ export function GroupsProvider({ children }: { children: React.ReactNode }) {
   );
 
   const value = useMemo(
-    () => ({ groups, loading, credentialError, clearUnavailableMemberships, available, refresh, refreshGroup, memberOptions, apply, forget, leaveAll, create, join, tonightGroup, tonightOpenGroup, sharingTonight, stopSharingTonight }),
-    [groups, loading, credentialError, clearUnavailableMemberships, available, refresh, refreshGroup, memberOptions, apply, forget, leaveAll, create, join, tonightGroup, tonightOpenGroup, sharingTonight, stopSharingTonight],
+    () => ({ groups, loading, credentialError, clearUnavailableMemberships, available, refresh, refreshGroup, memberOptions, apply, forget, restoredGroups, dismissRestoredGroups, leaveAll, create, join, tonightGroup, tonightOpenGroup, sharingTonight, stopSharingTonight }),
+    [groups, loading, credentialError, clearUnavailableMemberships, available, refresh, refreshGroup, memberOptions, apply, forget, restoredGroups, dismissRestoredGroups, leaveAll, create, join, tonightGroup, tonightOpenGroup, sharingTonight, stopSharingTonight],
   );
   return <GroupsContext.Provider value={value}>{children}</GroupsContext.Provider>;
 }

@@ -1,190 +1,25 @@
-import { IconButton, TextButton } from "@/components/ui";
+/**
+ * The privacy policy lives on the website only (lastride.jp/privacy, in the
+ * app's language): one text, so the app can never say something different
+ * from the policy. This route stays so that any old link still works: it
+ * opens the page and steps back.
+ */
+import { router } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
+import React, { useEffect } from "react";
+import { View } from "react-native";
 import { useLastRide } from "@/context/LastRideContext";
 import { useColors } from "@/hooks/useColors";
-import { router } from "expo-router";
-import React from "react";
-import { Platform, ScrollView, StyleSheet, Text, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-
-import { PRIVACY_URL, siteLink, SUPPORT_EMAIL } from "@/lib/links";
-
-/** The short version users see; the full policy is site/privacy/index.html and site/en/privacy/index.html (lastride.jp/privacy). Keep them in step. */
-function copy(ja: boolean) {
-  return ja
-    ? {
-        title: "プライバシー",
-        updated: "最終更新：2026年11月3日",
-        intro:
-          "帰り時はアカウントなしで使えます。データを広告目的で利用したり、販売したりすることはありません。",
-        sections: [
-          {
-            heading: "端末に保存するもの",
-            body: "保存した帰る場所（駅の名前と地域、設定した場合は住所の文字列。地図上の位置は長期保存せず、その夜だけ調べ直します）、「今夜だけ別の場所へ」の駅（翌日に自動で消去）、言語・余裕・通知などの設定、今夜のプランです。今夜のプランは夜が終わると削除または次の夜のものに置き換わります。移動履歴や過去の夜の記録は保存しません。",
-          },
-          {
-            heading: "位置情報",
-            body: "近くの駅と徒歩時間を調べ、出発時刻を計算するために使います。夜間の案内で「アプリを閉じても更新」を選んだ場合だけ、アプリを閉じている間も位置情報を使い、終電後（遅くとも午前4時）に自動で止まります。「アプリの使用中のみ」はいつでも設定から選べます。",
-          },
-          {
-            heading: "地図と時刻のデータ",
-            body: "iPhoneでは、近くの駅・徒歩時間・住所・周辺の施設・タクシーの所要時間、JRや私鉄の時刻をApple Mapsで調べるため、位置情報と検索内容がApple（Appleのプライバシーポリシーに従う）へ送信されます。地下鉄などの時刻は当社サーバーが公共交通オープンデータセンターのデータで計算するため、出発駅と到着駅（名前と位置）が当社サーバーへ送信されます。Apple Mapsが応答しないときは、代わりに現在地や検索内容が当社サーバーへ送信されます。これらは回答に使うだけで、保存せず、個人に結びつけることもありません。",
-          },
-          {
-            heading: "グループ",
-            body: "グループに参加すると、当社サーバーにはグループ名、あなたがグループごとに決めた表示名、ホストかメンバーか、通知の言語と通知の設定、通知用のプッシュトークン、ランダムな参加用トークン（元に戻せない形で保存）、最後に本アプリからアクセスした日時が保存されます。「今夜参加する」を選んだ夜は、出発時刻だけが送られ、メンバーには表示名と出発時刻が見えます。現在地・自宅・駅・経路は共有されません。出発時刻は翌朝8時（日本時間）か、ホストが今夜を終了した時点で削除されます。グループから退出すると、あなたの参加データはすぐに削除されます。ホストがグループを解散すると、すべて削除されます。",
-          },
-          {
-            heading: "プレミアム",
-            body: "購入と請求はAppleが行い、当社がカード情報などを受け取ることはありません。購読状態の管理にRevenueCatを使い、アカウント名やメールアドレスではなく、匿名のユーザーIDで管理します。グループを作るとき、当社サーバーはこのIDで購読状態を確認しますが、IDを保存しません。",
-          },
-          {
-            heading: "ウィジェットとロック画面",
-            body: "ウィジェットとロック画面のカウントダウン（ライブアクティビティ）は、今夜の出発時刻を端末の中だけで表示します。当社に送信されることはありません。",
-          },
-          {
-            heading: "通知",
-            body: "出発のリマインダーは端末の中で予約されます。グループの通知（今夜の開始、メンバーの出発時刻）は、Expoのプッシュ配信とAppleの通知サービスを通じて届きます。通知に広告は含まれません。",
-          },
-          {
-            heading: "クラッシュレポート",
-            body: "アプリの不具合を直すため、エラー内容・アプリのバージョン・端末とOSの機種と、インストールごとのランダムなIDをSentryに送信することがあります。位置情報、帰る場所、駅、検索内容、表示名、招待リンクは含まれず（送信前に端末で取り除きます）、90日後に削除されます。",
-          },
-          {
-            heading: "アプリのアップデート",
-            body: "アプリを開くと、更新があるかをExpoのサーバーに確認します。アプリのバージョンとインストールごとのランダムなIDが送られ、位置情報などは含まれません。",
-          },
-          {
-            heading: "削除とお問い合わせ",
-            body: `アプリを削除すると、端末に保存された本アプリのデータはすべて消えます。設定の「データを消去」でも端末のデータを消去でき、その際は参加中のグループからも退出します（ホストの場合はグループを解散し、全員の参加データを削除します）。アプリを削除してもサーバーには伝わらないため、グループのデータは本アプリから6か月間アクセスがないと（通知が届かなくなった場合は30日間で）自動で削除されます（ホストの場合はグループごと削除されます）。すぐに削除したい場合は、アプリを削除する前にグループの「…」から退出してください。開示・訂正・削除などのご請求（手数料なし）や、プライバシーに関するお問い合わせ・苦情：${SUPPORT_EMAIL}`,
-          },
-          {
-            heading: "送信先と所在国",
-            body: "機能に必要な範囲でのみ、次の事業者に情報が送られます：Apple（米国）、RevenueCat（米国）、Expo（米国）、Sentry（米国）、Amazon Web Services（日本・東京）、Neon（シンガポール）、Cloudflare（米国・サイトのみ）。RevenueCatとSentryには通信の際にIPアドレスも届きます。法令に基づく場合を除き、本人の同意なく第三者に提供することはありません。各国の制度と、それぞれ送る内容は、下のリンクの全文に記載しています。",
-          },
-          {
-            heading: "安全管理と運営者",
-            body: "個人データは開発者だけが必要な範囲で扱い、通信はすべて暗号化しています。運営者・個人情報の取扱いの責任者：ロバーツ ニコラスナガイ（個人）。住所はご請求があれば遅滞なく開示します。",
-          },
-        ],
-      }
-    : {
-        title: "Privacy",
-        updated: "Last updated: 3 November 2026",
-        intro:
-          "LastRide works without an account. We do not sell your data or use it for advertising.",
-        sections: [
-          {
-            heading: "Stored on your phone",
-            body: "Your saved destinations (the station’s name and area, plus an address’s text if you add one — map positions aren’t kept long-term but looked up again for the night), a “tonight only” station (cleared the next day), your language, time-to-spare, reminder and other settings, and tonight’s plan, which is deleted or replaced once the night is over. LastRide keeps no movement history or record of past nights.",
-          },
-          {
-            heading: "Location",
-            body: "Used to find nearby stations and walking times and to work out when to leave. Only if you choose “Update when closed” for night tracking is location used while the app is closed, and tracking stops by itself after the last train (by 4:00 AM at the latest). You can switch to “Only while using the app” in Settings at any time.",
-          },
-          {
-            heading: "Map and timetable data",
-            body: "On iPhone, nearby stations, walking times, addresses, nearby places, taxi times, and JR and private-railway times come from Apple Maps, so your location and searches are sent to Apple (under Apple’s privacy policy). Subway times are calculated by our server from Public Transportation Open Data Center data, so the departure and arrival stations (names and positions) are sent to our server. When Apple Maps doesn’t answer, your current location and searches are sent to our server instead. They are used only for the answer, not stored, and never linked to you.",
-          },
-          {
-            heading: "Groups",
-            body: "When you join a group, our server stores the group name, the display name you choose for that group, whether you’re the host or a member, your notification language and on/off setting, a push token for notifications, a random membership token (stored one-way), and when your app last contacted the group. On nights you choose “Join tonight”, only your leave-by time is sent, and members see your display name and leave-by time. Your location, home, station and route are never shared. Leave-by times are deleted at 8:00 AM Japan time the next morning, or when the host ends tonight. Leaving a group deletes your membership right away; disbanding a group deletes everything in it.",
-          },
-          {
-            heading: "Premium",
-            body: "Purchases and billing are handled by Apple; we never receive your card details. Subscription status is managed with RevenueCat using an anonymous user ID, not your name or email. When you create a group, our server checks your subscription with that ID but does not store it.",
-          },
-          {
-            heading: "Widgets and lock screen",
-            body: "Widgets and the lock-screen countdown (Live Activity) show tonight’s leave time from data on your phone. Nothing is sent to us for them.",
-          },
-          {
-            heading: "Notifications",
-            body: "Leave reminders are scheduled on your phone. Group notifications (tonight started, a member’s leave time) are delivered through Expo’s push service and Apple’s notification service. Notifications never contain advertising.",
-          },
-          {
-            heading: "Crash reports",
-            body: "To fix bugs, the app may send the error, app version, device/OS model and a random per-install ID to Sentry. Reports never include your location, destinations, stations, searches, display name or invite links (removed on the phone before sending), and are deleted after 90 days.",
-          },
-          {
-            heading: "App updates",
-            body: "When you open the app, it checks Expo’s servers for an update, sending the app version and a random per-install ID. No location or other personal data is included.",
-          },
-          {
-            heading: "Deleting your data and contact",
-            body: `Deleting the app erases all of LastRide’s data on your phone. “Erase data” in Settings also erases it and leaves your groups (a host’s group is disbanded, deleting everyone’s membership). Deleting the app can’t tell our server, so group data is deleted automatically once your app hasn’t contacted the group for 6 months (30 days if notifications can no longer reach your phone); a host’s whole group is deleted. To remove it straight away, leave your groups from their “…” menu before deleting the app. Requests to disclose, correct or delete your data (no fee), and privacy questions or complaints: ${SUPPORT_EMAIL}`,
-          },
-          {
-            heading: "Where data goes",
-            body: "Only what each feature needs is sent to: Apple (US), RevenueCat (US), Expo (US), Sentry (US), Amazon Web Services (Japan, Tokyo), Neon (Singapore) and Cloudflare (US, website only). RevenueCat and Sentry also receive your IP address when the app contacts them. Except where required by law, nothing is shared with third parties without your consent. What each receives, and those countries’ systems, are in the full policy (link below).",
-          },
-          {
-            heading: "Security and operator",
-            body: "Only the developers handle personal data, and only as needed; all traffic is encrypted. Operator and person responsible for personal data: Nicholas Nagai Roberts (individual). The address is disclosed without delay on request.",
-          },
-        ],
-      };
-}
+import { PRIVACY_URL, siteLink } from "@/lib/links";
 
 export default function PrivacyScreen() {
   const colors = useColors();
-  const insets = useSafeAreaInsets();
   const { language } = useLastRide();
-  const ja = language !== "en";
-  const text = copy(ja);
-
-  return (
-    <View style={[styles.screen, { backgroundColor: colors.background }]}>
-      <ScrollView
-        contentContainerStyle={[
-          styles.content,
-          {
-            paddingTop: insets.top + (Platform.OS === "web" ? 24 : 12),
-            paddingBottom: insets.bottom + 40,
-          },
-        ]}
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.topbar}>
-          <IconButton
-            icon="chevron-left"
-            label={ja ? "戻る" : "Back"}
-            onPress={() => (router.canGoBack() ? router.back() : router.replace("/settings"))}
-            testID="privacy-back"
-          />
-          <Text accessibilityRole="header" style={[styles.barTitle, { color: colors.foreground }]}>
-            {text.title}
-          </Text>
-          <View style={styles.spacer} />
-        </View>
-        <Text style={[styles.intro, { color: colors.foreground }]}>{text.intro}</Text>
-        {text.sections.map((section) => (
-          <View key={section.heading} style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            <Text style={[styles.heading, { color: colors.foreground }]}>{section.heading}</Text>
-            <Text style={[styles.body, { color: colors.subtle }]}>{section.body}</Text>
-          </View>
-        ))}
-        {/* The full policy (every recipient and country, 外部送信): one tap away. */}
-        <TextButton
-          testID="privacy-full"
-          label={ja ? 'プライバシーポリシー全文（lastride.jp） ↗' : 'Full privacy policy (lastride.jp) ↗'}
-          onPress={() => void WebBrowser.openBrowserAsync(siteLink(PRIVACY_URL, ja))}
-        />
-        <Text style={[styles.updated, { color: colors.mutedForeground }]}>{text.updated}</Text>
-      </ScrollView>
-    </View>
-  );
+  useEffect(() => {
+    void WebBrowser.openBrowserAsync(siteLink(PRIVACY_URL, language !== "en")).finally(() => {
+      if (router.canGoBack()) router.back();
+      else router.replace("/settings");
+    });
+  }, [language]);
+  return <View style={{ flex: 1, backgroundColor: colors.background }} />;
 }
-
-const styles = StyleSheet.create({
-  screen: { flex: 1 },
-  content: { gap: 14, paddingHorizontal: 20 },
-  topbar: { alignItems: "center", flexDirection: "row", justifyContent: "space-between" },
-  spacer: { width: 44 },
-  barTitle: { fontSize: 17, fontWeight: "800" },
-  intro: { fontSize: 15, fontWeight: "600", lineHeight: 23 },
-  section: { borderRadius: 18, borderWidth: 1, gap: 6, padding: 16 },
-  heading: { fontSize: 15, fontWeight: "800" },
-  body: { fontSize: 13, lineHeight: 20 },
-  updated: { fontSize: 12, textAlign: "center" },
-});

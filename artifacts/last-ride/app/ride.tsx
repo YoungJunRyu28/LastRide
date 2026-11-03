@@ -199,7 +199,7 @@ export default function RideScreen() {
     router.setParams({ stop: undefined });
   }, [stop, trackingMode, stopTracking]);
   const { isPremium } = usePremium();
-  const { tonightGroup, tonightOpenGroup, apply: applyGroup, memberOptions, sharingTonight, stopSharingTonight } = useGroups();
+  const { tonightGroup, tonightOpenGroup, apply: applyGroup, memberOptions, sharingTonight, stopSharingTonight, restoredGroups, dismissRestoredGroups } = useGroups();
   const [joiningGroup, setJoiningGroup] = useState(false);
   /** 参加 on the home screen: shares your current leave time with tonight's group. */
   const joinOpenGroup = async () => {
@@ -562,6 +562,32 @@ export default function RideScreen() {
             testID="open-settings"
           />
         </View>
+
+        {/* Groups found again after a reinstall (lib/groupMemberships, Keychain copy): said once. */}
+        {restoredGroups > 0 && (
+          <Card style={styles.banner}>
+            <Feather name="users" color={colors.primary} size={18} />
+            <Pressable
+              testID="restored-groups"
+              onPress={() => {
+                dismissRestoredGroups();
+                router.push("/groups");
+              }}
+              accessibilityRole="button"
+              style={({ pressed }) => [styles.flex, { opacity: pressed ? 0.7 : 1 }]}
+            >
+              <Text style={[styles.rowTitle, { color: colors.foreground }]}>
+                {ja ? `前回のグループ（${restoredGroups}件）を復元しました` : `${restoredGroups} group${restoredGroups > 1 ? "s" : ""} restored`}
+              </Text>
+              <Text style={[styles.note, { color: colors.mutedForeground }]}>
+                {ja ? "再インストール前の参加を引き継ぎました · 見る" : "Your groups from before the reinstall are back · View"}
+              </Text>
+            </Pressable>
+            <Pressable testID="dismiss-restored-groups" onPress={dismissRestoredGroups} accessibilityRole="button" accessibilityLabel={ja ? "閉じる" : "Dismiss"} hitSlop={10}>
+              <Feather name="x" size={18} color={colors.mutedForeground} />
+            </Pressable>
+          </Card>
+        )}
 
         {/* A change to the terms or privacy policy, told once before it takes effect (lib/termsNotice). */}
         {termsNotice.notice && (

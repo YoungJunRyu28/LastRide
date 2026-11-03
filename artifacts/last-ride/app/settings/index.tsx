@@ -3,7 +3,7 @@ import { Card, Chip, Divider, Row } from '@/components/ui';
 import { useLastRide } from '@/context/LastRideContext';
 import { usePremium } from '@/context/PremiumContext';
 import { useColors } from '@/hooks/useColors';
-import { SUPPORT_URL, TERMS_URL, TOKUSHOHO_URL, siteLink } from '@/lib/links';
+import { PRIVACY_URL, SUPPORT_URL, TERMS_URL, TOKUSHOHO_URL, siteLink } from '@/lib/links';
 import { alarmKitAvailable, scheduledNotificationLines, sendTestNotifications } from '@/lib/notifications';
 import { formatJstTime, MINUTE_MS } from '@/lib/time';
 import { tapVersion, useTestTools } from '@/lib/testTools';
@@ -156,7 +156,7 @@ export default function SettingsScreen() {
       </Section>
 
       <Section label={ja ? 'このアプリについて' : 'ABOUT'}>
-        <Row testID="open-privacy" icon="shield" title={ja ? 'プライバシー' : 'Privacy'} onPress={() => router.push('/privacy')} />
+        <Row testID="open-privacy" icon="shield" title={ja ? 'プライバシーポリシー' : 'Privacy policy'} external onPress={() => void WebBrowser.openBrowserAsync(siteLink(PRIVACY_URL, ja))} />
         <Divider />
         <Row testID="open-data-sources" icon="database" title={ja ? 'データとライセンス' : 'Data & licences'} onPress={() => router.push('/data-sources')} />
         <Divider />

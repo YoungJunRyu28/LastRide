@@ -72,6 +72,9 @@ import {
 } from "@/lib/groupMemberships";
 import { markSharing, stopSharing, clearSharing } from "@/lib/groupSharing";
 
+/** The group access keys in the Keychain (not the list's copy, lib/groupMemberships). */
+const groupKeys = () => [...secure.keys()].filter((key) => key.startsWith("lastride-group-member-v2-")).length;
+
 beforeEach(async () => {
   // Each test gets a fresh sandbox, including cases that intentionally delete
   // secure capabilities or make Keychain access unavailable.
@@ -102,13 +105,15 @@ describe("group membership storage is atomic within a device", () => {
     await saveMembership({ groupId: "secret-group", memberToken: "private-capability", name: "Friends" });
     expect(store.has("lastride-group-memberships")).toBe(false);
     expect(JSON.stringify([...store.entries()])).not.toContain("private-capability");
-    expect(secure.size).toBe(1);
-    expect([...secure.values()]).toEqual(["private-capability"]);
+    expect(groupKeys()).toBe(1);
+    expect([...secure.entries()].filter(([key]) => key.startsWith("lastride-group-member-v2-")).map(([, value]) => value)).toEqual(["private-capability"]);
+    // The list's Keychain copy (for a reinstall) holds no token, only the reference.
+    expect(secure.get("lastride-group-index-mirror-v1")).not.toContain("private-capability");
     expect(await readMemberships()).toEqual([
       { groupId: "secret-group", memberToken: "private-capability", name: "Friends" },
     ]);
     await clearMemberships();
-    expect(secure.size).toBe(0);
+    expect(groupKeys()).toBe(0);
     expect(store.has("lastride-group-memberships-v2")).toBe(false);
   });
 
@@ -144,7 +149,7 @@ describe("group membership storage is atomic within a device", () => {
       await saveMembership({ groupId: "web", name: "Web Group", memberToken: "web-token" });
       expect((await readMemberships())[0].memberToken).toBe("web-token");
       expect(store.get("lastride-group-memberships")).toContain("web-token");
-      expect(secure.size).toBe(0);
+      expect(groupKeys()).toBe(0);
     } finally {
       (Platform as { OS: string }).OS = previous;
     }
@@ -176,11 +181,11 @@ describe("group membership storage is atomic within a device", () => {
     failSecureDelete.current = true;
     await removeMembership("old");
     expect(store.get("lastride-group-memberships-v2")).toBe("[]");
-    expect(secure.size).toBe(1);
+    expect(groupKeys()).toBe(1);
     expect(store.has("lastride-group-memberships-retired-v1")).toBe(true);
     // Reading after the Keychain recovers retries the secure deletion.
     expect(await readMemberships()).toEqual([]);
-    expect(secure.size).toBe(0);
+    expect(groupKeys()).toBe(0);
     expect(store.has("lastride-group-memberships-retired-v1")).toBe(false);
   });
 
@@ -201,7 +206,7 @@ describe("group membership storage is atomic within a device", () => {
     await expect(removeMembership("active")).rejects.toThrow("Index write interrupted");
     original.mockImplementation(initial);
     expect((await readMemberships())[0].memberToken).toBe("active-secret");
-    expect(secure.size).toBe(1);
+    expect(groupKeys()).toBe(1);
     expect(store.has("lastride-group-memberships-retired-v1")).toBe(false);
   });
 
@@ -232,7 +237,7 @@ describe("group membership storage is atomic within a device", () => {
     expect(store.has("lastride-group-memberships-clear-pending-v1")).toBe(true);
     // An ordinary read on the next launch completes the recorded reset.
     expect(await readMemberships()).toEqual([]);
-    expect(secure.size).toBe(0);
+    expect(groupKeys()).toBe(0);
     expect(store.has("lastride-group-memberships-v2")).toBe(false);
     expect(store.has("lastride-group-memberships-clear-pending-v1")).toBe(false);
   });
@@ -243,7 +248,7 @@ describe("group membership storage is atomic within a device", () => {
     await expect(clearMemberships()).rejects.toThrow("Interrupted AsyncStorage batch");
     expect(store.has("lastride-group-memberships-clear-pending-v1")).toBe(true);
     expect(await readMemberships()).toEqual([]);
-    expect(secure.size).toBe(0);
+    expect(groupKeys()).toBe(0);
     await saveMembership({ groupId: "new", name: "N", memberToken: "secret-new" });
     expect((await readMemberships()).map((entry) => entry.groupId)).toEqual(["new"]);
   });
@@ -253,7 +258,7 @@ describe("group membership storage is atomic within a device", () => {
     failNextWrite.current = true;
     await expect(clearMemberships()).rejects.toThrow("storage failure");
     expect((await readMemberships())[0].memberToken).toBe("secret-a");
-    expect(secure.size).toBe(1);
+    expect(groupKeys()).toBe(1);
   });
 
   test("missing secure storage does not downgrade native tokens to plaintext", async () => {
@@ -328,5 +333,45 @@ describe("background group sharing storage is atomic within a device", () => {
     expect(JSON.parse(store.get("lastride-group-sharing") ?? "{}")).toEqual({ b: null });
     await Promise.all([markSharing("c", null), clearSharing()]);
     expect(store.has("lastride-group-sharing")).toBe(false);
+  });
+});
+
+describe("after a reinstall (app storage gone, Keychain kept)", () => {
+  const host = { groupId: "g-host", memberToken: "h".repeat(43), name: "金曜会" };
+  const member = { groupId: "g-member", memberToken: "m".repeat(43), name: "同期" };
+
+  test("the groups come back from the Keychain copy, and the note's count is set", async () => {
+    await saveMembership(host);
+    await saveMembership(member);
+    store.clear(); // iOS deletes the app's storage; the Keychain stays
+    const restored = await readMemberships();
+    expect(restored.map((item) => item.groupId).sort()).toEqual(["g-host", "g-member"]);
+    expect(restored.find((item) => item.groupId === "g-host")?.memberToken).toBe(host.memberToken);
+    expect(store.get("lastride-groups-restored-v1")).toBe("2");
+  });
+
+  test("a group left before the reinstall doesn't come back", async () => {
+    await saveMembership(host);
+    await saveMembership(member);
+    await removeMembership("g-member");
+    store.clear();
+    expect((await readMemberships()).map((item) => item.groupId)).toEqual(["g-host"]);
+  });
+
+  test("「データを消去」 means nothing comes back", async () => {
+    await saveMembership(host);
+    await clearMemberships();
+    store.clear();
+    expect(await readMemberships()).toEqual([]);
+  });
+
+  test("an entry whose key is gone from the Keychain is skipped, not an error", async () => {
+    await saveMembership(host);
+    await saveMembership(member);
+    for (const key of [...secure.keys()]) {
+      if (key.startsWith("lastride-group-member-v2-") && secure.get(key) === member.memberToken) secure.delete(key);
+    }
+    store.clear();
+    expect((await readMemberships()).map((item) => item.groupId)).toEqual(["g-host"]);
   });
 });
