@@ -23,15 +23,21 @@ import {
   tint,
 } from "@expo/ui/swift-ui/modifiers";
 import { createLiveActivity, type LiveActivityEnvironment } from "expo-widgets";
-import type { LiveActivityContent } from "@/lib/liveActivityContent";
+import type { LiveActivityContent, LiveActivityNext } from "@/lib/liveActivityContent";
 
 export type LeaveCountdownProps = LiveActivityContent & {
   /** Epoch ms when this content was shown; the timer runs from here to countdownTo. */
   shownAt: number;
+  /** The countdown after this one, shown once iOS marks the activity stale (at countdownTo). */
+  next?: LiveActivityNext | null;
 };
 
-const LeaveCountdown = (props: LeaveCountdownProps, _environment: LiveActivityEnvironment) => {
+const LeaveCountdown = (sent: LeaveCountdownProps, environment: LiveActivityEnvironment) => {
   "widget";
+  // The leave time has come and the app hasn't updated (it's rarely woken while
+  // you're standing still): iOS marks the activity stale at that moment, and it
+  // carries on with the next countdown, until the train leaves.
+  const props = environment.isStale && sent.next ? { ...sent, ...sent.next, shownAt: sent.countdownTo, next: null } : sent;
   const c = props.colors;
   // The Dynamic Island is always black: white themes use the default colours there.
   const ic = c.dark ? c : { ...c, background: "#000000", text: "#ffffff", muted: "#c9d4de", faint: "#5f708a", leave: "#f5a93b", train: "#b9adff" };

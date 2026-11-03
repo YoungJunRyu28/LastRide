@@ -167,13 +167,22 @@ export function PremiumOffer({
           </Text>
         )}
         <Text style={[styles.legal, { color: colors.mutedForeground }]}>
+          {/* What the sign-up screen must say for a subscription (特商法12条の6): the
+              charge, automatic renewal, and how and when to cancel. */}
           {trial
             ? ja
-              ? `無料期間終了後、${store}に自動で請求されます。終了の24時間前までに解約すれば請求されません。`
-              : `After the trial your ${store} is charged automatically. Cancel at least 24 hours before it ends to avoid a charge.`
+              ? `無料期間終了後、${store}に自動で請求され、以後は解約するまで同じ期間で自動更新されます。終了の24時間前までに解約すれば請求されません。`
+              : `After the trial your ${store} is charged automatically, then it renews for the same period until cancelled. Cancel at least 24 hours before the trial ends to avoid a charge.`
             : ja
-              ? `${store}に請求され、解約するまで自動で更新されます。`
-              : `Charged to your ${store}; renews automatically until cancelled.`}
+              ? `${store}に請求され、解約するまで同じ期間で自動更新されます。期間終了の24時間前までに解約すれば、次の更新は請求されません。`
+              : `Charged to your ${store}; renews for the same period until cancelled. Cancel at least 24 hours before the period ends to stop the next charge.`}
+          {Platform.OS === 'ios'
+            ? ja
+              ? '解約はiPhoneの「設定」→ 自分の名前 →「サブスクリプション」から。アプリを削除しても解約されません。'
+              : ' Cancel in iPhone Settings → your name → Subscriptions. Deleting the app doesn’t cancel.'
+            : ja
+              ? '解約はGoogle Playの「定期購入」から。アプリを削除しても解約されません。'
+              : ' Cancel in Google Play → Subscriptions. Deleting the app doesn’t cancel.'}
         </Text>
         <View style={styles.links}>
           <TextButton label={ja ? '購入を復元' : 'Restore purchases'} onPress={() => void restorePurchases()} testID="restore-purchases" />

@@ -119,6 +119,18 @@ describe('reminder delivery', () => {
     expect(mocks.notificationSchedule).toHaveBeenCalledTimes(2);
     const [reminder, companion] = (mocks.notificationSchedule.mock.calls as unknown as [{ content: Record<string, unknown> }][]).map(([request]) => request.content);
     expect(reminder).toMatchObject({ sound: true, interruptionLevel: 'timeSensitive' });
+    // 即時通知 on (the default): Time Sensitive like the reminder, still silent, so they stack together.
+    expect(companion).toMatchObject({ sound: false, interruptionLevel: 'timeSensitive' });
+  });
+
+  it('keeps an alarm\'s companion passive when 即時通知 is off', async () => {
+    const now = Date.now();
+    await scheduleReminders([
+      { minutesBefore: 5, fireAt: now + 120000 },
+      { minutesBefore: 0, fireAt: now + 180000, alarm: true },
+    ], text, { sound: 'chime', vibrate: true, throughFocus: false });
+    const [reminder, companion] = (mocks.notificationSchedule.mock.calls as unknown as [{ content: Record<string, unknown> }][]).map(([request]) => request.content);
+    expect(reminder).toMatchObject({ sound: true, interruptionLevel: 'active' });
     expect(companion).toMatchObject({ sound: false, interruptionLevel: 'passive' });
   });
 
@@ -252,7 +264,7 @@ describe('reminder delivery', () => {
     expect(mocks.notificationSchedule).toHaveBeenCalledTimes(1);
     const [scheduled] = mocks.notificationSchedule.mock.calls;
     expect(scheduled?.[0].content).toMatchObject({
-      sound: false, interruptionLevel: 'passive',
+      sound: false, interruptionLevel: 'timeSensitive',
       data: { lastrideAlarmCompanion: true },
     });
     // Failure to persist a native receipt MUST NOT mark the plan reconciled.

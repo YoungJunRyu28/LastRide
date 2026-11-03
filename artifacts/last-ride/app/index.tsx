@@ -1,6 +1,8 @@
 import { useLastRide } from '@/context/LastRideContext';
 import { useColors } from '@/hooks/useColors';
 import { router } from 'expo-router';
+import * as WebBrowser from 'expo-web-browser';
+import { PRIVACY_URL, siteLink, TERMS_URL } from '@/lib/links';
 import React, { useEffect } from 'react';
 import { Image, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -49,6 +51,24 @@ export default function WelcomeScreen() {
         <Pressable accessibilityRole="button" testID="choose-english" onPress={() => chooseLanguage('en')} style={({ pressed }) => [styles.secondaryButton, { borderColor: colors.border, opacity: pressed ? 0.7 : 1 }]}>
           <Text style={[styles.secondaryText, { color: colors.foreground }]}>Continue in English</Text>
         </Pressable>
+        {/* Shown before anything is used, so the terms (and their limits on liability)
+            are part of the agreement: 民法548条の2, 定型約款. Both languages: none chosen yet. */}
+        <View style={styles.legal}>
+          <Text maxFontSizeMultiplier={1.4} style={[styles.legalText, { color: colors.mutedForeground }]}>
+            始めると、
+            <Text accessibilityRole="link" testID="welcome-terms-ja" onPress={() => void WebBrowser.openBrowserAsync(siteLink(TERMS_URL, true))} style={[styles.legalLink, { color: colors.foreground }]}>利用規約</Text>
+            と
+            <Text accessibilityRole="link" testID="welcome-privacy-ja" onPress={() => void WebBrowser.openBrowserAsync(siteLink(PRIVACY_URL, true))} style={[styles.legalLink, { color: colors.foreground }]}>プライバシーポリシー</Text>
+            に同意したことになります。
+          </Text>
+          <Text maxFontSizeMultiplier={1.4} style={[styles.legalText, { color: colors.mutedForeground }]}>
+            By continuing, you agree to the{' '}
+            <Text accessibilityRole="link" testID="welcome-terms-en" onPress={() => void WebBrowser.openBrowserAsync(siteLink(TERMS_URL, false))} style={[styles.legalLink, { color: colors.foreground }]}>Terms</Text>
+            {' '}and{' '}
+            <Text accessibilityRole="link" testID="welcome-privacy-en" onPress={() => void WebBrowser.openBrowserAsync(siteLink(PRIVACY_URL, false))} style={[styles.legalLink, { color: colors.foreground }]}>Privacy Policy</Text>
+            .
+          </Text>
+        </View>
       </View>
     </View>
   );
@@ -71,4 +91,7 @@ const styles = StyleSheet.create({
   primaryEn: { fontWeight: '500', fontSize: 12, marginTop: 3, opacity: 0.75 },
   secondaryButton: { alignItems: 'center', borderRadius: 23, borderWidth: 1, minHeight: 58, justifyContent: 'center' },
   secondaryText: { fontWeight: '600', fontSize: 16 },
+  legal: { gap: 2, marginTop: 2 },
+  legalText: { fontSize: 11, lineHeight: 16, textAlign: 'center' },
+  legalLink: { fontWeight: '700', textDecorationLine: 'underline' },
 });

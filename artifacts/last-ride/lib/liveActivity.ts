@@ -16,6 +16,7 @@ import { Platform } from "react-native";
 import {
   contentSignature,
   liveActivityContent,
+  nextLiveActivityPhase,
 } from "@/lib/liveActivityContent";
 import type { NightPlan } from "@/lib/planner";
 import { readPremiumCache } from "@/lib/premiumCache";
@@ -56,7 +57,8 @@ export async function syncLiveActivity(
   whileOpenOnly = false,
 ): Promise<void> {
   if (!liveActivityEnabled && !countdownNotificationAvailable) return;
-  const content = liveActivityContent(plan, language, nowMs, theme ?? (await readWidgetTheme()), whileOpenOnly);
+  const widgetTheme = theme ?? (await readWidgetTheme());
+  const content = liveActivityContent(plan, language, nowMs, widgetTheme, whileOpenOnly);
   if (!content) {
     await endLiveActivity(`no content (${plan.station.nameJa} ${plan.trainChoice ?? 0} ${new Date(plan.lastTrain.departsAt).toISOString()})`);
     return;
@@ -97,11 +99,13 @@ export async function syncLiveActivity(
     return;
   }
 
-  const props = { ...content, shownAt: nowMs };
-  // If the app never wakes again, iOS dims the countdown shortly after the last train.
-  // Stale only once the night's real last train has gone (with 1本前 / 2本前 the
-  // plan's own train goes first, and the later ones are still shown).
-  const staleDate = new Date((plan.nightLastTrain ?? plan.lastTrain).departsAt + 5 * MINUTE_MS);
+  // The next countdown rides along: at the end of this one (the stale date) the
+  // activity switches to it by itself, even if the app isn't woken then.
+  const next = nextLiveActivityPhase(plan, language, content, widgetTheme, whileOpenOnly);
+  const props = { ...content, shownAt: nowMs, next };
+  // Nothing follows: stale shortly after the night's real last train (with
+  // 1本前 / 2本前 the plan's own train goes first, and the later ones still show).
+  const staleDate = next ? new Date(content.countdownTo) : new Date((plan.nightLastTrain ?? plan.lastTrain).departsAt + 5 * MINUTE_MS);
   debugEvent(`${running ? "update" : "start"}: ${content.label} ${content.countdownTo > nowMs ? Math.round((content.countdownTo - nowMs) / 1000) + "s" : "past"}`);
   if (running) {
     await running.update(props, staleDate).catch(async (error: unknown) => {

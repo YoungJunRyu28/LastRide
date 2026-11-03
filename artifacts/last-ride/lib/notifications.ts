@@ -198,7 +198,11 @@ export function effectiveAlarmSound(sound: ReminderSound): ReminderSound {
 async function present(
   title: string, body: string, fireAt: number | null,
   target: NotificationTarget = '/ride', vibrate = true, sound: string | null = null, urgent = false,
-  /** Silent and passive: kept in Notification Center without sound or lighting the screen. */
+  /**
+   * Silent: no sound (an alarm's companion). Passive, kept in Notification
+   * Center without lighting the screen, unless `urgent`: then Time Sensitive
+   * like the other reminders, so they stay together in Notification Center.
+   */
   silent = false,
   /** Buttons (a registered category), extra data for the tap, and a fixed id (same id = replaces). */
   extra: { category?: string; data?: Record<string, unknown>; identifier?: string } = {},
@@ -232,7 +236,7 @@ async function present(
     content: {
       title, body,
       sound: silent ? false : (Platform.OS === 'ios' && sound) || true,
-      interruptionLevel: silent ? 'passive' : urgent ? 'timeSensitive' : 'active',
+      interruptionLevel: urgent ? 'timeSensitive' : silent ? 'passive' : 'active',
       data: { target, ...extra.data, ...(silent ? { lastrideAlarmCompanion: true } : {}) },
       ...(extra.category ? { categoryIdentifier: extra.category } : {}),
     },
@@ -669,8 +673,10 @@ export function scheduleReminders(
           }
           // The alarm rings; a silent notification keeps the details (station, times)
           // in Notification Center once it's stopped, and opens the app when tapped.
-          const id = reminderId('companion', plan.fireAt, title, body, target);
-          await queue(id, () => present(title, body, plan.fireAt, target, false, null, false, true, { identifier: id }));
+          // With 即時通知 on it's Time Sensitive like the other reminders (still
+          // silent), so 出る時間です stacks with あと15分 instead of apart from them.
+          const id = reminderId('companion', plan.fireAt, title, body, target, throughFocus);
+          await queue(id, () => present(title, body, plan.fireAt, target, false, null, throughFocus, true, { identifier: id }));
           continue;
         } catch (error) {
           console.warn('[LastRide] AlarmKit failed; falling back to a notification', error);

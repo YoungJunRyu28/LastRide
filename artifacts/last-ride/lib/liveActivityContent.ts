@@ -89,6 +89,30 @@ export function liveActivityContent(
   };
 }
 
+/** The parts of the content that change from one countdown to the next. */
+export type LiveActivityNext = Pick<LiveActivityContent, "countdownTo" | "label" | "island" | "tone" | "choice" | "stops" | "bars">;
+
+/**
+ * What the activity shows once the current countdown ends (leave time → the
+ * train's departure), without the app: it is the activity's stale date, and
+ * components/LeaveCountdownActivity switches to this when iOS marks it stale.
+ * The app usually isn't woken at the leave time (standing still, no location
+ * update), so without it the countdown would sit at 0:00 until the app opened.
+ * Null when nothing follows (the last train).
+ */
+export function nextLiveActivityPhase(
+  plan: Parameters<typeof liveActivityContent>[0],
+  language: Language,
+  content: LiveActivityContent,
+  theme?: WidgetThemeId,
+  whileOpenOnly = false,
+): LiveActivityNext | null {
+  const after = liveActivityContent(plan, language, content.countdownTo + 1, theme, whileOpenOnly);
+  if (!after || after.countdownTo <= content.countdownTo) return null;
+  const { countdownTo, label, island, tone, choice, stops, bars } = after;
+  return { countdownTo, label, island, tone, choice, stops, bars };
+}
+
 /** Identifies what is on screen, so unchanged content isn't re-sent. */
 export function contentSignature(content: LiveActivityContent): string {
   return JSON.stringify([

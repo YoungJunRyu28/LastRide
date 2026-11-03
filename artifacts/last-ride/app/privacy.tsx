@@ -13,7 +13,7 @@ function copy(ja: boolean) {
   return ja
     ? {
         title: "プライバシー",
-        updated: "最終更新：2026年10月12日",
+        updated: "最終更新：2026年11月3日",
         intro:
           "帰り時はアカウントなしで使えます。データを広告目的で利用したり、販売したりすることはありません。",
         sections: [
@@ -55,13 +55,21 @@ function copy(ja: boolean) {
           },
           {
             heading: "削除とお問い合わせ",
-            body: `アプリを削除すると、端末に保存された本アプリのデータはすべて消えます。設定の「データを消去」でも端末のデータを消去でき、その際は参加中のグループからも退出します（ホストの場合はグループを解散し、全員の参加データを削除します）。アプリを削除してもサーバーには伝わらないため、グループのデータは本アプリから6か月間アクセスがないと（通知が届かなくなった場合は30日間で）自動で削除されます（ホストの場合はグループごと削除されます）。すぐに削除したい場合は、アプリを削除する前にグループの「…」から退出してください。プライバシーに関するお問い合わせ：${SUPPORT_EMAIL}`,
+            body: `アプリを削除すると、端末に保存された本アプリのデータはすべて消えます。設定の「データを消去」でも端末のデータを消去でき、その際は参加中のグループからも退出します（ホストの場合はグループを解散し、全員の参加データを削除します）。アプリを削除してもサーバーには伝わらないため、グループのデータは本アプリから6か月間アクセスがないと（通知が届かなくなった場合は30日間で）自動で削除されます（ホストの場合はグループごと削除されます）。すぐに削除したい場合は、アプリを削除する前にグループの「…」から退出してください。開示・訂正・削除などのご請求（手数料なし）や、プライバシーに関するお問い合わせ・苦情：${SUPPORT_EMAIL}`,
+          },
+          {
+            heading: "送信先と所在国",
+            body: "機能に必要な範囲でのみ、次の事業者に情報が送られます：Apple（米国）、RevenueCat（米国）、Expo（米国）、Sentry（米国）、Amazon Web Services（日本・東京）、Neon（シンガポール）、Cloudflare（米国・サイトのみ）。法令に基づく場合を除き、本人の同意なく第三者に提供することはありません。各国の制度と、それぞれ送る内容は、サイトのプライバシーポリシー（lastride.jp/privacy）に記載しています。",
+          },
+          {
+            heading: "安全管理と運営者",
+            body: "個人データは開発者だけが必要な範囲で扱い、通信はすべて暗号化しています。運営者・個人情報の取扱いの責任者：ロバーツ ニコラスナガイ（個人）。住所はご請求があれば遅滞なく開示します。",
           },
         ],
       }
     : {
         title: "Privacy",
-        updated: "Last updated: 12 October 2026",
+        updated: "Last updated: 3 November 2026",
         intro:
           "LastRide works without an account. We do not sell your data or use it for advertising.",
         sections: [
@@ -103,7 +111,15 @@ function copy(ja: boolean) {
           },
           {
             heading: "Deleting your data and contact",
-            body: `Deleting the app erases all of LastRide’s data on your phone. “Erase data” in Settings also erases it and leaves your groups (a host’s group is disbanded, deleting everyone’s membership). Deleting the app can’t tell our server, so group data is deleted automatically once your app hasn’t contacted the group for 6 months (30 days if notifications can no longer reach your phone); a host’s whole group is deleted. To remove it straight away, leave your groups from their “…” menu before deleting the app. Privacy questions: ${SUPPORT_EMAIL}`,
+            body: `Deleting the app erases all of LastRide’s data on your phone. “Erase data” in Settings also erases it and leaves your groups (a host’s group is disbanded, deleting everyone’s membership). Deleting the app can’t tell our server, so group data is deleted automatically once your app hasn’t contacted the group for 6 months (30 days if notifications can no longer reach your phone); a host’s whole group is deleted. To remove it straight away, leave your groups from their “…” menu before deleting the app. Requests to disclose, correct or delete your data (no fee), and privacy questions or complaints: ${SUPPORT_EMAIL}`,
+          },
+          {
+            heading: "Where data goes",
+            body: "Only what each feature needs is sent to: Apple (US), RevenueCat (US), Expo (US), Sentry (US), Amazon Web Services (Japan, Tokyo), Neon (Singapore) and Cloudflare (US, website only). Except where required by law, nothing is shared with third parties without your consent. What each receives, and those countries’ systems, are in the full policy at lastride.jp/en/privacy.",
+          },
+          {
+            heading: "Security and operator",
+            body: "Only the developers handle personal data, and only as needed; all traffic is encrypted. Operator and person responsible for personal data: Nicholas Nagai Roberts (individual). The address is disclosed without delay on request.",
           },
         ],
       };
