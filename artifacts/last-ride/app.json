@@ -59,7 +59,7 @@
           "isAndroidBackgroundLocationEnabled": true,
           "isAndroidForegroundServiceEnabled": true,
           "locationAlwaysPermission": "LastRide uses your location in the background during a night out to keep your nearest station, walking time, and leave-by reminders accurate.",
-          "motionUsagePermission": false
+          "motionUsagePermission": "LastRide doesn’t use motion data. This text is required by the location features it’s built on, and the app never asks for this permission."
         }
       ],
       "expo-web-browser"

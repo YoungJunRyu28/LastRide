@@ -4,6 +4,7 @@
     "NSLocationWhenInUseUsageDescription": "近くの駅と、駅までの徒歩時間を調べるために位置情報を使います。",
     "NSLocationAlwaysAndWhenInUseUsageDescription": "夜間の案内中だけ、アプリを閉じている間も位置情報を使い、近くの駅・徒歩時間・出発のリマインダーを更新します。",
     "NSLocationAlwaysUsageDescription": "夜間の案内中だけ、アプリを閉じている間も位置情報を使い、近くの駅・徒歩時間・出発のリマインダーを更新します。",
-    "NSAlarmKitUsageDescription": "終電に間に合うように出発の時刻をお知らせするため、マナーモード中やロック中でも鳴るアラームを使います。"
+    "NSAlarmKitUsageDescription": "終電に間に合うように出発の時刻をお知らせするため、マナーモード中やロック中でも鳴るアラームを使います。",
+    "NSMotionUsageDescription": "帰り時は「モーションとフィットネス」のデータを使用しません。位置情報の機能に含まれるため記載が必要なもので、この許可を求めることはありません。"
   }
 }

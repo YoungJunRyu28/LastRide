@@ -4,6 +4,7 @@
     "NSLocationWhenInUseUsageDescription": "LastRide uses your location to find the nearest station and calculate walking time home.",
     "NSLocationAlwaysAndWhenInUseUsageDescription": "LastRide uses your location in the background during a night out to keep your nearest station, walking time, and leave-by reminders accurate.",
     "NSLocationAlwaysUsageDescription": "LastRide uses your location in the background during a night out to keep your nearest station, walking time, and leave-by reminders accurate.",
-    "NSAlarmKitUsageDescription": "LastRide uses alarms to tell you when to leave for your last train, even when your iPhone is locked or in silent mode."
+    "NSAlarmKitUsageDescription": "LastRide uses alarms to tell you when to leave for your last train, even when your iPhone is locked or in silent mode.",
+    "NSMotionUsageDescription": "LastRide doesn’t use motion data. This text is required by the location features it’s built on, and the app never asks for this permission."
   }
 }
