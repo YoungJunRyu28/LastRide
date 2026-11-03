@@ -37,7 +37,7 @@ export default function SettingsScreen() {
     nightLocationMode, backgroundAllowed,
     demoActive, setDemoNow, demoSpeed, setDemoSpeed, nowMs, plan, currentTime, leaveBy, widgetTheme,
   } = useLastRide();
-  const { isPremium, live: premiumLive, setTestPremium, testOverride, storeInfo } = usePremium();
+  const { isPremium, live: premiumLive, setTestPremium, testOverride, storeInfo, manageSubscription } = usePremium();
   const [store, setStore] = React.useState<string | null>(null);
   // Test tools: dev builds, and TestFlight installs once unlocked (7 taps on the
   // version line, lib/testTools), so App Review never sees them; never App Store.
@@ -59,15 +59,25 @@ export default function SettingsScreen() {
       onBack={() => (router.canGoBack() ? router.back() : router.replace('/ride'))}
     >
       {isPremium ? (
-        <Card style={styles.premiumBanner}>
-          <Feather name="star" size={18} color={colors.primary} />
-          <View style={styles.premiumText}>
-            <Text style={[styles.premiumTitle, { color: colors.foreground }]}>{ja ? 'プレミアムをご利用中' : 'Premium is on'}</Text>
-            <Text style={[styles.premiumBody, { color: colors.mutedForeground }]}>
-              {ja ? 'プランの変更・解約は、端末のサブスクリプション設定から行えます。' : 'Manage or cancel in your device’s subscription settings.'}
-            </Text>
-          </View>
-        </Card>
+        // Tap: Apple's sheet to change plan or cancel, right here (works for TestFlight too).
+        <Pressable
+          testID="manage-subscription"
+          onPress={() => void manageSubscription()}
+          accessibilityRole="button"
+          accessibilityHint={ja ? 'プランの変更・解約' : 'Change plan or cancel'}
+          style={({ pressed }) => [{ opacity: pressed ? 0.85 : 1 }]}
+        >
+          <Card style={styles.premiumBanner}>
+            <Feather name="star" size={18} color={colors.primary} />
+            <View style={styles.premiumText}>
+              <Text style={[styles.premiumTitle, { color: colors.foreground }]}>{ja ? 'プレミアムをご利用中' : 'Premium is on'}</Text>
+              <Text style={[styles.premiumBody, { color: colors.mutedForeground }]}>
+                {ja ? 'タップして購読を管理（プランの変更・解約）' : 'Tap to manage your subscription (change plan or cancel)'}
+              </Text>
+            </View>
+            <Feather name="chevron-right" size={18} color={colors.mutedForeground} />
+          </Card>
+        </Pressable>
       ) : (
         <Pressable
           testID="settings-premium"

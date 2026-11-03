@@ -10,7 +10,7 @@
  */
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { AppState, Platform } from 'react-native';
+import { AppState, Linking, Platform } from 'react-native';
 import Purchases, { type CustomerInfo, type PurchasesPackage } from 'react-native-purchases';
 import { GALAXY_BILLING_MODE } from 'react-native-purchases-store-galaxy';
 import { readPremiumCache, writePremiumCache } from '@/lib/premiumCache';
@@ -158,6 +158,8 @@ type PremiumValue = {
   appUserId: () => Promise<string>;
   /** Headers proving ownership of the exact RevenueCat user being checked. */
   groupCreationHeaders: () => Promise<Record<string, string>>;
+  /** Apple's own sheet to change or cancel the subscription (also for TestFlight purchases). */
+  manageSubscription: () => Promise<void>;
   /** Existing anonymous subscription was not confirmed after identity migration. */
   migrationNeedsRestore: boolean;
   /**
@@ -373,6 +375,19 @@ export function PremiumProvider({ children }: { children: React.ReactNode }) {
     return id;
   }, []);
 
+  const manageSubscription = useCallback(async () => {
+    try {
+      if (!premiumLive) throw new Error('test mode');
+      await ensurePurchasesConfigured();
+      await Purchases.showManageSubscriptions();
+    } catch {
+      // No sheet (an older iOS, or not set up): Apple's subscriptions page instead.
+      await Linking.openURL(
+        Platform.OS === 'ios' ? 'https://apps.apple.com/account/subscriptions' : 'https://play.google.com/store/account/subscriptions',
+      ).catch(() => undefined);
+    }
+  }, []);
+
   const groupCreationHeaders = useCallback(async (): Promise<Record<string, string>> => {
     if (!premiumLive) return { 'X-RevenueCat-App-User-Id': await appUserId() };
     await ensurePurchasesConfigured();
@@ -397,8 +412,8 @@ export function PremiumProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ isPremium, ready, known: determined, loaded: (cacheRead && overrideRead) || determined, live: premiumLive, plans, purchase, restore, setTestPremium, testOverride: override !== null, appUserId, groupCreationHeaders, migrationNeedsRestore, storeInfo }),
-    [isPremium, ready, determined, cacheRead, overrideRead, plans, purchase, restore, setTestPremium, override, appUserId, groupCreationHeaders, migrationNeedsRestore, storeInfo],
+    () => ({ isPremium, ready, known: determined, loaded: (cacheRead && overrideRead) || determined, live: premiumLive, plans, purchase, restore, setTestPremium, testOverride: override !== null, appUserId, groupCreationHeaders, manageSubscription, migrationNeedsRestore, storeInfo }),
+    [isPremium, ready, determined, cacheRead, overrideRead, manageSubscription, plans, purchase, restore, setTestPremium, override, appUserId, groupCreationHeaders, migrationNeedsRestore, storeInfo],
   );
   return <PremiumContext.Provider value={value}>{children}</PremiumContext.Provider>;
 }
