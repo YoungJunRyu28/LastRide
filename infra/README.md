@@ -67,7 +67,7 @@ updated.
 ```bash
 export AWS_REGION=ap-northeast-1
 export CORS_ALLOWED_ORIGINS=https://staging.example.com
-./infra/deploy.sh staging last-ride/staging
+./infra/deploy.sh staging lastride/staging
 ```
 
 The script performs non-mutating repository validation, runs the migration
@@ -86,7 +86,7 @@ export CORS_ALLOWED_ORIGINS=https://app.example.com
 export ALARM_EMAIL=operations@example.com
 
 git checkout main && git pull --ff-only origin main
-./infra/deploy.sh production last-ride/production --confirm
+./infra/deploy.sh production lastride/production --confirm
 ```
 
 Production deliberately refuses to run unless `--confirm` is passed, the
@@ -111,7 +111,7 @@ production secrets in plaintext environment variables. Do the cut-over in
 this order:
 
 1. **Deploy the new production stack:**
-   `./infra/deploy.sh production last-ride/production --confirm`.
+   `./infra/deploy.sh production lastride/production --confirm`.
 2. **Repoint the app.** Set the mobile build's `EXPO_PUBLIC_API_URL` to the
    stack's `ApiUrl` output, ship that build, and verify `/api/healthz`,
    `/api/readyz` and the main flows against the new URL.
@@ -131,10 +131,10 @@ this order:
    database password (`DATABASE_URL`), `RAPIDAPI_KEY` and `EKISPERT_KEY` (both
    no longer used; just revoke them), and the
    Supabase keys. They sat in plaintext Lambda configuration, so treat them as
-   exposed. Update the `last-ride/production` secret in Secrets Manager with the
+   exposed. Update the `lastride/production` secret in Secrets Manager with the
    new values (and revoke the old ones at each provider).
 5. **Redeploy** so Lambda picks up the rotated values:
-   `./infra/deploy.sh production last-ride/production --confirm`.
+   `./infra/deploy.sh production lastride/production --confirm`.
 
 ## Database migration rule
 

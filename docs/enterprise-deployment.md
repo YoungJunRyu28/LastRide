@@ -90,8 +90,8 @@ Create separate staging and production Secrets Manager secrets and follow
 `infra/README.md`:
 
 ```bash
-./infra/deploy.sh staging last-ride/staging
-./infra/deploy.sh production last-ride/production --confirm
+./infra/deploy.sh staging lastride/staging
+./infra/deploy.sh production lastride/production --confirm
 ```
 
 Production requires `--confirm`, a clean working tree and `HEAD` equal to
