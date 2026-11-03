@@ -153,8 +153,8 @@ export default function GroupsScreen() {
             </Text>
             <Text style={[styles.optionBody, { color: colors.mutedForeground }]}>
               {ja
-                ? '端末の復元などにより、グループの認証情報を読み込めなくなる場合があります。グループのデータは自動削除されません。端末の状態を確認して、もう一度お試しください。復元できない場合は、グループのホストに新しい招待を依頼してください。'
-                : 'A device restore can lose the encrypted keys for your groups. LastRide has not erased your saved group list. Check your device and try again; if the keys cannot be recovered, contact your group host for a new invitation.'}
+                ? '端末の復元などで読み込めなくなることがあります。もう一度読み込むか、ホストに新しい招待を頼んでください。'
+                : 'A device restore can make these unreadable. Try again, or ask the host for a new invite.'}
             </Text>
             <SecondaryButton label={ja ? 'もう一度読み込む' : 'Try again'} onPress={() => void refresh()} />
             <Pressable
@@ -183,8 +183,8 @@ export default function GroupsScreen() {
               </Text>
               <Text style={[styles.heroBody, { color: colors.mutedForeground }]}>
                 {ja
-                  ? 'グループを作って招待リンクを送るだけ。参加者の出発時刻を一覧で確認でき、出発時にはグループに通知が届きます。'
-                  : 'The host makes a group and sends a link. Everyone’s leave time lines up, and the group is notified when it’s someone’s time to go.'}
+                  ? 'グループを作って招待するだけ。みんなの出発時刻が並び、出発時に通知が届きます。'
+                  : 'Make a group and invite people. Everyone’s leave times line up, and the group is notified when it’s time to go.'}
               </Text>
             </View>
             <View style={styles.options}>

@@ -20,8 +20,9 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 /** "ビルド 6 · アップデート 10/17 19:42（a1b2c3）", or "ビルド 6 · アップデートなし". */
 function runningVersion(ja: boolean): string {
-  const build = Constants.nativeBuildVersion ?? '?';
-  const head = ja ? `ビルド ${build}` : `Build ${build}`;
+  // The build's runtime (its native fingerprint): identifies the binary, like a build number.
+  const runtime = (Updates.runtimeVersion ?? '').slice(0, 8) || '—';
+  const head = ja ? `${Constants.expoConfig?.version ?? ''} · ランタイム ${runtime}` : `${Constants.expoConfig?.version ?? ''} · runtime ${runtime}`;
   if (Updates.isEmbeddedLaunch || !Updates.updateId || !Updates.createdAt) return `${head} · ${ja ? '追加アップデートなし' : 'no update (as built)'}`;
   const when = Updates.createdAt.toLocaleString(ja ? 'ja-JP' : 'en-GB', { timeZone: 'Asia/Tokyo', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
   const id = Updates.updateId.slice(0, 6);
@@ -198,7 +199,7 @@ export default function SettingsScreen() {
         style={styles.versionLine}
       >
         <Text style={[styles.versionText, { color: colors.mutedForeground }]}>
-          {ja ? `帰り時 ${Constants.expoConfig?.version ?? ''}（${Constants.nativeBuildVersion ?? '?'}）` : `LastRide ${Constants.expoConfig?.version ?? ''} (${Constants.nativeBuildVersion ?? '?'})`}
+          {ja ? `帰り時 バージョン ${Constants.expoConfig?.version ?? ''}` : `LastRide version ${Constants.expoConfig?.version ?? ''}`}
         </Text>
       </Pressable>
 

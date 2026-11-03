@@ -9,6 +9,8 @@ import { NotificationRouter } from '@/components/NotificationRouter';
 import { SpaceGrotesk_500Medium, SpaceGrotesk_700Bold, useFonts } from '@expo-google-fonts/space-grotesk';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
+import * as SystemUI from 'expo-system-ui';
+import colors from '@/constants/colors';
 import { LastRideProvider, useLastRide } from '@/context/LastRideContext';
 import { PremiumProvider, usePremium } from '@/context/PremiumContext';
 import { GroupsProvider } from '@/context/GroupsContext';
@@ -22,9 +24,13 @@ SplashScreen.preventAutoHideAsync();
 
 const queryClient = new QueryClient();
 
+// What shows behind a screen while it's swiped back: the app's own dark
+// background, not the default white (the app is always dark, constants/colors).
+void SystemUI.setBackgroundColorAsync(colors.dark.background).catch(() => undefined);
+
 function RootLayoutNav() {
   return (
-    <Stack screenOptions={{ headerShown: false, animation: 'none' }}>
+    <Stack screenOptions={{ headerShown: false, animation: 'none', contentStyle: { backgroundColor: colors.dark.background } }}>
       <Stack.Screen name="index" />
       <Stack.Screen name="ride" />
       <Stack.Screen name="home-station" />
@@ -33,6 +39,9 @@ function RootLayoutNav() {
       <Stack.Screen name="far-ways" />
       <Stack.Screen name="groups" />
       <Stack.Screen name="group/[id]" />
+      <Stack.Screen name="group-settings" />
+      <Stack.Screen name="group-members" />
+      <Stack.Screen name="group-edit" />
       <Stack.Screen name="group-new" />
       <Stack.Screen name="group-join" />
       <Stack.Screen name="onboarding-notifications" />

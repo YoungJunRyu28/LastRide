@@ -1,30 +1,21 @@
 import { Feather } from '@expo/vector-icons';
 import { groupInviteLink } from '@/lib/inviteLinks';
 import { shareLatestGroupInvite } from '@/lib/shareLatestGroupInvite';
-import { completeGroupDeparture } from '@/lib/groupDeparture';
+import { confirmAction, useGroupActions } from '@/lib/groupActions';
 import QRCode from 'react-native-qrcode-svg';
 import {
-  disbandGroup,
   getGroup,
-  endGroupTonight,
   joinGroupTonight,
-  leaveGroup,
   leaveGroupTonight,
-  removeGroupMember,
-  rotateGroupInvite,
   startGroupTonight,
-  updateGroup,
-  updateMyGroupMembership,
   type GroupDetail,
-  type GroupMemberSummary,
 } from '@workspace/api-client-react';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import React, { useState } from 'react';
-import { Alert, Linking, Modal, Platform, Pressable, KeyboardAvoidingView, RefreshControl, ScrollView, Share, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
-import { SUPPORT_EMAIL } from '@/lib/links';
+import { Alert, Platform, Pressable, RefreshControl, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomNav } from '@/components/BottomNav';
-import { Card, IconButton, PrimaryButton, SecondaryButton, TextButton } from '@/components/ui';
+import { Card, IconButton, PrimaryButton } from '@/components/ui';
 import { DIGITS } from '@/constants/type';
 import { errorStatus, useGroups } from '@/context/GroupsContext';
 import { useLastRide } from '@/context/LastRideContext';
@@ -35,19 +26,7 @@ import { formatJstTime, MINUTE_MS } from '@/lib/time';
 import { formatCountdown } from '@/lib/countdown';
 import { useSecondClock } from '@/hooks/useSecondClock';
 
-type Sheet = null | 'menu' | 'rename' | 'displayName' | 'members' | 'notifications';
-
-/** Yes/no confirmation that also works on web. */
-function confirm(title: string, message: string, action: string, cancel: string, onConfirm: () => void) {
-  if (Platform.OS === 'web') {
-    if (typeof window !== 'undefined' && window.confirm(`${title}\n${message}`)) onConfirm();
-    return;
-  }
-  Alert.alert(title, message, [
-    { text: cancel, style: 'cancel' },
-    { text: action, style: 'destructive', onPress: onConfirm },
-  ]);
-}
+const confirm = confirmAction;
 
 /** "ABCD1234" → "ABCD-1234", easier to read out (joining ignores the dash). */
 function formatJoinCode(code: string): string {
@@ -83,9 +62,7 @@ export default function GroupScreen() {
   }, [id, refreshGroup]);
   const { isPremium, groupCreationHeaders } = usePremium();
   const ja = language !== 'en';
-  const [sheet, setSheet] = useState<Sheet>(null);
-  const [draft, setDraft] = useState('');
-  const [busy, setBusy] = useState(false);
+  const { busy, run, leaveGone } = useGroupActions(id, ja);
   const [showQr, setShowQr] = useState(false);
   const detail = groups.find((entry) => entry.membership.groupId === id)?.detail ?? null;
   const back = () => (router.canGoBack() ? router.back() : router.replace('/groups'));
@@ -117,45 +94,6 @@ export default function GroupScreen() {
   const hostName = detail.members.find((member) => member.role === 'host')?.displayName ?? '';
   const options = memberOptions(detail.id);
 
-  /** Runs a server action; 404 means the group is gone for us. */
-  const run = async (action: () => Promise<GroupDetail | void>, after?: () => void) => {
-    setBusy(true);
-    try {
-      const result = await action();
-      if (result) apply(result);
-      after?.();
-    } catch (error) {
-      if (errorStatus(error) === 404) {
-        try {
-          await forget(detail.id);
-          router.replace('/groups');
-        } catch {
-          // The server says this membership is gone, but OS secure storage
-          // could not remove its local capability. Do not navigate away or
-          // produce an unhandled rejection from a fire-and-forget press.
-          Alert.alert(
-            ja ? '端末のグループ情報を更新できません' : 'Could not clear saved group access',
-            ja
-              ? '端末のストレージを確認し、再度お試しください。'
-              : 'Check device storage and try again.',
-          );
-        }
-        return;
-      }
-      Alert.alert(ja ? 'できませんでした' : 'That didn’t work', ja ? 'しばらくしてからもう一度お試しください。' : 'Please try again in a moment.');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const leaveGone = async (action: () => Promise<void>) => {
-    setSheet(null);
-    await run(() => completeGroupDeparture(
-      action,
-      () => forget(detail.id),
-      () => router.replace('/groups'),
-    ));
-  };
 
   /**
    * Shares your current leave time. Separate from night tracking: with tracking
@@ -202,47 +140,6 @@ export default function GroupScreen() {
       () => void run(() => leaveGroupTonight(detail.id, options)),
     );
 
-  const notificationSwitches = (
-    <View style={styles.sheetList}>
-      {[
-        {
-          key: 'notifications' as const,
-          testID: 'toggle-tonight-alerts',
-          title: ja ? '今夜の共有開始' : 'Tonight starts',
-          subtitle: ja ? 'ホストが今夜の共有を開始したとき' : 'When the host starts tonight',
-          value: detail.me.notifications,
-        },
-        {
-          key: 'leaveTimeAlerts' as const,
-          testID: 'toggle-leave-time-alerts',
-          title: ja ? 'メンバーの出発時刻' : 'Members’ leave times',
-          subtitle: ja ? 'オフにしても一覧は見られ、自分の時刻も共有されます' : 'Off still shows the list and shares your own time',
-          value: detail.me.leaveTimeAlerts,
-        },
-      ].map((item, index) => (
-        <View key={item.key} style={[styles.alertsRow, index > 0 && { borderTopColor: colors.border, borderTopWidth: 1 }]}>
-          <View style={styles.alertsText}>
-            <Text style={[styles.menuTitle, { color: colors.foreground }]}>{item.title}</Text>
-            <Text style={[styles.note, { color: colors.mutedForeground }]}>{item.subtitle}</Text>
-          </View>
-          <Switch
-            testID={item.testID}
-            accessibilityLabel={item.title}
-            value={item.value}
-            onValueChange={(value) => void run(() => updateMyGroupMembership(detail.id, { [item.key]: value }, options))}
-            trackColor={{ false: colors.input, true: colors.primary }}
-            thumbColor={colors.background}
-          />
-        </View>
-      ))}
-    </View>
-  );
-
-  /** "今夜の共有開始 · 出発時刻" (whichever are on), for the menu item. */
-  const notificationSummary =
-    [detail.me.notifications ? (ja ? '今夜の共有開始' : 'Tonight starts') : null, detail.me.leaveTimeAlerts ? (ja ? 'メンバーの出発時刻' : 'leave times') : null]
-      .filter(Boolean)
-      .join(' · ') || (ja ? 'オフ' : 'Off');
 
   const share = async () => {
     try {
@@ -279,159 +176,6 @@ export default function GroupScreen() {
     return { text: ja ? `あと${formatCountdown(msLeft)}` : `in ${formatCountdown(msLeft)}`, tone };
   };
 
-  // Group and display names are written by users: a way to report one (Guideline 1.2).
-  const reportItem = () => detail
-    ? menuItem(
-        'report',
-        ja ? '不適切な名前を報告' : 'Report an inappropriate name',
-        ja ? 'サポートにメールで知らせます' : 'Emails our support',
-        () =>
-          void Linking.openURL(
-            `mailto:${SUPPORT_EMAIL}?subject=${encodeURIComponent(ja ? '不適切な名前の報告' : 'Inappropriate name report')}&body=${encodeURIComponent(
-              ja
-                ? `グループID：${detail.id}\n問題のある名前（グループ名・表示名）：\n`
-                : `Group ID: ${detail.id}\nThe name (group or display name):\n`,
-            )}`,
-          ).catch(() => undefined),
-      )
-    : null;
-  const menuItem = (key: string, title: string, subtitle: string | null, onPress: () => void, destructive = false, trailing?: React.ReactNode) => (
-    <Pressable
-      key={key}
-      testID={`group-option-${key}`}
-      onPress={onPress}
-      accessibilityRole="button"
-      style={({ pressed }) => [styles.menuItem, { borderColor: colors.border, opacity: pressed ? 0.7 : 1 }]}
-    >
-      <View style={styles.menuText}>
-        <Text style={[styles.menuTitle, { color: destructive ? colors.destructive : colors.foreground }]}>{title}</Text>
-        {subtitle ? <Text style={[styles.menuSub, { color: colors.mutedForeground }]}>{subtitle}</Text> : null}
-      </View>
-      {trailing ?? <Feather name="chevron-right" size={18} color={colors.mutedForeground} />}
-    </Pressable>
-  );
-
-  const memberPicker = (members: GroupMemberSummary[], onPick: (member: GroupMemberSummary) => void, icon: 'user-x' | 'award') => (
-    <View style={styles.sheetList}>
-      {members.length === 0 ? (
-        <Text style={[styles.note, { color: colors.mutedForeground }]}>{ja ? 'ほかのメンバーはいません。' : 'No other members yet.'}</Text>
-      ) : (
-        members.map((member) =>
-          menuItem(member.id, member.displayName, null, () => onPick(member), icon === 'user-x', <Feather name={icon} size={17} color={icon === 'user-x' ? colors.destructive : colors.primary} />),
-        )
-      )}
-    </View>
-  );
-  const others = detail.members.filter((member) => member.id !== detail.me.memberId);
-
-  const sheetBody = () => {
-    switch (sheet) {
-      case 'rename':
-      case 'displayName': {
-        const renaming = sheet === 'rename';
-        return (
-          <View style={styles.sheetList}>
-            <TextInput
-              autoFocus
-              value={draft}
-              onChangeText={setDraft}
-              maxLength={renaming ? 80 : 40}
-              accessibilityLabel={renaming ? (ja ? 'グループ名' : 'Group name') : ja ? '表示名' : 'Display name'}
-              style={[styles.input, { backgroundColor: colors.background, borderColor: colors.primary, color: colors.foreground }]}
-            />
-            <PrimaryButton
-              label={ja ? '保存' : 'Save'}
-              disabled={!draft.trim()}
-              loading={busy}
-              onPress={() =>
-                void run(
-                  () => (renaming ? updateGroup(detail.id, { name: draft.trim() }, options) : updateMyGroupMembership(detail.id, { displayName: draft.trim() }, options)),
-                  () => setSheet(null),
-                )
-              }
-            />
-          </View>
-        );
-      }
-      case 'notifications':
-        return notificationSwitches;
-      case 'members':
-        return memberPicker(others, (member) =>
-          confirm(
-            ja ? 'メンバーを削除' : 'Remove member',
-            ja ? `${member.displayName}さんをグループから削除しますか？` : `Remove ${member.displayName} from the group?`,
-            ja ? '削除' : 'Remove',
-            ja ? 'キャンセル' : 'Cancel',
-            () => void run(() => removeGroupMember(detail.id, member.id, options)),
-          ),
-        'user-x');
-      default:
-        return host ? (
-          <View style={styles.sheetList}>
-            {tonight.active &&
-              menuItem('end-tonight', ja ? '今夜の共有を終了' : 'End tonight', ja ? '全員の今夜の出発時刻を削除して終了' : 'Deletes everyone’s leave times for tonight', () =>
-                confirm(ja ? '今夜の共有を終了' : 'End tonight', ja ? '全員の今夜の出発時刻を削除します。' : 'Everyone’s leave times for tonight will be deleted.', ja ? '終了する' : 'End', ja ? 'キャンセル' : 'Cancel', () =>
-                  void run(() => endGroupTonight(detail.id, options), () => setSheet(null)),
-                ),
-              )}
-            {menuItem('members', ja ? 'メンバーを管理' : 'Manage members', ja ? 'メンバーを削除できます' : 'Remove members', () => setSheet('members'))}
-            {menuItem('rename', ja ? 'グループ名を変更' : 'Rename group', null, () => {
-              setDraft(detail.name);
-              setSheet('rename');
-            })}
-            {menuItem('notifications', ja ? '通知' : 'Notifications', notificationSummary, () => setSheet('notifications'))}
-            {menuItem('display-name', ja ? '表示名を変更' : 'Change display name', ja ? `現在の表示名：${detail.me.displayName}` : `Now: ${detail.me.displayName}`, () => {
-              setDraft(detail.me.displayName);
-              setSheet('displayName');
-            })}
-            {menuItem('rotate', ja ? '招待リンクを再発行' : 'New invite link', ja ? '以前のリンクは使えなくなります' : 'The old link stops working', () =>
-              confirm(ja ? '招待リンクを再発行' : 'New invite link', ja ? '以前のリンクとコードは使えなくなります。' : 'The old link and code will stop working.', ja ? '再発行' : 'Replace', ja ? 'キャンセル' : 'Cancel', () =>
-                void run(async () => {
-                  const invite = await rotateGroupInvite(detail.id, options);
-                  apply({ ...detail, invite });
-                }),
-              ),
-            )}
-            {menuItem('disband', ja ? 'グループを解散' : 'Disband group', ja ? '全員の参加データを削除します。元に戻せません' : 'Deletes everyone’s data. Can’t be undone', () =>
-              confirm(ja ? 'グループを解散' : 'Disband group', ja ? '全員の参加データを削除します。元に戻せません。' : 'Everyone’s data is deleted. This can’t be undone.', ja ? '解散する' : 'Disband', ja ? 'キャンセル' : 'Cancel', () =>
-                void leaveGone(() => disbandGroup(detail.id, options)),
-              ),
-            true)}
-            {reportItem()}
-            <Text style={[styles.note, { color: colors.mutedForeground }]}>
-              {ja ? 'ホストはグループを解散すると退出できます。' : 'As host, you leave by disbanding the group.'}
-            </Text>
-          </View>
-        ) : (
-          <View style={styles.sheetList}>
-            {menuItem('notifications', ja ? '通知' : 'Notifications', notificationSummary, () => setSheet('notifications'))}
-            {menuItem('display-name', ja ? '表示名を変更' : 'Change display name', ja ? `現在の表示名：${detail.me.displayName}` : `Now: ${detail.me.displayName}`, () => {
-              setDraft(detail.me.displayName);
-              setSheet('displayName');
-            })}
-            {menuItem('leave-group', ja ? 'グループから退出' : 'Leave group', ja ? '表示名と出発時刻はすぐに削除されます' : 'Your name and leave time are deleted right away', () =>
-              confirm(ja ? 'グループから退出' : 'Leave group', ja ? `「${detail.name}」から退出しますか？` : `Leave “${detail.name}”?`, ja ? '退出する' : 'Leave', ja ? 'キャンセル' : 'Cancel', () =>
-                void leaveGone(() => leaveGroup(detail.id, options)),
-              ),
-            true)}
-            {reportItem()}
-          </View>
-        );
-    }
-  };
-
-  const sheetTitle =
-    sheet === 'rename'
-      ? ja ? 'グループ名を変更' : 'Rename group'
-      : sheet === 'displayName'
-        ? ja ? '表示名を変更' : 'Change display name'
-        : sheet === 'members'
-          ? ja ? 'メンバーを管理' : 'Manage members'
-          : sheet === 'notifications'
-            ? ja ? 'このグループの通知' : 'Notifications for this group'
-          : host
-              ? ja ? 'ホスト用メニュー' : 'Host options · you’re the host'
-              : ja ? 'メンバー用メニュー' : 'Member options';
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
@@ -447,7 +191,7 @@ export default function GroupScreen() {
                 <Text style={[styles.invitePillText, { color: colors.foreground }]}>{ja ? '招待リンク' : 'Invite link'}</Text>
               </Pressable>
             )}
-            <IconButton icon="more-horizontal" label={ja ? 'グループのオプション' : 'Group options'} onPress={() => setSheet('menu')} testID="group-options" />
+            <IconButton icon="more-horizontal" label={ja ? 'グループのオプション' : 'Group options'} onPress={() => router.push({ pathname: '/group-settings', params: { id: detail.id } })} testID="group-options" />
           </View>
         </View>
 
@@ -477,19 +221,10 @@ export default function GroupScreen() {
                   ? `満員（${detail.memberLimit}人）のため、新しいメンバーは参加できません。`
                   : `The group is full (${detail.memberLimit}), so nobody new can join.`}
               </Text>
-            ) : (
-              <Text style={[styles.note, { color: colors.mutedForeground }]}>
-                {ja
-                  ? '参加する人は「グループ」タブの「招待コードで参加」で入力できます。'
-                  : 'Others can enter it under Groups → Join with a code.'}
-              </Text>
-            )}
+            ) : null}
             {showQr && (
               <View style={styles.qrWrap}>
                 <QRCode value={groupInviteLink(detail.invite.inviteToken)} size={200} quietZone={10} backgroundColor="#FFFFFF" color="#000000" />
-                <Text style={[styles.note, styles.center, { color: colors.mutedForeground }]}>
-                  {ja ? 'カメラで読み取ると招待リンクを開けます。' : 'Scan with the iPhone camera to open the invite link.'}
-                </Text>
               </View>
             )}
             <View style={styles.inviteButtons}>
@@ -523,7 +258,7 @@ export default function GroupScreen() {
             <Card highlighted style={styles.tonightCard}>
               <Text style={[styles.badge, { backgroundColor: colors.primary, color: colors.primaryForeground }]}>{ja ? '今夜の共有中' : 'Tonight'}</Text>
               <Text style={[styles.note, { color: colors.mutedForeground }]}>
-                {ja ? '明日の朝8:00に自動で終了 · 出発時刻は削除' : 'Ends at 8:00 tomorrow · leave times are deleted'}
+                {ja ? '翌朝8:00に自動で終了' : 'Ends at 8:00 tomorrow'}
               </Text>
             </Card>
             <View style={styles.listHead}>
@@ -593,21 +328,15 @@ export default function GroupScreen() {
           </>
         ) : host ? (
           <>
-            <Card style={styles.tonightCard}>
-              <Text style={[styles.menuTitle, { color: colors.foreground }]}>{ja ? '今夜の共有を開始' : 'Start tonight'}</Text>
-              <Text style={[styles.note, { color: colors.mutedForeground }]}>
-                {ja ? 'メンバーに通知が届き、参加した人の出発時刻が並びます。明日の朝8:00に自動で終了します。' : 'Members get a notification, and those who join line up by leave time. Ends at 8:00 tomorrow.'}
-              </Text>
-            </Card>
-            <PrimaryButton label={ja ? '共有を開始' : 'Start tonight'} loading={busy} onPress={() => void startTonight()} testID="start-tonight" />
-            {detail.invite && <SecondaryButton label={ja ? '招待リンクを共有' : 'Share invite link'} onPress={() => void share()} />}
+            <PrimaryButton label={ja ? '今夜の共有を開始' : 'Start tonight'} loading={busy} onPress={() => void startTonight()} testID="start-tonight" />
+            <Text style={[styles.note, styles.center, { color: colors.mutedForeground }]}>
+              {ja ? 'メンバーに通知が届きます · 翌朝8:00に終了' : 'Members are notified · ends at 8:00 tomorrow'}
+            </Text>
           </>
         ) : (
           <Card style={styles.tonightCard}>
             <Text style={[styles.menuTitle, { color: colors.foreground }]}>{ja ? '今夜の共有はまだ始まっていません' : 'Not started tonight'}</Text>
-            <Text style={[styles.note, { color: colors.mutedForeground }]}>
-              {ja ? 'ホストが今夜の共有を開始すると通知が届きます。' : 'You’ll get a notification when the host starts tonight.'}
-            </Text>
+            <Text style={[styles.note, { color: colors.mutedForeground }]}>{ja ? '始まると通知が届きます' : 'You’ll be notified when it starts'}</Text>
           </Card>
         )}
 
@@ -622,26 +351,11 @@ export default function GroupScreen() {
         )}
 
         <Text style={[styles.note, { color: colors.mutedForeground }]}>
-          {ja
-            ? '表示されるのは名前と出発時刻だけ。現在地や帰る場所は共有されません。出発時刻になると、今夜参加しているメンバーに通知します（⋯ の「通知」で変更できます）。'
-            : 'Only names and leave times are shown — never your location or destination. Tonight’s participants are notified at each leave time (change it under ⋯ → Notifications).'}
+          {ja ? '共有されるのは名前と出発時刻だけです。現在地や帰る場所は共有されません。' : 'Only names and leave times are shared, never your location or destination.'}
         </Text>
       </ScrollView>
       <BottomNav language={language} />
 
-      <Modal visible={sheet !== null} transparent animationType="slide" onRequestClose={() => setSheet(null)}>
-        {/* The sheet rises with the keyboard, so the name being typed stays in view. */}
-        <KeyboardAvoidingView style={styles.sheetFrame} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <Pressable style={styles.scrim} onPress={() => setSheet(null)} accessibilityLabel={ja ? '閉じる' : 'Close'} />
-          <View style={[styles.sheet, { backgroundColor: colors.card, paddingBottom: insets.bottom + 16 }]}>
-            <View style={[styles.grabber, { backgroundColor: colors.input }]} />
-            <Text style={[styles.sheetGroup, { color: colors.foreground }]}>{detail.name}</Text>
-            <Text style={[styles.note, { color: colors.mutedForeground }]}>{sheetTitle}</Text>
-            <ScrollView style={styles.sheetScroll}>{sheetBody()}</ScrollView>
-            <TextButton label={sheet === 'menu' ? (ja ? '閉じる' : 'Close') : ja ? '戻る' : 'Back'} onPress={() => setSheet(sheet === 'menu' ? null : 'menu')} />
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
     </View>
   );
 }
