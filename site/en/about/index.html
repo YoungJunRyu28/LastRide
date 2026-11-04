@@ -15,7 +15,7 @@
 <link rel="alternate" hreflang="ja" href="https://lastride.jp/about/">
 <link rel="alternate" hreflang="en" href="https://lastride.jp/en/about/">
 <link rel="alternate" hreflang="x-default" href="https://lastride.jp/about/">
-<link rel="stylesheet" href="/style.css?v=5">
+<link rel="stylesheet" href="/style.css?v=6">
 <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png">
 <link rel="icon" href="/favicon.png" sizes="64x64" type="image/png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
@@ -35,59 +35,73 @@
   </div>
 </header>
 <main>
-  <section class="about-hero">
-    <div class="about-orbit" aria-hidden="true"></div>
-    <div class="container about-hero-inner">
-      <span class="about-kicker"><i></i>A SMALL TEAM. A BIGGER IDEA.</span>
-      <h1>Better nights.<br><span>Smarter ways home.</span></h1>
-      <p class="about-lead">We are two computer science students at Waseda University who believe great technology should make everyday life simpler. We build LastRide to take the guesswork out of the journey home—so you can stay present, and still make the last train.</p>
-      <div class="about-facts"><span>Waseda University</span><span>School of Fundamental Science and Engineering</span><span>Graduating Fall 2028</span></div>
-      <div class="about-scroll" aria-hidden="true"><span></span> OUR STORY &darr;</div>
+  <section class="block team-hero">
+    <div class="container">
+      <p class="eyebrow">Team</p>
+      <h1>Better nights.<br><span class="accent">Smarter ways home.</span></h1>
+      <p class="sub">We are two computer science students at Waseda University who believe great technology should make everyday life simpler. We build LastRide to take the guesswork out of the journey home, so you can stay present and still make the last train.</p>
+      <ul class="chips"><li>Waseda University</li><li>Fundamental Science and Engineering · Computer Science</li><li>Graduating Fall 2028</li></ul>
     </div>
   </section>
-  <section class="about-team" id="founders">
+
+  <section class="block alt" id="founders">
     <div class="container">
-      <p class="about-eyebrow">MEET THE PEOPLE</p>
-      <h2>Two founders. <span>One vision.</span></h2>
-      <p class="about-section-intro">Building useful things together, one thoughtful detail at a time.</p>
-
-      <div class="about-founders">
-        <article class="founder">
-          <div class="founder-media founder-media--yj">
-            <span class="founder-index">01 / 02</span>
-            <img class="founder-portrait" src="/img/founder-youngjun.jpg" alt="YoungJun Ryu" width="360" height="360" loading="lazy" decoding="async">
+      <p class="eyebrow">Founders</p>
+      <h2 class="heading">Two founders. <span class="mark">One vision.</span></h2>
+      <p class="sub">Building useful things together, one thoughtful detail at a time.</p>
+      <div class="team-founders">
+        <article class="founder-card">
+          <div class="founder-head">
+            <img src="/img/founder-youngjun.jpg" alt="YoungJun Ryu" width="360" height="360" loading="lazy" decoding="async">
+            <div><p class="founder-role">Co-founder & Engineer</p><h3>YoungJun Ryu</h3><p class="founder-affiliation">Computer Science · Waseda FSE</p></div>
           </div>
-          <div class="founder-info"><p class="founder-role">Co-founder & Engineer</p><h3>YoungJun Ryu</h3><p class="founder-affiliation">Computer Science · Waseda FSE</p><p class="founder-description">Co-building LastRide from idea to product, with a focus on the simple, dependable experiences that make complex technology feel effortless.</p><a class="founder-social-link" href="https://www.linkedin.com/in/youngjun-ryu-845618256/" target="_blank" rel="noopener noreferrer" aria-label="YoungJun Ryu — LinkedIn"><span class="founder-linkedin-mark" aria-hidden="true">in</span> LinkedIn <span aria-hidden="true">↗</span></a></div>
+          <p>Co-building LastRide from idea to product, with a focus on the simple, dependable experiences that make complex technology feel effortless.</p>
+          <a class="founder-link" href="https://www.linkedin.com/in/youngjun-ryu-845618256/" target="_blank" rel="noopener noreferrer" aria-label="YoungJun Ryu — LinkedIn"><i aria-hidden="true">in</i>LinkedIn<span aria-hidden="true">↗</span></a>
         </article>
-        <article class="founder">
-          <div class="founder-media founder-media--nick">
-            <span class="founder-index">02 / 02</span>
-            <img class="founder-portrait" src="/img/founder-nicholas.webp" alt="Nicholas Nagai Roberts" width="360" height="360" loading="lazy" decoding="async">
-
+        <article class="founder-card">
+          <div class="founder-head">
+            <img src="/img/founder-nicholas.webp" alt="Nicholas Nagai Roberts" width="360" height="360" loading="lazy" decoding="async">
+            <div><p class="founder-role">Co-founder & Engineer</p><h3>Nicholas Nagai Roberts</h3><p class="founder-affiliation">Computer Science · Waseda FSE</p></div>
           </div>
-          <div class="founder-info"><p class="founder-role">Co-founder & Engineer</p><h3>Nicholas Nagai Roberts</h3><p class="founder-affiliation">Computer Science · Waseda FSE</p><p class="founder-description">Co-building LastRide with the same goal: turning the everyday uncertainty of getting home into something clear, useful, and reliable.</p><a class="founder-social-link" href="https://www.linkedin.com/in/nicholas-nagai-roberts/?isSelfProfile=false" target="_blank" rel="noopener noreferrer" aria-label="Nicholas Nagai Roberts — LinkedIn"><span class="founder-linkedin-mark" aria-hidden="true">in</span> LinkedIn <span aria-hidden="true">↗</span></a></div>
+          <p>Co-building LastRide with the same goal: turning the everyday uncertainty of getting home into something clear, useful and reliable.</p>
+          <a class="founder-link" href="https://www.linkedin.com/in/nicholas-nagai-roberts/" target="_blank" rel="noopener noreferrer" aria-label="Nicholas Nagai Roberts — LinkedIn"><i aria-hidden="true">in</i>LinkedIn<span aria-hidden="true">↗</span></a>
         </article>
       </div>
     </div>
   </section>
-  <section class="about-mission">
+
+  <section class="block">
     <div class="container">
-      <p class="about-eyebrow">WHAT DRIVES US</p>
-      <h2>We engineer for <span>real life.</span></h2>
-      <p class="about-section-intro">Our philosophy is simple: technical depth matters most when people can feel its impact.</p>
-      <div class="about-beliefs"><article class="belief"><span class="belief-num">01</span><h3>Solve something real</h3><p>We start with a problem people actually experience, not a feature list.</p></article>
-<article class="belief"><span class="belief-num">02</span><h3>Keep it beautifully simple</h3><p>The hard work belongs in the engineering, not in the user's hands.</p></article>
-<article class="belief"><span class="belief-num">03</span><h3>Build for trust</h3><p>Thoughtful design, reliability, and clarity should work together.</p></article></div>
+      <p class="eyebrow">Approach</p>
+      <h2 class="heading">We engineer for <span class="mark">real life.</span></h2>
+      <p class="sub">Technical depth matters most when people can feel its impact.</p>
+      <div class="features">
+        <div class="feature">
+          <div class="icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/></svg></div>
+          <h3>Solve something real</h3><p>We start with a problem people actually have, not a feature list.</p>
+        </div>
+        <div class="feature">
+          <div class="icon"><svg viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/></svg></div>
+          <h3>Keep it simple</h3><p>The hard work belongs in the engineering, not in your hands.</p>
+        </div>
+        <div class="feature">
+          <div class="icon"><svg viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6z"/><path d="M8.5 12l2.5 2.5 4.5-5"/></svg></div>
+          <h3>Build for trust</h3><p>Accuracy, clarity and ease of use, all three.</p>
+        </div>
+      </div>
     </div>
   </section>
-  <section class="about-outro">
+
+  <section class="block team-outro">
     <div class="container">
-      <p class="about-eyebrow">LASTRIDE · MADE IN JAPAN</p>
-      <h2>More time for the night.<br>More confidence getting home.</h2>
-      <p>We're only getting started. Follow along as we build the next chapter of LastRide.</p>
-      <div class="about-outro-actions">
-        <a class="btn btn-dark" href="/en/">Explore LastRide<span aria-hidden="true">↗</span></a>
-        <a class="btn btn-ghost" href="/en/support/#contact-form">Get in touch</a>
+      <div class="cta">
+        <p class="eyebrow" style="color:#8fa2b8">LastRide · Made in Japan</p>
+        <h2 class="heading">More time for the night. <span class="mark mark-dark">More confidence getting home.</span></h2>
+        <p class="sub">We’re only getting started. Follow along as we build what comes next.</p>
+        <div class="actions">
+          <a class="btn btn-amber" href="/en/">Explore LastRide</a>
+          <a class="btn btn-ghost" href="/en/support/#contact-form">Get in touch</a>
+        </div>
       </div>
     </div>
   </section>
