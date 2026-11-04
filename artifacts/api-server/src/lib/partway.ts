@@ -8,6 +8,7 @@
 import { taxiEstimate, type TaxiEstimate } from "./estimates";
 import {
   matchStations,
+  startPlatforms,
   normalizeServiceDate,
   sameStationGroup,
   timetableEngine,
@@ -82,7 +83,7 @@ export async function findPartwayTrainTaxi(input: {
   const { snapshot } = await timetableEngine();
   const date = normalizeServiceDate(input.serviceDate);
   if (!date) return null;
-  const origins = matchStations(snapshot, input.from);
+  const origins = startPlatforms(snapshot, matchStations(snapshot, input.from), input.from);
   const targets = matchStations(snapshot, input.to);
   if (origins.length === 0 || targets.length === 0) return null;
 

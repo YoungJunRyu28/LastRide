@@ -625,6 +625,13 @@ export async function startGroupTonightRecord(
 > {
   return unwrap(
     await asHost(groupId, memberToken, now, async (tx, auth) => {
+      const serviceDate = serviceDateFor(now);
+      // Last night runs until 08:00, past the 04:00 rollover: a start after 04:00
+      // is for tonight, so last night's (and its leave times) make way for it.
+      await deleteNights(
+        tx,
+        and(eq(groupNightsTable.groupId, groupId), ne(groupNightsTable.serviceDate, serviceDate)),
+      );
       const [existing] = await tx
         .select({ id: groupNightsTable.id })
         .from(groupNightsTable)
@@ -639,7 +646,6 @@ export async function startGroupTonightRecord(
           recipients: [],
         };
       }
-      const serviceDate = serviceDateFor(now);
       await tx.insert(groupNightsTable).values({
         groupId,
         serviceDate,

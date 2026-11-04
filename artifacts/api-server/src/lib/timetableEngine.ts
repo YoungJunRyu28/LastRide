@@ -406,6 +406,25 @@ export function matchStations(
   return nearest < 0 ? [] : sameStationGroup(snapshot, nearest);
 }
 
+/**
+ * Where a trip starts: only the platform nearest the station the app picked
+ * (its walk is planned to that point). The scan's footpaths add the walk to the
+ * station's other platforms, so a later train from one 600 m away (TX 浅草 for
+ * Metro 浅草) is only offered with that walk counted, never as if it were here.
+ */
+export function startPlatforms(
+  snapshot: TransitSnapshot,
+  matched: number[],
+  ref: StationRef,
+): number[] {
+  if (matched.length <= 1 || !hasCoordinates(ref)) return matched;
+  const point = { lat: ref.latitude, lon: ref.longitude };
+  const nearest = matched.reduce((best, index) =>
+    distanceMeters(snapshot.stations[index], point) < distanceMeters(snapshot.stations[best], point) ? index : best,
+  );
+  return [nearest];
+}
+
 /** Epoch ms → "2026-10-10T00:31:00+09:00". */
 export function jstIso(ms: number): string {
   const seconds = Math.floor(ms / 1000) * 1000;
@@ -470,11 +489,12 @@ export function searchTrainIn(
 ): (TrainRoute & { earlier?: TrainRoute[] }) | null {
   const date = normalizeServiceDate(serviceDate);
   if (!date) return null;
-  const origins = matchStations(snapshot, from);
+  const matched = matchStations(snapshot, from);
   const targets = matchStations(snapshot, to);
-  if (origins.length === 0 || targets.length === 0) return null;
+  if (matched.length === 0 || targets.length === 0) return null;
   // Same station on both ends: nothing to ride.
-  if (origins.some((origin) => targets.includes(origin))) return null;
+  if (matched.some((origin) => targets.includes(origin))) return null;
+  const origins = startPlatforms(snapshot, matched, from);
   if (kind === "last" && before > 0) {
     const [last, ...earlier] = lastTrainsBetween(snapshot, date, origins, targets, before);
     const route = last ? toTrainRoute(last) : null;

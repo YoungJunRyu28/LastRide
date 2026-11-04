@@ -1,6 +1,6 @@
 /**
- * Which trips run on a given service day: Japanese public holidays (and
- * Sundays) run the holiday timetable, Saturdays the Saturday one.
+ * Which trips run on a given service day: Japanese public holidays, the New
+ * Year (12/30–1/3) and Sundays run the holiday timetable, Saturdays the Saturday one.
  */
 import holidayJp from "@holiday-jp/holiday_jp";
 import type { DayType, Service } from "./model";
@@ -14,8 +14,11 @@ function weekdayIndex(date: string): number {
   return (sundayFirst + 6) % 7;
 }
 
+/** 12/30–1/3: Tokyo Metro and Toei run the 土休日 timetable over the New Year. */
+const YEAR_END = new Set(["12-30", "12-31", "01-01", "01-02", "01-03"]);
+
 export function dayTypeOf(date: string): DayType {
-  if (date in holidays) return "holiday";
+  if (date in holidays || YEAR_END.has(date.slice(5))) return "holiday";
   const weekday = weekdayIndex(date);
   if (weekday === 6) return "holiday";
   if (weekday === 5) return "saturday";

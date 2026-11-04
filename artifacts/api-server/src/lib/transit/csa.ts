@@ -215,6 +215,13 @@ export function lastTrains(
   for (let index = connections.length - 1; index >= 0; index--) {
     const connection = connections[index];
     let reaches = alightAt.has(connection.vehicle);
+    // Reaching home here: get off here, even if this train was already found to
+    // reach home farther along (the scan runs latest first, so that stop came
+    // first: riding past home and coming back).
+    if (isTarget[connection.to] && connection.arr <= arriveBy) {
+      alightAt.set(connection.vehicle, index);
+      reaches = true;
+    }
     if (!reaches) {
       const to = connection.to;
       if (isTarget[to]) {
@@ -308,12 +315,22 @@ export function firstTrain(
   const cameBy = new Int32Array(stationCount).fill(-1);
   const walkedFrom = new Int32Array(stationCount).fill(-1);
   const boarded = new Map<number, number>();
+  const { connections, footpaths } = timetable;
   for (const origin of origins) {
     ready[origin] = notBefore;
     arrival[origin] = notBefore;
   }
+  // The station's other platforms, a walk from where you start.
+  for (const origin of origins) {
+    for (const { to: neighbor, minutes } of footpaths[origin]) {
+      const reach = notBefore + minutes;
+      if (reach >= arrival[neighbor]) continue;
+      arrival[neighbor] = reach;
+      ready[neighbor] = reach;
+      walkedFrom[neighbor] = origin;
+    }
+  }
 
-  const { connections, footpaths } = timetable;
   for (let index = 0; index < connections.length; index++) {
     const connection = connections[index];
     if (!boarded.has(connection.vehicle)) {
