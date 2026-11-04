@@ -268,15 +268,16 @@ const LeaveWidget = (props: LeaveWidgetProps, environment: WidgetEnvironment) =>
   if (medium)
     return (
       <VStack alignment="leading" spacing={0} modifiers={[background, open]}>
-        {/* The countdown is laid out first and never shrinks for the names; the
-            right column is capped, so a long saved name is cut with … instead. */}
+        {/* The right column has a fixed width: a long saved name is cut with …
+            instead of pushing into the countdown, which scales to fit the rest.
+            (A running timer takes all the width it is offered, so it can't go first.) */}
         <HStack alignment="top" spacing={8}>
-          <VStack alignment="leading" spacing={0} modifiers={[layoutPriority(1)]}>
+          <VStack alignment="leading" spacing={0} modifiers={[frame({ maxWidth: 1000, alignment: "leading" })]}>
             <Text modifiers={[font({ weight: "bold", size: 14 }), foregroundStyle(toneColor), lineLimit(1)]}>{props.label}</Text>
             {timer(54, toneColor)}
           </VStack>
           <Spacer minLength={0} />
-          <VStack alignment="trailing" spacing={2} modifiers={[frame({ maxWidth: 132, alignment: "trailing" })]}>
+          <VStack alignment="trailing" spacing={2} modifiers={[frame({ width: 124, alignment: "trailing" })]}>
             <Text modifiers={[font({ weight: "black", size: 16 }), foregroundStyle(c.text), lineLimit(1), minimumScaleFactor(0.7)]}>{props.from}</Text>
             {/* The same three lines as the Live Activity's top right (lib/widgetContent toLine). */}
             <HStack spacing={0}>

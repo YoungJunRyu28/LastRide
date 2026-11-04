@@ -108,14 +108,15 @@ const LeaveCountdown = (sent: LeaveCountdownProps, environment: LiveActivityEnvi
   return {
     banner: (
       <VStack alignment="leading" spacing={10} modifiers={[padding({ all: 16 }), activityBackgroundTint(c.background)]}>
-        {/* The countdown first; the capped right column cuts a long name with … */}
+        {/* A fixed-width right column: a long name is cut with …, the countdown
+            scales to fit the rest (a running timer takes all the width it's offered). */}
         <HStack alignment="top" spacing={8}>
-          <VStack alignment="leading" spacing={1} modifiers={[layoutPriority(1)]}>
+          <VStack alignment="leading" spacing={1} modifiers={[frame({ maxWidth: 1000, alignment: "leading" })]}>
             <Text modifiers={[font({ weight: "bold", size: 12 }), foregroundStyle(gone ? c.muted : toneColor), lineLimit(1)]}>{gone ? gone.label : props.label}</Text>
             {timer(34, toneColor)}
           </VStack>
           <Spacer minLength={0} />
-          <VStack alignment="trailing" spacing={2} modifiers={[frame({ maxWidth: 160, alignment: "trailing" })]}>
+          <VStack alignment="trailing" spacing={2} modifiers={[frame({ width: 140, alignment: "trailing" })]}>
             <Text modifiers={[font({ weight: "bold", size: 13 }), foregroundStyle(c.text), lineLimit(1), minimumScaleFactor(0.7)]}>{props.from}</Text>
             {props.toName ? (
               <HStack spacing={0}>
