@@ -21,10 +21,10 @@ import { endLiveActivity, syncLiveActivity } from '@/lib/liveActivity';
 import { syncWidgets } from '@/lib/widgets';
 import { notifyLockFallback, notifyStationSuggestion, scheduleReminders, cancelAllReminders } from '@/lib/notifications';
 import { readSuggestionLog, recordSuggestion, shouldNotifySuggestion, stationSuggestion, suggestionNight, suggestionText } from '@/lib/stationSuggestion';
-import { buildReminderPlans, locationProfile, planNight, sameStation, shouldReplan, trackingEndsAt, trackingHardStopAt, type LocationProfile, type NightPlan } from '@/lib/planner';
+import { buildReminderPlans, locationProfile, planNight, planOrigin, sameStation, shouldReplan, trackingEndsAt, trackingHardStopAt, type LocationProfile, type NightPlan } from '@/lib/planner';
 import { hasCoordinates, readSettings, readTrainChoiceOverride, trainChoiceUntil, writePinnedStation, writeTrainChoiceOverride, readReminderTimes, STORAGE_KEYS, type Language } from '@/lib/settings';
 import { applyTrainChoice, choiceAt, effectiveTrainChoice, slotAtNewStation, trainChoiceLabel, trainOptions } from '@/lib/trainChoice';
-import type { Coordinates } from '@/lib/stations';
+import { LocationError, type Coordinates } from '@/lib/stations';
 import { formatJstTime, serviceDate } from '@/lib/time';
 import { syncSharedLeaveBy } from '@/lib/groupSharing';
 import { usableTrackingSnapshot } from '@/lib/trackingSnapshotGuard';
@@ -129,7 +129,19 @@ async function recomputeFromLocation(roughCoordinates: Coordinates, accuracyMete
     : null;
   if (!kept) coordinates = await betterFix(coordinates, accuracyMeters);
   void debugEvent(kept ? 'bg: held (on the way)' : 'bg: re-planning');
-  const basePlan = kept ?? await planNight(coordinates, settings.homeStation, settings.leaveMargin, now, { pinned: settings.pinnedStation, homeAddress: settings.homeAddress, previous });
+  let basePlan: NightPlan;
+  try {
+    basePlan = kept ?? await planNight(planOrigin(coordinates, settings.pinnedStation), settings.homeStation, settings.leaveMargin, now, { pinned: settings.pinnedStation, homeAddress: settings.homeAddress, previous });
+  } catch (error) {
+    // At a station by home: the night is over, like 〔乗った〕 (no more leave reminders).
+    if (error instanceof LocationError && error.code === 'near-home' && (await isTrackingFlagOn())) {
+      await stopBackgroundTracking('near home');
+      await clearTrackingSnapshot();
+      await cancelAllReminders().catch(() => undefined);
+      return;
+    }
+    throw error;
+  }
   if (!(await isTrackingFlagOn())) return; // stopped while we were computing
   // The station locked for tonight can't get you home any more: back to automatic, and say so.
   if (settings.pinnedStation && !basePlan.pinned) {

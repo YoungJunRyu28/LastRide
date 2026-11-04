@@ -20,6 +20,8 @@ const CANDIDATE_STATIONS_INITIAL = 3;
 const CANDIDATE_STATIONS_EXPANDED = 6;
 /** Closer than this to the home station and with no train found, the user is simply near home. */
 const NEAR_HOME_METERS = 1500;
+/** The closest station is a home station and this near: you're home, whatever trains run. */
+const AT_HOME_STATION_METERS = 800;
 /** While tracking, re-plan only after moving this far from the last plan, or once it is this old. */
 const REPLAN_DISTANCE_METERS = 300;
 const REPLAN_AFTER_MS = 10 * MINUTE_MS;
@@ -528,6 +530,21 @@ export function shouldExpandStationSearch(options: StationChoice[]): boolean {
   return options.some((option) => (option.disruptionLines?.length ?? 0) > 0);
 }
 
+/** Farther than this from a chosen station, the plan starts at the station (no walk). */
+const PINNED_WALKABLE_METERS = 5_000;
+
+/**
+ * Where to plan from: here, or, with a station chosen beyond walking reach
+ * (going there by car or bus first), the station itself, as when location is
+ * off. From here there'd be no station at all, and the choice would be lost.
+ * The app and background tracking both plan from this.
+ */
+export function planOrigin(coordinates: Coordinates, pinned: StationOption | null): Coordinates {
+  return pinned && distanceBetween(coordinates, pinned) > PINNED_WALKABLE_METERS
+    ? { latitude: pinned.latitude, longitude: pinned.longitude }
+    : coordinates;
+}
+
 /**
  * Evaluates the nearest stations first, then widens the search only when the
  * first pass is sparse, disrupted, or time-critical. This keeps the normal
@@ -596,6 +613,15 @@ export async function planNight(
       station: pinned,
       straightMeters: distanceBetween(coordinates, pinned),
     });
+  }
+
+  // Standing at (or by) a station near home: no train to take. Checked before the
+  // trains, or the next station over (one stop home) would win, since the home
+  // station itself has no train home.
+  if (!pinned && candidates.length > 0) {
+    const closest = candidates.reduce((best, candidate) => (candidate.straightMeters < best.straightMeters ? candidate : best));
+    if (closest.straightMeters <= AT_HOME_STATION_METERS && destinations.some(({ station }) => sameStation(closest.station, station)))
+      throw new LocationError('near-home');
   }
 
   const firstPass = await evaluateCandidates(candidates, destinations, coordinates, leaveMargin, nightOf, earlier);

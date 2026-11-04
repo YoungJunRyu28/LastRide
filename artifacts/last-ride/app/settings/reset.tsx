@@ -42,17 +42,25 @@ export default function ResetScreen() {
           text: ja ? '消去する' : 'Erase',
           style: 'destructive',
           onPress: () => {
-            void leaveAll()
-              .then(resetAll)
-              .then(() => router.replace('/'))
-              .catch(() =>
+            void leaveAll().then(
+              () =>
+                resetAll()
+                  .then(() => router.replace('/'))
+                  .catch(() =>
+                    // Groups are already left here: only the rest failed.
+                    Alert.alert(
+                      ja ? '一部のデータを消去できませんでした' : 'Some data couldn’t be erased',
+                      ja ? 'もう一度お試しください。' : 'Please try again.',
+                    ),
+                  ),
+              () =>
                 Alert.alert(
                   ja ? 'グループの退出に失敗しました' : 'Could not leave your groups',
                   ja
                     ? '接続を確認してもう一度お試しください。グループのデータは保持されました。'
                     : 'Check your connection and try again. Your group credentials were kept on this device.',
                 ),
-              );
+            );
           },
         },
       ],

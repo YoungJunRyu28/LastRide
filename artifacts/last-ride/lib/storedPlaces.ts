@@ -97,7 +97,8 @@ export async function resolveStation(
   const cached = (await readCache(nowMs)).places[stationKey(station)];
   if (cached) return { ...station, ...cached };
   const base = stationBaseName(station.nameJa);
-  const results = await withTimeout(search(base), [] as StationOption[]);
+  // One-character names (柏, 蕨, 津) are searched as 「柏駅」: a single character is too short to search.
+  const results = await withTimeout(search(Array.from(base).length < 2 ? `${base}駅` : base), [] as StationOption[]);
   const sameName = results.filter((candidate) => stationBaseName(candidate.nameJa) === base && hasPosition(candidate));
   // Station names repeat (府中 in Tokyo and Hiroshima), so the area has to agree when both are known.
   const match = station.regionJa

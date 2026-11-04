@@ -248,12 +248,19 @@ function parseReminderTimes(
   return { reminderIntervals, alarmsEnabled, alarmIntervals };
 }
 
-/** A pin only applies to the service day it was made on, so it never leaks into tomorrow night. */
-function parsePinnedStation(raw: string | null): StationOption | null {
+/**
+ * The night a one-night setting belongs to. It runs to 05:00, an hour past the
+ * 04:00 service-day rollover, like the plan (planner freshPlanNightOf): someone
+ * waiting for the first train at 04:30 is still on last night.
+ */
+const oneNightDate = (nowMs: number) => serviceDate(nowMs - 60 * 60 * 1000);
+
+/** A pin only applies to the night it was made on, so it never leaks into tomorrow night. */
+function parsePinnedStation(raw: string | null, nowMs: number): StationOption | null {
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as { station?: StationOption; serviceDate?: string };
-    return parsed.station && parsed.serviceDate === serviceDate(Date.now()) ? parsed.station : null;
+    return parsed.station && parsed.serviceDate === oneNightDate(nowMs) ? parsed.station : null;
   } catch {
     return null;
   }
@@ -270,17 +277,17 @@ export async function readOneNightSettings(nowMs = Date.now()): Promise<{ trainC
     AsyncStorage.getItem(STORAGE_KEYS.tonightDestination).catch(() => null),
     readTrainChoice(nowMs),
   ]);
-  return { trainChoice, pinnedStation: parsePinnedStation(pinned), tonightDestination: parsePinnedStation(tonight) };
+  return { trainChoice, pinnedStation: parsePinnedStation(pinned, nowMs), tonightDestination: parsePinnedStation(tonight, nowMs) };
 }
 
 /** Tonight-only destinations share the pinned station's one-night lifetime. */
 export async function writeTonightDestination(station: StationOption | null): Promise<void> {
-  if (station) await AsyncStorage.setItem(STORAGE_KEYS.tonightDestination, JSON.stringify({ station, serviceDate: serviceDate(Date.now()) }));
+  if (station) await AsyncStorage.setItem(STORAGE_KEYS.tonightDestination, JSON.stringify({ station, serviceDate: oneNightDate(Date.now()) }));
   else await AsyncStorage.removeItem(STORAGE_KEYS.tonightDestination);
 }
 
 export async function writePinnedStation(station: StationOption | null): Promise<void> {
-  if (station) await AsyncStorage.setItem(STORAGE_KEYS.pinnedStation, JSON.stringify({ station, serviceDate: serviceDate(Date.now()) }));
+  if (station) await AsyncStorage.setItem(STORAGE_KEYS.pinnedStation, JSON.stringify({ station, serviceDate: oneNightDate(Date.now()) }));
   else await AsyncStorage.removeItem(STORAGE_KEYS.pinnedStation);
 }
 
@@ -309,10 +316,10 @@ export async function readSettings(): Promise<Settings> {
   void AsyncStorage.removeItem('lastride-walking-speed').catch(() => undefined);
   // Replaced by lastride-reminder-times (which includes the leave time) and the alarm keys.
   void AsyncStorage.multiRemove(['lastride-reminder-intervals', 'lastride-reminder-delivery']).catch(() => undefined);
-  const tonightDestination = parsePinnedStation(tonightRaw);
+  const tonightDestination = parsePinnedStation(tonightRaw, Date.now());
   // One-night stations are dropped once their night is over.
   if (tonightRaw && !tonightDestination) void AsyncStorage.removeItem(STORAGE_KEYS.tonightDestination).catch(() => undefined);
-  const pinned = parsePinnedStation(pinnedStation);
+  const pinned = parsePinnedStation(pinnedStation, Date.now());
   if (pinnedStation && !pinned) void AsyncStorage.removeItem(STORAGE_KEYS.pinnedStation).catch(() => undefined);
 
   const legacyStation = parseHomeStation(homeStation);

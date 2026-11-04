@@ -37,6 +37,7 @@ import {
   replanMargin,
   repick,
   rideStatus,
+  planOrigin,
   sameStation,
   shouldReplan,
   trackingEndsAt,
@@ -73,7 +74,6 @@ import {
   trackingDisclosure,
 } from "@/lib/trackingDisclosure";
 import {
-  distanceBetween,
   LocationError,
   type Coordinates,
   type StationOption,
@@ -382,8 +382,6 @@ async function getCurrentCoordinates(): Promise<Coordinates> {
 }
 
 const FIX_TIMEOUT_MS = 15_000;
-/** Farther than this from a chosen station, the plan starts at the station (no walk). */
-const PINNED_WALKABLE_METERS = 5_000;
 const LAST_KNOWN_MAX_AGE_MS = 10 * 60_000;
 
 function errorCode(error: unknown): LocationErrorCode {
@@ -1051,8 +1049,14 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
           )
         : [...destinations, item];
       // Editing a saved destination that isn't tonight's (renaming 職場 while heading
-      // home): just save it; tonight's plan, 今夜だけ and a locked station stay.
-      if (exists && id !== activeDestinationId) {
+      // home, or any edit while a 今夜だけ one is set), or only renaming tonight's:
+      // just save it; tonight's plan, 今夜だけ and a locked station stay.
+      const current = destinations.find((destination) => destination.id === id);
+      const sameTrip =
+        !!current &&
+        sameStation(current.station, item.station) &&
+        (current.address?.label ?? null) === (item.address?.label ?? null);
+      if (exists && (id !== activeDestinationId || tonightDestination || sameTrip)) {
         setDestinations(next);
         void writeDestinationState(next, activeDestinationId);
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -1061,7 +1065,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       applyDestinationState(next, id);
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     },
-    [destinations, activeDestinationId, applyDestinationState],
+    [destinations, activeDestinationId, applyDestinationState, tonightDestination],
   );
 
   const selectDestination = useCallback(
@@ -1081,7 +1085,12 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     (id: string) => {
       const next = destinations.filter((destination) => destination.id !== id);
       if (next.length === destinations.length) return;
-      if (id === activeDestinationId) {
+      if (id === activeDestinationId && tonightDestination) {
+        // Tonight goes to the 今夜だけ place: deleting the usual one doesn't change that.
+        setDestinations(next);
+        setActiveDestinationId(next[0]?.id ?? null);
+        void writeDestinationState(next, next[0]?.id ?? null);
+      } else if (id === activeDestinationId) {
         applyDestinationState(next, next[0]?.id ?? null);
       } else {
         setDestinations(next);
@@ -1089,7 +1098,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       }
       void Haptics.selectionAsync();
     },
-    [activeDestinationId, destinations, applyDestinationState],
+    [activeDestinationId, destinations, applyDestinationState, tonightDestination],
   );
 
   const saveHomeStation = useCallback(
@@ -1428,11 +1437,8 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       const effective = effectivePlanRef.current;
       if (!pin && !dropPin && trackingModeRef.current !== null && current && effective && holdOnTheWay(current, effective, now))
         return keepOnTheWay(current, coordinates, now, effective.lastTrain.departsAt);
-      // A station chosen beyond walking reach (planning from far away, or going
-      // there by car or bus first): plan from the station itself, as when location
-      // is off. From here there'd be no station at all, and the choice would be lost.
-      const pinnedFar = !dropPin && pinnedStation && distanceBetween(coordinates, pinnedStation) > PINNED_WALKABLE_METERS;
-      const from = pinnedFar ? { latitude: pinnedStation.latitude, longitude: pinnedStation.longitude } : coordinates;
+      // A station chosen beyond walking reach: plan from the station (planner planOrigin).
+      const from = planOrigin(coordinates, dropPin ? null : pinnedStation);
       return planNight(from, home, margin, now, {
         pinned: dropPin ? null : pinnedStation,
         nightOf,
@@ -1466,7 +1472,9 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       // every reminder, and nothing reschedules them until the phone moves.
       // Location turned off mid-night too: the reminders and alarms already set from
       // the last plan still go off (it says so on screen); only the error shows.
-      if (planRef.current && (code === "unavailable" || trackingModeRef.current !== null)) {
+      // Except near home: that's a definite answer, and the old plan's reminders
+      // would keep telling someone who is already home to leave for a station.
+      if (planRef.current && (code === "unavailable" || (trackingModeRef.current !== null && code !== "near-home"))) {
         if (code === "permission") setLocationError(code);
         return;
       }
@@ -2007,7 +2015,17 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     await leaveCurrentEnterpriseEvent().catch(() =>
       clearEnterpriseParticipation(),
     );
-    await AsyncStorage.multiRemove(Object.values(STORAGE_KEYS));
+    await AsyncStorage.multiRemove([
+      ...Object.values(STORAGE_KEYS),
+      // Kept outside the settings, but from this person's nights too.
+      "lastride-earlier-trains",
+      "lastride-station-suggestions",
+      "lastride-reminder-change-mark",
+      "lastride-alarm-set",
+      "lastride-always-card",
+      "lastride-debug-events",
+    ]);
+    lastAlarmTimes.current = [];
     await clearSavedPlan();
     setLanguageState(DEFAULT_SETTINGS.language);
     setHomeStationOption(DEFAULT_SETTINGS.homeStation);

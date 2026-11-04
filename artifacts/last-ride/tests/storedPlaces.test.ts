@@ -90,6 +90,13 @@ describe('finding positions again', () => {
     expect(await resolveStation(named, search, tomorrow)).toMatchObject({ latitude: 0, longitude: 0 });
   });
 
+  it('searches a one-character name with 駅 (柏 alone is too short to search)', async () => {
+    const kashiwa = { name: 'Kashiwa', nameJa: '柏', latitude: 35.8622, longitude: 139.9711, regionJa: '千葉県柏市' };
+    const search = vi.fn(async (query: string) => (query === '柏駅' ? [{ ...kashiwa, nameJa: '柏駅' }] : []));
+    expect(await resolveStation(stationForDisk(kashiwa), search, tomorrow)).toMatchObject({ latitude: kashiwa.latitude });
+    expect(search).toHaveBeenCalledWith('柏駅');
+  });
+
   it('finds an address again from its text', async () => {
     const search = vi.fn(async () => [address]);
     expect(await resolveAddress(addressForDisk(address)!, search, tomorrow)).toEqual(address);
