@@ -151,7 +151,7 @@ export default function DestinationsScreen() {
                 testID="clear-tonight-destination"
                 onPress={() => setTonightDestination(null)}
                 accessibilityRole="button"
-                accessibilityLabel={ja ? "今夜の行き先をやめる" : "Clear tonight’s destination"}
+                accessibilityLabel={ja ? "今夜だけの行き先を解除" : "Clear tonight’s destination"}
                 hitSlop={10}
                 style={styles.actions}
               >
@@ -170,9 +170,9 @@ export default function DestinationsScreen() {
                   <Feather name="moon" size={16} color={colors.primary} />
                 </View>
                 <View style={styles.copy}>
-                  <Text style={[styles.rowTitle, { color: colors.foreground }]}>{ja ? "今夜は別の場所へ" : "Somewhere else tonight"}</Text>
+                  <Text style={[styles.rowTitle, { color: colors.foreground }]}>{ja ? "今夜だけ別の場所に帰る" : "Somewhere else tonight"}</Text>
                   <Text style={[styles.rowMeta, { color: colors.mutedForeground }]}>
-                    {ja ? `保存せずに今夜だけ使います。明日は${usualLabel}に戻ります。` : `Not saved. Tomorrow you’re back to ${usualLabel}.`}
+                    {ja ? `今夜だけ使い、保存はしません。明日は${usualLabel}に戻ります。` : `Not saved. Tomorrow you’re back to ${usualLabel}.`}
                   </Text>
                 </View>
               </View>

@@ -68,7 +68,7 @@ export type DeliveryContext = {
    * notice and no catch-up, since they're looking at the new times in the app.
    */
   userChange?: boolean;
-  /** The station change was already told another way (「出発駅を自動に戻しました」): no second notice. */
+  /** The station change was already told another way (「出発駅を自動選択に戻しました」): no second notice. */
   stationTold?: boolean;
 };
 

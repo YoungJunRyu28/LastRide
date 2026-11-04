@@ -364,7 +364,7 @@ export function notifyLockFallback(
   markReminderChange('stationTold');
   const time = new Intl.DateTimeFormat('ja-JP', { timeZone: 'Asia/Tokyo', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(plan.lastTrain.departsAt));
   const text = language === 'ja'
-    ? { title: '出発駅を自動に戻しました', body: `${locked.nameJa}駅からは帰れなくなったため、${plan.station.nameJa}駅（${time}発）に切り替えました。` }
+    ? { title: '出発駅を自動選択に戻しました', body: `${locked.nameJa}駅からは帰れなくなったため、${plan.station.nameJa}駅（${time}発）に切り替えました。` }
     : { title: 'Back to automatic', body: `${locked.name} can’t get you home any more, so you’re now leaving from ${plan.station.name} (${time} train).` };
   return enqueue(async () => present(text.title, text.body, null, '/ride', true, null, (await AsyncStorage.getItem(STORAGE_KEYS.throughFocus).catch(() => null)) !== 'false'));
 }
@@ -430,7 +430,7 @@ function reminderText({ leaveBy, station, language, held }: ReminderText, { minu
       : { title: 'Leave now', body: `Start walking to ${station} for the last train.` };
   }
   return language === 'ja'
-    ? { title: `あと${minutesBefore}分で出発`, body: `${leaveBy}に出て${station}へ。そろそろ支度を。` }
+    ? { title: `出るまであと${minutesBefore}分`, body: `${leaveBy}に出て${station}へ。そろそろ支度を。` }
     : { title: `${minutesBefore} min to go`, body: `Leave for ${station} by ${leaveBy}. Time to wrap up.` };
 }
 
@@ -474,7 +474,7 @@ async function registerBoardedCategory(language: 'ja' | 'en') {
 
 /**
  * A change the user made (userChange), or a station change already told by
- * 「出発駅を自動に戻しました」 (stationTold). Stored so the background task sees
+ * 「出発駅を自動選択に戻しました」 (stationTold). Stored so the background task sees
  * it too: the phone may sleep before the app's own re-plan has finished.
  */
 type ChangeMark = { kind: 'user' | 'stationTold'; at: number };

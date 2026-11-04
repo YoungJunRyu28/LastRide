@@ -121,7 +121,7 @@ export default function JoinGroupScreen() {
             style={[styles.input, { backgroundColor: colors.card, borderColor: displayName.trim() ? colors.primary : colors.input, color: colors.foreground }]}
           />
           <Text style={[styles.note, { color: colors.mutedForeground }]}>
-            {ja ? '前回使用した名前です。グループごとに変更できます。' : 'Your last-used name. You can change it per group.'}
+            {ja ? '前回使った名前です。グループごとに変更できます。' : 'Your last-used name. You can change it per group.'}
           </Text>
         </View>
 

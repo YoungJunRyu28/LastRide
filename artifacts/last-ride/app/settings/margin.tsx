@@ -14,14 +14,14 @@ export default function LeaveMarginScreen() {
   return (
     <SettingsPage title={ja ? '早めに出る時間' : 'Leave early by'} backLabel={ja ? '設定' : 'Settings'}>
       <Section
-        label={ja ? '間に合う最終の出発時刻の何分前に出るか' : 'HOW LONG BEFORE THE LATEST TIME TO LEAVE'}
+        label={ja ? '最終出発時刻より何分早く出るか' : 'HOW LONG BEFORE THE LATEST TIME TO LEAVE'}
         footer={
           latest !== null
             ? ja
-              ? `今夜の例：最終出発時刻 ${formatJstTime(latest)} → ${formatJstTime(latest - leaveMargin * MINUTE_MS)}に出発します。乗り換えや駅までの徒歩が長い場合は、少し早めにします。`
+              ? `今夜の例：最終出発時刻 ${formatJstTime(latest)} → ${formatJstTime(latest - leaveMargin * MINUTE_MS)}に出発します。乗り換えや駅までの徒歩時間に応じて、さらに余裕を持たせます。`
               : `Tonight: latest ${formatJstTime(latest)} → leave at ${formatJstTime(latest - leaveMargin * MINUTE_MS)}. A little more is added for routes with changes.`
             : ja
-              ? '乗り換えや駅までの徒歩が長い場合は、少し早めにします。'
+              ? '乗り換えや駅までの徒歩時間に応じて、さらに余裕を持たせます。'
               : 'A little more is added for routes with changes.'
         }
       >

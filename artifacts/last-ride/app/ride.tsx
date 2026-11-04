@@ -663,7 +663,7 @@ export default function RideScreen() {
                         ? `自動で選ぶと、${autoName}駅から${gain}分遅く出発できます。`
                         : `${autoName} would give you ${gain} more minutes.`
                       : ja
-                        ? "一番近い駅への自動の切り替えは止まっています。"
+                        ? "駅の自動切り替えは停止中です。"
                         : "Following the closest station is paused."}
                   </Text>
                 </View>
@@ -744,7 +744,7 @@ export default function RideScreen() {
               </Text>
               <Text style={[styles.note, { color: colors.mutedForeground }]}>
                 {ja
-                  ? "出る時刻のお知らせが届きません　設定 ↗"
+                  ? "出る時刻の通知が届きません。設定を確認 ↗"
                   : "You won’t be told when to leave · Settings ↗"}
               </Text>
             </View>
@@ -1104,7 +1104,7 @@ export default function RideScreen() {
                   onPress={() => setPanel((open) => (open === "train" ? null : "train"))}
                   accessibilityLabel={
                     ja
-                      ? `乗る電車：${trainChoiceLabel(effectiveTrainChoice, true)}。変更`
+                      ? `乗車する電車：${trainChoiceLabel(effectiveTrainChoice, true)}。変更する`
                       : `Train: ${trainChoiceLabel(effectiveTrainChoice, false)}. Change`
                   }
                 />
@@ -1401,11 +1401,11 @@ export default function RideScreen() {
               <Text
                 style={[styles.rowTitle, { color: colors.primaryForeground }]}
               >
-                {ja ? "終電を逃しましたか？" : "Missed the last train?"}
+                {ja ? "終電に乗り遅れましたか？" : "Missed the last train?"}
               </Text>
               <Text style={[styles.note, { color: colors.primaryForeground }]}>
                 {ja
-                  ? "始発・タクシー・近くの施設を探す"
+                  ? "始発やタクシー、近くの施設を探す"
                   : "See the first train, a taxi, and places to stay"}
               </Text>
             </View>
@@ -1566,9 +1566,9 @@ export default function RideScreen() {
           if (disruptionFeedUnavailable) notices.push({ key: "feed", node: (
           <Notice
             icon="alert-triangle"
-            title={ja ? "運行情報を取得できません" : "Service alerts unavailable"}
+            title={ja ? "運行情報を確認できません" : "Service alerts unavailable"}
             body={ja
-              ? "遅れや運転見合わせは鉄道会社の情報で確認を"
+              ? "遅延・運休は鉄道会社の公式情報をご確認ください"
               : "Check delays and suspensions with the railway"}
           />
           ) });
@@ -1578,7 +1578,7 @@ export default function RideScreen() {
             title={ja ? "推定の時刻です" : "Estimated train time"}
             body={
               ja
-                ? "乗換案内でも確認を"
+                ? "乗換案内アプリでも確認してください"
                 : "Double-check in a route app"
             }
           />
@@ -1659,7 +1659,7 @@ export default function RideScreen() {
                 >
                   <Text style={[styles.note, { color: colors.mutedForeground }]}>
                     {showAllNotices
-                      ? ja ? "閉じる" : "Show fewer"
+                      ? ja ? "表示を減らす" : "Show fewer"
                       : ja ? `ほかのお知らせ ${notices.length - 1}件` : `${notices.length - 1} more notice${notices.length > 2 ? "s" : ""}`}
                   </Text>
                   <Feather name={showAllNotices ? "chevron-up" : "chevron-down"} size={16} color={colors.mutedForeground} />

@@ -123,7 +123,7 @@ export function FarStationCard({
               </>
             ) : (
               <Text style={[styles.note, { color: colors.mutedForeground }]}>
-                {ja ? "この駅から自宅へ帰る電車が見つかりませんでした。" : "No train home was found from this station."}
+                {ja ? "この駅から帰り先へ向かう電車が見つかりませんでした。" : "No train home was found from this station."}
               </Text>
             )}
           </View>
@@ -138,7 +138,7 @@ export function FarStationCard({
             >
               <Feather name="truck" size={16} color={colors.primaryForeground} />
               <Text style={[styles.buttonText, { color: colors.primaryForeground }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
-                {ja ? "タクシー・車で駅へ" : "Taxi or car to the station"}
+                {ja ? "タクシー・車で駅まで" : "Taxi or car to the station"}
                 {far.taxiFareYen !== null ? (ja ? `  約${formatYen(far.taxiFareYen)}` : `  ~${formatYen(far.taxiFareYen)}`) : ""}
               </Text>
             </Pressable>
@@ -150,7 +150,7 @@ export function FarStationCard({
             >
               <Feather name="list" size={16} color={colors.foreground} />
               <Text style={[styles.buttonText, { color: colors.foreground }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>
-                {ja ? "バス・タクシーなど帰り方を比べる" : "Compare bus, taxi and more"}
+                {ja ? "バスやタクシーなどの帰り方を比べる" : "Compare bus, taxi and more"}
               </Text>
             </Pressable>
           </View>
@@ -173,7 +173,7 @@ export function FarStationCard({
 
       <View style={[styles.footer, { borderColor: colors.border }]}>
         <Pressable testID="retry-location" onPress={onRetry} accessibilityRole="button" hitSlop={8}>
-          <Text style={[styles.link, { color: colors.primary }]}>{ja ? "現在地でもう一度探す" : "Search again from here"}</Text>
+          <Text style={[styles.link, { color: colors.primary }]}>{ja ? "現在地からもう一度探す" : "Search again from here"}</Text>
         </Pressable>
         {/* Or start from a station of your choosing (going there by car or bus first,
             or planning ahead from elsewhere): tonight's last train from it, no walk. */}

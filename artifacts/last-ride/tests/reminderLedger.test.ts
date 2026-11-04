@@ -213,7 +213,7 @@ describe('tonight’s reminder record', () => {
     expect(added.schedule.map(reminderKind)).toEqual(['m5', 'm0']);
   });
 
-  test('a station change already told by 「出発駅を自動に戻しました」 gets no second notice', () => {
+  test('a station change already told by 「出発駅を自動選択に戻しました」 gets no second notice', () => {
     const first = planDelivery(null, context(), reminders(31), at(0));
     const fallback = planDelivery(first.ledger, context({ stationKey: '恵比寿', leaveAtMs: at(33), stationTold: true }), reminders(33), at(5));
     expect(fallback.stationChanged).toBe(false);

@@ -73,7 +73,7 @@ export default function SettingsScreen() {
             <View style={styles.premiumText}>
               <Text style={[styles.premiumTitle, { color: colors.foreground }]}>{ja ? 'プレミアムをご利用中' : 'Premium is on'}</Text>
               <Text style={[styles.premiumBody, { color: colors.mutedForeground }]}>
-                {ja ? 'タップして購読を管理（プランの変更・解約）' : 'Tap to manage your subscription (change plan or cancel)'}
+                {ja ? 'タップしてプランを変更・解約' : 'Tap to manage your subscription (change plan or cancel)'}
               </Text>
             </View>
             <Feather name="chevron-right" size={18} color={colors.mutedForeground} />
@@ -137,7 +137,7 @@ export default function SettingsScreen() {
             <Row
               testID="open-widget-theme"
               icon="droplet"
-              title={ja ? 'ウィジェットのデザイン' : 'Widget colours'}
+              title={ja ? 'ウィジェットの色' : 'Widget colours'}
               value={(() => {
                 const theme = WIDGET_THEMES.find((entry) => entry.id === widgetTheme);
                 return theme ? (ja ? theme.ja : theme.en) : undefined;

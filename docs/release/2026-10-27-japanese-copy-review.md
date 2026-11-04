@@ -20,14 +20,21 @@ outcomes rather than literal English UI phrases.
 | Saved destinations | 帰る場所 | inconsistent 帰り先 / 行き先 / 帰宅先 in the same flow |
 | Create and host | グループを作成 | 作る・ホスト |
 | Active tonight | 今夜の共有中 | 今夜アクティブ |
-| Last train missed | 終電を逃しましたか？ | 終電に間に合いませんでしたか？ (wordier) |
-| Countdown | 出発まで | ここを出るまで |
-| Reminders | 出発まであと15分 | あと15分 (ambiguous) |
-| Additional time budget | 出発までの余裕時間 | 早めに出る時間 |
+| Last train missed | 終電に乗り遅れましたか？ | 終電に間に合いませんでしたか？ (wordier) |
+| Countdown (the user leaving) | ここを出るまで (Dynamic Island: 出るまで) | 出発まで (reads as the train leaving) |
+| Reminders | 出るまであと15分 | 出発まであと15分, あと15分 (ambiguous) |
+| Leave now | 出る時間です | 出発の時間です |
+| Leave time changed | 出る時刻が変わりました | 出発時刻が変わりました |
+| Leave time on widgets | 出る 23:36（目安） | 出発 23:36 |
+| Additional time budget (余裕) | 早めに出る時間 | 出発の余裕時間, 出発までの余裕時間 |
 | Join state | 時刻を確認中 | 計算待ち |
 
-Use 「出発」 when the PERSON leaves; use 「発」 or 「発車」 when
-the TRAIN departs. Never imply the user will definitely catch a train based
+**出る vs 出発 (decided 2026-10-29, after this pass):** use 「出る」 when the
+PERSON leaves where they are; use 「発」, 「発車」 or 「出発」 only when a TRAIN
+or BUS departs. The app shows both times side by side (「23:22に出る」 and
+「23:31発」), so 出発 for the person reads as the train leaving. That's the one
+mistake the app can't afford. Keep 出る in notifications, the countdown,
+widgets, the Live Activity and the 余裕 setting. Never imply the user will definitely catch a train based
 on approximate routing, or that an unsupported push/notification is guaranteed.
 Keep estimated walking and incomplete disruption-feed warnings conspicuous.
 Do not translate a business or OS permission feature into a stronger promise.

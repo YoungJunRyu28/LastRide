@@ -131,7 +131,7 @@ export default function OnboardingLocationScreen() {
       <View style={styles.footnoteRow}>
         <Feather name="alert-circle" size={13} color={colors.mutedForeground} />
         <Text style={[styles.footnote, { color: colors.mutedForeground }]}>
-          {ja ? '歩きながら・走りながらの操作はやめましょう。通知とアラームでお知らせします。' : 'Don’t use your phone while walking or running: reminders and alarms will tell you.'}
+          {ja ? '歩行中や走行中はアプリを操作しないでください。出発時刻は通知やアラームでお知らせします。' : 'Don’t use your phone while walking or running: reminders and alarms will tell you.'}
         </Text>
       </View>
     </OnboardingFrame>

@@ -68,6 +68,7 @@ import {
   type ReminderSound,
   type SavedDestination,
 } from "@/lib/settings";
+import { maybeAskForReview, noteNightUsed } from "@/lib/reviewPrompt";
 import { clearSavedPlan, readSavedPlan, writeSavedPlan } from "@/lib/savedPlan";
 import {
   resolveNightLocationMode,
@@ -1145,6 +1146,21 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
     [activeDestinationId, destinations, clearPlan],
   );
 
+  // Apple's review prompt, in the daytime after a couple of nights it helped with
+  // (lib/reviewPrompt): checked at launch and whenever the app comes back, never
+  // while 今夜の案内 is on.
+  useEffect(() => {
+    if (!isHydrated) return;
+    const check = () => {
+      if (trackingModeRef.current === null) void maybeAskForReview(getNow());
+    };
+    check();
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") check();
+    });
+    return () => subscription.remove();
+  }, [isHydrated, getNow]);
+
   // One-night settings (1本前 / 2本前, a locked station, 今夜だけ destination) expire
   // at the end of their night, but only reading them drops them. iOS can keep the
   // app in memory into the next evening, so read them again whenever it comes back.
@@ -1653,6 +1669,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
           setBoarded(null);
           await writeBoarded(null);
           await markTrackingStarted(startedAt);
+          void noteNightUsed(startedAt);
           // The new session must not adopt an old night's background snapshot.
           await clearTrackingSnapshot();
         }
@@ -2024,6 +2041,7 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       "lastride-alarm-set",
       "lastride-always-card",
       "lastride-debug-events",
+      "lastride-review-nights",
     ]);
     lastAlarmTimes.current = [];
     await clearSavedPlan();

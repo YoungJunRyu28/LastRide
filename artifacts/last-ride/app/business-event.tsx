@@ -272,7 +272,7 @@ function BusinessEventScreen() {
                 <Text style={[styles.body, { color: colors.mutedForeground }]}>
                   {invite
                     ? ja
-                      ? "参加者にこのコードまたはリンクを共有してください。"
+                      ? "このコードまたはリンクを参加者に送ってください。"
                       : "Share this code or link with the group."
                     : ja
                       ? "新しい招待コードを発行します。以前のコードは無効になります。"
