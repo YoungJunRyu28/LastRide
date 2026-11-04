@@ -159,7 +159,7 @@ export default function ReminderSettingsScreen() {
                   <Divider />
                   <Row
                     testID="test-alarm"
-                    title={ja ? '実際のアラームで確認' : 'Check with a real alarm'}
+                    title={ja ? 'アラームをテスト' : 'Check with a real alarm'}
                     subtitle={ja ? '5秒後に鳴ります' : 'Rings in 5 seconds'}
                     onPress={() => void testAlarm()}
                   />
@@ -175,7 +175,7 @@ export default function ReminderSettingsScreen() {
           <>
             <Row
               testID="toggle-through-focus"
-              title={ja ? '集中モード中も通知' : 'Through Focus'}
+              title={ja ? '集中モード中も通知する' : 'Through Focus'}
               subtitle={ja ? 'おやすみモードなどの集中モード中も、出発のお知らせを届けます（即時通知）' : 'Leave reminders still come through Sleep and other Focus modes (Time Sensitive)'}
               switchValue={throughFocus}
               onSwitch={setThroughFocus}
@@ -185,7 +185,7 @@ export default function ReminderSettingsScreen() {
         )}
         <Row
           testID="toggle-missed-check-in"
-          title={ja ? '終電を逃したときの案内' : 'After the last train'}
+          title={ja ? '終電に乗り遅れたときの案内' : 'After the last train'}
           subtitle={ja ? '始発やタクシーなどの帰宅手段をお知らせします' : 'A check-in with other ways home'}
           switchValue={missedCheckIn}
           onSwitch={setMissedCheckIn}

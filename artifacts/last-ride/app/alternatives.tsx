@@ -577,7 +577,7 @@ export default function AlternativesScreen() {
       detail:
         firstTrainRoute?.approximate && minutesUntilFirstTrain !== null
           ? ja
-            ? `待ち${formatDuration(minutesUntilFirstTrain, true)}（目安）`
+            ? `待ち時間 ${formatDuration(minutesUntilFirstTrain, true)}（目安）`
             : `${formatDuration(minutesUntilFirstTrain, false)} wait (approx.)`
           : minutesUntilFirstTrain === null
           ? ja
@@ -610,7 +610,7 @@ export default function AlternativesScreen() {
             icon: "moon" as const,
             label: far
               ? ja ? `${far.station.nameJa}駅の近くで始発を待つ` : `Wait near ${far.station.name} + first train`
-              : ja ? "近くで始発を待つ" : "Wait somewhere + first train",
+              : ja ? "始発まで近くで待つ" : "Wait somewhere + first train",
             detail: far
               ? ja ? `駅の近くに${stays?.length ?? 0}軒` : `${stays?.length ?? 0} places near the station`
               : ja
@@ -658,7 +658,7 @@ export default function AlternativesScreen() {
       ? [{ key: "partway" as const, icon: "shuffle" as const, label: ja ? "途中まで電車＋タクシー" : "Train partway + taxi", detail: ja ? "まだ乗れる電車を確認中…" : "Checking for a train that’s still running…" }]
       : []),
     ...(isLoadingStays && !stays
-      ? [{ key: "stay" as const, icon: "moon" as const, label: ja ? "近くで待つ＋始発" : "Wait somewhere + first train", detail: ja ? "近くの店を探しています…" : "Finding places nearby…" }]
+      ? [{ key: "stay" as const, icon: "moon" as const, label: ja ? "始発まで近くで待つ" : "Wait somewhere + first train", detail: ja ? "近くの店を探しています…" : "Finding places nearby…" }]
       : []),
     ...(isLoadingTaxi && !taxi
       ? [{ key: "taxi" as const, icon: "truck" as const, label: ja ? "タクシー" : "Taxi", detail: ja ? "料金と時間を確認中…" : "Checking fare and time…" }]
@@ -748,14 +748,14 @@ export default function AlternativesScreen() {
           >
             {status === "departed"
               ? ja
-                ? `終電 ${lastTrain} は発車しました`
+                ? `終電（${lastTrain}発）は発車しました`
                 : `THE ${lastTrain} LAST TRAIN HAS LEFT`
               : ja
-                ? "終電を逃した場合"
+                ? "終電に乗り遅れたら"
                 : "IF YOU MISS IT"}
           </Text>
           <Text style={[styles.title, { color: colors.foreground }]}>
-            {ja ? `${homeLabel}へ行く方法` : `Ways to ${homeLabel}`}
+            {ja ? `${homeLabel}までの帰り方` : `Ways to ${homeLabel}`}
           </Text>
         </View>
 
@@ -776,7 +776,7 @@ export default function AlternativesScreen() {
               </Text>
               <Text style={[styles.optionDetail, { color: colors.mutedForeground }]}>
                 {ja
-                  ? `バスや、${nearestByCar.station.nameJa}駅まで車で行く場合は「帰り方」で`
+                  ? `バスや${nearestByCar.station.nameJa}駅まで車で向かう方法はこちら`
                   : `Buses, or driving to ${nearestByCar.station.name}: see Ways home`}
               </Text>
             </View>
@@ -1130,7 +1130,7 @@ export default function AlternativesScreen() {
                 {status !== "departed" && (
                   // Maps plans from now (its links can't set a time), so it only shows first trains once tonight's have gone.
                   <Text style={[styles.note, { color: colors.mutedForeground }]}>
-                    {ja ? "始発の経路は終電後に地図アプリで表示されます" : "Maps shows the first-train route after the last train"}
+                    {ja ? "始発の経路は終電後に地図アプリで確認できます" : "Maps shows the first-train route after the last train"}
                   </Text>
                 )}
               </>
@@ -1272,7 +1272,7 @@ export default function AlternativesScreen() {
                   style={[styles.note, { color: colors.secondaryForeground }]}
                 >
                   {ja
-                    ? "周辺の施設を検索できません　タップで再試行"
+                    ? "周辺の施設を検索できませんでした。タップして再試行"
                     : "Nearby search was busy. Tap to retry"}
                 </Text>
               </Pressable>
@@ -1376,7 +1376,7 @@ export default function AlternativesScreen() {
                           >
                             {chain
                               ? ja
-                                ? "  チェーンの一般的な料金（当方調べ）"
+                                ? "  チェーン店の参考料金（独自調査）"
                                 : "  usual chain rate (our research)"
                               : ja
                                 ? "  目安"
@@ -1419,7 +1419,7 @@ export default function AlternativesScreen() {
                     <Text style={[styles.chipText, { color: colors.primary }]}>
                       {showAllStays
                         ? ja
-                          ? "少なく表示"
+                          ? "表示を減らす"
                           : "Show fewer"
                         : ja
                           ? `ほか${Math.min(filteredCount, MAX_STAYS) - PREVIEW_STAYS}件を表示`
@@ -1441,7 +1441,7 @@ export default function AlternativesScreen() {
             ) : (
               <Text style={[styles.note, { color: colors.mutedForeground }]}>
                 {ja
-                  ? "歩いて行ける範囲にはありません"
+                  ? "徒歩圏内には見つかりませんでした"
                   : "Nothing within walking distance"}
               </Text>
             )}
@@ -1464,7 +1464,7 @@ export default function AlternativesScreen() {
                   pins={taxiStands.map((stand, index) => ({
                     // The chosen stand: Apple's walking minutes once its route is known.
                     label: ja
-                      ? `乗り場 徒歩${index === standIndex && chosenStandRoute ? chosenStandRoute.walkingMinutes : walkMinutesFor(stand.meters)}分`
+                      ? `乗り場まで徒歩${index === standIndex && chosenStandRoute ? chosenStandRoute.walkingMinutes : walkMinutesFor(stand.meters)}分`
                       : `Taxi stand ${index === standIndex && chosenStandRoute ? chosenStandRoute.walkingMinutes : walkMinutesFor(stand.meters)} min`,
                     emphasis: index === standIndex,
                     latitude: stand.latitude,

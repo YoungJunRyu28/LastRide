@@ -15,7 +15,7 @@ import { TERMS_URL, TOKUSHOHO_URL, siteLink, PRIVACY_URL } from '@/lib/links';
 
 export function premiumFeatures(ja: boolean): Array<{ icon: IconName; title: string; body: string }> {
   return [
-    { icon: 'users', title: ja ? 'グループを作成' : 'Create groups and host', body: ja ? 'メンバーの参加は無料' : 'Members join free' },
+    { icon: 'users', title: ja ? 'グループを作成' : 'Create groups and host', body: ja ? 'メンバーは無料で参加できます' : 'Members join free' },
     {
       icon: 'lock',
       title: ja ? 'ロック画面のカウントダウン' : 'Lock-screen countdown',
@@ -23,7 +23,7 @@ export function premiumFeatures(ja: boolean): Array<{ icon: IconName; title: str
       body: Platform.OS === 'ios' ? (ja ? 'ライブアクティビティで最後の1時間を表示' : 'A Live Activity for the last hour') : ja ? '通知で残り時間を表示' : 'Time left in a notification',
     },
     { icon: 'grid', title: ja ? 'ホーム画面ウィジェット' : 'Home-screen widgets', body: ja ? '今夜の出発時刻をひと目で' : 'Tonight’s leave time at a glance' },
-    { icon: 'map-pin', title: ja ? '帰る場所を何件でも登録' : 'Unlimited destinations', body: ja ? '無料プランは1件まで' : 'Free plan: one' },
+    { icon: 'map-pin', title: ja ? '帰る場所をいくつでも登録' : 'Unlimited destinations', body: ja ? '無料プランは1件まで' : 'Free plan: one' },
   ];
 }
 

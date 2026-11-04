@@ -36,10 +36,10 @@ export default function OnboardingNotificationsScreen() {
     >
       <OnboardingHeading
         kicker={ja ? '通知' : 'NOTIFICATIONS'}
-        title={ja ? '出発時刻を\n通知でお知らせ' : 'We’ll tell you\nwhen to go'}
+        title={ja ? '出発する時間を\n通知でお知らせ' : 'We’ll tell you\nwhen to go'}
         lead={
           ja
-            ? '夜間の案内中に、出発前のリマインダーと出発時刻のお知らせを送ります。'
+            ? '夜間の案内中、出発前と出発時刻に通知を送ります。'
             : 'Only while night tracking is on: reminders before you need to leave, and a “leave now”.'
         }
       />

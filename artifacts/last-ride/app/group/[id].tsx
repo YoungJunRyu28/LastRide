@@ -34,7 +34,7 @@ function inviteMessage(detail: GroupDetail, ja: boolean) {
   if (!detail.invite) return null;
   const link = groupInviteLink(detail.invite.inviteToken);
   return ja
-    ? `「${detail.name}」に参加して、帰る時間を共有しましょう（帰り時アプリ）\n${link}\n招待コード：${detail.invite.joinCode}`
+    ? `「${detail.name}」で帰る時間を共有しましょう！（帰り時アプリ）\n${link}\n招待コード：${detail.invite.joinCode}`
     : `Join “${detail.name}” on LastRide to share leave times\n${link}\nInvite code: ${detail.invite.joinCode}`;
 }
 
@@ -96,7 +96,7 @@ export default function GroupScreen() {
     confirm(
       ja ? '今夜の共有を停止' : 'Stop sharing tonight',
       ja ? '今夜の出発時刻の共有を停止します。グループからは退出しません。' : 'Your leave time stops being shared tonight. You stay in the group.',
-      ja ? 'やめる' : 'Stop',
+      ja ? '共有を停止する' : 'Stop',
       ja ? 'キャンセル' : 'Cancel',
       () => void run(() => leaveGroupTonight(detail.id, options)),
     );
@@ -219,7 +219,7 @@ export default function GroupScreen() {
             <Card highlighted style={styles.tonightCard}>
               <Text style={[styles.badge, { backgroundColor: colors.primary, color: colors.primaryForeground }]}>{ja ? '今夜の共有中' : 'Tonight'}</Text>
               <Text style={[styles.note, { color: colors.mutedForeground }]}>
-                {ja ? '翌朝8:00に自動で終了' : 'Ends at 8:00 tomorrow'}
+                {ja ? '翌朝8時に自動終了' : 'Ends at 8:00 tomorrow'}
               </Text>
             </Card>
             <View style={styles.listHead}>
@@ -291,7 +291,7 @@ export default function GroupScreen() {
           <>
             <PrimaryButton label={ja ? '今夜の共有を開始' : 'Start tonight'} loading={busy} onPress={() => void startTonight()} testID="start-tonight" />
             <Text style={[styles.note, styles.center, { color: colors.mutedForeground }]}>
-              {ja ? 'メンバーに通知が届きます · 翌朝8:00に終了' : 'Members are notified · ends at 8:00 tomorrow'}
+              {ja ? 'メンバーに通知されます · 翌朝8時に終了' : 'Members are notified · ends at 8:00 tomorrow'}
             </Text>
           </>
         ) : (

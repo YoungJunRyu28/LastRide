@@ -308,7 +308,7 @@ describe('reminder delivery', () => {
     expect(mocks.notificationSchedule).not.toHaveBeenCalled();
   });
 
-  it('with tonight’s record: a small re-plan after 出る時間です never sends it again; a station change is told once, then reminders still ahead come again', async () => {
+  it('with tonight’s record: a small re-plan after 出発の時間です never sends it again; a station change is told once, then reminders still ahead come again', async () => {
     mocks.store.delete(STORAGE_KEYS.reminderLedger);
     const start = Date.now();
     const info = (leaveAtMs: number, stationKey: string) => ({
@@ -324,13 +324,13 @@ describe('reminder delivery', () => {
       vi.setSystemTime(start + 120_000);
       await scheduleReminders(leaveNow(start + 300_000), text, { sound: 'default', vibrate: true }, info(start + 300_000, '新宿'));
       expect(mocks.notificationSchedule).toHaveBeenCalledTimes(1);
-      // The plan switches station: one notice, sent now, and 出る時間です again at the new time.
+      // The plan switches station: one notice, sent now, and 出発の時間です again at the new time.
       await scheduleReminders(leaveNow(start + 300_000), text, { sound: 'default', vibrate: true }, info(start + 300_000, '新宿三丁目'));
       expect(mocks.notificationSchedule).toHaveBeenCalledTimes(3);
       const calls = mocks.notificationSchedule.mock.calls as unknown as Array<[{ content: { title: string }; trigger: unknown }]>;
       expect(calls[1][0].content.title).toBe('出発駅が変わりました');
       expect(calls[1][0].trigger).toBeNull();
-      expect(calls[2][0].content.title).toBe('出る時間です');
+      expect(calls[2][0].content.title).toBe('出発の時間です');
       expect(calls[2][0].trigger).not.toBeNull();
     } finally {
       vi.useRealTimers();
@@ -360,7 +360,7 @@ describe('reminder delivery', () => {
     }
   });
 
-  it('a change the user just made is seen by every re-plan (the background task too): no 「出る時刻が変わりました」', async () => {
+  it('a change the user just made is seen by every re-plan (the background task too): no 「出発時刻が変わりました」', async () => {
     mocks.store.delete(STORAGE_KEYS.reminderLedger);
     const start = Date.now();
     const info = (leaveAtMs: number) => ({
@@ -376,12 +376,12 @@ describe('reminder delivery', () => {
       vi.setSystemTime(start + 70_000);
       await scheduleReminders(at(start + 3_000_000), text, undefined, info(start + 3_000_000));
       const titles = (mocks.notificationSchedule.mock.calls as unknown as Array<[{ content: { title: string } }]>).map(([request]) => request.content.title);
-      expect(titles).not.toContain('出る時刻が変わりました');
+      expect(titles).not.toContain('出発時刻が変わりました');
       // Long after the change, once 30分前 has gone out at the new time, a real move is told again.
       vi.setSystemTime(start + 1_300_000);
       await scheduleReminders(at(start + 3_600_000), text, undefined, info(start + 3_600_000));
       const later = (mocks.notificationSchedule.mock.calls as unknown as Array<[{ content: { title: string } }]>).map(([request]) => request.content.title);
-      expect(later).toContain('出る時刻が変わりました');
+      expect(later).toContain('出発時刻が変わりました');
     } finally {
       vi.useRealTimers();
     }
@@ -421,7 +421,7 @@ describe('reminder delivery', () => {
     expect([...mocks.queued.keys()].filter((id) => id.startsWith('lastride-test-'))).toHaveLength(2);
   });
 
-  it('出る時間です fired 20 s early counts as sent: a re-plan in those seconds doesn’t send it again', async () => {
+  it('出発の時間です fired 20 s early counts as sent: a re-plan in those seconds doesn’t send it again', async () => {
     mocks.store.delete(STORAGE_KEYS.reminderLedger);
     const start = Date.now();
     const leave = start + 600_000;

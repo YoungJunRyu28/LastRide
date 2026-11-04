@@ -199,7 +199,7 @@ export default function HomeStationScreen() {
     <View style={styles.form}>
       <View style={styles.labelRow}>
         <Text style={[styles.label, { color: colors.foreground }]}>{ja ? '住所' : 'Address'}</Text>
-        <Text style={[styles.optional, { color: colors.mutedForeground }]}>{ja ? '（任意・駅から自宅までの徒歩時間も計算）' : 'optional · adds the walk from the station'}</Text>
+        <Text style={[styles.optional, { color: colors.mutedForeground }]}>{ja ? '（任意・駅から自宅までの徒歩時間を計算）' : 'optional · adds the walk from the station'}</Text>
       </View>
       <View style={[styles.inputWrap, { backgroundColor: colors.card, borderColor: selectedAddress ? colors.primary : colors.input }]}>
         <Feather name="home" color={colors.mutedForeground} size={19} />
@@ -299,7 +299,7 @@ export default function HomeStationScreen() {
         </View>
         <OnboardingHeading
           kicker={tonight ? (ja ? '今夜だけ' : 'TONIGHT ONLY') : isNew ? (ja ? '帰る場所を追加' : 'ADD DESTINATION') : (ja ? '帰る場所を編集' : 'EDIT DESTINATION')}
-          title={tonight ? (ja ? '今夜はどこへ\n帰りますか？' : 'Where are you\nheading tonight?') : isNew ? (ja ? '帰る場所を\n追加しましょう' : 'Add somewhere\nyou might go.') : (ja ? '帰る場所を\n編集しましょう' : 'Edit this\ndestination.')}
+          title={tonight ? (ja ? '今夜はどこへ\n帰りますか？' : 'Where are you\nheading tonight?') : isNew ? (ja ? '帰る場所を\n登録しましょう' : 'Add somewhere\nyou might go.') : (ja ? '帰る場所を\n編集しましょう' : 'Edit this\ndestination.')}
           lead={tonight ? (ja ? '保存せずに今夜だけ使います。明日からはいつもの帰る場所に戻ります。' : 'Used tonight only and not saved. Tomorrow you’re back to your usual destination.') : undefined}
         />
         {!tonight && (

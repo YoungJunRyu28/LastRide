@@ -135,16 +135,16 @@ function GroupRow({ entry, ja, clockMs }: { entry: GroupEntry; ja: boolean; cloc
             <Text style={[styles.rowSub, { color: colors.mutedForeground }]}>
               {ja ? `今夜 ${participants.length}/${detail.members.length}人` : `${participants.length}/${detail.members.length} in tonight`}
             </Text>
-            {!mine && <CardAction testID={`join-tonight-${detail.id}`} label={ja ? '今夜参加' : 'Join tonight'} busy={busy} onPress={() => void joinTonight()} />}
+            {!mine && <CardAction testID={`join-tonight-${detail.id}`} label={ja ? '今夜参加する' : 'Join tonight'} busy={busy} onPress={() => void joinTonight()} />}
           </View>
         </>
       ) : (
         <View style={styles.rowFoot}>
           <Initials names={detail.members.map((member) => member.displayName)} />
           <Text numberOfLines={1} style={[styles.rowSub, styles.flex, { color: colors.mutedForeground }]}>
-            {ja ? `${detail.members.length}人 · 今夜はまだ` : `${detail.members.length} people · not tonight yet`}
+            {ja ? `${detail.members.length}人 · 今夜の共有は未開始` : `${detail.members.length} people · not tonight yet`}
           </Text>
-          {host && <CardAction testID={`start-tonight-${detail.id}`} label={ja ? '今夜を開始' : 'Start tonight'} busy={busy} onPress={() => void startTonight()} />}
+          {host && <CardAction testID={`start-tonight-${detail.id}`} label={ja ? '共有を開始' : 'Start tonight'} busy={busy} onPress={() => void startTonight()} />}
         </View>
       )}
     </Pressable>
@@ -223,7 +223,7 @@ export default function GroupsScreen() {
         {credentialError ? (
           <Card style={styles.option}>
             <Text style={[styles.optionTitle, { color: colors.foreground }]}>
-              {ja ? 'グループの認証情報を読み込めません' : 'Saved group credentials are unavailable'}
+              {ja ? 'グループ情報を読み込めません' : 'Saved group credentials are unavailable'}
             </Text>
             <Text style={[styles.optionBody, { color: colors.mutedForeground }]}>
               {ja

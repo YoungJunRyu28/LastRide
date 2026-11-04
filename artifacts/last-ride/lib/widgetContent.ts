@@ -137,7 +137,7 @@ export function widgetMessage(
     ended: ["今夜の終電は発車済みです", "開いてほかの帰り方を確認", "Tonight’s last train has left", "Open for other ways home"],
     "no-plan": ["帰り時を開くと今夜の出発時刻を表示", "タップして開く", "Open LastRide to see tonight’s leave time", "Tap to open"],
     morning: ["帰り時を開くと今夜の出発時刻を表示", "タップして開く", "Open LastRide to see tonight’s leave time", "Tap to open"],
-    "location-off": ["位置情報がオフです", "開いてiPhoneの設定で許可", "Location is off", "Open to allow it in iPhone Settings"],
+    "location-off": ["位置情報がオフです", "アプリを開いて位置情報を許可", "Location is off", "Open to allow it in iPhone Settings"],
     "near-home": ["帰る場所の近くです", "電車に乗る必要はありません", "You’re near your destination", "No train needed from here"],
     "no-route": ["電車が見つかりません", "開いて確認", "No train found", "Open to check"],
   };
@@ -264,7 +264,7 @@ function planProps(
     trainHeading: ja ? `${plan.trainChoice ? choice : "終電"} · ${station}` : `${plan.trainChoice ? choice : "Last train"} · ${station}`,
     trainTime: time + approx,
     trainSuffix: ja ? "発" : "dep.",
-    leaveLine: ja ? `出る ${leave}（目安）` : `Leave ~${leave}`,
+    leaveLine: ja ? `出発 ${leave}（目安）` : `Leave ~${leave}`,
     checked: ja ? `${checkedAt}に確認` : `Checked ${checkedAt}`,
     arrival: arrivalText(plan, ja),
     footnote: ja ? "案内を開始すると、移動に合わせて更新します" : "Start tonight to follow you as you move",

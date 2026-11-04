@@ -3,7 +3,7 @@
  *
  * Every re-plan (walking, a station change, the background task) reschedules
  * the reminders from new times. Without a record of what already went out:
- * - walking toward the station moves the leave time later and 出る時間です (leave now) is sent again;
+ * - walking toward the station moves the leave time later and 出発の時間です (leave now) is sent again;
  * - walking away moves it earlier, past "now", and the reminder is never sent.
  *
  * The record (shared by the app and background tracking) remembers what was
@@ -68,7 +68,7 @@ export type DeliveryContext = {
    * notice and no catch-up, since they're looking at the new times in the app.
    */
   userChange?: boolean;
-  /** The station change was already told another way (「出発駅を自動に戻しました」): no second notice. */
+  /** The station change was already told another way (「出発駅を自動選択に戻しました」): no second notice. */
   stationTold?: boolean;
 };
 

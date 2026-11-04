@@ -163,17 +163,17 @@ export default function FarWaysScreen() {
       icon: "map",
       label: ja ? "バス・電車" : "Bus and train",
       detail: soonest === lastTrip
-        ? ja ? `最終 ${formatJstTime(lastTrip.departsAt)}に出る` : `last one leaves ${formatJstTime(lastTrip.departsAt)}`
-        : ja ? `次 ${formatJstTime(soonest.departsAt)}に出る · 最終 ${formatJstTime(lastTrip.departsAt)}` : `next ${formatJstTime(soonest.departsAt)} · last ${formatJstTime(lastTrip.departsAt)}`,
+        ? ja ? `最終 ${formatJstTime(lastTrip.departsAt)}出発` : `last one leaves ${formatJstTime(lastTrip.departsAt)}`
+        : ja ? `次は${formatJstTime(soonest.departsAt)}出発 · 最終は${formatJstTime(lastTrip.departsAt)}出発` : `next ${formatJstTime(soonest.departsAt)} · last ${formatJstTime(lastTrip.departsAt)}`,
       homeBy: soonest.arrivesAt ?? null,
       cost: null,
       costLabel: "—",
       panel: (
         <>
-          {soonest !== lastTrip ? timeLine(ja ? "次" : "Next", soonest.departsAt, ja ? "に出る" : "leave", soonest.arrivesAt) : null}
-          {timeLine(ja ? "最終" : "Last", lastTrip.departsAt, ja ? "に出る" : "leave", lastTrip.arrivesAt)}
+          {soonest !== lastTrip ? timeLine(ja ? "次" : "Next", soonest.departsAt, ja ? "出発" : "leave", soonest.arrivesAt) : null}
+          {timeLine(ja ? "最終" : "Last", lastTrip.departsAt, ja ? "出発" : "leave", lastTrip.arrivesAt)}
           <Text style={[styles.small, { color: colors.subtle }]}>
-            {ja ? "バス停までの徒歩を含む、Apple マップの時刻に基づく目安です。" : "Includes the walk to the stop; times are from Apple Maps."}
+            {ja ? "バス停までの徒歩を含めた、Appleマップに基づく目安です。" : "Includes the walk to the stop; times are from Apple Maps."}
           </Text>
           {button(ja ? "乗り継ぎを地図アプリで見る" : "See the route in Maps", "map", () => openTransitRoute(homeStationOption), true, "far-transit-home")}
         </>
@@ -185,8 +185,8 @@ export default function FarWaysScreen() {
       icon: "map",
       label: ja ? "バス・電車" : "Bus and train",
       note: [
-        goneTrip ? (ja ? `今夜の最終（${formatJstTime(goneTrip.departsAt)}）は出発済み` : `tonight's last (${formatJstTime(goneTrip.departsAt)}) has gone`) : ja ? "今夜はもうありません" : "nothing more tonight",
-        nextTrip ? (ja ? `次は${when(nextTrip.departsAt)}` : `next ${when(nextTrip.departsAt)}`) : null,
+        goneTrip ? (ja ? `今夜の最終（${formatJstTime(goneTrip.departsAt)}）は出発済み` : `tonight's last (${formatJstTime(goneTrip.departsAt)}) has gone`) : ja ? "今夜の便は終了しました" : "nothing more tonight",
+        nextTrip ? (ja ? `次の便は${when(nextTrip.departsAt)}` : `next ${when(nextTrip.departsAt)}`) : null,
       ].filter(Boolean).join(ja ? "・" : " · "),
     });
   }
@@ -211,7 +211,7 @@ export default function FarWaysScreen() {
             {timeLine(ja ? "終電" : "Last train", lastTrain.departsAt, ja ? "発" : "dep.", lastTrain.arrivesAt)}
             {far.leaveByCarMs !== null ? (
               <Text style={[styles.leaveBy, { color: colors.primary }]}>
-                {ja ? `ここを ${formatJstTime(far.leaveByCarMs)} までに出発` : `Leave here by ${formatJstTime(far.leaveByCarMs)}`}
+                {ja ? `ここを${formatJstTime(far.leaveByCarMs)}までに出発` : `Leave here by ${formatJstTime(far.leaveByCarMs)}`}
               </Text>
             ) : null}
             <Text style={[styles.note, { color: colors.mutedForeground }]}>
@@ -299,7 +299,7 @@ export default function FarWaysScreen() {
                   );
                 })}
                 <Text style={[styles.small, { color: colors.subtle }]}>
-                  {ja ? "料金は目安。深夜は先に電話を" : "Prices are estimates. Call ahead late at night."}
+                  {ja ? "料金は目安です。深夜は事前に電話で確認してください" : "Prices are estimates. Call ahead late at night."}
                 </Text>
               </View>
             ) : (
@@ -314,13 +314,13 @@ export default function FarWaysScreen() {
     }
   }
 
-  // Taxi all the way home.
+  // Taxi to home station.
   if (taxiHome === undefined) pending.push({ key: "taxi", icon: "truck", label: ja ? "タクシー料金を確認しています…" : "Checking the taxi fare…" });
   else if (taxiHome) {
     ways.push({
       key: "taxi",
       icon: "truck",
-      label: ja ? "タクシーで自宅まで" : "Taxi all the way home",
+      label: ja ? `タクシーで${home}駅まで` : "Taxi to home station",
       detail: ja ? `約${taxiHome.minutes}分 · ${(taxiHome.distanceMeters / 1000).toFixed(1)}km` : `~${taxiHome.minutes} min · ${(taxiHome.distanceMeters / 1000).toFixed(1)} km`,
       homeBy: now + taxiHome.minutes * MINUTE_MS,
       cost: taxiHome.fareYen,
@@ -336,7 +336,7 @@ export default function FarWaysScreen() {
           <Text style={[styles.small, { color: colors.subtle }]}>
             {ja ? "東京23区の運賃で概算・深夜割増込み・迎車料金と高速代は別" : "Estimated with Tokyo 23-ward rates, late-night included; pick-up fee and tolls extra"}
           </Text>
-          {button(ja ? "自宅までの道順（車）" : "Driving directions home", "navigation", () => openDrivingRoute(taxiHome.to), true, "far-drive-home")}
+          {button(ja ? `${home}駅までの道順（車）` : "Driving directions to home station", "navigation", () => openDrivingRoute(taxiHome.to), true, "far-drive-home")}
           {far ? <TaxiContacts stand={far.taxiStand} companies={far.taxiCompanies} ja={ja} /> : null}
         </>
       ),
@@ -440,14 +440,14 @@ export default function FarWaysScreen() {
 
           {ways.length === 0 && pending.length === 0 ? (
             <Text style={[styles.note, { color: colors.mutedForeground }]}>
-              {ja ? "今夜ここから帰る方法が見つかりませんでした。" : "No way home was found from here tonight."}
+              {ja ? "今夜利用できる帰り方が見つかりませんでした。" : "No way home was found from here tonight."}
             </Text>
           ) : null}
         </View>
 
         {gone.length > 0 ? (
           <View style={styles.goneList}>
-            <Text style={[styles.goneHead, { color: colors.mutedForeground }]}>{ja ? "今夜はもう使えない方法" : "Over for tonight"}</Text>
+            <Text style={[styles.goneHead, { color: colors.mutedForeground }]}>{ja ? "今夜は利用できない帰り方" : "Over for tonight"}</Text>
             {gone.map((row) => (
               <View key={row.key} style={styles.goneRow}>
                 <Feather name={row.icon} size={15} color={colors.mutedForeground} />
