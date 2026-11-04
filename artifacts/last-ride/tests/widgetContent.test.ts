@@ -90,7 +90,7 @@ describe("not tracking", () => {
       trainHeading: "終電 · 渋谷",
       trainTime: "23:45",
       trainSuffix: "発",
-      leaveLine: "出発 23:36（目安）",
+      leaveLine: "出る 23:36（目安）",
       checked: "23:00に確認",
       inline: "終電 23:45発 · 23:00確認",
     });

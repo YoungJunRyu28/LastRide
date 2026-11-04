@@ -15,7 +15,7 @@ import type { Coordinates } from '@/lib/stations';
 import { MINUTE_MS } from '@/lib/time';
 
 /**
- * The hold starts this long before the leave time. 出発の時間です arrives up to
+ * The hold starts this long before the leave time. 出る時間です arrives up to
  * 20 s early (lib/notifications SCREEN_OFF_DELAY_MS) and people open the app
  * from it: a re-plan in those seconds could pick another station and, its
  * 2本前 already late there, move the user to 1本前 right after being told to

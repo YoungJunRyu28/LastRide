@@ -127,7 +127,7 @@ export default function SettingsScreen() {
         <Row
           testID="open-margin"
           icon="clock"
-          title={ja ? '出発の余裕時間' : 'Leave early by'}
+          title={ja ? '早めに出る時間' : 'Leave early by'}
           value={marginLabel(leaveMargin, ja)}
           onPress={() => router.push('/settings/margin')}
         />

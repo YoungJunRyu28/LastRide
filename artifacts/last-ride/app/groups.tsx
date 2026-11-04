@@ -76,7 +76,7 @@ function GroupRow({ entry, ja, clockMs }: { entry: GroupEntry; ja: boolean; cloc
   const countdown = (leaveBy: string | null) => {
     if (!leaveBy) return { text: ja ? '計算中' : '…', tone: colors.mutedForeground };
     const msLeft = Date.parse(leaveBy) - clockMs;
-    if (msLeft <= 0) return { text: ja ? '出発' : 'Go', tone: colors.destructive };
+    if (msLeft <= 0) return { text: ja ? '出る時間' : 'Go', tone: colors.destructive };
     return { text: ja ? `あと${formatCountdown(msLeft)}` : `in ${formatCountdown(msLeft)}`, tone: msLeft <= 10 * MINUTE_MS ? colors.primary : colors.mutedForeground };
   };
 
@@ -141,7 +141,8 @@ function GroupRow({ entry, ja, clockMs }: { entry: GroupEntry; ja: boolean; cloc
       ) : (
         <View style={styles.rowFoot}>
           <Initials names={detail.members.map((member) => member.displayName)} />
-          <Text numberOfLines={1} style={[styles.rowSub, styles.flex, { color: colors.mutedForeground }]}>
+          {/* Two lines: beside the initials and 共有を開始 one line fits only ~8 characters. */}
+          <Text numberOfLines={2} style={[styles.rowSub, styles.flex, { color: colors.mutedForeground }]}>
             {ja ? `${detail.members.length}人 · 今夜の共有は未開始` : `${detail.members.length} people · not tonight yet`}
           </Text>
           {host && <CardAction testID={`start-tonight-${detail.id}`} label={ja ? '共有を開始' : 'Start tonight'} busy={busy} onPress={() => void startTonight()} />}

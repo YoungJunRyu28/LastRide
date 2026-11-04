@@ -14,7 +14,7 @@ function clock(minutes: number) {
   return `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, '0')}`;
 }
 
-/** Setup: 出発の余裕時間 (余裕), how many minutes before the latest time to leave. */
+/** Setup: 早めに出る時間 (余裕), how many minutes before the latest time to leave. */
 export default function OnboardingMarginScreen() {
   const colors = useColors();
   const { language, leaveMargin, setLeaveMargin } = useLastRide();
@@ -30,7 +30,7 @@ export default function OnboardingMarginScreen() {
       }
     >
       <OnboardingHeading
-        kicker={ja ? '出発の余裕時間' : 'LEAVE EARLY BY'}
+        kicker={ja ? '早めに出る時間' : 'LEAVE EARLY BY'}
         title={ja ? '何分余裕を持って\n出発しますか？' : 'How much time\nto spare?'}
         lead={
           ja

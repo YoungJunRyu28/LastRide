@@ -264,7 +264,7 @@ function planProps(
     trainHeading: ja ? `${plan.trainChoice ? choice : "終電"} · ${station}` : `${plan.trainChoice ? choice : "Last train"} · ${station}`,
     trainTime: time + approx,
     trainSuffix: ja ? "発" : "dep.",
-    leaveLine: ja ? `出発 ${leave}（目安）` : `Leave ~${leave}`,
+    leaveLine: ja ? `出る ${leave}（目安）` : `Leave ~${leave}`,
     checked: ja ? `${checkedAt}に確認` : `Checked ${checkedAt}`,
     arrival: arrivalText(plan, ja),
     footnote: ja ? "案内を開始すると、移動に合わせて更新します" : "Start tonight to follow you as you move",

@@ -744,7 +744,7 @@ export default function RideScreen() {
               </Text>
               <Text style={[styles.note, { color: colors.mutedForeground }]}>
                 {ja
-                  ? "出発時刻の通知が届きません。設定を確認 ↗"
+                  ? "出る時刻の通知が届きません。設定を確認 ↗"
                   : "You won’t be told when to leave · Settings ↗"}
               </Text>
             </View>

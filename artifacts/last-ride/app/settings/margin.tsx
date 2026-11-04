@@ -4,7 +4,7 @@ import { useLastRide } from '@/context/LastRideContext';
 import { formatJstTime, MINUTE_MS } from '@/lib/time';
 import React from 'react';
 
-/** Settings → 出発の余裕時間 (余裕): minutes before the latest leave time, by the minute. */
+/** Settings → 早めに出る時間 (余裕): minutes before the latest leave time, by the minute. */
 export default function LeaveMarginScreen() {
   const { language, leaveMargin, setLeaveMargin, plan } = useLastRide();
   const ja = language === 'ja';
@@ -12,7 +12,7 @@ export default function LeaveMarginScreen() {
   const latest = plan?.leaveByMs ?? null;
 
   return (
-    <SettingsPage title={ja ? '出発の余裕時間' : 'Leave early by'} backLabel={ja ? '設定' : 'Settings'}>
+    <SettingsPage title={ja ? '早めに出る時間' : 'Leave early by'} backLabel={ja ? '設定' : 'Settings'}>
       <Section
         label={ja ? '最終出発時刻より何分早く出るか' : 'HOW LONG BEFORE THE LATEST TIME TO LEAVE'}
         footer={

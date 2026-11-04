@@ -44,10 +44,59 @@ Attach a screen recording (about 60–90 s) of a real evening: start tonight, th
 - **Age rating:** answer the alcohol question honestly. The app is used on nights out (飲み会); it doesn't depict or promote drinking, so “Infrequent/Mild references to alcohol” is the closest, or “None” if the store text never mentions drinking.
 - **URLs:** Privacy Policy `https://lastride.jp/privacy/`, Support `https://lastride.jp/support/`, Marketing `https://lastride.jp/`.
 - **Terms (EULA):** keep Apple's standard EULA and add to the description: 「利用規約：https://lastride.jp/terms/」.
-- **Availability:** Japan only is simplest. If other countries: leave out the EU storefronts (no DSA trader setup). Untick Mac and Apple Vision Pro.
+- **Availability:** every country except the 27 EU storefronts (selling there needs DSA trader status, which publishes an address and phone number) and mainland China (needs an ICP filing). Taiwan and Hong Kong are fine. Tourists can only download from their own country's store, so this is how visitors to Japan get the app. Prices convert from ¥190 / ¥1,200 automatically; Apple handles each country's tax. The privacy policy covers users outside Japan (「日本国外からのご利用」). Untick Mac and Apple Vision Pro. Countries can be added later without a new review.
 - **Release:** “Manually release this version”.
-- **Store name:** 「帰り時 - 終電を逃さない」 is an absolute claim (景表法). Suggested: 「帰り時 - 終電に間に合う時刻を通知」 or 「帰り時 - 終電の出発時刻アラーム」.
+- **Store name:** 「帰り時 - 終電を逃さない」 is an absolute claim (景表法). Use one from section 3a.
 - **Small Business Program:** check it's active.
+
+## 3a. Store page texts (ASO)
+
+Only the title, subtitle and keywords affect search; the description and promotional text are for people. The Japan store indexes both the Japanese and the English (U.S.) listing, so their keyword fields add up (about 200 characters). Japanese has no spaces, so put in the whole phrases people type (終電検索, not 終電 + 検索). Never use other apps' names (Apple rejects it).
+
+**Japanese (primary)**
+
+| Field | Text | Limit |
+|---|---|---|
+| Name | 帰り時 - 終電アラーム・出発時刻通知 | 30 |
+| Subtitle | 乗換と徒歩込みで、出る時間がわかる | 30 |
+| Keywords | 終電検索,終電時間,最終電車,乗換検索,乗り換え,電車,時刻表,帰宅,飲み会,始発,タクシー,カウントダウン,ウィジェット,ロック画面,最寄り駅,電車時間,間に合う | 100 |
+| Promotional text | 忘年会シーズン、終電の時刻を気にせず楽しめます。出る時間をロック画面でカウントダウン。年末年始の土休日ダイヤにも対応。 | 170 |
+
+Alternative name, keyword first: 「終電アラーム - 帰り時」. The home-screen name stays 帰り時 either way.
+
+**English (U.S.): what tourists see, and also indexed in Japan**
+
+| Field | Text | Limit |
+|---|---|---|
+| Name | LastRide: Last Train Alarm | 30 |
+| Subtitle | When to leave for your train | 30 |
+| Keywords | shuden,japan,tokyo,osaka,metro,subway,nightlife,taxi,countdown,widget,timer,commute,transit,station | 100 |
+| Promotional text | Out late in Japan? LastRide counts down to when you need to leave for the last train home, with the walk to the station included. | 170 |
+
+Words in the name and subtitle don't need repeating in the keywords. Check each field's length in App Store Connect before saving.
+
+**Choosing keywords:** relevant first, then popularity, then competition. A new app won't rank for the biggest terms (乗換, 電車) at first, so the specific ones (終電検索, 終電時間, 最終電車) are where early downloads come from. Swap in bigger terms as the app grows.
+
+**When texts can change:** the name, subtitle and keywords only change with a new version sent for review; promotional text and the description's wording can change any time. So get the three search fields right before submitting, and change them with a later update, not daily.
+
+**Keyword data:** an Apple Search Ads account shows Apple's popularity score for each keyword in Japan, free, without running ads. Use it to choose between close options (終電検索 vs 終電アラーム).
+
+**Description:** not used for search, so write it for people. The first two or three lines show before 「さらに表示」, so open with what the app does for you (「飲み会の帰り、終電に間に合うには何時に出ればいいかを教えてくれるアプリです。」), then the features as short benefits, then 「利用規約：https://lastride.jp/terms/」. No keyword lists.
+
+**Screenshots:** the first three show in search results. Large Japanese text, high contrast, benefits rather than features. No 元町・中華街.
+1. 「あと何分で出ればいい？」 (home screen with the countdown)
+2. 「ロック画面でカウントダウン」 (Live Activity)
+3. 「乗れなかったら：始発・タクシー・休める場所」
+
+Don't try to explain everything in the first screenshot; it only has to make people look at the next one. Make an English set for the English listing too (tourists see it): 'When do I need to leave?', 'Countdown on your lock screen', 'Missed it? First train, taxis, places to wait'.
+
+**After launch:** note the rank for the top five keywords each week before changing anything. Promotional text can change any time without review (seasons: 忘年会, 年末年始, 歓送迎会 in March–April).
+
+**Ratings:** shown per country (Japan's don't show to US users). Never offer anything in return for a review, and don't nudge people toward five stars (App Review rejects both). Reply to reviews in App Store Connect; people read the replies.
+
+**Not for us yet:** localized pricing (Japan is the market; Apple converts prices for tourists' stores). Revisit if a country outside Japan grows.
+
+**Review prompt (build 15):** `lib/reviewPrompt.ts`. Apple's prompt after 今夜の案内 has been used on two different nights, only between 08:00 and 19:00 JST and never while guidance is on; at most once per 120 days from our side (iOS: 3 a year). It never shows in TestFlight, so it can't be checked there.
 
 ## 4. Dashboards (once)
 
@@ -60,6 +109,26 @@ Attach a screen recording (about 60–90 s) of a real evening: start tonight, th
 - **特商法:** a バーチャルオフィス address (a plan that allows 特商法 use) and a 050 number, to answer disclosure requests without your home address.
 - **YoungJun's data access:** a short written agreement that he handles user data on your behalf (委託), so the privacy policy's “developers only” is backed by a contract.
 - **Lawyer check (optional, ~¥5,000–11,000):** terms §9 and the 届出 question.
+
+## 5a. After release: trade name as the App Store seller
+
+Now the App Store shows the developer's real name as the seller (Individual account). Apple support can convert an Individual account to an Organization under a 屋号 (trade name), keeping the app, subscriptions and RevenueCat (one developer's report: note.com/lofty_takeru, 2026-08). Apple's published rule is that organizations must be legal entities, so it may be refused. Do it after release, while revenue is small.
+
+**Needed**
+- 開業届 at the tax office with the 屋号 (check first that your visa allows self-employment).
+- A business address: the same バーチャルオフィス as for 特商法, on a plan that allows D-U-N-S and 特商法 use.
+- A D-U-N-S number under the 屋号 (free through Apple's lookup, about 1–2 weeks). The name must match the 開業届 and Apple exactly, in roman letters.
+- Email on our own domain (e.g. dev@lastride.jp); Gmail isn't accepted. The website showing the business (lastride.jp does).
+
+**Cost and time:** about ¥10,000 a year, mostly the virtual office we need anyway. About 1.5 months from start to finish, about 10 hours of work.
+
+**Steps:** ask Apple Developer support whether the conversion is possible for our account → D-U-N-S → the migration form → the organization details.
+
+**Watch for:** the Paid Applications Agreement can become invalid partway through, which pauses subscription payouts until fixed. Then bank and tax-form errors (the report needed Apple Finance and a W-8BEN, in English). Check App Store Connect → Business after approval, before assuming it's done.
+
+**Name:** 「LastRide」 if this stays the main app (matches lastride.jp); a neutral umbrella name if more apps are planned. Free as a .jp domain, checked in J-PlatPat. No 株式会社, 合同会社, Inc. or Ltd. (not allowed for a sole proprietor).
+
+**Note:** the 特商法 page still gives the seller's name on request; this changes what the store page shows, not what the law requires. The fully official route is a 合同会社 (about ¥100,000 to set up, about ¥70,000 a year in 均等割 even at a loss), which isn't worth it yet.
 
 ## 6. Build and deploy order
 

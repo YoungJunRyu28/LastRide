@@ -397,7 +397,7 @@ function stationNotice(text: ReminderText, info: DeliveryInfo) {
 
 function timeNotice(text: ReminderText, info: DeliveryInfo) {
   return text.language === 'ja'
-    ? { title: '出発時刻が変わりました', body: `${text.leaveBy}に出て${text.station}へ（${info.trainDeparts}発）。` }
+    ? { title: '出る時刻が変わりました', body: `${text.leaveBy}に出て${text.station}へ（${info.trainDeparts}発）。` }
     : { title: 'New leave time', body: `Leave for ${text.station} at ${text.leaveBy} (${info.trainDeparts} train).` };
 }
 
@@ -422,15 +422,15 @@ function reminderText({ leaveBy, station, language, held }: ReminderText, { minu
     // Only the next train's departure: its leave time depends on where the user will be.
     if (held) {
       return language === 'ja'
-        ? { title: '出発の時間です', body: `${station}へ歩き始めましょう。乗り遅れても、${held.next}は${held.nextDeparts}発です。` }
+        ? { title: '出る時間です', body: `${station}へ歩き始めましょう。乗り遅れても、${held.next}は${held.nextDeparts}発です。` }
         : { title: 'Leave now', body: `Start walking to ${station}. If you miss this train, ${held.next} leaves at ${held.nextDeparts}.` };
     }
     return language === 'ja'
-      ? { title: '出発の時間です', body: `${station}へ歩き始めましょう。` }
+      ? { title: '出る時間です', body: `${station}へ歩き始めましょう。` }
       : { title: 'Leave now', body: `Start walking to ${station} for the last train.` };
   }
   return language === 'ja'
-    ? { title: `あと${minutesBefore}分で出発`, body: `${leaveBy}に出て${station}へ。そろそろ支度を。` }
+    ? { title: `出るまであと${minutesBefore}分`, body: `${leaveBy}に出て${station}へ。そろそろ支度を。` }
     : { title: `${minutesBefore} min to go`, body: `Leave for ${station} by ${leaveBy}. Time to wrap up.` };
 }
 
@@ -527,7 +527,7 @@ export function scheduleReminders(
     const alarmAuthorization = plans.some((plan) => plan.alarm) && alarmKitAvailable ? await alarmKit.status().catch(() => 'denied') : 'unsupported';
     // Leave-reminder notifications go SCREEN_OFF_DELAY_MS early on iOS. Shifted here,
     // before the record decides, so "sent" means sent: a re-plan in those seconds
-    // mustn't think 出発の時間です is still to come and send it again. AlarmKit alarms
+    // mustn't think 出る時間です is still to come and send it again. AlarmKit alarms
     // (exact), the 乗れましたか？ question and the missed-train check-in keep their
     // time; an alarm standing in as a notification (alarms not allowed) goes early too.
     if (Platform.OS === 'ios')
@@ -674,7 +674,7 @@ export function scheduleReminders(
           // The alarm rings; a silent notification keeps the details (station, times)
           // in Notification Center once it's stopped, and opens the app when tapped.
           // With 即時通知 on it's Time Sensitive like the other reminders (still
-          // silent), so 出発の時間です stacks with あと15分 instead of apart from them.
+          // silent), so 出る時間です stacks with あと15分 instead of apart from them.
           const id = reminderId('companion', plan.fireAt, title, body, target, throughFocus);
           await queue(id, () => present(title, body, plan.fireAt, target, false, null, throughFocus, true, { identifier: id }));
           continue;

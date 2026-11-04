@@ -36,10 +36,10 @@ export default function OnboardingNotificationsScreen() {
     >
       <OnboardingHeading
         kicker={ja ? '通知' : 'NOTIFICATIONS'}
-        title={ja ? '出発する時間を\n通知でお知らせ' : 'We’ll tell you\nwhen to go'}
+        title={ja ? '出る時間を\n通知でお知らせ' : 'We’ll tell you\nwhen to go'}
         lead={
           ja
-            ? '夜間の案内中、出発前と出発時刻に通知を送ります。'
+            ? '夜間の案内中、出る前と出る時刻に通知を送ります。'
             : 'Only while night tracking is on: reminders before you need to leave, and a “leave now”.'
         }
       />
@@ -49,7 +49,7 @@ export default function OnboardingNotificationsScreen() {
           <Text style={[styles.appIconText, { color: colors.primaryForeground }]}>帰</Text>
         </View>
         <View style={styles.previewText}>
-          <Text style={[styles.previewTitle, { color: colors.foreground }]}>{ja ? 'あと15分で出発' : '15 min to go'}</Text>
+          <Text style={[styles.previewTitle, { color: colors.foreground }]}>{ja ? '出るまであと15分' : '15 min to go'}</Text>
           <Text style={[styles.previewBody, { color: colors.mutedForeground }]}>
             {ja ? '23:41に渋谷駅へ向かう予定です。そろそろ支度を。' : 'Leave for Shibuya at 23:41. Time to wrap up.'}
           </Text>
