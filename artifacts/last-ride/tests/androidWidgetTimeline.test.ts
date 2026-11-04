@@ -23,16 +23,18 @@ describe('Android home widget uses the existing iOS timeline safely', () => {
   });
 
   test('a stale location check expires immediately, not after another 12 minutes', () => {
-    const result = androidWidgetPayload([entry(now, widgetMessage('en', 'no-plan'))],
-      'en', now, now - 30 * MINUTE_MS, true);
+    const props = widgetMessage('en', 'no-plan');
+    const result = androidWidgetPayload([entry(now, {
+      ...props, kind: 'plan', trainTime: '23:52', trainSuffix: 'dep.',
+    })], 'en', now, now - 30 * MINUTE_MS, true);
     expect(result.expiresAt).toBe(now);
     expect(result.staleMessage).toBe('Route needs a fresh check');
   });
 
-  test('nontracking plans have a 25-minute limit and an explicit app check', () => {
+  test('Premium and other non-route messages do not expire as travel advice', () => {
     const result = androidWidgetPayload([entry(now, widgetMessage('ja', 'premium'))],
       'ja', now, null, false);
-    expect(result.expiresAt).toBe(now + 25 * MINUTE_MS);
+    expect(result.expiresAt).toBeGreaterThan(now + 25 * MINUTE_MS);
     expect(result.entries[0].url).toBe('last-ride://paywall?from=widget');
     expect(result.openLabel).toContain('帰り時');
   });

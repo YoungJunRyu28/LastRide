@@ -74,12 +74,16 @@ export function androidWidgetPayload(
   const current = [...sorted].reverse().findIndex((entry) => entry.date.getTime() <= nowMs);
   const start = current < 0 ? 0 : sorted.length - 1 - current;
   const selected = sorted.slice(start, start + 24);
-  // An active location-based recommendation needs more frequent validation.
+  // Only expire travel advice quickly. A Premium, permission, or no-plan
+  // message is not a route; it must not become a misleading "stale route".
+  const hasRouteAdvice = selected.some((entry) => entry.props.kind !== 'message');
   const ageLimit = (tracking ? 12 : 25) * MINUTE_MS;
   const lastCheck = checkedAtMs === null || !Number.isFinite(checkedAtMs)
     ? nowMs : Math.min(checkedAtMs, nowMs);
   return {
-    expiresAt: Math.max(nowMs, Math.min(nowMs + ageLimit, lastCheck + ageLimit)),
+    expiresAt: hasRouteAdvice
+      ? Math.max(nowMs, Math.min(nowMs + ageLimit, lastCheck + ageLimit))
+      : nowMs + 7 * 24 * 60 * MINUTE_MS,
     staleMessage: language === 'ja' ? '案内の確認が必要です' : 'Route needs a fresh check',
     openLabel: language === 'ja' ? 'タップして帰り時で確認' : 'Tap to check in LastRide',
     entries: selected.map(display),
