@@ -14,6 +14,7 @@ import {
   foregroundStyle,
   frame,
   labelsHidden,
+  layoutPriority,
   lineLimit,
   minimumScaleFactor,
   monospacedDigit,
@@ -107,15 +108,23 @@ const LeaveCountdown = (sent: LeaveCountdownProps, environment: LiveActivityEnvi
   return {
     banner: (
       <VStack alignment="leading" spacing={10} modifiers={[padding({ all: 16 }), activityBackgroundTint(c.background)]}>
-        <HStack alignment="top">
-          <VStack alignment="leading" spacing={1}>
+        {/* The countdown first; the capped right column cuts a long name with … */}
+        <HStack alignment="top" spacing={8}>
+          <VStack alignment="leading" spacing={1} modifiers={[layoutPriority(1)]}>
             <Text modifiers={[font({ weight: "bold", size: 12 }), foregroundStyle(gone ? c.muted : toneColor), lineLimit(1)]}>{gone ? gone.label : props.label}</Text>
             {timer(34, toneColor)}
           </VStack>
-          <Spacer />
-          <VStack alignment="trailing" spacing={2}>
+          <Spacer minLength={0} />
+          <VStack alignment="trailing" spacing={2} modifiers={[frame({ maxWidth: 160, alignment: "trailing" })]}>
             <Text modifiers={[font({ weight: "bold", size: 13 }), foregroundStyle(c.text), lineLimit(1), minimumScaleFactor(0.7)]}>{props.from}</Text>
-            <Text modifiers={[font({ size: 11 }), foregroundStyle(c.muted), lineLimit(1), minimumScaleFactor(0.8)]}>{props.to}</Text>
+            {props.toName ? (
+              <HStack spacing={0}>
+                <Text modifiers={[font({ size: 11 }), foregroundStyle(c.muted), lineLimit(1), minimumScaleFactor(0.8)]}>{props.toName}</Text>
+                {props.arrival ? <Text modifiers={[font({ size: 11 }), foregroundStyle(c.muted), lineLimit(1), layoutPriority(1)]}>{` · ${props.arrival}`}</Text> : null}
+              </HStack>
+            ) : (
+              <Text modifiers={[font({ size: 11 }), foregroundStyle(c.muted), lineLimit(1), minimumScaleFactor(0.8)]}>{props.to}</Text>
+            )}
             {/* How fresh the times are; with app-only tracking, that they need the app. */}
             <Text modifiers={[font({ size: 11 }), foregroundStyle(c.muted), lineLimit(1), minimumScaleFactor(0.8)]}>{props.checked}</Text>
           </VStack>
@@ -153,9 +162,9 @@ const LeaveCountdown = (sent: LeaveCountdownProps, environment: LiveActivityEnvi
       <Text modifiers={[font({ weight: "bold", size: 13 }), foregroundStyle(islandTone), lineLimit(1), minimumScaleFactor(0.7), padding({ leading: 8 })]}>{gone ? gone.label : props.label}</Text>
     ),
     expandedTrailing: (
-      <VStack alignment="trailing" spacing={2} modifiers={[padding({ trailing: 8 })]}>
+      <VStack alignment="trailing" spacing={2} modifiers={[frame({ maxWidth: 150, alignment: "trailing" }), padding({ trailing: 8 })]}>
         <Text modifiers={[font({ weight: "bold", size: 13 }), lineLimit(1), minimumScaleFactor(0.7)]}>{props.from}</Text>
-        <Text modifiers={[font({ size: 11 }), foregroundStyle(ic.muted), lineLimit(1), minimumScaleFactor(0.8)]}>{props.to}</Text>
+        <Text modifiers={[font({ size: 11 }), foregroundStyle(ic.muted), lineLimit(1), minimumScaleFactor(0.8)]}>{props.toName ?? props.to}</Text>
       </VStack>
     ),
     // The countdown gets the full width here, above the rail, instead of a corner.

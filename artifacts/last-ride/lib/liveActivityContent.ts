@@ -26,6 +26,9 @@ export type LiveActivityContent = {
   from: string;
   /** 「自宅へ · 00:39 着」: where to, and when you get there (as on the medium widget). */
   to: string;
+  /** The two halves of `to`, so a long saved name shrinks and the arrival stays whole. */
+  toName?: string;
+  arrival?: string;
   /** When the plan was last checked: "22:41 確認", or "22:41 確認 · 開くと更新" when it only updates with the app open. */
   checked: string;
   stops: WidgetStop[];
@@ -66,6 +69,8 @@ export function liveActivityContent(
   const states = stops.map((stop) => stopState(stop, phase, nowMs));
   const starts = [stops[0].at - 60 * MINUTE_MS, ...stops.map((stop) => stop.at)];
 
+  const toName = ja ? `${destinationLabel ?? plan.destination.nameJa}へ` : `To ${destinationLabel ?? plan.destination.name}`;
+  const arrival = arrivalText(phase.plan, ja);
   return {
     title:
       phase.kind === "leave"
@@ -83,10 +88,9 @@ export function liveActivityContent(
     island,
     tone: phase.kind,
     from: ja ? `${station}駅から` : `From ${station}`,
-    to: toLine(
-      ja ? `${destinationLabel ?? plan.destination.nameJa}へ` : `To ${destinationLabel ?? plan.destination.name}`,
-      arrivalText(phase.plan, ja),
-    ),
+    to: toLine(toName, arrival),
+    toName,
+    arrival,
     checked: checkedLine(plan.computedAt, ja, whileOpenOnly),
     stops: stops.map((stop, index) => ({ time: formatJstTime(stop.at), ...stopLabel(stop, states[index], ja), state: states[index] })),
     bars: stops.map((stop, index) => ({

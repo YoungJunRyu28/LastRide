@@ -201,8 +201,8 @@ const LeaveWidget = (props: LeaveWidgetProps, environment: WidgetEnvironment) =>
             <Spacer />
           </VStack>
           <Spacer />
-          <VStack alignment="trailing" spacing={4}>
-            <Text modifiers={[font({ size: 12 }), foregroundStyle(c.muted), lineLimit(1)]}>{props.to}</Text>
+          <VStack alignment="trailing" spacing={4} modifiers={[frame({ maxWidth: 132, alignment: "trailing" })]}>
+            <Text modifiers={[font({ size: 12 }), foregroundStyle(c.muted), lineLimit(1), minimumScaleFactor(0.8)]}>{props.to}</Text>
             <Spacer />
             <Text modifiers={[font({ weight: "bold", size: 12 }), foregroundStyle(c.leave)]}>{props.link}</Text>
           </VStack>
@@ -268,16 +268,21 @@ const LeaveWidget = (props: LeaveWidgetProps, environment: WidgetEnvironment) =>
   if (medium)
     return (
       <VStack alignment="leading" spacing={0} modifiers={[background, open]}>
-        <HStack alignment="top">
-          <VStack alignment="leading" spacing={0}>
+        {/* The countdown is laid out first and never shrinks for the names; the
+            right column is capped, so a long saved name is cut with … instead. */}
+        <HStack alignment="top" spacing={8}>
+          <VStack alignment="leading" spacing={0} modifiers={[layoutPriority(1)]}>
             <Text modifiers={[font({ weight: "bold", size: 14 }), foregroundStyle(toneColor), lineLimit(1)]}>{props.label}</Text>
             {timer(54, toneColor)}
           </VStack>
-          <Spacer />
-          <VStack alignment="trailing" spacing={2}>
+          <Spacer minLength={0} />
+          <VStack alignment="trailing" spacing={2} modifiers={[frame({ maxWidth: 132, alignment: "trailing" })]}>
             <Text modifiers={[font({ weight: "black", size: 16 }), foregroundStyle(c.text), lineLimit(1), minimumScaleFactor(0.7)]}>{props.from}</Text>
             {/* The same three lines as the Live Activity's top right (lib/widgetContent toLine). */}
-            <Text modifiers={[font({ size: 12 }), foregroundStyle(c.muted), lineLimit(1), minimumScaleFactor(0.7)]}>{props.arrival ? `${props.to} · ${props.arrival}` : props.to}</Text>
+            <HStack spacing={0}>
+              <Text modifiers={[font({ size: 12 }), foregroundStyle(c.muted), lineLimit(1), minimumScaleFactor(0.8)]}>{props.to}</Text>
+              {props.arrival ? <Text modifiers={[font({ size: 12 }), foregroundStyle(c.muted), lineLimit(1), layoutPriority(1)]}>{` · ${props.arrival}`}</Text> : null}
+            </HStack>
             <Text modifiers={[font({ size: 11 }), foregroundStyle(c.muted), lineLimit(1), minimumScaleFactor(0.8)]}>{props.checked}</Text>
           </VStack>
         </HStack>

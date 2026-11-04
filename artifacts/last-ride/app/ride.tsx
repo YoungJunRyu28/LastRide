@@ -1088,7 +1088,7 @@ export default function RideScreen() {
                 {isSearching && <ActivityIndicator size="small" color={colors.mutedForeground} style={styles.searching} />}
                 {canRefresh && !isSearching && (
                   <Feather
-                    name={freshness === "stale" ? "alert-triangle" : "refresh-cw"}
+                    name="refresh-cw"
                     size={12}
                     color={freshness === "stale" ? colors.destructive : colors.mutedForeground}
                   />
@@ -1155,7 +1155,7 @@ export default function RideScreen() {
                     <ActivityIndicator size="small" color={colors.mutedForeground} style={styles.searching} />
                   ) : (
                     <Feather
-                      name={freshness === "stale" ? "alert-triangle" : "refresh-cw"}
+                      name="refresh-cw"
                       size={13}
                       color={freshness === "stale" ? colors.destructive : colors.mutedForeground}
                     />
