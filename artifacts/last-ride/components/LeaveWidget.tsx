@@ -202,7 +202,7 @@ const LeaveWidget = (props: LeaveWidgetProps, environment: WidgetEnvironment) =>
           </VStack>
           <Spacer />
           <VStack alignment="trailing" spacing={4} modifiers={[frame({ maxWidth: 132, alignment: "trailing" })]}>
-            <Text modifiers={[font({ size: 12 }), foregroundStyle(c.muted), lineLimit(1), minimumScaleFactor(0.8)]}>{props.to}</Text>
+            <Text modifiers={[font({ size: 12 }), foregroundStyle(c.muted), lineLimit(1), minimumScaleFactor(0.6)]}>{props.to}</Text>
             <Spacer />
             <Text modifiers={[font({ weight: "bold", size: 12 }), foregroundStyle(c.leave)]}>{props.link}</Text>
           </VStack>
@@ -281,7 +281,7 @@ const LeaveWidget = (props: LeaveWidgetProps, environment: WidgetEnvironment) =>
             <Text modifiers={[font({ weight: "black", size: 16 }), foregroundStyle(c.text), lineLimit(1), minimumScaleFactor(0.7)]}>{props.from}</Text>
             {/* The same three lines as the Live Activity's top right (lib/widgetContent toLine). */}
             <HStack spacing={0}>
-              <Text modifiers={[font({ size: 12 }), foregroundStyle(c.muted), lineLimit(1), minimumScaleFactor(0.8)]}>{props.to}</Text>
+              <Text modifiers={[font({ size: 12 }), foregroundStyle(c.muted), lineLimit(1), minimumScaleFactor(0.6)]}>{props.to}</Text>
               {props.arrival ? <Text modifiers={[font({ size: 12 }), foregroundStyle(c.muted), lineLimit(1), layoutPriority(1)]}>{` · ${props.arrival}`}</Text> : null}
             </HStack>
             <Text modifiers={[font({ size: 11 }), foregroundStyle(c.muted), lineLimit(1), minimumScaleFactor(0.8)]}>{props.checked}</Text>

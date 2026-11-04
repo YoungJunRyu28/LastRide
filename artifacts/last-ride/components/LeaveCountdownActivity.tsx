@@ -120,11 +120,11 @@ const LeaveCountdown = (sent: LeaveCountdownProps, environment: LiveActivityEnvi
             <Text modifiers={[font({ weight: "bold", size: 13 }), foregroundStyle(c.text), lineLimit(1), minimumScaleFactor(0.7)]}>{props.from}</Text>
             {props.toName ? (
               <HStack spacing={0}>
-                <Text modifiers={[font({ size: 11 }), foregroundStyle(c.muted), lineLimit(1), minimumScaleFactor(0.8)]}>{props.toName}</Text>
+                <Text modifiers={[font({ size: 11 }), foregroundStyle(c.muted), lineLimit(1), minimumScaleFactor(0.6)]}>{props.toName}</Text>
                 {props.arrival ? <Text modifiers={[font({ size: 11 }), foregroundStyle(c.muted), lineLimit(1), layoutPriority(1)]}>{` · ${props.arrival}`}</Text> : null}
               </HStack>
             ) : (
-              <Text modifiers={[font({ size: 11 }), foregroundStyle(c.muted), lineLimit(1), minimumScaleFactor(0.8)]}>{props.to}</Text>
+              <Text modifiers={[font({ size: 11 }), foregroundStyle(c.muted), lineLimit(1), minimumScaleFactor(0.6)]}>{props.to}</Text>
             )}
             {/* How fresh the times are; with app-only tracking, that they need the app. */}
             <Text modifiers={[font({ size: 11 }), foregroundStyle(c.muted), lineLimit(1), minimumScaleFactor(0.8)]}>{props.checked}</Text>
@@ -165,7 +165,7 @@ const LeaveCountdown = (sent: LeaveCountdownProps, environment: LiveActivityEnvi
     expandedTrailing: (
       <VStack alignment="trailing" spacing={2} modifiers={[frame({ maxWidth: 150, alignment: "trailing" }), padding({ trailing: 8 })]}>
         <Text modifiers={[font({ weight: "bold", size: 13 }), lineLimit(1), minimumScaleFactor(0.7)]}>{props.from}</Text>
-        <Text modifiers={[font({ size: 11 }), foregroundStyle(ic.muted), lineLimit(1), minimumScaleFactor(0.8)]}>{props.toName ?? props.to}</Text>
+        <Text modifiers={[font({ size: 11 }), foregroundStyle(ic.muted), lineLimit(1), minimumScaleFactor(0.6)]}>{props.toName ?? props.to}</Text>
       </VStack>
     ),
     // The countdown gets the full width here, above the rail, instead of a corner.
