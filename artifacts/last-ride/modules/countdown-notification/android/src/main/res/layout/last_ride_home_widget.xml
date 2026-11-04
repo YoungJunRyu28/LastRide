@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/last_ride_widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:gravity="center_vertical"
+    android:padding="15dp"
+    android:background="#0A1322">
+    <TextView android:id="@+id/last_ride_widget_heading"
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:text="LastRide" android:textSize="12sp" android:textStyle="bold"
+        android:textColor="#C9D4DE" android:singleLine="true"
+        android:ellipsize="end" />
+    <TextView android:id="@+id/last_ride_widget_primary"
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:layout_marginTop="5dp" android:text="Open LastRide to check"
+        android:textSize="24sp" android:textStyle="bold" android:textColor="#FFFFFF"
+        android:maxLines="2" android:ellipsize="end" />
+    <TextView android:id="@+id/last_ride_widget_secondary"
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:layout_marginTop="4dp" android:text="Tap to refresh"
+        android:textSize="13sp" android:textColor="#F5A93B"
+        android:maxLines="2" android:ellipsize="end" />
+    <TextView android:id="@+id/last_ride_widget_footer"
+        android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:layout_marginTop="6dp" android:text=""
+        android:textSize="10sp" android:textColor="#C9D4DE"
+        android:singleLine="true" android:ellipsize="end" />
+</LinearLayout>

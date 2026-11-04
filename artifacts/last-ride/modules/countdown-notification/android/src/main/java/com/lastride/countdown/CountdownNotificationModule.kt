@@ -56,6 +56,10 @@ class CountdownNotificationModule : Module() {
     Function("dismiss") {
       manager.cancel(NOTIFICATION_ID)
     }
+
+    Function("updateWidget") { timelineJson: String ->
+      LastRideHomeWidgetReceiver.save(context, timelineJson)
+    }
   }
 
   private fun ensureChannel(name: String) {
