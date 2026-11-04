@@ -1,4 +1,17 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-  <!-- Android 16: lets the ongoing countdown show as a Live Update (status bar chip, lock screen). -->
+  <!-- Android 16: lets the ongoing countdown show as a Live Update. -->
   <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
+  <application>
+    <receiver
+      android:name="com.lastride.countdown.LastRideHomeWidgetReceiver"
+      android:label="LastRide"
+      android:exported="true">
+      <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+      </intent-filter>
+      <meta-data
+        android:name="android.appwidget.provider"
+        android:resource="@xml/last_ride_home_widget" />
+    </receiver>
+  </application>
 </manifest>

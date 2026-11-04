@@ -15,12 +15,18 @@ export type CountdownContent = {
   channelName?: string;
 };
 
-type NativeModule = { show(content: CountdownContent): void; dismiss(): void };
+type NativeModule = {
+  show(content: CountdownContent): void;
+  dismiss(): void;
+  /** Android home-screen widget; optional for users upgrading an older binary. */
+  updateWidget?(timelineJson: string): void;
+};
 
 /** Null off Android or in builds without the module (Expo Go, web). */
 const native = Platform.OS === 'android' ? requireOptionalNativeModule<NativeModule>('CountdownNotification') : null;
 
 export const countdownNotificationAvailable = native !== null;
+export const androidHomeWidgetAvailable = typeof native?.updateWidget === 'function';
 
 export function showCountdown(content: CountdownContent): void {
   native?.show(content);
@@ -28,4 +34,8 @@ export function showCountdown(content: CountdownContent): void {
 
 export function dismissCountdown(): void {
   native?.dismiss();
+}
+
+export function updateAndroidHomeWidget(timelineJson: string): void {
+  native?.updateWidget?.(timelineJson);
 }
