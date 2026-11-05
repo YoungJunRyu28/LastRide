@@ -294,7 +294,7 @@ export default function GroupsScreen() {
             >
               <Feather name="plus" size={18} color={colors.foreground} />
               <Text style={[styles.createText, { color: colors.foreground }]}>{ja ? 'グループを作成' : 'Create a group'}</Text>
-              {!isPremium && <PremiumTag label={ja ? 'プレミアム' : 'Premium'} />}
+              {!isPremium && <PremiumTag inline label={ja ? 'プレミアム' : 'Premium'} />}
             </Pressable>
             <Text style={[styles.note, { color: colors.mutedForeground }]}>
               {ja ? '参加は無料 · 共有されるのは名前と出発時刻だけ' : 'Joining is free · only names and leave times are shared'}

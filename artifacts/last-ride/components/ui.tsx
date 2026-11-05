@@ -350,12 +350,14 @@ export function Row({
   );
 }
 
-export function PremiumTag({ label = 'プレミアム', solid }: { label?: string; solid?: boolean }) {
+/** Sits at the start of a stacked layout; pass `inline` beside text in a row to centre it on the line. */
+export function PremiumTag({ label = 'プレミアム', solid, inline }: { label?: string; solid?: boolean; inline?: boolean }) {
   const colors = useColors();
   return (
     <View
       style={[
         styles.premiumTag,
+        inline && { alignSelf: 'center' as const },
         solid
           ? { backgroundColor: colors.primary, borderColor: colors.primary }
           : { borderColor: colors.primary },

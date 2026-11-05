@@ -191,7 +191,7 @@ export default function DestinationsScreen() {
           <Card highlighted style={styles.premium}>
             <View style={styles.premiumHead}>
               <Text style={[styles.rowTitle, { color: colors.foreground }]}>{ja ? "帰る場所を追加" : "Save more destinations"}</Text>
-              <PremiumTag label={ja ? "プレミアム" : "Premium"} />
+              <PremiumTag inline label={ja ? "プレミアム" : "Premium"} />
             </View>
             <Text style={[styles.rowMeta, { color: colors.mutedForeground }]}>
               {ja
