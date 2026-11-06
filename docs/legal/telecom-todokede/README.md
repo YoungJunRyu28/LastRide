@@ -2,6 +2,8 @@
 
 Prepared 2026-11-06 from the 総務省's own pages: 「電気通信事業参入マニュアル［追補版］」 (revised 2023-01-30) and 「届出書類（届出電気通信事業）のダウンロード（国内法人等向け）」. The official forms and filled-in examples are in this folder.
 
+**Don't fill the forms in here.** The forms in this folder are the blank official ones. Copy them to `~/Documents/LastRide-private/電気通信事業届出/` and fill them in (and save the PDFs) there: filled forms hold your home address and phone, and must never be committed. `.gitignore` blocks the finished PDFs and Word lock files as a safety net.
+
 ## Why LastRide needs it
 
 - Groups pass a member's leave time and 「〇〇さんが出発」 alerts to specific invited people through our server: 他人の通信の媒介 in a closed group.

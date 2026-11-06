@@ -43,3 +43,10 @@ __pycache__/
 
 # Gradle caches (Android tooling, e.g. editor extensions syncing native modules)
 .gradle/
+
+# Filled-in legal forms hold personal details (address, phone): keep them in
+# ~/Documents/LastRide-private/, never in the repo. Only the blank forms are tracked.
+docs/legal/**/電気通信事業届出書.pdf
+docs/legal/**/ネットワーク構成図.pdf
+docs/legal/**/提供する電気通信役務.pdf
+~$*
