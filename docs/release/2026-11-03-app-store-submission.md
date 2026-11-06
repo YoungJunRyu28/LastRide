@@ -31,7 +31,8 @@ Attach a screen recording (about 60–90 s) of a real evening: start tonight, th
 | Precise location | Yes (sent to Apple Maps and, when Apple can't answer, our server; not stored) | No | No | App functionality |
 | Coarse location | No | | | |
 | Purchase history | Yes (RevenueCat) | No (anonymous ID) | No | App functionality |
-| User ID | Yes (RevenueCat anonymous ID; Sentry and EAS per-install IDs) | No | No | App functionality, analytics: none |
+| User ID | Yes (RevenueCat anonymous ID) | No | No | App functionality |
+| Device ID | Yes (Sentry and EAS random per-install IDs) | No | No | App functionality |
 | Crash data | Yes (Sentry) | No | No | App functionality |
 | Other user content | Yes (group name, display name) | No | No | App functionality |
 | Other data: push token | Yes (groups only) | No | No | App functionality |
