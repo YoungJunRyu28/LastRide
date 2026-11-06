@@ -57,23 +57,25 @@ Only the title, subtitle and keywords affect search; the description and promoti
 
 | Field | Text | Limit |
 |---|---|---|
-| Name | 帰り時 - 終電アラーム・出発時刻通知 | 30 |
+| Name | 終電アラーム・終電通知 - 帰り時 | 30 |
 | Subtitle | 乗換と徒歩込みで、出る時間がわかる | 30 |
-| Keywords | 終電検索,終電時間,最終電車,乗換検索,乗り換え,電車,時刻表,帰宅,飲み会,始発,タクシー,カウントダウン,ウィジェット,ロック画面,最寄り駅,電車時間,間に合う | 100 |
+| Keywords | 終電検索,終電時間,最終電車,乗換検索,乗り換え,電車,時刻表,帰宅,飲み会,始発,タクシー,カウントダウン,ウィジェット,ロック画面,最寄り駅,電車時間,間に合う,出発時刻 | 100 |
 | Promotional text | 忘年会シーズン、終電の時刻を気にせず楽しめます。出る時間をロック画面でカウントダウン。年末年始の土休日ダイヤにも対応。 | 170 |
 
-Alternative name, keyword first: 「終電アラーム - 帰り時」. The home-screen name stays 帰り時 either way.
+What the app does comes first and the brand last, since nobody searches for 帰り時 yet (swap the order once people do). The home-screen name stays 帰り時. 出発時刻 is only a keyword, for search: inside the app the user's time is always 出る.
 
 **English (U.S.): what tourists see, and also indexed in Japan**
 
 | Field | Text | Limit |
 |---|---|---|
-| Name | LastRide: Last Train Alarm | 30 |
-| Subtitle | When to leave for your train | 30 |
-| Keywords | shuden,japan,tokyo,osaka,metro,subway,nightlife,taxi,countdown,widget,timer,commute,transit,station | 100 |
+| Name | Last Train Alarm: LastRide | 30 |
+| Subtitle | Tokyo & Japan: when to leave | 30 |
+| Keywords | shuden,osaka,nagoya,fukuoka,yokohama,metro,subway,nightlife,taxi,countdown,widget,transit,station | 100 |
 | Promotional text | Out late in Japan? LastRide counts down to when you need to leave for the last train home, with the walk to the station included. | 170 |
 
 Words in the name and subtitle don't need repeating in the keywords. Check each field's length in App Store Connect before saving.
+
+**Before submitting: check the keywords against real data (15 min).** In Apple Search Ads (free account, no ads needed), look up each keyword's popularity for Japan. Swap out anything at or near 5, the lowest score, for a better one from the same idea (e.g. 終電 アプリ, 終電 通知). The lists above are educated guesses until this is done. Keywords can still change with any later update; the name and subtitle matter most.
 
 **Choosing keywords:** relevant first, then popularity, then competition. A new app won't rank for the biggest terms (乗換, 電車) at first, so the specific ones (終電検索, 終電時間, 最終電車) are where early downloads come from. Swap in bigger terms as the app grows.
 
@@ -82,6 +84,90 @@ Words in the name and subtitle don't need repeating in the keywords. Check each 
 **Keyword data:** an Apple Search Ads account shows Apple's popularity score for each keyword in Japan, free, without running ads. Use it to choose between close options (終電検索 vs 終電アラーム).
 
 **Description:** not used for search, so write it for people. The first two or three lines show before 「さらに表示」, so open with what the app does for you (「飲み会の帰り、終電に間に合うには何時に出ればいいかを教えてくれるアプリです。」), then the features as short benefits, then 「利用規約：https://lastride.jp/terms/」. No keyword lists.
+
+**Description, Japanese (paste as is, max 4,000 characters):**
+
+```
+飲み会の帰り、終電に間に合うには何時にお店を出ればいいか。帰り時は、今いる場所から最寄り駅までの徒歩時間と終電の時刻をもとに、「ここを出る時刻」を教えてくれるアプリです。
+
+■ 出る時刻がひと目でわかる
+現在地から近くの駅と終電を調べ、駅までの徒歩と乗り換えを含めて「何時にここを出ればいいか」を表示します。余裕をどれだけ取るかも選べます。
+
+■ 通知とアラームでお知らせ
+30分前・15分前・出る時刻など、好きなタイミングで通知。iOS 26以降は、マナーモードでも鳴るアラームにもできます。
+
+■ 移動しても自動で更新
+「案内を開始」すると、お店を移っても最寄り駅と出る時刻を追いかけます。終電が出たら自動で止まります。
+
+■ 乗れなかったときも
+始発の時刻、タクシー料金の目安、朝まで過ごせる近くの場所をすぐに確認できます。
+
+■ 飲み会グループ
+メンバーの出る時刻だけを共有して、誰がいつ帰るかがわかります。現在地や自宅は共有されません。参加は無料です。
+
+■ 1本前・2本前も選べる
+終電の1本前、2本前に乗りたい夜も、同じように案内します。
+
+■ アカウント登録は不要
+帰る場所や設定はiPhoneの中に保存されます。移動履歴は残りません。
+
+【プレミアム】
+・ロック画面とダイナミックアイランドのカウントダウン
+・ホーム画面・ロック画面のウィジェット
+・グループの作成
+・帰る場所をいくつでも登録
+月額190円、年額1,200円（月あたり約100円）。初めての方は14日間無料でお試しいただけます。
+
+【自動更新について】
+・お支払いは購入の確認時にApple Accountに請求されます。
+・無料期間または現在の期間が終わる24時間前までに解約しない限り、自動で更新されます。
+・解約はiPhoneの「設定」→ 自分の名前 →「サブスクリプション」から行えます。
+
+【ご注意】
+時刻は鉄道会社の時刻表とAppleマップの情報をもとにした目安です。遅延や運休、混雑により実際と異なる場合があります。最新の運行情報は各鉄道会社の公式情報もご確認ください。
+対応エリア：首都圏の地下鉄（東京メトロ・都営）ほか、JR・私鉄はAppleマップの情報で調べます。
+
+利用規約：https://lastride.jp/terms/
+プライバシーポリシー：https://lastride.jp/privacy/
+```
+
+**Description, English:**
+
+```
+Out late in Japan? LastRide tells you when to leave where you are to catch the last train home, with the walk to the station included.
+
+• Know when to leave
+LastRide finds the nearest stations and tonight's last train, then works out when you need to head out, counting the walk and any changes. Choose how much time to spare.
+
+• Reminders and alarms
+Get a reminder 30 or 15 minutes before, and when it's time to go. On iOS 26 and later it can be an alarm that rings even in silent mode.
+
+• Follows you as you move
+Start tonight's guidance and your station and leave time update as you change places. It stops by itself once the last train has gone.
+
+• If you miss it
+See the first train, a taxi fare estimate and places nearby to wait until morning.
+
+• Groups for nights out
+Share only your leave time with friends, so everyone knows who's heading home when. Your location and home are never shared. Joining is free.
+
+• No account needed
+Your destinations and settings stay on your iPhone. No travel history is kept.
+
+PREMIUM
+• Countdown on the Lock Screen and Dynamic Island
+• Home Screen and Lock Screen widgets
+• Create groups
+• Unlimited saved destinations
+¥190 a month or ¥1,200 a year. New subscribers get a 14-day free trial.
+
+Payment is charged to your Apple Account at confirmation of purchase. Subscriptions renew automatically unless cancelled at least 24 hours before the end of the trial or current period. Manage or cancel in Settings → your name → Subscriptions.
+
+Times are estimates based on railway timetables and Apple Maps, and may differ because of delays, suspensions or crowding. Check your railway operator for the latest service information.
+
+Terms of Use: https://lastride.jp/en/terms/
+Privacy Policy: https://lastride.jp/en/privacy/
+```
 
 **Screenshots:** the first three show in search results. Large Japanese text, high contrast, benefits rather than features. No 元町・中華街.
 1. 「あと何分で出ればいい？」 (home screen with the countdown)
