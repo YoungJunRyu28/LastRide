@@ -12,7 +12,7 @@ Prepared 2026-11-03 after the pre-release review. Paste-ready texts first, then 
 > 4. Tap the big “Start tonight” button to start tonight's guidance: reminders and alarms are scheduled for the leave time, and with Premium the lock-screen countdown (Live Activity) appears.
 > 5. The “If missed” tab shows the first train, taxis and places to wait nearby.
 >
-> **Background location:** used only while the user has started tonight's guidance (“Start tonight”), so the station, walking time and reminders follow them while the app is closed. It stops by itself after the last train (04:00 at the latest), and users can choose “Only while using the app”. It's explained before iOS asks.
+> **Background location:** used only while the user has started tonight's guidance (“Start tonight”), so the station, walking time and reminders follow them while the app is closed. It stops by itself after the last train (04:00 at the latest), and users can choose “App open” (only while the app is open). It's explained before iOS asks.
 >
 > **Alarms (AlarmKit, iOS 26):** optional, chosen in setup or Settings, so the “leave now” alert sounds even in silent mode.
 >
@@ -71,7 +71,7 @@ What the app does comes first and the brand last, since nobody searches for 帰�
 |---|---|---|
 | Name | Last Train Alarm: LastRide | 30 |
 | Subtitle | Tokyo & Japan: when to leave | 30 |
-| Keywords | shuden,osaka,nagoya,fukuoka,yokohama,metro,subway,nightlife,taxi,countdown,widget,transit,station | 100 |
+| Keywords | subway,metro,jr,rail,timetable,schedule,transit,station,kyoto,osaka,yokohama,nagoya,taxi,nightlife | 100 |
 | Promotional text | Out late in Japan? LastRide counts down to when you need to leave for the last train home, with the walk to the station included. | 170 |
 
 Words in the name and subtitle don't need repeating in the keywords. Check each field's length in App Store Connect before saving.
