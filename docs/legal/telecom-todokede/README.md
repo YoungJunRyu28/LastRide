@@ -41,12 +41,12 @@ Item **31 インターネット関連サービス（ＩＰ電話を除く。）*
 ## How to submit
 
 - **Online:** e-Gov 電子申請 「電気通信事業の届出」: https://shinsei.e-gov.go.jp/recept/procedure/lists/procedureInformation?gtaTetCd=145181GA00001 (an e-Gov account; the 住民票 is attached as instructed there).
-- **By post** to the 関東総合通信局 電気通信事業課 (it covers Kanagawa and Tokyo; the bureau goes by the address on your 住民票). The documents are 信書: send by **post** (郵便), not 宅配便 or メール便. Include a **stamped, self-addressed return envelope**, since they send back a 通知書.
+- **By post** to 〒102-8795 東京都千代田区九段南1丁目2番1号 九段第3合同庁舎 関東総合通信局 電気通信事業課 (it covers Kanagawa and Tokyo; the bureau goes by the address on your 住民票). The documents are 信書: send by **post** (郵便), not 宅配便 or メール便. Include a **stamped, self-addressed return envelope**, since they send back a 通知書.
 - **Questions:** 関東総合通信局 電気通信事業課, 回線非設置届出: 03-6238-1675 (manual p.37).
 
-## Not confirmed online
+## Is my name or address published?
 
-- Exactly what the 総務省 publishes about individual operators. The form requires the 住民票 address, so a virtual office can't replace it on the form. If it matters, ask on the phone line above whether the full address is published.
+No. The 総務省's 届出電気通信事業者一覧 lists filed operators (届出番号, bureau, name, 法人番号), but **individuals are not listed**: the 総務省's own 電気通信事業者実態調査票 says 「なお、個人の届出者は掲載しておりません」 (checked 2026-11-06, https://www.soumu.go.jp/main_content/000910612.docx). The home address on the form (it must match the 住民票) stays with the bureau.
 
 ## After filing
 
