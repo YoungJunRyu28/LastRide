@@ -62,6 +62,7 @@
   // The App Store listing uses Apple's official badge (its marketing guidelines),
   // in the page's language.
   function appStoreBadge(lang, url) {
+    if (lang === "en") url = safeUrl("appStore", config.appStoreEn) || url;
     var link = document.createElement("a");
     link.className = "store-badge";
     link.href = url;
