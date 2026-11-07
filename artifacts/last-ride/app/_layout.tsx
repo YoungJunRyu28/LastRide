@@ -52,6 +52,7 @@ function RootLayoutNav() {
       <Stack.Screen name="group-edit" />
       <Stack.Screen name="group-new" />
       <Stack.Screen name="group-join" />
+      <Stack.Screen name="onboarding-intro" />
       <Stack.Screen name="onboarding-notifications" />
       <Stack.Screen name="onboarding-alarms" />
       <Stack.Screen name="onboarding-margin" />

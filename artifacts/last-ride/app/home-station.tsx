@@ -19,7 +19,7 @@ export default function HomeStationScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ id?: string; new?: string; setup?: string; tonight?: string }>();
-  const { language, homeStationOption, homeAddress, destinations, activeDestinationId, saveDestination, setTonightDestination, resetLanguage } = useLastRide();
+  const { language, homeStationOption, homeAddress, destinations, activeDestinationId, saveDestination, setTonightDestination } = useLastRide();
   const ja = language === 'ja';
   const tonight = params.tonight === '1';
   const isNew = params.new === '1';
@@ -133,9 +133,7 @@ export default function HomeStationScreen() {
 
   const back = () => {
     if (setup) {
-      // Clear the language choice first — otherwise the welcome screen redirects right back here.
-      resetLanguage();
-      router.replace('/');
+      router.replace('/onboarding-intro');
     } else if (router.canGoBack()) {
       router.back();
     } else {
@@ -199,7 +197,7 @@ export default function HomeStationScreen() {
     <View style={styles.form}>
       <View style={styles.labelRow}>
         <Text style={[styles.label, { color: colors.foreground }]}>{ja ? '住所' : 'Address'}</Text>
-        <Text style={[styles.optional, { color: colors.mutedForeground }]}>{ja ? '（任意・駅から自宅までの徒歩時間を計算）' : 'optional · adds the walk from the station'}</Text>
+        <Text style={[styles.optional, { color: colors.mutedForeground }]}>{ja ? '任意 · 駅から家までの徒歩も計算' : 'optional · adds the walk from the station'}</Text>
       </View>
       <View style={[styles.inputWrap, { backgroundColor: colors.card, borderColor: selectedAddress ? colors.primary : colors.input }]}>
         <Feather name="home" color={colors.mutedForeground} size={19} />
@@ -276,13 +274,13 @@ export default function HomeStationScreen() {
         onBack={back}
         actions={<PrimaryButton label={ja ? '次へ' : 'Next'} icon="arrow-right" onPress={() => void save()} disabled={!canSave || saving} testID="save-home-station" />}
       >
-        <OnboardingHeading kicker={ja ? '帰る場所を登録' : 'WHERE’S HOME'} title={ja ? '自宅の最寄り駅を\n設定しましょう' : 'What’s your\nhome station?'} />
+        <OnboardingHeading kicker={ja ? '帰る場所' : 'WHERE’S HOME'} title={ja ? '自宅の最寄り駅は？' : 'What’s your\nhome station?'} />
         {stationField}
         {addressField}
         <Text style={[styles.helper, { color: colors.mutedForeground }]}>
           {ja
-            ? `「${editingDestination?.label ?? defaultLabel}」として保存します。名前はあとで変更できます。\n帰る場所と設定は、この端末にのみ保存されます。会員登録は不要です。`
-            : `Saved as “${editingDestination?.label ?? defaultLabel}”. You can rename it later.\nDestinations and settings stay on this device. No account needed.`}
+            ? `「${editingDestination?.label ?? defaultLabel}」として保存します（名前はあとで変更可）。この端末だけに保存され、会員登録は不要です。`
+            : `Saved as “${editingDestination?.label ?? defaultLabel}” (rename it any time). Stays on this phone, no account needed.`}
         </Text>
       </OnboardingFrame>
     );

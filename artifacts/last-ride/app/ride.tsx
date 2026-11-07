@@ -6,6 +6,7 @@ import { Card, CountdownRing, IconButton } from "@/components/ui";
 import { DIGITS } from "@/constants/type";
 import { locationErrorText, useLastRide } from "@/context/LastRideContext";
 import { FarStationCard } from "@/components/FarStationCard";
+import { HomeTour, useHomeTour, type TourStep } from "@/components/HomeTour";
 import { LocationOffCard } from "@/components/LocationOffCard";
 import { usePremium } from "@/context/PremiumContext";
 import { useGroups } from "@/context/GroupsContext";
@@ -46,7 +47,7 @@ import {
 } from "@workspace/api-client-react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router, useLocalSearchParams } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -361,6 +362,9 @@ export default function RideScreen() {
   const firstLoad = !isLocationReady && (isLocating || (!locationError && !!homeStationOption));
   // No station within walking reach and no plan: the far-station card takes the hero's place.
   const farMode = locationError === "no-station" && !isLocationReady && !isLocating;
+  // At (or by) the station near home: no train to take. Same layout as a night's plan
+  // (hero, station ▾, map), with "near home" where the leave time goes.
+  const atHome = locationError === "near-home" && !plan && !farMode && !firstLoad;
   const homeStationName = homeStationOption
     ? ja
       ? homeStationOption.nameJa
@@ -420,9 +424,86 @@ export default function RideScreen() {
           : "Now"
         : formatCountdown(msLeft);
 
+  const showTrainChip = !!plan && !departed && !onBoard && trainChoices.length > 1;
+  // First plan on screen: a short tour of the leave time, 案内を開始 and the chips (components/HomeTour).
+  const leaveRef = useRef<View>(null);
+  const startRef = useRef<View>(null);
+  const controlsRef = useRef<View>(null);
+  const homeTour = useHomeTour();
+  // The first time: only over a live plan. Asked for again in Settings: whatever is on screen.
+  // A leave time still ahead is on screen: what the tour is really about.
+  const tourWithLeaveTime = !!plan && isLocationReady && !departed && !onBoard && !boardingQuestion;
+  const tourLoaded = !firstLoad && !isLocating;
+  const showTour =
+    panel === null &&
+    (homeTour.stage === "waiting" ? tourWithLeaveTime : homeTour.stage !== "done" && tourLoaded);
+  // Each step says what's actually on screen: the circle is 案内を開始, the countdown,
+  // 発車済み or near home; the chips may be the station only.
+  const startShown = !!plan && isLocationReady && !departed && !onBoard && trackingMode === null;
+  const tourSteps: TourStep[] = [
+    atHome
+      ? {
+          key: "leave",
+          target: leaveRef,
+          title: ja ? "帰る場所の近く" : "Near home",
+          body: ja
+            ? "帰る場所の近くでは、電車が不要なことを表示します。離れると、ここに出る時刻が出ます。"
+            : "You’re close enough to walk, so no train is needed. Move further away and your leave time appears here.",
+        }
+      : {
+          key: "leave",
+          target: leaveRef,
+          title: ja ? "出る時刻" : "Your leave time",
+          body: ja
+            ? `この時刻に出れば、終電に間に合う目安です。駅までの徒歩と乗り換えも含みます。${departed ? "終電が出たあとはグレーになります。" : ""}`
+            : `Leave by this time to catch the last train. It counts the walk to the station and any changes.${departed ? " Once the last train has gone, it turns grey." : ""}`,
+        },
+    startShown
+      ? {
+          key: "start",
+          target: startRef,
+          title: ja ? "案内を開始" : "Start tonight",
+          body: ja
+            ? "押すと、移動に合わせて駅と出る時刻を更新し、時間になったら通知でお知らせします。終電が出たら自動で止まります。"
+            : "Tap this to start tracking. Your station and leave time update as you move, and you’ll get a reminder when it’s time to go. It stops after the last train.",
+        }
+      : trackingMode !== null && !departed && !atHome
+        ? {
+            key: "start",
+            target: startRef,
+            title: ja ? "案内中" : "Tracking",
+            body: ja
+              ? "出るまでの残り時間です。移動に合わせて駅と時刻を更新し、時間になったら通知でお知らせします。終電が出たら自動で止まります。"
+              : "The time left until you need to leave. It keeps updating as you move, reminds you when it’s time, and stops after the last train.",
+          }
+        : {
+            key: "start",
+            target: startRef,
+            title: ja ? "案内を開始" : "Start tonight",
+            body: ja
+              ? "終電の前は、ここに「案内を開始」が出ます。押すと、移動に合わせて駅と出る時刻を更新し、時間になったら通知でお知らせします。"
+              : "Before the last train, a “Start tonight” button appears here. Tap it to track your station and leave time as you move and get a reminder when it’s time to go.",
+          },
+    {
+      key: "controls",
+      target: controlsRef,
+      title: atHome ? (ja ? "別の駅から帰る" : "Leaving from elsewhere?") : showTrainChip ? (ja ? "電車と駅を選ぶ" : "Train and station") : (ja ? "駅を選ぶ" : "Your station"),
+      body: atHome
+        ? ja
+          ? "駅名の ▾ で、別の駅から帰るときの終電を調べられます。"
+          : "Use the station ▾ to look up the last train from a different station."
+        : showTrainChip
+          ? ja
+            ? "「終電 ▾」で1本前・2本前に変えられます。駅名の ▾ では別の駅に変えたり、今の駅に固定したりできます（固定すると、移動しても駅は変わりません）。"
+            : "“Last ▾” lets you aim for an earlier train. The station ▾ lets you pick a different station, or lock this one so it doesn’t change as you move."
+          : ja
+            ? "駅名の ▾ で、別の駅に変えたり、今の駅に固定したりできます（固定すると、移動しても駅は変わりません）。"
+            : "The station ▾ lets you pick a different station, or lock this one so it doesn’t change as you move.",
+    },
+  ];
+
   const arrivalMs = plan?.arriveHomeMs ?? plan?.lastTrain.arrivesAt;
   const otherStations = plan?.alternatives ?? [];
-  const showTrainChip = !!plan && !departed && !onBoard && trainChoices.length > 1;
 
   // 「元町・中華街 00:19発 → 菊名 00:39」: the trip under the leave time.
   const tripLine = (() => {
@@ -487,6 +568,7 @@ export default function RideScreen() {
 
   return (
     <View style={[styles.screen, { backgroundColor: colors.background }]}>
+      {showTour && <HomeTour steps={tourSteps} ja={ja} onDone={() => homeTour.finish(tourWithLeaveTime)} explainMissing />}
       <ScrollView
         contentContainerStyle={[
           styles.content,
@@ -829,7 +911,7 @@ export default function RideScreen() {
         ) : plan ? (
         // Tonight in one sentence, centred: 「今夜は 23:56 に出る」, the trip under it, then the button (or the ring).
         <View style={styles.hero}>
-          <View style={styles.heroCopy}>
+          <View ref={leaveRef} collapsable={false} style={styles.heroCopy}>
             <Text style={[styles.heroLabel, { color: colors.mutedForeground }]}>
               {onBoard
                 ? ja
@@ -934,6 +1016,7 @@ export default function RideScreen() {
 
           {isLocationReady && !departed && !onBoard && trackingMode === null ? (
             <Pressable
+              ref={startRef}
               testID="start-tracking"
               onPress={() => void startTracking()}
               accessibilityRole="button"
@@ -952,13 +1035,15 @@ export default function RideScreen() {
               </Text>
             </Pressable>
           ) : (
-            <CountdownRing
-              size={HERO_SIZE}
-              fraction={msLeft === null ? 0 : msLeft / RING_WINDOW_MS}
-              label={ringLabel}
-              value={ringValue}
-              tone={ringTone}
-            />
+            <View ref={startRef} collapsable={false}>
+              <CountdownRing
+                size={HERO_SIZE}
+                fraction={msLeft === null ? 0 : msLeft / RING_WINDOW_MS}
+                label={ringLabel}
+                value={ringValue}
+                tone={ringTone}
+              />
+            </View>
           )}
         </View>
         ) : firstLoad ? (
@@ -986,10 +1071,39 @@ export default function RideScreen() {
             </Text>
           </View>
         </View>
+        ) : atHome ? (
+        <View testID="near-home" style={styles.hero}>
+          <View ref={leaveRef} collapsable={false} style={styles.heroCopy}>
+            <Text style={[styles.heroLabel, { color: colors.mutedForeground }]}>{ja ? "今夜は" : "Tonight"}</Text>
+            <View style={styles.leaveRow}>
+              <Text
+                maxFontSizeMultiplier={1.1}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.6}
+                style={[styles.nearHomeTitle, { color: colors.primary }]}
+              >
+                {ja ? `${destination || "家"}の近くです` : `Near ${destination || "home"}`}
+              </Text>
+            </View>
+            <Text style={[styles.tripLine, { color: colors.foreground }]}>
+              {ja ? "電車に乗る必要はありません" : "No train needed from here"}
+            </Text>
+            <Text style={[styles.note, styles.centred, { color: colors.mutedForeground }]}>
+              {ja ? "離れると、終電と出る時刻を表示します" : "Move further away to see your last train and leave time"}
+            </Text>
+          </View>
+          <View ref={startRef} collapsable={false} style={[styles.loadingCircle, { borderColor: colors.secondary }]}>
+            <Feather name="home" size={30} color={colors.primary} />
+            <Text maxFontSizeMultiplier={1.2} style={[styles.loadingNote, { color: colors.mutedForeground }]}>
+              {ja ? "歩いて帰れます" : "You can walk"}
+            </Text>
+          </View>
+        </View>
         ) : null}
 
         {/* (During the first lookup without a plan, the loading hero above says it instead.) */}
-        {locationError !== "permission" && locationError !== "no-station" && !isLocationReady && !(firstLoad && !plan) && (
+        {locationError !== "permission" && locationError !== "no-station" && !atHome && !isLocationReady && !(firstLoad && !plan) && (
           <Pressable
             testID="enable-location"
             disabled={firstLoad}
@@ -1095,7 +1209,7 @@ export default function RideScreen() {
                 )}
               </Pressable>
             )}
-            <View style={styles.controls}>
+            <View ref={controlsRef} collapsable={false} style={styles.controls}>
               {showTrainChip && (
                 <ControlChip
                   testID="train-chip"
@@ -1337,6 +1451,77 @@ export default function RideScreen() {
           </View>
         )}
 
+        {/* Near home: the home station ▾ (to leave from another station instead), and 更新 or 停止 */}
+        {atHome && (
+          <View style={styles.controlsBlock}>
+            <View ref={controlsRef} collapsable={false} style={styles.controls}>
+              {homeStationName && (
+                <ControlChip
+                  testID="station-chip"
+                  label={homeStationName}
+                  open={panel === "station"}
+                  onPress={() => setPanel((open) => (open === "station" ? null : "station"))}
+                  accessibilityLabel={ja ? `最寄り駅：${homeStationName}駅。別の駅を選ぶ` : `Station: ${homeStationName}. Choose another`}
+                />
+              )}
+              {trackingMode !== null ? (
+                <Pressable
+                  testID="stop-tracking"
+                  onPress={confirmStop}
+                  accessibilityRole="button"
+                  style={({ pressed }) => [styles.smallButton, styles.chip, { borderColor: colors.input, opacity: pressed ? 0.7 : 1 }]}
+                >
+                  <Text style={[styles.smallButtonText, { color: colors.foreground }]}>{ja ? "停止" : "Stop"}</Text>
+                </Pressable>
+              ) : (
+                <Pressable
+                  testID="refresh-plan"
+                  disabled={isLocating}
+                  onPress={() => void requestLocation()}
+                  accessibilityRole="button"
+                  accessibilityLabel={ja ? "現在地を更新" : "Refresh"}
+                  hitSlop={6}
+                  style={({ pressed }) => [styles.refreshChip, { opacity: pressed ? 0.7 : 1 }]}
+                >
+                  <Text style={[styles.smallButtonText, { color: colors.mutedForeground }]}>
+                    {isLocating ? (ja ? "確認中" : "Checking") : ja ? "更新" : "Refresh"}
+                  </Text>
+                  {isLocating ? (
+                    <ActivityIndicator size="small" color={colors.mutedForeground} style={styles.searching} />
+                  ) : (
+                    <Feather name="refresh-cw" size={13} color={colors.mutedForeground} />
+                  )}
+                </Pressable>
+              )}
+            </View>
+            {panel === "station" && (
+              <Card style={styles.stationPanel}>
+                <Text style={[styles.note, { color: colors.mutedForeground }]}>
+                  {ja
+                    ? "別の駅から帰るときは、駅を選ぶとその駅の終電と出る時刻を表示します。"
+                    : "Going home from a different station? Search for it to see its last train and leave time."}
+                </Text>
+                <View style={styles.panelButtons}>
+                  <Pressable
+                    testID="choose-station"
+                    onPress={() => {
+                      setPanel(null);
+                      router.push("/departure-station");
+                    }}
+                    accessibilityRole="button"
+                    style={({ pressed }) => [styles.smallButton, styles.lockButton, { borderColor: colors.input, opacity: pressed ? 0.7 : 1 }]}
+                  >
+                    <Feather name="search" size={13} color={colors.foreground} />
+                    <Text style={[styles.smallButtonText, { color: colors.foreground }]}>
+                      {ja ? "駅を検索" : "Search stations"}
+                    </Text>
+                  </Pressable>
+                </View>
+              </Card>
+            )}
+          </View>
+        )}
+
         {/* Tracking only while open: a compact suggestion to update when closed
             (iOS "Always"), closable for tonight; after that just the note. */}
         {trackingMode === "foreground" && alwaysCard.show && (
@@ -1533,6 +1718,29 @@ export default function RideScreen() {
             legalLabel={ja ? "法的情報" : "Legal"}
           />
           </View>
+          </View>
+        )}
+
+        {/* Near home: where you are, with the home station marked (no walk to show). */}
+        {atHome && userCoordinates && homeStationOption && (
+          <View
+            style={holdMapHeight ? [styles.mapSlot, { flexGrow: 0, height: mapHeight }] : styles.mapSlot}
+            onLayout={onMapSlotLayout}
+          >
+            <View style={StyleSheet.absoluteFill}>
+              <MapCard
+                height={mapHeight}
+                you={userCoordinates}
+                target={homeStationOption}
+                stationTag={homeStationName ?? undefined}
+                onPress={() => openWalkingRoute(homeStationOption)}
+                accessibilityLabel={
+                  ja ? `現在地と${homeStationName}駅。地図アプリで開く` : `You and ${homeStationName}. Open in Maps`
+                }
+                openLabel={ja ? "地図アプリで開く" : "Open in Maps"}
+                legalLabel={ja ? "法的情報" : "Legal"}
+              />
+            </View>
           </View>
         )}
 
@@ -1776,6 +1984,8 @@ const styles = StyleSheet.create({
   leaveRow: { alignItems: "baseline", flexDirection: "row", gap: 8, justifyContent: "center", maxWidth: "100%" },
   leaveTime: { flexShrink: 1, fontFamily: DIGITS, fontSize: 80, letterSpacing: -2, lineHeight: 86 },
   leaveSuffix: { fontSize: 20, fontWeight: "800" },
+  // Same height as the leave time, so the near-home screen keeps the plan's layout.
+  nearHomeTitle: { flexShrink: 1, fontSize: 40, fontWeight: "900", lineHeight: 86 },
   tripRow: { alignItems: "center", flexDirection: "row", gap: 4, justifyContent: "center", maxWidth: "100%" },
   tripLine: { flexShrink: 1, fontSize: 15, fontWeight: "600", lineHeight: 21, textAlign: "center" },
   centred: { textAlign: "center" },

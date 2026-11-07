@@ -27,7 +27,8 @@ export function OnboardingFrame({
   children,
   actions,
 }: {
-  step: number;
+  /** Setup step number; left out on the how-it-works page before setup, which shows no progress. */
+  step?: number;
   onBack: () => void;
   backLabel: string;
   children: React.ReactNode;
@@ -44,6 +45,7 @@ export function OnboardingFrame({
       >
         <View style={styles.topbar}>
           <IconButton icon="chevron-left" label={backLabel} onPress={onBack} testID="onboarding-back" />
+          {step !== undefined && (
           <View style={styles.progress} accessible accessibilityLabel={`${step} / ${SETUP_TOTAL}`}>
             {Array.from({ length: SETUP_TOTAL }, (_, index) => index + 1).map((index) => (
               <View
@@ -53,10 +55,21 @@ export function OnboardingFrame({
             ))}
             <Text style={[styles.progressText, { color: colors.mutedForeground }]}>{step} / {SETUP_TOTAL}</Text>
           </View>
+          )}
         </View>
         {children}
       </ScrollView>
       <View style={[styles.actions, { paddingBottom: Math.max(insets.bottom, 16) }]}>{actions}</View>
+    </View>
+  );
+}
+
+/** A small 「例」 / "Example" tag on the top edge of a sample card, so a made-up time isn't read as real. */
+export function ExampleTag({ ja }: { ja: boolean }) {
+  const colors = useColors();
+  return (
+    <View style={[styles.exampleTag, { backgroundColor: colors.secondary, borderColor: colors.border }]} pointerEvents="none">
+      <Text maxFontSizeMultiplier={1.3} style={[styles.exampleTagText, { color: colors.mutedForeground }]}>{ja ? '例' : 'Example'}</Text>
     </View>
   );
 }
@@ -83,8 +96,10 @@ const styles = StyleSheet.create({
   progressDot: { borderRadius: 3, height: 6, width: 18 },
   progressText: { fontSize: 12, fontWeight: '700', marginLeft: 6 },
   heading: { gap: 10 },
-  kicker: { fontSize: 12, fontWeight: '800', letterSpacing: 1 },
+  kicker: { fontSize: 16, fontWeight: '900', letterSpacing: 1 },
   title: { fontSize: 32, fontWeight: '800', letterSpacing: -0.8, lineHeight: 40 },
   lead: { fontSize: 15, lineHeight: 23 },
+  exampleTag: { borderRadius: 8, borderWidth: 1, left: 14, paddingHorizontal: 8, paddingVertical: 2, position: 'absolute', top: -10, zIndex: 1 },
+  exampleTagText: { fontSize: 11, fontWeight: '800' },
   actions: { gap: 6, paddingHorizontal: 20, paddingTop: 10 },
 });

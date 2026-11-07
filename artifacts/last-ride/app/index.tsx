@@ -16,7 +16,8 @@ export default function WelcomeScreen() {
   useEffect(() => {
     if (!isHydrated) return;
     if (language && homeStation) router.replace('/ride');
-    else if (language) router.replace('/home-station');
+    // Setup not finished (or just started): it begins with how the app works.
+    else if (language) router.replace('/onboarding-intro');
   }, [homeStation, isHydrated, language]);
 
   // Set up already (or still loading): a plain background under the splash
@@ -27,7 +28,7 @@ export default function WelcomeScreen() {
     // Agreeing to today's terms here: only notices of later changes are shown (lib/termsNotice).
     void markTermsCurrent();
     setLanguage(language);
-    router.replace({ pathname: '/home-station', params: { setup: '1' } });
+    router.replace('/onboarding-intro');
   };
 
   return (

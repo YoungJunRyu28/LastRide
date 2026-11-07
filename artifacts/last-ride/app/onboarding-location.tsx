@@ -49,14 +49,14 @@ export default function OnboardingLocationScreen() {
       value: 'background',
       title: ja ? 'アプリを閉じても更新' : 'Update when closed',
       body: ja
-        ? '夜間の案内中のみ使用します。アプリを閉じていても、移動に合わせて出発時刻や通知を更新できます。常時利用するものではありません。'
-        : 'Only during night tracking. Your leave time and alerts follow you even with the app closed. Never all day.',
+        ? '案内中だけ、アプリを閉じていても駅と出る時刻、通知を更新します。それ以外の時間は使いません。'
+        : 'Only while tracking tonight: your station, leave time and reminders keep updating even when the app is closed. Never used during the day.',
       recommended: true,
     },
     {
       value: 'foreground',
-      title: ja ? 'アプリ使用中のみ' : 'Only while using the app',
-      body: ja ? 'アプリを閉じている間は位置情報を更新せず、最後に計算した出発時刻をもとに通知します。' : 'No updates while closed; alerts use the last plan.',
+      title: ja ? 'アプリ使用中のみ' : 'Only while the app is open',
+      body: ja ? '閉じている間は更新せず、最後に計算した時刻で通知します。' : 'Nothing updates while the app is closed; reminders use the last time it worked out.',
     },
   ];
 
@@ -74,11 +74,11 @@ export default function OnboardingLocationScreen() {
     >
       <OnboardingHeading
         kicker={ja ? '位置情報' : 'LOCATION'}
-        title={ja ? '移動に合わせて\n出発時刻を更新' : 'Keep your leave time\nright as you move'}
+        title={ja ? '移動に合わせて\n出る時刻を更新' : 'Updates\nas you move'}
         lead={
           ja
-            ? '近くの駅や徒歩時間を調べ、出発時刻の目安を計算します。「アプリを閉じても更新」を選ぶと、案内中はアプリを閉じていても位置情報を利用して駅や出発時刻を更新できます。経路の計算には当社サーバーや地図サービスへ位置情報を送信する場合があります。'
-            : 'Location finds your nearest station and walking time. During night tracking it can also be used while the app is closed, to keep your station, leave time and reminders current. It is sent to our server and a map service to calculate routes.'
+            ? '位置情報で近くの駅と徒歩時間を調べます。経路の計算のため、当社サーバーと地図サービスに送信されます。'
+            : 'Your location is used to find the nearest station and the walk there. To work out the route, it’s sent to our server and a map service.'
         }
       />
 
@@ -124,14 +124,14 @@ export default function OnboardingLocationScreen() {
       <View style={styles.footnoteRow}>
         <Feather name="settings" size={13} color={colors.mutedForeground} />
         <Text style={[styles.footnote, { color: colors.mutedForeground }]}>
-          {ja ? 'あとから「設定」→「夜間の位置情報」で変更できます。' : 'Change it any time in Settings › Night location.'}
+          {ja ? '設定 › 夜間の位置情報 でいつでも変更できます。' : 'Change it any time in Settings › Night location.'}
         </Text>
       </View>
       {/* Guideline 1.4: hurrying for a train is when people look at their phone while walking. */}
       <View style={styles.footnoteRow}>
         <Feather name="alert-circle" size={13} color={colors.mutedForeground} />
         <Text style={[styles.footnote, { color: colors.mutedForeground }]}>
-          {ja ? '歩行中や走行中はアプリを操作しないでください。出発時刻は通知やアラームでお知らせします。' : 'Don’t use your phone while walking or running: reminders and alarms will tell you.'}
+          {ja ? '歩きながらの操作は避けてください。時間は通知やアラームでお知らせします。' : 'Please don’t use your phone while walking or running. Reminders and alarms will tell you when to go.'}
         </Text>
       </View>
     </OnboardingFrame>

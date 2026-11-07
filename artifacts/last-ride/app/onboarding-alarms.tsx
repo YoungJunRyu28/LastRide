@@ -32,7 +32,7 @@ export default function OnboardingAlarmsScreen() {
     }).catch(() => undefined);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // On with no times left (e.g. 出発時 moved back to notifications on the step before):
+  // On with no times left (e.g. 出る時刻 moved back to notifications on the step before):
   // no alarms, and nothing to ask permission for.
   const alarmsChosen = alarmsEnabled && alarmIntervals.length > 0;
 
@@ -76,11 +76,11 @@ export default function OnboardingAlarmsScreen() {
     >
       <OnboardingHeading
         kicker={ja ? 'アラーム' : 'ALARMS'}
-        title={ja ? 'マナーモード中も\nアラームでお知らせ' : 'Rings even\nin silent mode'}
+        title={ja ? 'マナーモードでも\n鳴るアラーム' : 'Alarms that ring\neven on silent'}
         lead={
           ja
-            ? '出発時刻になると、時計アプリのアラームのように画面全体と音でお知らせします。通知に気づきにくいときにも便利です。'
-            : 'Like a Clock alarm: full screen, with sound. For nights when a notification is easy to miss.'
+            ? '時計アプリのアラームのように、画面いっぱいに音で知らせます。通知に気づきにくい夜に。'
+            : 'Like a Clock app alarm: full screen, with sound. Good for nights when you might miss a notification.'
         }
       />
 
@@ -91,8 +91,8 @@ export default function OnboardingAlarmsScreen() {
           </Text>
           <Text style={[styles.updateBody, { color: colors.mutedForeground }]}>
             {ja
-              ? `このiPhoneはiOS ${iosMajorVersion ?? ''}です。それまでは、出発の時刻を通知でお知らせします。アップデート後に、設定 › 出発リマインダー からアラームを設定できます。`
-              : `This iPhone is on iOS ${iosMajorVersion ?? ''}. Until then, notifications tell you when to leave. After updating, set up alarms in Settings › Leave reminders.`}
+              ? `このiPhoneはiOS ${iosMajorVersion ?? ''}のため、出る時刻は通知でお知らせします。アップデート後に 設定 › 出発リマインダー から使えます。`
+              : `This iPhone has iOS ${iosMajorVersion ?? ''}, so you’ll get notifications instead. After updating iOS, turn alarms on in Settings › Leave reminders.`}
           </Text>
           <Text style={[styles.updatePath, { color: colors.primary }]}>
             {ja ? 'iPhoneの設定 › 一般 › ソフトウェアアップデート' : 'iPhone Settings › General › Software Update'}
@@ -106,7 +106,7 @@ export default function OnboardingAlarmsScreen() {
             <Row
               testID="toggle-alarms"
               title={ja ? 'アラームを使う' : 'Use alarms'}
-              subtitle={ja ? 'マナーモードでも鳴ります' : 'Rings even in silent mode'}
+              subtitle={ja ? 'iOS標準のアラーム音で鳴ります' : 'Uses the standard iOS alarm sound'}
               switchValue={alarmsEnabled}
               onSwitch={setAlarmsEnabled}
             />
@@ -116,7 +116,7 @@ export default function OnboardingAlarmsScreen() {
             <>
               <View style={styles.section}>
                 <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-                  {ja ? '出発の何分前に鳴らしますか？' : 'When should it ring?'}
+                  {ja ? 'いつ鳴らしますか？' : 'When should it ring?'}
                   <Text style={[styles.sectionHint, { color: colors.mutedForeground }]}>{ja ? '（複数選択可）' : '  (pick any)'}</Text>
                 </Text>
                 <View style={styles.chips}>
@@ -132,20 +132,13 @@ export default function OnboardingAlarmsScreen() {
                 </View>
               </View>
 
-              <View style={styles.section}>
-                <Text style={[styles.sectionTitle, { color: colors.foreground }]}>{ja ? '音' : 'Sound'}</Text>
-                {/* Only Apple's alarm sound rings through silent mode, so there's no choice. */}
-                <Text style={[styles.sectionHint, { color: colors.mutedForeground }]}>
-                  {ja ? 'iOS標準のアラーム音 · マナーモードでも鳴ります' : 'iOS alarm sound · rings even in silent mode'}
-                </Text>
-              </View>
             </>
           )}
 
           <Text style={[styles.footnote, { color: colors.mutedForeground }]}>
             {ja
-              ? '同じ時刻には、通知またはアラームのいずれかでお知らせします。アラーム設定時は、内容を確認できる音なしの通知も表示されます。あとから設定で変更できます。'
-              : 'Each time is either a notification or an alarm. Alarm times also leave a silent notification with the details. You can change this later in Settings.'}
+              ? '同じ時刻は、通知かアラームのどちらか一方で届きます。あとから設定で変更できます。'
+              : 'Each time can be a notification or an alarm, not both. You can change this any time in Settings.'}
           </Text>
         </>
       )}

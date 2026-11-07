@@ -31,11 +31,11 @@ export default function OnboardingMarginScreen() {
     >
       <OnboardingHeading
         kicker={ja ? '早めに出る時間' : 'LEAVE EARLY BY'}
-        title={ja ? '何分余裕を持って\n出発しますか？' : 'How much time\nto spare?'}
+        title={ja ? '何分早めに\n出ますか？' : 'How much time\nto spare?'}
         lead={
           ja
-            ? '終電に間に合う最終出発時刻から、何分早く出るかを設定します。'
-            : 'Instead of the very latest time, we’ll tell you to leave this much earlier.'
+            ? 'ぎりぎりの時刻より、この分だけ早い時刻をお知らせします。'
+            : 'We’ll tell you to leave this many minutes before the latest possible time.'
         }
       />
 
@@ -52,8 +52,8 @@ export default function OnboardingMarginScreen() {
       </Text>
       <Text style={[styles.footnote, { color: colors.mutedForeground }]}>
         {ja
-          ? '乗り換えがある場合や駅まで遠い場合は、さらに余裕を持たせます。あとから設定で変更できます。'
-          : 'A little more is added for routes with changes or long walks. You can change this later in Settings.'}
+          ? 'あとから設定で変更できます。'
+          : 'You can change this any time in Settings.'}
       </Text>
     </OnboardingFrame>
   );

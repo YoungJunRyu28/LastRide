@@ -10,6 +10,7 @@ import { tapVersion, useTestTools } from '@/lib/testTools';
 import { clearDebugEvents, readDebugEvents } from '@/lib/debugEvents';
 import { recommendedLeaveTime } from '@/lib/reliability';
 import { WIDGET_THEMES } from '@/lib/widgetThemes';
+import { resetHomeTour } from '@/components/HomeTour';
 import { Feather } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import { router } from 'expo-router';
@@ -157,6 +158,14 @@ export default function SettingsScreen() {
       </Section>
 
       <Section label={ja ? 'このアプリについて' : 'ABOUT'}>
+        {/* Back on the home screen, the tour of the leave time and buttons shows again. */}
+        <Row
+          testID="replay-home-tour"
+          icon="info"
+          title={ja ? '使い方をもう一度見る' : 'Show the tour again'}
+          onPress={() => void resetHomeTour().then(() => (router.canGoBack() ? router.back() : router.replace('/ride')))}
+        />
+        <Divider />
         <Row testID="open-privacy" icon="shield" title={ja ? 'プライバシーポリシー' : 'Privacy policy'} external onPress={() => void WebBrowser.openBrowserAsync(siteLink(PRIVACY_URL, ja))} />
         <Divider />
         <Row testID="open-data-sources" icon="database" title={ja ? 'データとライセンス' : 'Data & licences'} onPress={() => router.push('/data-sources')} />

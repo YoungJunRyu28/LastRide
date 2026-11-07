@@ -50,6 +50,6 @@ const styles = StyleSheet.create({
   content: { gap: 22, paddingHorizontal: 20 },
   ready: { fontSize: 13, fontWeight: '700' },
   heading: { gap: 8 },
-  kicker: { fontSize: 12, fontWeight: '900', letterSpacing: 1.4 },
+  kicker: { fontSize: 16, fontWeight: '900', letterSpacing: 1.4 },
   title: { fontSize: 32, fontWeight: '800', letterSpacing: -0.8, lineHeight: 40 },
 });

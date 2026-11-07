@@ -1,4 +1,4 @@
-import { OnboardingFrame, OnboardingHeading, SETUP_HAS_ALARMS, SETUP_STEPS } from '@/components/Onboarding';
+import { ExampleTag, OnboardingFrame, OnboardingHeading, SETUP_HAS_ALARMS, SETUP_STEPS } from '@/components/Onboarding';
 import { Card, Chip, Divider, PrimaryButton, Row, TextButton } from '@/components/ui';
 import { REMINDER_CHOICES, useLastRide } from '@/context/LastRideContext';
 import { reminderLabel } from '@/lib/settings';
@@ -39,27 +39,30 @@ export default function OnboardingNotificationsScreen() {
         title={ja ? '出る時間を\n通知でお知らせ' : 'We’ll tell you\nwhen to go'}
         lead={
           ja
-            ? '夜間の案内中、出る前と出る時刻に通知を送ります。'
-            : 'Only while night tracking is on: reminders before you need to leave, and a “leave now”.'
+            ? '案内中だけ、出る前と出る時刻に届きます。'
+            : 'Only after you tap “Start tonight”: a heads-up before it’s time to leave, and one when it is.'
         }
       />
 
-      <Card style={styles.preview}>
-        <View style={[styles.appIcon, { backgroundColor: colors.primary }]}>
-          <Text style={[styles.appIconText, { color: colors.primaryForeground }]}>帰</Text>
-        </View>
-        <View style={styles.previewText}>
-          <Text style={[styles.previewTitle, { color: colors.foreground }]}>{ja ? '出るまであと15分' : '15 min to go'}</Text>
-          <Text style={[styles.previewBody, { color: colors.mutedForeground }]}>
-            {ja ? '23:41に渋谷駅へ向かう予定です。そろそろ支度を。' : 'Leave for Shibuya at 23:41. Time to wrap up.'}
-          </Text>
-        </View>
-        <Text style={[styles.previewTime, { color: colors.mutedForeground }]}>{ja ? '今' : 'now'}</Text>
-      </Card>
+      <View>
+        <Card style={styles.preview}>
+          <View style={[styles.appIcon, { backgroundColor: colors.primary }]}>
+            <Text style={[styles.appIconText, { color: colors.primaryForeground }]}>帰</Text>
+          </View>
+          <View style={styles.previewText}>
+            <Text style={[styles.previewTitle, { color: colors.foreground }]}>{ja ? '出るまであと15分' : '15 min to go'}</Text>
+            <Text style={[styles.previewBody, { color: colors.mutedForeground }]}>
+              {ja ? '23:41に出て渋谷へ。そろそろ支度を。' : 'Leave for Shibuya at 23:41. Time to wrap up.'}
+            </Text>
+          </View>
+          <Text style={[styles.previewTime, { color: colors.mutedForeground }]}>{ja ? '今' : 'now'}</Text>
+        </Card>
+        <ExampleTag ja={ja} />
+      </View>
 
       <View style={styles.section}>
         <Text style={[styles.sectionTitle, { color: colors.foreground }]}>
-          {ja ? '出発の何分前に通知しますか？' : 'How early should we remind you?'}
+          {ja ? 'いつ通知しますか？' : 'When should we remind you?'}
           <Text style={[styles.sectionHint, { color: colors.mutedForeground }]}>{ja ? '（複数選択可）' : '  (pick any)'}</Text>
         </Text>
         <View style={styles.chips}>
@@ -81,7 +84,7 @@ export default function OnboardingNotificationsScreen() {
             <Row
               testID="toggle-through-focus"
               title={ja ? '集中モード中も通知' : 'Through Focus'}
-              subtitle={ja ? 'おやすみモードなどの集中モード中も、出発のお知らせを届けます（即時通知）' : 'Leave reminders still come through Sleep and other Focus modes (Time Sensitive)'}
+              subtitle={ja ? 'おやすみモード中なども届きます' : 'Still arrives in Sleep and other Focus modes'}
               switchValue={throughFocus}
               onSwitch={setThroughFocus}
             />
@@ -91,14 +94,14 @@ export default function OnboardingNotificationsScreen() {
         <Row
           testID="toggle-missed-check-in"
           title={ja ? '終電後の案内' : 'After the last train'}
-          subtitle={ja ? '乗り遅れたときの選択肢を通知' : 'A check-in with your other ways home'}
+          subtitle={ja ? '乗り遅れたら、始発やタクシーをお知らせ' : 'If you miss it, see the first train, a taxi and more'}
           switchValue={missedCheckIn}
           onSwitch={setMissedCheckIn}
         />
       </Card>
 
       <Text style={[styles.footnote, { color: colors.mutedForeground }]}>
-        {ja ? '通知のタイミングは、あとから設定で変更できます。' : 'You can change these later in Settings.'}
+        {ja ? 'あとから設定で変更できます。' : 'You can change these any time in Settings.'}
       </Text>
     </OnboardingFrame>
   );

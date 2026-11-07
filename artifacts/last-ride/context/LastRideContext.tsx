@@ -2042,6 +2042,8 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
       "lastride-always-card",
       "lastride-debug-events",
       "lastride-review-nights",
+      // Back to a first launch: the home screen tour shows again (components/HomeTour).
+      "lastride-home-tour-done",
     ]);
     lastAlarmTimes.current = [];
     await clearSavedPlan();
@@ -2328,7 +2330,7 @@ export function locationErrorText(
         : "No train from the stations near you reaches your destination's station.";
     case "near-home":
       return ja
-        ? "ここからは電車に乗る必要はありません。帰る場所から離れると、終電と出発時刻を表示します。"
+        ? "ここからは電車に乗る必要はありません。帰る場所から離れると、終電と出る時刻を表示します。"
         : "No train needed from here. Once you're further from home, your last train and leave time will show.";
     case "unavailable":
       return ja
