@@ -59,11 +59,50 @@
     : ios
       ? ["appStore", "googlePlay", "galaxyStore", "uptodown", "appGallery"]
       : ["appStore", "googlePlay", "galaxyStore", "uptodown", "appGallery"];
+  // The App Store listing uses Apple's official badge (its marketing guidelines),
+  // in the page's language.
+  function appStoreBadge(lang, url) {
+    var link = document.createElement("a");
+    link.className = "store-badge";
+    link.href = url;
+    link.rel = "noopener noreferrer";
+    link.target = "_blank";
+    var img = document.createElement("img");
+    img.src = lang === "en" ? "/img/app-store-badge-en-us.svg" : "/img/app-store-badge-ja-jp.svg";
+    img.alt = lang === "en" ? "Download on the App Store" : "App Storeからダウンロード";
+    img.width = 162;
+    img.height = 54;
+    link.appendChild(img);
+    return link;
+  }
+  function langOf(node) {
+    var near = node.parentNode && node.parentNode.querySelector("[data-store-links]");
+    var lang = (near && near.getAttribute("data-lang")) || document.documentElement.lang;
+    return lang === "en" ? "en" : "ja";
+  }
+  // A live listing takes its 'coming soon' placeholder's place (iPhone first, on
+  // the left); the others' placeholders are hidden and their links added below.
+  document.querySelectorAll("[data-store-placeholder]").forEach(function (node) {
+    var key = node.getAttribute("data-store-placeholder");
+    if (!Object.prototype.hasOwnProperty.call(hosts, key)) return;
+    var url = safeUrl(key, config[key]);
+    if (!url) return;
+    if (key === "appStore") {
+      node.parentNode.setAttribute("data-app-store-shown", "");
+      node.replaceWith(appStoreBadge(langOf(node), url));
+    } else {
+      node.hidden = true;
+    }
+  });
   document.querySelectorAll("[data-store-links]").forEach(function (container) {
     var lang = container.getAttribute("data-lang") === "en" ? "en" : "ja";
     order.forEach(function (store) {
       var url = safeUrl(store, config[store]);
       if (!url) return;
+      if (store === "appStore") {
+        if (!container.parentNode.hasAttribute("data-app-store-shown")) container.appendChild(appStoreBadge(lang, url));
+        return;
+      }
       var link = document.createElement("a");
       link.className = "btn btn-amber";
       link.href = url;
@@ -72,12 +111,5 @@
       link.textContent = names[store][lang];
       container.appendChild(link);
     });
-  });
-  // Hide a 'coming soon' placeholder only if its matching listing is live.
-  document.querySelectorAll("[data-store-placeholder]").forEach(function (node) {
-    var key = node.getAttribute("data-store-placeholder");
-    if (Object.prototype.hasOwnProperty.call(hosts, key) && safeUrl(key, config[key])) {
-      node.hidden = true;
-    }
   });
 })();

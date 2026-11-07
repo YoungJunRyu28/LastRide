@@ -275,3 +275,8 @@ main.doc .contact-form .form-title { margin: 0; padding: 0; border: 0; font-size
 .store-links { display: flex; flex-wrap: wrap; gap: 0.65rem; align-items: center; }
 [data-store-placeholder][hidden] { display: none !important; }
 .contact-form { scroll-margin-top: 6.5rem; }
+
+/* Apple's official App Store badge (from Apple's marketing tools, unaltered) */
+.store-badge { display: inline-flex; line-height: 0; border-radius: 10px; }
+.store-badge img { display: block; height: 3.25rem; width: auto; }
+.store-badge:focus-visible { outline: 3px solid var(--amber); outline-offset: 3px; }

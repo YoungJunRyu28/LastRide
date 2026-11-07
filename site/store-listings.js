@@ -1,7 +1,7 @@
 // Replace an empty URL only after confirming that store's listing is public.
 // These are PUBLIC listing URLs, never credentials or deep-link invite tokens.
 window.LASTRIDE_STORE_LISTINGS = Object.freeze({
-  appStore: "",
+  appStore: "https://apps.apple.com/jp/app/id6821818204",
   googlePlay: "",
   galaxyStore: "",
   // Use only a verified, publicly accessible listing for an APPROVED compatible APK.
