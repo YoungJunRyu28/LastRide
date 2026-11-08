@@ -18,7 +18,8 @@
 - Expo Doctor passed 20/20 checks (dependency-version check explicitly skipped as in CI).
 - Production-profile `expo prebuild --platform android --clean --no-install` passed after the patch **using synthetic local Firebase and maps keys only**. The generated manifest retained `ACCESS_BACKGROUND_LOCATION`, had `allowBackup=false`, blocked `SYSTEM_ALERT_WINDOW`/legacy storage, and included `autoVerify` links for both invite routes. These mock test keys are not deployable.
 - Native `./gradlew :app:assembleRelease` succeeded on the baseline, local Gradle release project. `aapt dump badging` showed package `jp.lastride.app`, minSdk 24, targetSdk 36.
-- Caveats: the baseline APK is **not an EAS/Play signed AAB** and must not be uploaded as the store artifact. Build a new candidate after applying this patch and configuring real credentials.
+- Patched native `./gradlew :app:bundleRelease` succeeded locally with synthetic Firebase/Maps/RevenueCat values, outputting an **88 MB synthetic-only AAB**. The first attempt failed because Kotlin lint exceeded Android Gradle's default `MaxMetaspaceSize=512m`; retry with `-Xmx4096m -XX:MaxMetaspaceSize=1536m` succeeded with lint enabled. The Expo config plugin `plugins/withAndroidGradleMemory.js` now persists that JVM configuration across prebuilds.
+- Caveats: neither the baseline APK nor the synthetic AAB is **EAS/Play signed with real credentials**; do not upload these verification artifacts. Build the real candidate after configuring authentic production credentials and physical-device testing.
 
 ## Dependency-advisory note
 

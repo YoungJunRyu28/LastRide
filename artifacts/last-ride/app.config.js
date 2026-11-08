@@ -151,8 +151,8 @@ module.exports = ({ config }) => {
     : basePlugins;
   // Uploads source maps so crash reports show real file/line numbers. Needs
   // SENTRY_ORG, SENTRY_PROJECT and (in the build environment) SENTRY_AUTH_TOKEN.
-  const plugins =
-    process.env.SENTRY_ORG && process.env.SENTRY_PROJECT
+  const plugins = [
+    ...(process.env.SENTRY_ORG && process.env.SENTRY_PROJECT
       ? [
           ...withLiveActivity,
           [
@@ -163,7 +163,9 @@ module.exports = ({ config }) => {
             },
           ],
         ]
-      : withLiveActivity;
+      : withLiveActivity),
+    "./plugins/withAndroidGradleMemory",
+  ];
 
   const ios = {
     ...config.ios,

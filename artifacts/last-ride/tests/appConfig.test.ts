@@ -90,6 +90,11 @@ describe("app.config.js", () => {
     expect(JSON.stringify(configured.extra)).not.toContain(key);
   });
 
+  it("keeps the Android Kotlin lint memory fix in every native prebuild", () => {
+    const result = resolveWith({});
+    expect(result.plugins).toContain("./plugins/withAndroidGradleMemory");
+  });
+
   it("does not require the Android Maps key to ship an iOS-only production build", () => {
     const configured = resolveWith({
       EAS_BUILD_PROFILE: "production",
