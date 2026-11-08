@@ -1,19 +1,38 @@
 import { createRequire } from 'node:module';
-import { readFileSync } from 'node:fs';
-import { test } from 'node:test';
+import { readFileSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { test, after } from 'node:test';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { strict as assert } from 'node:assert';
 
 const require = createRequire(import.meta.url);
 const getConfig = require('../artifacts/last-ride/app.config.js');
 const base = JSON.parse(readFileSync(new URL('../artifacts/last-ride/app.json', import.meta.url), 'utf8')).expo;
 const key = 'AIza' + 'X'.repeat(35);
+const firebaseDir = mkdtempSync(join(tmpdir(), 'lastride-fcm-config-test-'));
+const firebaseFile = join(firebaseDir, 'google-services.json');
+const wrongFirebaseFile = join(firebaseDir, 'wrong-google-services.json');
+function fakeFirebaseFor(packages) {
+  return JSON.stringify({
+    project_info: { project_number: '1234567890' },
+    client: packages.map((packageName) => ({
+      client_info: {
+        mobilesdk_app_id: '1:1234567890:android:example',
+        android_client_info: { package_name: packageName },
+      },
+    })),
+  });
+}
+writeFileSync(firebaseFile, fakeFirebaseFor(['jp.lastride.app', 'jp.lastride.app.galaxy']));
+writeFileSync(wrongFirebaseFile, fakeFirebaseFor(['com.unrelated.app']));
+after(() => rmSync(firebaseDir, { recursive: true, force: true }));
 const vars = [
   'EAS_BUILD_PROFILE', 'EAS_BUILD_PLATFORM', 'EXPO_PUBLIC_ANDROID_STORE',
   'EXPO_PUBLIC_GALAXY_BILLING_MODE', 'EXPO_PUBLIC_REVENUECAT_GALAXY_KEY',
   'EXPO_PUBLIC_REVENUECAT_ANDROID_KEY', 'EXPO_PUBLIC_REVENUECAT_IOS_KEY',
   'EXPO_PUBLIC_API_URL', 'EXPO_PUBLIC_APP_JOIN_BASE_URL',
   'EXPO_ANDROID_GOOGLE_MAPS_API_KEY', 'EXPO_ANDROID_GALAXY_GOOGLE_MAPS_API_KEY', 'ENABLE_REMOTE_PUSH',
-  'ENABLE_UNIVERSAL_LINKS', 'ENABLE_LIVE_ACTIVITY', 'ANDROID_PACKAGE_ID', 'IOS_BUNDLE_ID',
+  'ENABLE_UNIVERSAL_LINKS', 'ENABLE_LIVE_ACTIVITY', 'ANDROID_PACKAGE_ID', 'IOS_BUNDLE_ID', 'GOOGLE_SERVICES_JSON',
 ];
 function configured(values) {
   const original = Object.fromEntries(vars.map(name => [name, process.env[name]]));
@@ -35,6 +54,7 @@ const release = {
   ENABLE_UNIVERSAL_LINKS: 'true',
   EXPO_ANDROID_GOOGLE_MAPS_API_KEY: key,
   EXPO_PUBLIC_REVENUECAT_ANDROID_KEY: 'goog_example_public_key',
+  GOOGLE_SERVICES_JSON: firebaseFile,
   EAS_BUILD_PLATFORM: 'android',
 };
 test('Google Play release keeps its current package and ordinary Play billing', () => {
@@ -43,6 +63,29 @@ test('Google Play release keeps its current package and ordinary Play billing', 
   assert.equal(app.extra.androidDistributionStore, 'google-play');
   assert.equal(app.android.intentFilters[0].data[1].pathPrefix, '/group-join');
 });
+test('Google Play releases require Android Firebase registration for FCM push', () => {
+  const app = configured({ ...release, EAS_BUILD_PROFILE: 'production' });
+  assert.equal(app.android.googleServicesFile, firebaseFile);
+  assert.throws(
+    () => configured({ ...release, EAS_BUILD_PROFILE: 'production', GOOGLE_SERVICES_JSON: '' }),
+    /GOOGLE_SERVICES_JSON/,
+  );
+  assert.throws(
+    () => configured({ ...release, EAS_BUILD_PROFILE: 'production', GOOGLE_SERVICES_JSON: wrongFirebaseFile }),
+    /GOOGLE_SERVICES_JSON.*jp\.lastride\.app/,
+  );
+});
+
+test('Android release excludes unnecessary sensitive permissions and unsafe partial backups', () => {
+  const app = configured({ ...release, EAS_BUILD_PROFILE: 'production' });
+  assert.equal(app.android.allowBackup, false);
+  const blocked = new Set(app.android.blockedPermissions);
+  for (const permission of ['SYSTEM_ALERT_WINDOW', 'READ_EXTERNAL_STORAGE', 'WRITE_EXTERNAL_STORAGE']) {
+    assert.ok(blocked.has('android.permission.' + permission), 'Missing blocked permission: ' + permission);
+  }
+  assert.ok(!blocked.has('android.permission.ACCESS_BACKGROUND_LOCATION'));
+});
+
 test('EAS OTA channels segregate Galaxy purchases from Google Play updates', () => {
   const eas = JSON.parse(readFileSync(new URL('../artifacts/last-ride/eas.json', import.meta.url), 'utf8'));
   assert.equal(eas.build.production.channel, 'production');

@@ -36,6 +36,9 @@ android/
 *.key
 *.mobileprovision
 
+# Android Firebase app registration (EAS file-type env secret; never commit)
+artifacts/last-ride/google-services.json
+
 # Python tooling
 __pycache__/
 *.pyc

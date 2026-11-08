@@ -4,10 +4,11 @@ import { useLastRide } from '@/context/LastRideContext';
 import { usePremium } from '@/context/PremiumContext';
 import { useColors } from '@/hooks/useColors';
 import { requestNightLocationPermission } from '@/lib/tracking';
+import { trackingDisclosure } from '@/lib/trackingDisclosure';
 import { Feather } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import React, { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 type Choice = 'background' | 'foreground';
 
@@ -26,17 +27,35 @@ export default function OnboardingLocationScreen() {
   // Setup ends with the one-time trial offer, unless premium is already active (e.g. restored).
   const finish = () => router.replace(isPremium ? '/ride' : '/trial');
 
-  const confirm = async () => {
+  const confirm = async (selected: Choice) => {
+    if (asking) return;
     setAsking(true);
-    const granted = await requestNightLocationPermission(choice);
+    const granted = await requestNightLocationPermission(selected);
     // A refused "when closed" can still leave foreground access; ask again at tracking time otherwise.
-    if (granted) setNightLocationMode(choice);
+    if (granted) setNightLocationMode(selected);
     // "Always" not confirmed yet: app-only for now, switching to アプリを閉じても更新 by itself
     // as soon as iOS allows it (its prompt can come late, or the user allows it in Settings).
-    else if (choice === 'background' && (await requestNightLocationPermission('foreground'))) setNightLocationMode('foreground', { pendingAlways: true });
+    else if (selected === 'background' && (await requestNightLocationPermission('foreground'))) setNightLocationMode('foreground', { pendingAlways: true });
     else setNightLocationMode('ask');
     setAsking(false);
     finish();
+  };
+
+  // Google Play requires a prominent, single-purpose disclosure dialog BEFORE
+  // the Android location permission prompt, not only an onboarding card.
+  // Users may choose app-only access instead of being forced into Always Allow.
+  const continueWithDisclosure = () => {
+    if (asking) return;
+    if (Platform.OS === 'android' && choice === 'background') {
+      const disclosure = trackingDisclosure(language);
+      Alert.alert(disclosure.title, disclosure.message, [
+        { text: disclosure.cancel, style: 'cancel' },
+        { text: disclosure.foregroundOnly, onPress: () => void confirm('foreground') },
+        { text: disclosure.allowBackground, onPress: () => void confirm('background') },
+      ], { cancelable: true });
+      return;
+    }
+    void confirm(choice);
   };
 
   const later = () => {
@@ -67,7 +86,7 @@ export default function OnboardingLocationScreen() {
       onBack={() => router.replace('/onboarding-margin')}
       actions={
         <>
-          <PrimaryButton label={ja ? '続ける' : 'Continue'} onPress={() => void confirm()} loading={asking} testID="confirm-location" />
+          <PrimaryButton label={ja ? '続ける' : 'Continue'} onPress={continueWithDisclosure} loading={asking} testID="confirm-location" />
           <TextButton label={ja ? 'あとで決める' : 'Decide later'} onPress={later} testID="skip-location" />
         </>
       }

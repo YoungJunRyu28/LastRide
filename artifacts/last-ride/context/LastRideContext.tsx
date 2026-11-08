@@ -164,9 +164,13 @@ async function chooseNightTrackingLocation(
     return new Promise((resolve) => {
       Alert.alert(
         ja ? 'アプリを閉じても更新するには' : 'To update when closed',
-        ja
-          ? 'iPhoneの設定で、帰り時の位置情報を「常に」に（夜の案内中だけ使います）。今夜はアプリを開いている間だけ更新することもできます。'
-          : 'In iPhone Settings, set LastRide’s location access to “Always” (used only during night tracking). Or track tonight while the app is open.',
+        Platform.OS === 'android'
+          ? (ja
+            ? 'Androidの設定で、帰り時の位置情報を「常に許可」にしてください（夜の案内中だけ使います）。今夜はアプリの使用中だけ更新することもできます。'
+            : 'In Android Settings, set LastRide’s location permission to “Allow all the time” (used only during night tracking), or track tonight while the app is open.')
+          : (ja
+            ? 'iPhoneの設定で、帰り時の位置情報を「常に」に（夜の案内中だけ使います）。今夜はアプリを開いている間だけ更新することもできます。'
+            : 'In iPhone Settings, set LastRide’s location access to “Always” (used only during night tracking). Or track tonight while the app is open.'),
         [
           { text: ja ? 'キャンセル' : 'Cancel', style: 'cancel', onPress: () => resolve(null) },
           { text: ja ? 'アプリ使用中のみで開始' : 'Track while open', onPress: () => resolve({ mode: 'foreground', asked: true }) },
@@ -1781,9 +1785,13 @@ export function LastRideProvider({ children }: React.PropsWithChildren) {
         const ja = language === "ja";
         Alert.alert(
           ja ? "アプリを閉じている間は更新されません" : "Won’t update while closed",
-          ja
-            ? "iPhoneの設定で、LastRideの位置情報が「常に」になっていません。今夜はアプリを開いている間だけ更新します。アプリを閉じても更新するには、設定で「常に」を選んでください。"
-            : "LastRide’s location access in iPhone Settings isn’t “Always”, so tonight it updates only while the app is open. Choose “Always” in Settings to update when closed.",
+          Platform.OS === 'android'
+            ? (ja
+              ? "Androidの設定で、LastRideの位置情報が「常に許可」になっていません。今夜はアプリの使用中だけ更新します。アプリを閉じても更新するには設定から許可してください。"
+              : "LastRide does not have “Allow all the time” in Android Settings. Tonight it updates only while the app is open. Change the permission in Settings to update when closed.")
+            : (ja
+              ? "iPhoneの設定で、LastRideの位置情報が「常に」になっていません。今夜はアプリを開いている間だけ更新します。アプリを閉じても更新するには、設定で「常に」を選んでください。"
+              : "LastRide’s location access in iPhone Settings isn’t “Always”, so tonight it updates only while the app is open. Choose “Always” in Settings to update when closed."),
           [
             { text: "OK", style: "cancel" },
             { text: ja ? "設定を開く" : "Open Settings", onPress: () => void Linking.openSettings() },
@@ -2313,9 +2321,13 @@ export function locationErrorText(
 ): string {
   switch (code) {
     case "permission":
-      return ja
-        ? "位置情報がオフです。iPhoneの設定で許可すると、戻ったときに自動で更新します。"
-        : "Location is off. Tap to allow it in iPhone Settings; the app updates when you come back.";
+      return Platform.OS === 'android'
+        ? (ja
+          ? "位置情報がオフです。Androidの設定で許可すると、戻ったときに自動で更新します。"
+          : "Location is off. Allow it in Android Settings; the app updates when you return.")
+        : (ja
+          ? "位置情報がオフです。iPhoneの設定で許可すると、戻ったときに自動で更新します。"
+          : "Location is off. Tap to allow it in iPhone Settings; the app updates when you come back.");
     case "unsupported":
       return ja
         ? "この端末では位置情報を利用できません。"

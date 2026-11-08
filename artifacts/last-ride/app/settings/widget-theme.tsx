@@ -9,7 +9,7 @@ import { useColors } from '@/hooks/useColors';
 import { WIDGET_THEMES, widgetPalette, type WidgetThemeId } from '@/lib/widgetThemes';
 import { Feather } from '@expo/vector-icons';
 import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 /** A tiny widget: the countdown in the leave colour and a rail with the train colour. */
 function Swatch({ id }: { id: WidgetThemeId }) {
@@ -44,9 +44,13 @@ export default function WidgetThemeScreen() {
           label={group.label}
           footer={
             groupIndex === groups.length - 1
-              ? ja
-                ? 'ホーム画面・ロック画面のウィジェットと、ライブアクティビティの色です。ロック画面の小さなウィジェットはiOSが色を決めます。'
-                : 'For the home- and lock-screen widgets and the Live Activity. iOS colours the small lock-screen widgets itself.'
+              ? Platform.OS === 'android'
+                ? (ja
+                  ? 'Androidのホーム画面ウィジェットの色です。表示は端末やランチャーによって異なる場合があります。'
+                  : 'Colours for Android home-screen widgets. Appearance may vary by launcher.')
+                : ja
+                  ? 'ホーム画面・ロック画面のウィジェットと、ライブアクティビティの色です。ロック画面の小さなウィジェットはiOSが色を決めます。'
+                  : 'For the home- and lock-screen widgets and the Live Activity. iOS colours the small lock-screen widgets itself.'
               : undefined
           }
         >

@@ -65,7 +65,9 @@ export default function ReminderSettingsScreen() {
         <Section>
           <Row
             title={ja ? '通知が許可されていません' : 'Notifications are off'}
-            subtitle={ja ? 'iPhoneの設定で許可 ↗' : 'Allow in iPhone Settings ↗'}
+            subtitle={Platform.OS === 'android'
+              ? (ja ? 'Androidの設定で許可 ↗' : 'Allow in Android Settings ↗')
+              : (ja ? 'iPhoneの設定で許可 ↗' : 'Allow in iPhone Settings ↗')}
             onPress={() => void Linking.openSettings()}
             destructive
           />

@@ -5,7 +5,7 @@ import { useLastRide } from '@/context/LastRideContext';
 import { useColors } from '@/hooks/useColors';
 import { router } from 'expo-router';
 import React from 'react';
-import { Alert, StyleSheet, Text, View } from 'react-native';
+import { Alert, Platform, StyleSheet, Text, View } from 'react-native';
 
 /**
  * Settings → データを消去: says exactly what goes (and what stays) before the
@@ -86,7 +86,9 @@ export default function ResetScreen() {
       <View style={styles.block}>
         <Text style={[styles.label, { color: colors.mutedForeground }]}>{ja ? '残るもの' : 'WHAT STAYS'}</Text>
         <Text style={[styles.item, { color: colors.foreground }]}>
-          ・{ja ? 'プレミアムの購読（解約はiPhoneのサブスクリプション設定から）' : 'Your Premium subscription (cancel it in your iPhone’s subscription settings)'}
+          ・{Platform.OS === 'android'
+            ? (ja ? 'プレミアムの購読（解約はGoogle Playの「定期購入」から）' : 'Your Premium subscription (cancel it in Google Play → Subscriptions)')
+            : (ja ? 'プレミアムの購読（解約はiPhoneのサブスクリプション設定から）' : 'Your Premium subscription (cancel it in your iPhone’s subscription settings)')}
         </Text>
       </View>
 

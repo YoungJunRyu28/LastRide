@@ -1,5 +1,8 @@
 import { createRequire } from "node:module";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 
 type ExpoConfig = Record<string, any>;
 const require = createRequire(import.meta.url);
@@ -7,11 +10,25 @@ const appConfig = require("../app.config.js") as (input: {
   config: ExpoConfig;
 }) => ExpoConfig;
 const baseConfig = (require("../app.json") as { expo: ExpoConfig }).expo;
+// A synthetic local Firebase app config, never a real credential or app ID.
+const firebaseDir = mkdtempSync(join(tmpdir(), "lastride-mobile-fcm-test-"));
+const firebaseFile = join(firebaseDir, "google-services.json");
+writeFileSync(firebaseFile, JSON.stringify({
+  project_info: { project_number: "1234567890" },
+  client: [{
+    client_info: {
+      mobilesdk_app_id: "1:1234567890:android:example",
+      android_client_info: { package_name: "jp.lastride.app" },
+    },
+  }],
+}));
+afterAll(() => rmSync(firebaseDir, { recursive: true, force: true }));
 
 function resolveWith(
   env: Record<string, string | undefined>,
   config: ExpoConfig = baseConfig,
 ): ExpoConfig {
+  vi.stubEnv("GOOGLE_SERVICES_JSON", firebaseFile);
   for (const [key, value] of Object.entries(env)) vi.stubEnv(key, value);
   return appConfig({ config });
 }

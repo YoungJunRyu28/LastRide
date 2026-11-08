@@ -7,7 +7,7 @@
 import { Feather } from "@expo/vector-icons";
 import { router } from "expo-router";
 import React from "react";
-import { Linking, Pressable, StyleSheet, Text, View } from "react-native";
+import { Linking, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { useColors } from "@/hooks/useColors";
 
 export function LocationOffCard({ ja }: { ja: boolean }) {
@@ -19,9 +19,13 @@ export function LocationOffCard({ ja }: { ja: boolean }) {
         <Text style={[styles.title, { color: colors.foreground }]}>{ja ? "位置情報がオフです" : "Location is off"}</Text>
       </View>
       <Text style={[styles.body, { color: colors.mutedForeground }]}>
-        {ja
-          ? "iPhoneの設定で「帰り時」の位置情報を許可すると、アプリに戻った際に自動で更新します。"
-          : "Allow location for LastRide in iPhone Settings. The app updates by itself when you come back."}
+        {Platform.OS === 'android'
+          ? (ja
+            ? "Androidの設定で「帰り時」の位置情報を許可すると、アプリに戻った際に自動で更新します。"
+            : "Allow location for LastRide in Android Settings. The app updates when you return.")
+          : (ja
+            ? "iPhoneの設定で「帰り時」の位置情報を許可すると、アプリに戻った際に自動で更新します。"
+            : "Allow location for LastRide in iPhone Settings. The app updates by itself when you come back.")}
       </Text>
       <Text style={[styles.body, { color: colors.mutedForeground }]}>
         {ja

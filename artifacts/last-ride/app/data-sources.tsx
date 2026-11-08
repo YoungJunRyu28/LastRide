@@ -13,6 +13,7 @@ import { STATION_POINTS_YEAR } from '@/lib/stationPointsData';
 const ODPT_URL = 'https://www.odpt.org/';
 const CC_BY_URL = 'https://creativecommons.org/licenses/by/4.0/deed.ja';
 const APPLE_LEGAL_URL = 'https://gspe21-ssl.ls.apple.com/html/attribution.html';
+const GOOGLE_MAPS_TERMS_URL = 'https://www.google.com/help/terms_maps/';
 const OSM_COPYRIGHT_URL = 'https://www.openstreetmap.org/copyright';
 const STATION_NAMES_SOURCE_URL = 'https://github.com/nicknr100/LastRide/tree/main/artifacts/last-ride/scripts';
 const KSJ_RAILWAY_URL = `https://nlftp.mlit.go.jp/ksj/gml/datalist/KsjTmplt-N02-${STATION_POINTS_YEAR}.html`;
@@ -83,19 +84,33 @@ export default function DataSourcesScreen() {
           { label: 'CC BY 4.0', url: CC_BY_URL },
         )}
 
-        {section(
-          'Apple Maps',
-          ja
-            ? [
-                '地図、徒歩時間、周辺の施設、JR・私鉄などの時刻はApple Mapsのデータです。',
-                '「目安」と表示された時刻は、電車か徒歩かを確認できなかった推定です。乗換案内アプリでも確認を。',
-              ]
-            : [
-                'Maps, walking times, nearby places, and times for JR and private railways come from Apple Maps.',
-                'Times marked “approx.” are estimates that couldn’t be confirmed as a train. Please double-check them.',
-              ],
-          { label: ja ? 'Apple Mapsの法的情報' : 'Apple Maps legal notices', url: APPLE_LEGAL_URL },
-        )}
+        {Platform.OS === 'android'
+          ? section(
+              'Google Maps',
+              ja
+                ? [
+                    'Android版の地図表示にはGoogle マップを使用しています。駅や徒歩時間、列車の時刻は、利用できる経路サービスや当社サーバーの交通データを使って調べます。路線や地域によって取得できないことがあります。',
+                    '「目安」と表示された時刻は推定値です。実際の終電・乗換時刻は交通事業者の公式情報でも確認してください。',
+                  ]
+                : [
+                    'On Android, maps are displayed using Google Maps. Stations, walking times and train schedules are looked up using available routing services and LastRide’s transit API. Coverage varies by area and route.',
+                    'Times marked “approx.” are estimates. Confirm actual last-train times with official operators.',
+                  ],
+              { label: ja ? 'Google マップの利用規約' : 'Google Maps terms', url: GOOGLE_MAPS_TERMS_URL },
+            )
+          : section(
+              'Apple Maps',
+              ja
+                ? [
+                    '地図、徒歩時間、周辺の施設、JR・私鉄などの時刻はApple Mapsのデータです。',
+                    '「目安」と表示された時刻は、電車か徒歩かを確認できなかった推定です。乗換案内アプリでも確認を。',
+                  ]
+                : [
+                    'Maps, walking times, nearby places, and times for JR and private railways come from Apple Maps.',
+                    'Times marked “approx.” are estimates that couldn’t be confirmed as a train. Please double-check them.',
+                  ],
+              { label: ja ? 'Apple Mapsの法的情報' : 'Apple Maps legal notices', url: APPLE_LEGAL_URL },
+            )}
 
         {section(
           'OpenStreetMap',

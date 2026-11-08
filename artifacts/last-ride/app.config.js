@@ -1,4 +1,35 @@
 // Extends app.json with environment-specific native release settings.
+const { readFileSync, existsSync } = require("node:fs");
+const path = require("node:path");
+
+// EAS file-type environment secret (a PATH, not the JSON content). The FCM V1
+// service-account credential is configured separately in Expo's credentials.
+function androidFirebaseConfig(androidPackage, requireRemotePush) {
+  const local = path.join(__dirname, "google-services.json");
+  const file = process.env.GOOGLE_SERVICES_JSON?.trim() ||
+    (existsSync(local) ? "./google-services.json" : "");
+  if (!file) {
+    if (requireRemotePush) {
+      throw new Error("Google Play/Galaxy releases require GOOGLE_SERVICES_JSON (EAS file environment variable) for Android FCM push");
+    }
+    return null;
+  }
+  try {
+    const json = JSON.parse(readFileSync(path.resolve(__dirname, file), "utf8"));
+    const matches = Array.isArray(json.client) && json.client.some(
+      (client) => client?.client_info?.android_client_info?.package_name === androidPackage &&
+        typeof client?.client_info?.mobilesdk_app_id === "string" &&
+        client.client_info.mobilesdk_app_id.length > 0,
+    );
+    if (!matches || !json?.project_info?.project_number) {
+      throw new Error("Firebase app identifier or project number is missing/mismatched");
+    }
+  } catch {
+    throw new Error(`GOOGLE_SERVICES_JSON must be a readable Firebase Android config for package ${androidPackage}`);
+  }
+  return file;
+}
+
 const RELEASE_PROFILES = ["production", "preview", "galaxy"];
 const STORE_RELEASE_PROFILES = ["production", "galaxy"];
 const ANDROID_STORES = ["google-play", "galaxy"];
@@ -236,6 +267,18 @@ module.exports = ({ config }) => {
   }
   if (profile === "galaxy" && android.package !== galaxyPackage) {
     throw new Error(`Galaxy releases require Android package ${galaxyPackage} (different from Google Play)`);
+  }
+
+  // Expo push tokens on Android require Firebase app registration in the native
+  // binary, independently of the FCM V1 service-account key in EAS credentials.
+  // Fail closed for Play/Galaxy builds: an iOS-successful push test is not proof
+  // that Android users can receive critical group departure notifications.
+  if (process.env.EAS_BUILD_PLATFORM !== "ios") {
+    const googleServicesFile = androidFirebaseConfig(
+      android.package,
+      STORE_RELEASE_PROFILES.includes(profile),
+    );
+    if (googleServicesFile) android.googleServicesFile = googleServicesFile;
   }
 
   // The EAS project ID lives in app.json (set by `eas init`); EAS_PROJECT_ID

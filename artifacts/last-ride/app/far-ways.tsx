@@ -173,7 +173,9 @@ export default function FarWaysScreen() {
           {soonest !== lastTrip ? timeLine(ja ? "次" : "Next", soonest.departsAt, ja ? "出発" : "leave", soonest.arrivesAt) : null}
           {timeLine(ja ? "最終" : "Last", lastTrip.departsAt, ja ? "出発" : "leave", lastTrip.arrivesAt)}
           <Text style={[styles.small, { color: colors.subtle }]}>
-            {ja ? "バス停までの徒歩を含めた、Appleマップに基づく目安です。" : "Includes the walk to the stop; times are from Apple Maps."}
+            {Platform.OS === "ios"
+              ? (ja ? "バス停までの徒歩を含めた、Appleマップに基づく目安です。" : "Includes the walk to the stop; times are from Apple Maps.")
+              : (ja ? "バス停までの徒歩を含めた目安です。実際の時刻は交通事業者の情報も確認してください。" : "Estimates include the walk to the stop. Check the operator’s official timetable.")}
           </Text>
           {button(ja ? "乗り継ぎを地図アプリで見る" : "See the route in Maps", "map", () => openTransitRoute(homeStationOption), true, "far-transit-home")}
         </>
