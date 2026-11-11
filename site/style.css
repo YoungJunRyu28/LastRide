@@ -178,6 +178,9 @@ footer.site .brand { color: #fff; }
 footer.site .brand span { color: var(--amber); }
 footer.site nav { display: flex; flex-wrap: wrap; gap: 0.5rem 1.4rem; }
 footer.site nav a { color: #eaf0f7; text-decoration: none; font-weight: 600; }
+footer.site .social { display: flex; gap: 0.6rem; align-items: center; }
+footer.site .social a { display: inline-grid; place-items: center; width: 2.5rem; height: 2.5rem; color: #eaf0f7; border: 1px solid #2b3b55; border-radius: 50%; }
+footer.site .social a:hover, footer.site .social a:focus-visible { border-color: var(--amber); color: var(--amber); }
 footer.site p { margin: 1rem 0 0; font-size: 0.78rem; line-height: 1.7; }
 
 /* Reading pages (privacy, terms, 特商法, support) */
