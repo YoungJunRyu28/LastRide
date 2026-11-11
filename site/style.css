@@ -144,6 +144,18 @@ section.alt .plan:not(.pro) { background: var(--bg); }
 .plan .per { color: var(--muted); font-size: 0.85rem; margin: 0 0 1rem; }
 .plan.pro .per { color: #8fa2b8; }
 .plan ul { margin: 0; padding-left: 1.2rem; }
+/* Premium: yearly first and highlighted, monthly beside it at the same size. */
+.billing { display: grid; grid-template-columns: repeat(auto-fit, minmax(10.5rem, 1fr)); gap: 0.75rem; margin: 0.9rem 0 0.6rem; }
+.bill { border: 1px solid #2b3b55; border-radius: 14px; padding: 0.85rem 1rem; display: grid; gap: 0.15rem; min-width: 0; }
+.bill.best { border: 2px solid var(--amber); background: rgba(245, 169, 59, 0.1); }
+.bill p { margin: 0; }
+.bill-head { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.bill-name { font-weight: 700; font-size: 0.95rem; }
+.bill-tag { background: var(--amber); color: var(--navy); font-size: 0.72rem; font-weight: 800; padding: 0.1rem 0.55rem; border-radius: 999px; white-space: nowrap; }
+.bill-price { font-size: clamp(1.5rem, 1.25rem + 1vw, 1.9rem); font-weight: 900; color: #ffffff; font-variant-numeric: tabular-nums; }
+.bill-price small { font-size: 0.85rem; font-weight: 600; color: #b9c6d6; }
+.bill-note { font-weight: 800; color: var(--amber); font-size: 0.95rem; }
+.bill-note.quiet { font-weight: 600; color: #8fa2b8; font-size: 0.85rem; }
 .plan li { margin: 0.25rem 0; }
 
 .faq { max-width: 46rem; margin: 0 auto; }
