@@ -13,11 +13,12 @@
 <link rel="alternate" hreflang="en" href="https://lastride.jp/en/">
 <link rel="alternate" hreflang="x-default" href="https://lastride.jp/">
 <link rel="stylesheet" href="/style.css?v=14">
+<link rel="stylesheet" href="/night-home.css?v=1">
 <link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png">
 <link rel="icon" href="/favicon.png" sizes="64x64" type="image/png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 </head>
-<body>
+<body class="night-landing">
 <header class="site">
   <div class="container">
     <a class="brand" href="/"><img src="/favicon.png" alt="" width="32" height="32"><b>LASTRIDE</b><span>帰り時</span></a>
@@ -32,12 +33,13 @@
   </div>
 </header>
 <main>
-<section class="hero">
-    <div class="container">
-      <div>
-        <h1><span class="line"><span class="mark">終電</span>、</span><span class="line">逃さないために。</span><span class="line"><span class="accent">帰る時間</span>を、先に。</span></h1>
-        <p class="lead">今いる場所から、終電に間に合う「出発時刻」をお知らせします。近くの駅と徒歩時間、通知やアラームでのお知らせ、乗れなかったときの選択肢まで、ひとつのアプリで。</p>
-        <div class="actions">
+<section class="night-hero" aria-labelledby="night-title">
+  <div class="night-shell">
+    <div class="night-copy">
+      <p class="night-eyebrow">LAST TRAIN, REIMAGINED <span class="night-live">東京、夜の街</span></p>
+      <h1 class="night-title" id="night-title"><span>夜はまだ、</span><span>終わらない。</span><em>終電には、</em><span>間に合おう。</span></h1>
+      <p class="night-description">夜を楽しんでいるときに、終電の時刻を何度も気にする必要はありません。<strong>帰り時 LastRide が、今いる場所から出るべき時間</strong>を、駅までの徒歩時間と終電に合わせてお知らせします。</p>
+      <div class="actions">
           <span class="store" aria-disabled="true" data-store-placeholder="appStore">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 2h10a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm0 2v14h10V4H7zm5 15.2a1 1 0 1 0 0 2 1 1 0 0 0 0-2z"/></svg>
             <span><small>iPhone版</small><strong>App Storeで近日公開</strong></span>
@@ -46,27 +48,26 @@
           <div class="store-links" data-store-links data-lang="ja"></div>
           <a class="btn btn-ghost" href="#features">機能を見る</a>
         </div>
-        <p class="note">基本機能は無料。プレミアムは14日間無料でお試しいただけます。</p>
-      </div>
-
-      <div class="hero-art">
-        <div class="duo">
-          <div class="phone back" role="img" aria-label="ロック画面：出る30分前の通知とカウントダウン">
-            <div class="lock">
-              <div class="lock-date">10月16日 金曜日</div>
-              <div class="lock-time">23:26</div>
-              <div class="lock-bottom">
-                <div class="la"><div><b>23:57に出る</b><span>渋谷駅から · 終電 00:11発</span></div><strong>30:00</strong></div>
-                <div class="notif"><img src="/favicon.png" alt="" width="20" height="20"><div><b>出るまであと30分</b><span>23:57に出て渋谷へ。そろそろ支度を。</span></div><small>今</small></div>
-                <div class="lock-buttons"><i></i><i></i></div>
-              </div>
-            </div>
+      <p class="night-note">基本無料で使えます。Premium は14日間無料。 · iPhone版配信中</p>
+      <div class="night-proof"><div><b>01 / SET</b><span>帰り先を登録</span></div><div><b>02 / GO</b><span>夜を楽しむ</span></div><div><b>03 / LEAVE</b><span>時間に帰る</span></div></div>
+    </div>
+    <div class="night-world">
+      <div class="night-world-header"><span>◉ NEON LINE / TOKYO</span><b>東京　23:57</b><span>SCENE 001</span></div>
+      <div class="night-scene" data-night-scene data-time="night" data-paused="false">
+        <div class="city-viewport" data-city-viewport></div>
+        <div class="scene-hud">
+          <div class="scene-topline"><span class="scene-led">終電 / ナイトモード</span><span class="scene-station">渋谷 / SHIBUYA<span>2番ホーム</span></span></div>
+          <div class="scene-bottomline">
+            <div class="scene-departure"><p class="board-caption">表示時刻はイメージです</p><div class="board-time">23:57</div><p class="board-destination">出発時刻 · 終電 00:11</p><div class="board-progress"></div></div>
+            <div class="scene-controls"><button type="button" data-scene-time aria-pressed="false">☼ 夜明け</button><button type="button" data-scene-motion aria-pressed="false">Ⅱ 一時停止</button></div>
           </div>
-          <div class="phone front"><img src="/img/ja-home.webp?v=4" width="600" height="1304" alt="帰る時間の画面：案内中、今夜は23:57に出る（あと28分）、渋谷00:11発で自宅00:44着、渋谷駅まで徒歩1分" fetchpriority="high"></div>
         </div>
       </div>
+      <div class="night-world-foot"><span>カーソルを動かして街を眺める</span><a href="#how">帰り時の使い方を見る ↗</a></div>
     </div>
-  </section>
+  </div>
+  <div class="night-rail-marquee" aria-hidden="true"><div><span>終電の通知 <b>✳</b></span><span>駅までの徒歩時間 <b>✳</b></span><span>夜をもう少し楽しもう <b>✳</b></span><span>終電を逃しても、次の手段を <b>✳</b></span><span>終電の通知 <b>✳</b></span><span>駅までの徒歩時間 <b>✳</b></span><span>夜をもう少し楽しもう <b>✳</b></span><span>終電を逃しても、次の手段を <b>✳</b></span></div></div>
+</section>
 
   <section class="block alt" id="how">
     <div class="container">
@@ -258,5 +259,6 @@
 </footer>
 <script src="/store-listings.js?v=3"></script>
 <script src="/store-downloads.js?v=4"></script>
+<script src="/night-scene.js?v=1" defer></script>
 </body>
 </html>
