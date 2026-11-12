@@ -1,0 +1,134 @@
+
+/* LastRide Night City — homepage-only styles. Legal/support pages remain untouched. */
+body.night-landing{--bg:#0a1121;--surface:#101b2f;--border:#273149;--text:#f8f5ee;--muted:#a8b1c6;--navy:#0a1121;--navy-2:#171f37;--amber:#f5b66e;--amber-soft:#513c42;color:var(--text);background:var(--bg)}
+body.night-landing a{color:#f7bc83}
+body.night-landing a:focus-visible,body.night-landing button:focus-visible{outline-color:#ffdc92;outline-offset:4px}
+body.night-landing header.site{background:rgba(7,14,28,.92);border-bottom:1px solid #263048;backdrop-filter:blur(20px) saturate(1.5)}
+body.night-landing header.site .brand,body.night-landing header.site nav.main a{color:#f6f3ea}
+body.night-landing header.site nav.main a:hover,body.night-landing header.site .brand span{color:#f5b66e}
+body.night-landing header.site .lang-toggle{border-color:#37405a}
+body.night-landing header.site .lang-toggle a{color:#a9b6ce}
+body.night-landing header.site .lang-toggle a[aria-current]{color:#091023;background:#f4b66d}
+.night-hero{position:relative;overflow:clip;isolation:isolate;background:#080e1d;border-bottom:1px solid #342942}
+.night-hero:before{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(ellipse 44% 80% at 74% 28%,rgba(120,58,102,.13),transparent 80%),radial-gradient(ellipse 50% 50% at 5% 55%,rgba(29,69,99,.27),transparent 80%)}
+.night-shell{position:relative;width:min(100%,92rem);margin:0 auto;padding:clamp(3.25rem,6vw,6rem) clamp(1.2rem,4.5vw,4.5rem) clamp(2.5rem,4vw,4rem);display:grid;grid-template-columns:minmax(0,.89fr) minmax(0,1.2fr);gap:clamp(1.7rem,3vw,4.3rem);align-items:center}
+.night-copy{position:relative;z-index:2;min-width:0}
+.night-eyebrow{display:flex;flex-wrap:wrap;align-items:center;gap:.6rem 1.2rem;margin:0 0 1.45rem;color:#f8b975;font-size:.7rem;font-weight:800;letter-spacing:.24em;text-transform:uppercase}
+.night-eyebrow:before{content:"";display:block;width:26px;height:2px;background:#f8b975}
+.night-live{font-size:.64rem;color:#9eafc5;letter-spacing:.13em;border-left:1px solid #41425a;padding-left:1rem}
+.night-live:before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:#74e2be;box-shadow:0 0 11px #74e2be;margin-right:.45rem;vertical-align:.13em}
+.night-title{font-family:Impact,"Arial Narrow","Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;font-weight:900;font-stretch:condensed;font-size:clamp(3.45rem,5.8vw,6.4rem);letter-spacing:-.035em;line-height:.99;text-transform:uppercase;margin:0 0 1.8rem}
+.night-title span,.night-title em{display:block;font-style:normal}.night-title em{color:#f6b77a}
+html[lang=ja] .night-title{font-family:"Hiragino Kaku Gothic ProN","Noto Sans JP",system-ui,sans-serif;font-size:clamp(2.8rem,4.9vw,5.6rem);letter-spacing:-.08em;line-height:1.22}
+.night-copy .night-description{color:#c2c8d4;max-width:30rem;font-size:clamp(.98rem,1.15vw,1.11rem);line-height:1.85;margin:0 0 1.5rem}
+.night-copy .night-description strong{color:#fff;font-weight:700}
+.night-copy .actions{display:flex;gap:.7rem;flex-wrap:wrap;align-items:center;margin-bottom:1.2rem}
+.night-copy .actions .btn{border-radius:4px;border:1px solid #6b6470;color:#e9e2e4;background:transparent;min-height:3.1rem;padding:.7rem 1.05rem;font-size:.82rem;letter-spacing:.04em}
+.night-copy .actions .btn:hover{border-color:#f6b77a;color:#f6b77a;transform:translateY(-2px)}
+.night-copy .store{border-radius:5px;background:#efece6;color:#0b1222}.night-copy .store svg{fill:#0b1222}.night-copy .store-badge img{height:3.2rem}
+.night-copy .store-links .btn{border-color:#efb478;color:#111722;background:#efb478}
+.night-copy .store-links .btn:hover{background:#ffcc94;color:#111722}
+.night-copy .night-note{margin:0 0 1.8rem;color:#95a5be;font-size:.76rem;letter-spacing:.03em}
+.night-proof{display:flex;gap:0;border-top:1px solid #414056;padding-top:1.35rem;max-width:28rem}
+.night-proof>div{flex:1;min-width:0;padding-right:1rem}.night-proof>div+div{border-left:1px solid #35364c;padding-left:1rem}
+.night-proof b{display:block;color:#f8d1a6;font-size:clamp(1rem,1.65vw,1.4rem);line-height:1.3;font-variant-numeric:tabular-nums}
+.night-proof span{display:block;margin-top:.28rem;color:#8192b0;font-size:.65rem;letter-spacing:.06em;line-height:1.5}
+.night-world{min-width:0}
+.night-world-header{display:flex;align-items:center;justify-content:space-between;gap:.5rem;padding:0 .3rem .8rem;font:700 .67rem/1.3 ui-monospace,Menlo,Consolas,monospace;color:#b9a9ba;letter-spacing:.09em}
+.night-world-header b{color:#f5ad81;font-size:.73rem}
+.night-scene{--look-x:0px;--look-y:0px;position:relative;aspect-ratio:1.41;min-height:355px;overflow:hidden;isolation:isolate;border:1px solid #57516a;border-radius:7px;background:linear-gradient(#191d3a,#513a58 70%,#121528);box-shadow:0 0 0 6px #10182a,0 0 0 7px #313248,0 26px 76px #020511b0}
+.night-scene:before{content:"";position:absolute;inset:0;pointer-events:none;z-index:4;box-shadow:inset 0 0 68px rgba(6,9,24,.48)}
+.night-scene:after{content:"";position:absolute;inset:0;z-index:4;pointer-events:none;background:repeating-linear-gradient(0deg,transparent 0,transparent 4px,rgba(7,11,31,.1) 5px,transparent 6px);opacity:.35}
+.city-viewport{position:absolute;inset:-8px;overflow:hidden}
+.night-city-svg{display:block;height:100%;width:100%;user-select:none;pointer-events:none;transform:scale(1.035)}
+.night-city-svg .night-depth-back{transform:translate(calc(var(--look-x)*.25),calc(var(--look-y)*.25));transition:transform .4s ease-out}
+.night-city-svg .night-depth-middle{transform:translate(calc(var(--look-x)*.65),calc(var(--look-y)*.65));transition:transform .4s ease-out}
+.night-city-svg .night-depth-front{transform:translate(var(--look-x),var(--look-y));transition:transform .4s ease-out}
+.sky-stop-top{stop-color:#111b37}.sky-stop-mid{stop-color:#4d355f}.sky-stop-bottom{stop-color:#e78683}
+.night-city-svg .day-sun{opacity:0}
+.night-scene[data-time=day] .sky-stop-top{stop-color:#426ea3}.night-scene[data-time=day] .sky-stop-mid{stop-color:#f5a48f}.night-scene[data-time=day] .sky-stop-bottom{stop-color:#f8d9ad}
+.night-scene[data-time=day] .night-moon,.night-scene[data-time=day] .night-moon-glow,.night-scene[data-time=day] .night-star{opacity:0}
+.night-scene[data-time=day] .day-sun{opacity:1}
+.night-scene[data-time=day] .night-city-svg{filter:saturate(.9) brightness(1.12)}
+.night-scene[data-time=day] .neon-letters{opacity:.65}
+.night-city-svg .night-star{transition:opacity .6s ease}
+.night-city-svg .star-twinkle{animation:lr-twinkle 2.8s ease-in-out infinite alternate}
+.night-city-svg .neon-sign{filter:drop-shadow(0 0 4px rgba(255,136,170,.38))}
+.night-city-svg .neon-letters{filter:drop-shadow(0 0 3px currentColor)}
+.night-city-svg .window-flicker{animation:lr-twinkle 4.2s steps(3,end) infinite alternate}
+.night-city-svg .steam-plume{transform-origin:186px 550px;animation:lr-steam 5s ease-in-out infinite}
+.night-city-svg .person-person-a{animation:lr-person 7s ease-in-out infinite alternate}
+.night-city-svg .person-person-b{animation:lr-person 8s ease-in-out -3s infinite alternate-reverse}
+.night-city-svg .train-move{will-change:transform}
+.night-city-svg .train-move-a{animation:lr-train 19s linear infinite}
+.night-city-svg .train-move-b{animation:lr-train 19s linear -9.5s infinite}
+.night-city-svg .floating-petal{animation:lr-petal var(--petal-life) linear var(--petal-delay) infinite}
+.night-scene[data-paused=true] .train-move,.night-scene[data-paused=true] .floating-petal,.night-scene[data-paused=true] .window-flicker,.night-scene[data-paused=true] .star-twinkle,.night-scene[data-paused=true] .steam-plume,.night-scene[data-paused=true] .person-person-a,.night-scene[data-paused=true] .person-person-b{animation-play-state:paused}
+@keyframes lr-train{from{transform:translateX(-720px)}to{transform:translateX(1500px)}}
+@keyframes lr-twinkle{from{opacity:.26}to{opacity:1}}
+@keyframes lr-steam{from{transform:translateY(0) scale(1);opacity:.35}to{transform:translateY(-23px) scale(1.35);opacity:.05}}
+@keyframes lr-person{from{transform:translateX(-24px)}to{transform:translateX(27px)}}
+@keyframes lr-petal{from{transform:translate(var(--petal-x),calc(var(--petal-y) - 85px)) rotate(0);opacity:0}10%{opacity:.85}90%{opacity:.65}to{transform:translate(calc(var(--petal-x) - 145px),calc(var(--petal-y) + 165px)) rotate(340deg);opacity:0}}
+.scene-hud{position:absolute;z-index:5;inset:0;pointer-events:none;display:flex;flex-direction:column;justify-content:space-between;padding:1rem}
+.scene-topline{display:flex;align-items:flex-start;justify-content:space-between;gap:1rem}
+.scene-led{display:inline-flex;align-items:center;gap:.4rem;color:#f4ecdc;font:700 .64rem/1.4 ui-monospace,monospace;padding:.45rem .65rem;background:rgba(7,15,31,.76);border:1px solid #656077;border-radius:3px;letter-spacing:.09em}
+.scene-led:before{content:"";background:#ef755e;width:6px;height:6px;border-radius:50%;box-shadow:0 0 8px #ef755e}
+.scene-station{align-self:flex-end;font:800 .66rem/1.25 ui-monospace,monospace;padding:.44rem .65rem;background:rgba(7,15,31,.75);color:#f4d7af;border:1px solid rgba(232,195,169,.4);border-radius:2px;letter-spacing:.08em;text-align:right}
+.scene-station span{display:block;font-size:.58rem}
+.scene-bottomline{display:flex;justify-content:space-between;align-items:flex-end;gap:.8rem}
+.scene-departure{color:#f5f5eb;background:rgba(5,14,29,.92);border:1px solid #656477;padding:.75rem .85rem;min-width:min(230px,56%);box-shadow:4px 4px 0 #f3a86d}
+.scene-departure .board-caption{margin:0 0 .25rem;color:#f4b56c;font:800 .56rem/1.4 ui-monospace,monospace;letter-spacing:.11em}
+.scene-departure .board-time{font:800 clamp(1.85rem,3.1vw,3rem)/1 Impact,"Arial Narrow",sans-serif;letter-spacing:.04em;color:#fff9f3}
+.scene-departure .board-destination{margin:.15rem 0 0;color:#b5c9d1;font-size:.66rem}
+.scene-departure .board-progress{height:3px;background:#2a3e50;overflow:hidden;margin-top:.6rem}
+.scene-departure .board-progress:before{content:"";display:block;height:100%;width:68%;background:linear-gradient(90deg,#ef78a7,#ffd087)}
+.scene-controls{pointer-events:auto;display:flex;flex-direction:column;align-items:flex-end;gap:.35rem}
+.scene-controls button{cursor:pointer;font:700 .65rem/1.3 ui-monospace,monospace;color:#f8eadd;background:rgba(10,16,33,.88);border:1px solid #b5a4aa;padding:.62rem .75rem;min-width:112px;min-height:34px;text-align:left;border-radius:2px;transition:border-color .2s,background .2s}
+.scene-controls button:hover{border-color:#ffca8b;background:rgba(36,34,52,.96)}
+.night-world-foot{margin-top:1.15rem;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:.6rem 1rem;font:700 .65rem/1.6 ui-monospace,monospace;letter-spacing:.06em;color:#8798b1}
+.night-world-foot span:before{content:"↗";color:#e8aa76;margin-right:.5rem}
+.night-world-foot a{color:#f5c38c;text-decoration:none;border-bottom:1px solid #a18170}
+.night-world-foot a:hover{color:#fff;border-color:#fff}
+.night-rail-marquee{overflow:hidden;border-top:1px solid #353047;border-bottom:1px solid #353047;background:#151b30;padding:.75rem 0}
+.night-rail-marquee>div{display:flex;gap:2.2rem;width:max-content;white-space:nowrap;animation:lr-ticker 44s linear infinite}
+.night-rail-marquee span{color:#ddbca9;letter-spacing:.15em;font:700 .69rem/1.5 ui-monospace,monospace}
+.night-rail-marquee b{color:#f6b879;margin-right:2.2rem}
+@keyframes lr-ticker{to{transform:translateX(-50%)}}
+body.night-landing section.block{background:#0a1121;border-top-color:#202b42;border-bottom-color:#202b42}
+body.night-landing section.block.alt{background:#10182b}
+body.night-landing section.block .eyebrow{color:#eeb87d;letter-spacing:.19em;text-transform:uppercase}
+body.night-landing section.block .heading{font-size:clamp(1.8rem,2.9vw,3.3rem);line-height:1.2;letter-spacing:-.04em}
+body.night-landing section.block .mark{color:#f4b979;background:none}
+body.night-landing section.block .sub{color:#9fadbf}
+body.night-landing section.block .step,body.night-landing section.block .feature{background:#172138;border:1px solid #354059;border-radius:5px;position:relative;transition:border-color .22s ease,transform .22s ease,box-shadow .22s ease}
+body.night-landing section.block.alt .step,body.night-landing section.block.alt .feature{background:#111f35}
+body.night-landing section.block .step:hover,body.night-landing section.block .feature:hover{transform:translateY(-4px);border-color:#be806d;box-shadow:0 16px 32px rgba(1,5,15,.25)}
+body.night-landing section.block .step .num{border-radius:3px;background:#433b48;color:#f4b979}
+body.night-landing section.block .step p,body.night-landing section.block .feature p{color:#b3bdd0}
+body.night-landing section.block .feature .icon{background:#48394a;border-radius:5px}
+body.night-landing section.block .feature .icon svg{stroke:#f4c17e}
+body.night-landing section.block .tag-pro{background:#f4c17e;color:#0a1121}
+body.night-landing .shots .shot img{border-radius:10px;border-color:#151e32}
+body.night-landing .shot figcaption{color:#9fadbf}body.night-landing .shot figcaption b{color:#fcf0e1}
+body.night-landing .chips li{background:#16223c;border-color:#3b4762;color:#f5deca;border-radius:4px}
+body.night-landing .chips li.apple{border-color:#c3926e}
+body.night-landing .fineprint{color:#879bb7}
+body.night-landing .plan{background:#142039;color:#f5eee8;border:1px solid #384258;border-radius:6px}
+body.night-landing section.alt .plan:not(.pro){background:#142039}
+body.night-landing .plan.pro{background:#29253d;border-color:#d09b77}
+body.night-landing .plan .per{color:#acb5c7}
+body.night-landing .plan.pro .per{color:#d5c9cd}
+body.night-landing .plan .bill{border-color:#6a5b72}
+body.night-landing .plan .bill.best{border-color:#f4b979}
+body.night-landing .plan .bill-tag{color:#101729}
+body.night-landing .faq details{background:#172138;border-color:#354059;border-radius:5px}
+body.night-landing .faq p{color:#b3bdd0}
+body.night-landing .cta{background:#23243b;border:1px solid #5d4564;border-radius:7px}
+body.night-landing .cta .mark{color:#ffc48c}
+body.night-landing .cta .sub{color:#c5c5d0}
+body.night-landing footer.site{background:#070e1b;border-top:1px solid #3b3146}
+body.night-landing footer.site .f-bottom{border-color:#2b3349}
+@media(max-width:1100px){.night-shell{grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);gap:1.5rem}.night-title{font-size:clamp(3.15rem,5.7vw,5.5rem)}.night-scene{min-height:310px}}
+@media(max-width:860px){.night-shell{grid-template-columns:minmax(0,1fr);padding-top:3rem}.night-title{font-size:clamp(3.7rem,12vw,6rem)}html[lang=ja] .night-title{font-size:clamp(2.8rem,8.5vw,5.2rem)}.night-copy .night-description{max-width:38rem}.night-scene{min-height:390px;aspect-ratio:1.65}.night-world{max-width:46rem;width:100%;margin:0 auto}}
+@media(max-width:520px){.night-shell{padding:2rem 1.2rem 2.5rem;gap:1.7rem}.night-eyebrow{font-size:.63rem;letter-spacing:.16em;margin-bottom:1.2rem}.night-live{padding-left:.65rem;font-size:.58rem}.night-title{font-size:clamp(3.25rem,14.2vw,4.45rem);margin-bottom:1.2rem}html[lang=ja] .night-title{font-size:clamp(2.5rem,10vw,3.6rem)}.night-copy .night-description{font-size:.93rem;line-height:1.75}.night-proof{padding-top:1rem}.night-proof>div{padding-right:.6rem}.night-proof>div+div{padding-left:.6rem}.night-proof b{font-size:1.05rem}.night-proof span{font-size:.55rem}.night-scene{min-height:320px;aspect-ratio:1.2}.night-world-header{font-size:.54rem}.scene-hud{padding:.6rem}.scene-led,.scene-station{font-size:.5rem}.scene-departure{min-width:152px;padding:.55rem .6rem}.scene-departure .board-time{font-size:2rem}.scene-controls button{padding:.48rem .6rem;min-width:91px;font-size:.53rem}.night-world-foot{font-size:.58rem}}
+@media(prefers-reduced-motion:reduce){.night-rail-marquee>div{animation:none}.night-city-svg *,.night-city-svg .train-move,.night-city-svg .floating-petal{animation:none!important;transition:none!important}body.night-landing .step,body.night-landing .feature{transition:none!important}body.night-landing .step:hover,body.night-landing .feature:hover{transform:none!important}}
